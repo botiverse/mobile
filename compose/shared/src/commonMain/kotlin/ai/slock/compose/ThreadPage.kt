@@ -125,6 +125,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
@@ -435,6 +437,33 @@ internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummar
         messageId to task
     }.toMap()
 }
+
+internal fun shouldStartThreadTasksJoin(
+    payload: KuiklyThreadScreenPayload,
+    startedThreadId: String?,
+    taskChannelId: ChannelId
+): Boolean =
+    payload.status == "content" &&
+        startedThreadId != taskChannelId.value &&
+        !payload.sourceThreadId.isNullOrBlank()
+
+private fun TasksUiState.threadTasksJoinDiagnosticsResult(): Pair<String, Int>? =
+    when (val state = loadState) {
+        ScreenLoadState.Loading -> null
+        is ScreenLoadState.Content -> "content" to state.data.tasks.size
+        is ScreenLoadState.Empty -> "empty:${state.reason.name}" to 0
+        is ScreenLoadState.Error -> "error:${state.error.code}" to 0
+        is ScreenLoadState.NoPermission -> "no_permission:${state.blocker.code}" to 0
+    }
+
+private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
+    when {
+        status == "loading" -> "loading"
+        status == "content" && messages.isNotEmpty() -> "content"
+        status == "content" -> "empty_content"
+        errorCode != null -> "error"
+        else -> status.ifBlank { "unknown" }
+    }
 
 private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
     val key = tag.label.removePrefix("#").trim()
@@ -866,9 +895,10 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null
 ) {
+    PerformanceSceneEffect(bridge, "kuikly_thread")
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
-            SharedThreadViewModel(dataSource)
+            SharedThreadViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
     val threadState by threadViewModel.state.collectAsState()
     val payload = threadState.payload
@@ -900,6 +930,11 @@ internal fun SharedThreadRouteContent(
     var uploadedAttachments by remember(initialPayload.instanceId) {
         mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
     }
+    var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
+    var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
+    var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
 
     fun routeAuthRequired(code: String? = null): Boolean {
@@ -954,6 +989,57 @@ internal fun SharedThreadRouteContent(
                 )
             )
         }
+    }
+    val threadRouteKey =
+        payload.sourceThreadId
+            ?: initialPayload.sourceThreadId
+            ?: payload.instanceId.ifBlank { initialPayload.instanceId }
+    LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
+        if (firstRenderLoggedThreadId != threadRouteKey) {
+            firstRenderLoggedThreadId = threadRouteKey
+            bridge.log(
+                "thread_first_render threadId=${threadRouteKey.orEmpty()} status=${payload.status} " +
+                    "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
+            )
+        }
+        if (payload.status == "content" && firstContentLoggedThreadId != threadRouteKey) {
+            firstContentLoggedThreadId = threadRouteKey
+            bridge.log(
+                "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
+            )
+        }
+    }
+    LaunchedEffect(threadRouteKey, taskChannelId.value, payload.status) {
+        if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
+            return@LaunchedEffect
+        }
+        delay(ThreadFirstContentTaskJoinDelayMs)
+        if (!shouldStartThreadTasksJoin(payload, startedTasksJoinThreadId, taskChannelId)) {
+            return@LaunchedEffect
+        }
+        startedTasksJoinThreadId = taskChannelId.value
+        lastTasksJoinResultKey = null
+        tasksJoinStartedAt = TimeSource.Monotonic.markNow()
+        bridge.log(
+            "thread_tasks_join_start threadId=${threadRouteKey.orEmpty()} reason=after_first_content"
+        )
+        tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
+    }
+    LaunchedEffect(startedTasksJoinThreadId, taskChannelId.value, tasksState.loadState) {
+        if (startedTasksJoinThreadId != taskChannelId.value) {
+            return@LaunchedEffect
+        }
+        val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@LaunchedEffect
+        val resultKey = "${taskChannelId.value}:$result:$taskCount"
+        if (lastTasksJoinResultKey == resultKey) {
+            return@LaunchedEffect
+        }
+        lastTasksJoinResultKey = resultKey
+        val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
+        bridge.log(
+            "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
+                "tasks=$taskCount durationMs=$durationMs"
+        )
     }
 
     val routeFilesPayload = remember(payload.filesPayload, payload.instanceId) {
@@ -2472,9 +2558,6 @@ private fun ThreadPageContent(
                     }
                 )
             }
-            LaunchedEffect(taskChannelId) {
-                onTasksIntent(SharedTasksRouteIntent.Start)
-            }
             val linkedTasksByMessageId = remember(tasksState.loadState) {
                 tasksState.threadLinkedTasksByMessageId()
             }
@@ -3465,6 +3548,7 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 4
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
+private const val ThreadFirstContentTaskJoinDelayMs = 16L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12

@@ -25,6 +25,22 @@ internal class BridgeModule : Module() {
         callNativeMethod(LOG, methodArgs, null)
     }
 
+    fun enterPerformanceScene(sceneName: String) {
+        performanceScene("enter", sceneName)
+    }
+
+    fun exitPerformanceScene(sceneName: String) {
+        performanceScene("exit", sceneName)
+    }
+
+    private fun performanceScene(action: String, sceneName: String) {
+        val cleanScene = sceneName.trim().takeIf { it.isNotBlank() } ?: return
+        val methodArgs = JSONObject()
+        methodArgs.put("action", action)
+        methodArgs.put("sceneName", cleanScene)
+        callNativeMethod("performanceScene", methodArgs, null)
+    }
+
     fun copyToPasteboard(content: String) {
         val methodArgs = JSONObject()
         methodArgs.put("content", content)

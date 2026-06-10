@@ -38,6 +38,8 @@ import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class ThreadPayloadTest {
     @Test
@@ -1003,6 +1005,30 @@ class ThreadPayloadTest {
         val uuidOnlyMessage = message.copy(id = "message-241", taskNumber = 241).withLinkedTask(linkedTasks["message-241"])
         assertEquals(null, uuidOnlyMessage.taskAssigneeName)
         assertEquals("#241", threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName))
+    }
+
+    @Test
+    fun threadTasksJoinStartsOnlyAfterContentGate() {
+        val taskChannelId = ChannelId("channel-1")
+        val loadingPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "loading"
+            )
+        val contentPayload = loadingPayload.copy(status = "content")
+
+        assertFalse(shouldStartThreadTasksJoin(loadingPayload, startedThreadId = null, taskChannelId = taskChannelId))
+        assertTrue(shouldStartThreadTasksJoin(contentPayload, startedThreadId = null, taskChannelId = taskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(contentPayload, startedThreadId = "channel-1", taskChannelId = taskChannelId))
+        assertFalse(
+            shouldStartThreadTasksJoin(
+                contentPayload.copy(sourceThreadId = null),
+                startedThreadId = null,
+                taskChannelId = taskChannelId
+            )
+        )
     }
 
     @Test

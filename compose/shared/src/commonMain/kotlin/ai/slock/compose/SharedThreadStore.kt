@@ -89,6 +89,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.time.TimeSource
 
 internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
@@ -1166,7 +1167,8 @@ internal sealed interface SharedThreadIntent {
 
 internal class SharedThreadStore(
     private val dataSource: SharedThreadDataSource,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val diagnosticsLogger: ((String) -> Unit)? = null
 ) {
     private val _state = MutableStateFlow(SharedThreadState())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
@@ -1258,6 +1260,10 @@ internal class SharedThreadStore(
         val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached = threadId?.let(dataSource::cachedPayload)?.withRouteContext(initialPayload)
         val current = _state.value.payload.takeIf { it.sourceThreadId == threadId && it.hasRenderableThreadContent() }
+        diagnosticsLogger?.invoke(
+            "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
+                "status=${initialPayload.status} messages=${initialPayload.messages.size}"
+        )
         val visiblePayload =
             cached
                 ?: current
@@ -1281,17 +1287,28 @@ internal class SharedThreadStore(
             return
         }
         if (cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
+            val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
             val persistentCached = dataSource.readCachedPayload(initialPayload)
+            diagnosticsLogger?.invoke(
+                "thread_persistent_cache_result threadId=$threadId hit=${persistentCached != null} " +
+                    "messages=${persistentCached?.messages?.size ?: 0} " +
+                    "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
             if (persistentCached != null && _state.value.payload.sourceThreadId == threadId) {
                 reducePayloadPatch { currentPayload ->
                     currentPayload.withContentPatchFrom(persistentCached.withRouteContext(initialPayload))
                 }
             }
+        } else {
+            diagnosticsLogger?.invoke(
+                "thread_persistent_cache_result threadId=$threadId hit=false messages=0 durationMs=0 reason=skipped_memory"
+            )
         }
         refresh(initialPayload)
     }
 
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
+        val refreshStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
         val hasRenderableContent = existing.hasRenderableThreadContent()
         val loadingBase =
@@ -1325,6 +1342,11 @@ internal class SharedThreadStore(
             reducePayloadPatch(cachePayload = visiblePayload != null) { currentPayload ->
                 currentPayload.withContentPatchFrom(nextPayload)
             }
+        diagnosticsLogger?.invoke(
+            "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                "result=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size} " +
+                "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+        )
         if (emitted && visiblePayload != null) {
             writeCachedPayloadAfterFrame(_state.value.payload)
         }
@@ -1571,11 +1593,12 @@ internal class SharedThreadStore(
 }
 
 internal class SharedThreadViewModel(
-    private val dataSource: SharedThreadDataSource
+    private val dataSource: SharedThreadDataSource,
+    private val diagnosticsLogger: ((String) -> Unit)? = null
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedThreadStore(dataSource = dataSource, scope = viewModelScope)
+            SharedThreadStore(dataSource = dataSource, scope = viewModelScope, diagnosticsLogger = diagnosticsLogger)
         }
     private val store: SharedThreadStore by storeDelegate
     val state: StateFlow<SharedThreadState>
@@ -1598,6 +1621,14 @@ private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThrea
         copy(status = "content", errorCode = code)
     } else {
         copy(status = "error", errorCode = code)
+    }
+
+private fun DataResult<KuiklyThreadScreenPayload>.threadDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content"
+        is DataResult.Empty -> "empty:${reason.name}"
+        is DataResult.Error -> "error:${error.code}"
+        is DataResult.NoPermission -> "no_permission:${blocker.code}"
     }
 
 private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =

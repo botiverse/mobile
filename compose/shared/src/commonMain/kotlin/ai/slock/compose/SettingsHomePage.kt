@@ -1057,6 +1057,18 @@ private fun SlockAppShellContent() {
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
         )
 
+    fun openHomeConversation(conversation: ConversationSummary, source: String) {
+        bridge.log(
+            "home_open_conversation threadId=${conversation.threadId.value} " +
+                "kind=${conversation.kind.name} source=$source"
+        )
+        selectedHomeDestination = null
+        selectedHomeConversationId = conversation.threadId.value
+        activeThreadPayload = appShellThreadPayload(conversation)
+        threadBackStack = emptyList()
+        navController.navigate(AppShellRouteThread)
+    }
+
     fun appShellParentMessageContextLoadingPayload(messageId: String): KuiklyThreadScreenPayload =
         KuiklyThreadScreenPayload(
             instanceId = "shared-shell-parent-message-$messageId",
@@ -1464,7 +1476,8 @@ private fun SlockAppShellContent() {
                                 settingsCapabilities = settingsCapabilities,
                                 agentDetailRefreshKey = membersAgentDetailRefreshKey
                             )
-                        else ->
+                        else -> {
+                            PerformanceSceneEffect(bridge, "kuikly_home")
                             if (selectedHomeDestination == null) {
                                 SharedHomeScreen(
                                     bridge = bridge,
@@ -1488,11 +1501,7 @@ private fun SlockAppShellContent() {
                                     },
                                     onCreateChannel = { openCreateChannelDialog() },
                                     onOpenConversation = { conversation ->
-                                        selectedHomeDestination = null
-                                        selectedHomeConversationId = conversation.threadId.value
-                                        activeThreadPayload = appShellThreadPayload(conversation)
-                                        threadBackStack = emptyList()
-                                        navController.navigate(AppShellRouteThread)
+                                        openHomeConversation(conversation, "home")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset
                                 )
@@ -1502,11 +1511,7 @@ private fun SlockAppShellContent() {
                                     authStore = authStore,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenConversation = { conversation ->
-                                        selectedHomeDestination = null
-                                        selectedHomeConversationId = conversation.threadId.value
-                                        activeThreadPayload = appShellThreadPayload(conversation)
-                                        threadBackStack = emptyList()
-                                        navController.navigate(AppShellRouteThread)
+                                        openHomeConversation(conversation, "home_activity")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     shellScope = shellScope
@@ -1520,21 +1525,17 @@ private fun SlockAppShellContent() {
                                         selectedHomeDestination = null
                                     },
                                     onOpenItem = { item ->
-                                        selectedHomeDestination = null
-                                        selectedHomeConversationId = item.toConversationSummary().threadId.value
-                                        activeThreadPayload = appShellThreadPayload(item.toConversationSummary())
-                                        threadBackStack = emptyList()
-                                        navController.navigate(AppShellRouteThread)
+                                        openHomeConversation(item.toConversationSummary(), "home_search")
                                     },
                                     onOpenEntity = { entity ->
                                         selectedHomeDestination = null
                                         val threadId = entity.threadId
                                         if (threadId != null) {
-                                            selectedHomeConversationId = threadId
-                                            entity.conversation?.let {
-                                                activeThreadPayload = appShellThreadPayload(it)
-                                                threadBackStack = emptyList()
-                                                navController.navigate(AppShellRouteThread)
+                                            val conversation = entity.conversation
+                                            if (conversation != null) {
+                                                openHomeConversation(conversation, "home_search_entity")
+                                            } else {
+                                                selectedHomeConversationId = threadId
                                             }
                                         } else {
                                             selectedTab = "members"
@@ -1552,11 +1553,7 @@ private fun SlockAppShellContent() {
                                     onIntent = homeSearchSavedViewModel::dispatch,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
-                                        selectedHomeDestination = null
-                                        selectedHomeConversationId = item.toConversationSummary().threadId.value
-                                        activeThreadPayload = appShellThreadPayload(item.toConversationSummary())
-                                        threadBackStack = emptyList()
-                                        navController.navigate(AppShellRouteThread)
+                                        openHomeConversation(item.toConversationSummary(), "home_saved")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     shellScope = shellScope
@@ -1564,6 +1561,7 @@ private fun SlockAppShellContent() {
                             } else {
                                 SlockCenteredLoading(message = "Opening...")
                             }
+                        }
                     }
             }
             Box(modifier = Modifier.fillMaxSize()) {

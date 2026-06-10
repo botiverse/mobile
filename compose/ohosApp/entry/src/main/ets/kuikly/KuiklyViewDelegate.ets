@@ -9,6 +9,7 @@ import { SlockLucideIconView } from './components/SlockLucideIconView';
 import { SlockLucidePathIconView } from './components/SlockLucidePathIconView';
 import { SlockOhosHdsTabBarView } from './components/SlockOhosHdsTabBarView';
 import { KRBridgeModule } from './modules/KRBridgeModule';
+import { SlockOhosDiagnostics } from './SlockOhosDiagnostics';
 import { SlockNetworkModule } from './modules/SlockNetworkModule';
 
 export class KuiklyViewDelegate extends IKuiklyViewDelegate {
@@ -31,7 +32,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
   }
 
   performanceMonitorTypes(): Array<KRMonitorType> {
-    return [];
+    return [KRMonitorType.LAUNCH, KRMonitorType.FRAME, KRMonitorType.MEMORY];
   }
 
   onGetLaunchData(data: KRRecord): void {
@@ -48,6 +49,7 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
       raw.length > KuiklyViewDelegate.PERFORMANCE_LOG_LIMIT
         ? `${raw.substring(0, KuiklyViewDelegate.PERFORMANCE_LOG_LIMIT)}...`
         : raw;
+    SlockOhosDiagnostics.record(KuiklyViewDelegate.PERFORMANCE_LOG_TAG, `${kind} ${clipped}`);
     console.info(`[${KuiklyViewDelegate.PERFORMANCE_LOG_TAG}] ${kind} ${clipped}`);
   }
 }

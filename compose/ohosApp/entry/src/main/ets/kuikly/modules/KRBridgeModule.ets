@@ -11,6 +11,7 @@ import router from '@ohos.router';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
+import { Bugly } from 'bugly';
 import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
@@ -59,6 +60,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly LOG = "log";
+  static readonly PERFORMANCE_SCENE = "performanceScene";
   static readonly REPORT_DT = "reportDT";
   static readonly REPORT_REAL_TIME = "reportRealTime";
   static readonly REPORT_REAL_TIME_LEGACY = "reportRealtime";
@@ -109,6 +111,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.LOG: {
         this.log(params);
+        break;
+      }
+      case KRBridgeModule.PERFORMANCE_SCENE: {
+        this.performanceScene(params);
         break;
       }
       case KRBridgeModule.REPORT_DT: {
@@ -279,6 +285,30 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   }
 
   private reportDT(params: KRAny) {
+  }
+
+  private performanceScene(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    const payload = this.parseRecord(params);
+    const actionValue = payload['action'];
+    const sceneValue = payload['sceneName'];
+    const action = typeof actionValue === 'string' ? actionValue : 'enter';
+    const sceneName = typeof sceneValue === 'string' ? sceneValue.trim() : '';
+    if (sceneName.length === 0) {
+      return;
+    }
+    try {
+      if (action === 'exit') {
+        Bugly.exitScene(sceneName);
+      } else {
+        Bugly.enterScene(sceneName);
+      }
+      SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=ok`);
+    } catch (error) {
+      SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=failed ${JSON.stringify(error) ?? ''}`);
+    }
   }
 
   private reportRealtime(params: KRAny) {

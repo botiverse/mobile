@@ -58,6 +58,7 @@ import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
@@ -157,6 +158,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         installSlockInputFontBridge(container)
         val spec = createPageSpec()
+        SlockPerformanceDiagnostics.install(window)
+        SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
+        SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         startRealtimeBridgeIfNeeded()
     }
@@ -479,6 +483,27 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                             View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
+    }
+
+    internal fun updatePerformanceScene(action: String, sceneName: String) {
+        val cleanScene = sceneName.takeIf { it.isNotBlank() } ?: return
+        val container = findViewById<ViewGroup?>(R.id.slock_kuikly_container) ?: return
+        when (action) {
+            "enter" -> {
+                SlockPerformanceDiagnostics.updateRoute(container, cleanScene)
+                SlockPerformanceDiagnostics.updateOperation(container, "scene_enter")
+                SlockDiagnosticsLogger.d("SlockPerfScene", "enter scene=$cleanScene bugly=not_integrated")
+            }
+            "exit" -> {
+                SlockPerformanceDiagnostics.updateOperation(container, "scene_exit")
+                SlockDiagnosticsLogger.d("SlockPerfScene", "exit scene=$cleanScene bugly=not_integrated")
+            }
+            else ->
+                    SlockDiagnosticsLogger.w(
+                            "SlockPerfScene",
+                            "unknown_action action=$action scene=$cleanScene"
+                    )
         }
     }
 
@@ -1117,6 +1142,10 @@ internal class SlockKuiklyBridgeModule(
                 reportRealtime(params)
                 null
             }
+            "performanceScene" -> {
+                performanceScene(params)
+                null
+            }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
                 null
@@ -1175,6 +1204,16 @@ internal class SlockKuiklyBridgeModule(
                             request.optString("channelId")
                     )
         }
+    }
+
+    private fun performanceScene(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        val sceneName = request.optString("sceneName").trim()
+        if (sceneName.isBlank()) return
+        (activity as? SlockKuiklyActivity)?.updatePerformanceScene(
+                action = request.optString("action").ifBlank { "enter" },
+                sceneName = sceneName
+        )
     }
 
     private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
