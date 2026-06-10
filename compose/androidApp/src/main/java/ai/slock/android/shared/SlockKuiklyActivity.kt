@@ -547,16 +547,17 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun ensureRealtimeRepository(): RealtimeRepository {
         realtimeRepository?.let { return it }
         val sessionStore = EncryptedAuthSessionStore(applicationContext)
+        val client =
+                SocketIoRealtimeClient(
+                        transport = SocketIoSocketTransport(),
+                        logger = { message ->
+                            SlockDiagnosticsLogger.d("SlockKuiklyRealtime", message)
+                        }
+                )
         val repository =
                 SessionRealtimeRepository(
                         store = sessionStore,
-                        client =
-                                SocketIoRealtimeClient(
-                                        transport = SocketIoSocketTransport(),
-                                        logger = { message ->
-                                            SlockDiagnosticsLogger.d("SlockKuiklyRealtime", message)
-                                        }
-                                ),
+                        client = client,
                         tokenRefresher = AuthTokenRefresher(sessionStore)
                 )
         realtimeRepository = repository
@@ -568,9 +569,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                         if (event is DirectMessageCreated) {
                             repository.joinChannel(event.channelId)
                         }
-                        sendRealtimeEventToSharedShell(serverId, event)
                     }
                 }
+        client.observeRawEvents { eventName, rawPayload ->
+            lifecycleScope.launch {
+                val serverId = realtimeServerId ?: return@launch
+                sendRawRealtimeEvent(serverId, eventName, rawPayload)
+            }
+        }
         return repository
     }
 
@@ -649,6 +655,27 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         realtimeRepository = null
         realtimeServerId = null
         realtimeSessionKey = null
+    }
+
+    private fun sendRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
+        val rawPayloadStr = when (rawPayload) {
+            is String -> rawPayload
+            is org.json.JSONObject -> rawPayload.toString()
+            is org.json.JSONArray -> rawPayload.toString()
+            else -> rawPayload?.toString() ?: "{}"
+        }
+        kuiklyRenderViewDelegator.sendEvent(
+                REALTIME_EVENT_NAME,
+                mapOf(
+                        "serverId" to serverId.value,
+                        "eventName" to eventName,
+                        "rawPayload" to rawPayloadStr
+                )
+        )
+        SlockDiagnosticsLogger.d(
+                "SlockKuiklyRealtime",
+                "raw_event_forwarded eventName=$eventName serverId=${serverId.value}"
+        )
     }
 
     private fun sendRealtimeEventToSharedShell(serverId: ServerId, event: RealtimeEvent) {

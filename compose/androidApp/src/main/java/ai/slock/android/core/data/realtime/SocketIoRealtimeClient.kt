@@ -44,6 +44,7 @@ class SocketIoRealtimeClient(
     private val clockMillis: () -> Long = { System.currentTimeMillis() }
 ) {
     private val listeners = mutableSetOf<(RealtimeEvent) -> Unit>()
+    private val rawListeners = mutableSetOf<(String, Any?) -> Unit>()
     private val transportSubscriptions = mutableListOf<RealtimeSubscription>()
     private val joinedChannels = linkedSetOf<ChannelId>()
     private var cursor: RealtimeCursorState = RealtimeCursorPolicy.fromAppliedSeq(0)
@@ -131,6 +132,11 @@ class SocketIoRealtimeClient(
     fun observeEvents(listener: (RealtimeEvent) -> Unit): RealtimeSubscription {
         listeners += listener
         return RealtimeSubscription { listeners -= listener }
+    }
+
+    fun observeRawEvents(listener: (eventName: String, rawPayload: Any?) -> Unit): RealtimeSubscription {
+        rawListeners += listener
+        return RealtimeSubscription { rawListeners -= listener }
     }
 
     private fun ensureTransportListeners() {
@@ -227,6 +233,7 @@ class SocketIoRealtimeClient(
                     "event_received eventName=$eventName serverId=${connectedServerId.orEmpty()} mapped=${event?.realtimeDiagnosticName().orEmpty()} ${event?.realtimeDiagnosticFields().orEmpty()} payloadType=${payload?.javaClass?.simpleName.orEmpty()}"
                 )
                 event?.let(::dispatch)
+                rawListeners.toList().forEach { it(eventName, payload) }
             }
         }
     }
