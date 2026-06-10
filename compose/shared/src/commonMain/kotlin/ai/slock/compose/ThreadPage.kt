@@ -191,7 +191,11 @@ internal data class KuiklyThreadScreenPayload(
     val title: String = "Thread",
     val subtitle: String? = null,
     val status: String = "loading",
+    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val sourceThreadId: String? = null,
+    val streamChannelId: String? = null,
+    val parentChannelId: String? = null,
+    val parentMessageId: String? = null,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean = true,
@@ -1921,7 +1925,11 @@ private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadW
         title = "Thread",
         subtitle = null,
         status = "loading",
+        surfaceKind = KuiklyThreadSurfaceKind.Channel,
         sourceThreadId = target.channelId,
+        streamChannelId = target.channelId,
+        parentChannelId = null,
+        parentMessageId = null,
         selectedTab = KuiklyThreadTab.Chat.wireValue,
         messages = emptyList(),
         originMessage = null,
@@ -2293,7 +2301,11 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         title = ThreadReplyPageTitle,
         subtitle = null,
         status = "loading",
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = null,
+        streamChannelId = null,
+        parentChannelId = sourceThreadId,
+        parentMessageId = parentMessage.id,
         navigationLabel = "Close",
         selectedTab = "chat",
         showModeTabs = false,
@@ -2306,7 +2318,17 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
         emptyTitle = "Opening replies",
-        emptyDetail = "Loading the message thread."
+        emptyDetail = "Loading the message thread.",
+        composerPayload =
+            buildThreadSurfaceComposerPayloadJson(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                displayName = ThreadReplyPageTitle,
+                fallbackId = parentMessage.id,
+                enabled = canSend,
+                mentionChannelId = sourceThreadId,
+                parentMessageId = parentMessage.id,
+                streamChannelId = null
+            )
     )
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =

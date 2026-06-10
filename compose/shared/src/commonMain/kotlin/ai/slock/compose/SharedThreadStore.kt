@@ -853,7 +853,11 @@ internal class SharedThreadDataSource(
                 title = ThreadReplyPageTitle,
                 subtitle = null,
                 status = "loading",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                 sourceThreadId = threadChannelId,
+                streamChannelId = threadChannelId,
+                parentChannelId = parentChannelId,
+                parentMessageId = action.parentMessageId?.value ?: parentMessage.id,
                 navigationLabel = "Close",
                 selectedTab = "chat",
                 showModeTabs = false,
@@ -864,7 +868,17 @@ internal class SharedThreadDataSource(
                 originStatus = "loaded",
                 messages = emptyList(),
                 canLoadMoreBefore = false,
-                canLoadMoreAfter = false
+                canLoadMoreAfter = false,
+                composerPayload =
+                    buildThreadSurfaceComposerPayloadJson(
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        displayName = ThreadReplyPageTitle,
+                        fallbackId = parentMessage.id,
+                        enabled = basePayload.canSend,
+                        mentionChannelId = parentChannelId,
+                        parentMessageId = action.parentMessageId?.value ?: parentMessage.id,
+                        streamChannelId = threadChannelId
+                    )
             )
         return when (val loaded = fetchThreadPayload(replyBase, persistResult = false)) {
             is DataResult.Content -> {
@@ -872,6 +886,11 @@ internal class SharedThreadDataSource(
                     loaded.data.copy(
                         title = replyBase.title,
                         subtitle = replyBase.subtitle,
+                        surfaceKind = replyBase.surfaceKind,
+                        streamChannelId = replyBase.streamChannelId,
+                        parentChannelId = replyBase.parentChannelId,
+                        parentMessageId = replyBase.parentMessageId,
+                        composerPayload = loaded.data.composerPayload.takeIf { it != "{}" } ?: replyBase.composerPayload,
                         originMessage = loaded.data.originMessage ?: resolvedOrigin,
                         originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
                         originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
@@ -2301,6 +2320,20 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     currentUserId: String?
 ): KuiklyThreadScreenPayload {
     val parentId = parentMessage?.id?.value
+    val surfaceKind =
+        when {
+            conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            parentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank() ->
+                KuiklyThreadSurfaceKind.ReplyThread
+            else -> base.surfaceKind
+        }
+    val streamChannelId =
+        base.streamChannelId
+            ?: conversation.thread?.streamChannelId?.value
+            ?: conversation.channelId?.value
+            ?: conversation.threadId.value
+    val parentChannelId = base.parentChannelId ?: conversation.thread?.parentChannelId?.value
+    val parentMessageId = base.parentMessageId ?: parentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
     val cachedMessages =
         messages
             .filterNot { message -> parentId != null && message.id.value == parentId }
@@ -2314,6 +2347,10 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 ?: conversation.thread?.streamChannelId?.value
                 ?: conversation.channelId?.value
                 ?: conversation.threadId.value,
+        surfaceKind = surfaceKind,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
         messages = cachedMessages,
         originMessage = parentMessage?.toKuiklyThreadMessageItem(currentUserId),
         originParentMessageId = parentMessage?.id?.value ?: base.originParentMessageId,
@@ -2337,7 +2374,12 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
         ConversationSummary(
             threadId = threadId,
             channelId = channelId,
-            kind = if (originParentMessageId.isNullOrBlank()) ConversationKind.Channel else ConversationKind.Thread,
+            kind =
+                when (surfaceKind) {
+                    KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+                    KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
+                    else -> if (originParentMessageId.isNullOrBlank()) ConversationKind.Channel else ConversationKind.Thread
+                },
             name = title,
             subtitle = subtitle,
             joined = joined,

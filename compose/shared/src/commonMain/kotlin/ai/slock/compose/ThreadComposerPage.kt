@@ -76,6 +76,10 @@ internal data class KuiklyThreadComposerPayload(
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val mentionChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val streamChannelId: String? = null,
     val hookLabels: List<String> = emptyList()
 )
 
@@ -173,6 +177,10 @@ data class SharedThreadComposerPayloadInput(
     val showAsTaskToggle: Boolean,
     val composerMode: String,
     val statusLabel: String? = null,
+    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val mentionChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val streamChannelId: String? = null,
     val pendingAttachments: List<SharedThreadComposerAttachment> = emptyList(),
     val memberSuggestions: List<SharedThreadComposerMemberSuggestion> = emptyList(),
     val channelSuggestions: List<SharedThreadComposerChannelSuggestion> = emptyList()
@@ -191,6 +199,10 @@ fun buildSharedThreadComposerPayloadJson(input: SharedThreadComposerPayloadInput
             showAsTaskToggle = input.showAsTaskToggle,
             composerMode = input.composerMode,
             statusLabel = input.statusLabel,
+            surfaceKind = input.surfaceKind,
+            mentionChannelId = input.mentionChannelId,
+            parentMessageId = input.parentMessageId,
+            streamChannelId = input.streamChannelId,
             pendingAttachments =
                 input.pendingAttachments.map { attachment ->
                     KuiklyPendingAttachmentItem(

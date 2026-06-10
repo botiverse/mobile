@@ -248,11 +248,45 @@ class ThreadPayloadTest {
         assertEquals(true, payload.showReplyActions)
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(true, payload.showSettingsAction)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
         assertEquals(
             listOf("visibility", "archive", "delete"),
             payload.settingsActions.map { it.id }
         )
-        assertEquals("Message #general", parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId).placeholder)
+        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        assertEquals("Message #general", composer.placeholder)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
+        assertEquals("channel-1", composer.streamChannelId)
+        assertEquals("idle", composer.composerMode)
+    }
+
+    @Test
+    fun sharedShellDirectMessageRouteKeepsDmSurfaceForComposerProps() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("dm-agent-1"),
+                    channelId = ChannelId("dm-agent-1"),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Product-UX-Designer",
+                    subtitle = "online",
+                    joined = true,
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals("dm-agent-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
+        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, composer.surfaceKind)
+        assertEquals("dm-agent-1", composer.streamChannelId)
+        assertEquals("Message @Product-UX-Designer", composer.placeholder)
+        assertEquals("idle", composer.composerMode)
     }
 
     @Test
@@ -299,6 +333,9 @@ class ThreadPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
         assertEquals("loaded", payload.originStatus)
         assertEquals("Opening task", payload.emptyTitle)
         assertEquals(480, payload.localOffsetMinutes)
@@ -331,6 +368,9 @@ class ThreadPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals("thread-channel-1", payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("thread-channel-1", payload.streamChannelId)
+        assertEquals("message-1", payload.parentMessageId)
         assertEquals(false, payload.showReplyActions)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals(true, payload.alignOwnMessagesRight)
@@ -360,6 +400,14 @@ class ThreadPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
+        assertEquals("channel-1", composer.mentionChannelId)
+        assertEquals("message-1", composer.parentMessageId)
+        assertEquals("Reply in thread", composer.placeholder)
         assertEquals("loaded", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(true, payload.showOpenInChannelAction)
@@ -1112,7 +1160,7 @@ class ThreadPayloadTest {
         assertEquals("member_joined", message.systemEventType)
         assertEquals("Cindy", message.metadata["actor"])
         assertEquals("invite", message.metadata["source"]?.sanitizeThreadSystemText())
-        assertEquals("10:00 · Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
+        assertEquals("10:00 Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
         assertEquals("Type: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemDetails())
     }
 

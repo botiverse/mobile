@@ -101,6 +101,10 @@ class ThreadComposerPayloadTest {
                     showAsTaskToggle = true,
                     composerMode = "sending",
                     statusLabel = "Sending",
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                    mentionChannelId = "channel-1",
+                    parentMessageId = "message-1",
+                    streamChannelId = "thread-1",
                     pendingAttachments =
                         listOf(
                             SharedThreadComposerAttachment(
@@ -136,6 +140,10 @@ class ThreadComposerPayloadTest {
         assertFalse(payload.enabled)
         assertEquals("sending", payload.composerMode)
         assertEquals("Sending", payload.statusLabel)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-1", payload.mentionChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        assertEquals("thread-1", payload.streamChannelId)
         assertEquals("log.txt", payload.pendingAttachments.single().fileName)
         assertEquals("Cindy", payload.memberSuggestions.single().displayName)
         assertEquals("general", payload.channelSuggestions.single().name)

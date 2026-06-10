@@ -6800,13 +6800,22 @@ internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false
-): KuiklyThreadScreenPayload =
-    KuiklyThreadScreenPayload(
+): KuiklyThreadScreenPayload {
+    val surfaceKind = conversation.threadSurfaceKind()
+    val streamChannelId = conversation.threadStreamChannelId()
+    val parentChannelId = conversation.threadParentChannelId()
+    val parentMessageId = conversation.threadParentMessageId()
+    val canSend = conversation.joined && conversation.permissions.canSend
+    return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = conversation.name.ifBlank { "Thread" },
         subtitle = conversation.subtitle?.takeIf { it.isNotBlank() },
         status = "loading",
+        surfaceKind = surfaceKind,
         sourceThreadId = conversation.threadId.value,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = true,
@@ -6814,7 +6823,7 @@ internal fun buildAppShellThreadPayload(
         alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = false,
         joined = conversation.joined,
-        canSend = conversation.joined && conversation.permissions.canSend,
+        canSend = canSend,
         membersCount = conversation.memberCount ?: 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
@@ -6824,19 +6833,18 @@ internal fun buildAppShellThreadPayload(
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composerPayload =
-            buildSharedThreadComposerPayloadJson(
-                SharedThreadComposerPayloadInput(
-                    seedText = "",
-                    seedAsTask = false,
-                    syncNonce = 0,
-                    focusRequestNonce = 0,
-                    placeholder = "Message #${conversation.name.ifBlank { conversation.threadId.value }}",
-                    enabled = conversation.joined && conversation.permissions.canSend,
-                    showAsTaskToggle = true,
-                    composerMode = "channel"
-                )
+            buildThreadSurfaceComposerPayloadJson(
+                surfaceKind = surfaceKind,
+                displayName = conversation.name,
+                fallbackId = conversation.threadId.value,
+                enabled = canSend,
+                showAsTaskToggle = true,
+                mentionChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                streamChannelId = streamChannelId
             )
     )
+}
 
 private suspend fun openAppShellTaskThread(
     task: TaskSummary,
@@ -6922,6 +6930,10 @@ internal fun buildAppShellTaskContainingThreadPayload(
         alignOwnMessagesRight
     ).copy(
         instanceId = "shared-shell-task-thread-$threadChannelId",
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        streamChannelId = threadChannelId,
+        parentChannelId = task.channelId?.value,
+        parentMessageId = task.parentMessageId?.value ?: task.messageId?.value,
         showModeTabs = false,
         showReplyActions = false,
         showOpenInChannelAction = true,
@@ -6943,7 +6955,11 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         title = task.tasksDisplayTitleForAppShell(),
         subtitle = task.channelName,
         status = "loading",
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = threadId,
+        streamChannelId = threadId,
+        parentChannelId = task.channelId?.value,
+        parentMessageId = parentMessage?.id,
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = false,
@@ -6958,7 +6974,17 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         showMembersAction = false,
         showSettingsAction = false,
         emptyTitle = "Opening task",
-        emptyDetail = "Loading the task conversation."
+        emptyDetail = "Loading the task conversation.",
+        composerPayload =
+            buildThreadSurfaceComposerPayloadJson(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                displayName = task.channelName.orEmpty(),
+                fallbackId = task.id.value,
+                enabled = true,
+                mentionChannelId = task.channelId?.value,
+                parentMessageId = parentMessage?.id,
+                streamChannelId = threadId
+            )
     )
 }
 
