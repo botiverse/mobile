@@ -527,6 +527,7 @@ internal interface SharedThreadNetworkApi {
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
     suspend fun saveMessage(messageId: String): HomeNetworkResponse
+    suspend fun unsaveMessage(messageId: String): HomeNetworkResponse
     suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
@@ -588,6 +589,9 @@ internal class BridgeThreadApi(
             method = "POST",
             bodyText = buildSharedSaveMessageBody(MessageId(messageId.trim()))
         )
+
+    override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse =
+        request(path = "channels/saved/${messageId.trim()}", method = "DELETE")
 
     override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse =
         request(

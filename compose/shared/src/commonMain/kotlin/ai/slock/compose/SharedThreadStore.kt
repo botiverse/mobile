@@ -31,6 +31,7 @@ import ai.slock.compose.data.MessageReactionSummary
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
+import ai.slock.compose.data.SavedStatusRepository
 import ai.slock.compose.data.SlockThreadApi
 import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
@@ -97,7 +98,8 @@ internal class SharedThreadDataSource(
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
-    private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null
+    private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
+    private val savedStatusRepository: SavedStatusRepository? = null
 ) {
     constructor(
         networkApi: SharedThreadNetworkApi,
@@ -107,7 +109,8 @@ internal class SharedThreadDataSource(
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
-        actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null
+        actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
+        savedStatusRepository: SavedStatusRepository? = null
     ) : this(
         api = SlockThreadApiClient(networkApi),
         sessionStore = sessionStore,
@@ -116,7 +119,8 @@ internal class SharedThreadDataSource(
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
         agentsApiClient = agentsApiClient,
-        actionCardsApiClient = actionCardsApiClient
+        actionCardsApiClient = actionCardsApiClient,
+        savedStatusRepository = savedStatusRepository
     )
 
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
@@ -393,7 +397,7 @@ internal class SharedThreadDataSource(
             }
         val payload =
             when (payloadResult) {
-                is DataResult.Content -> payloadResult.data
+                is DataResult.Content -> payloadResult.data.withSavedStatus(session)
                 is DataResult.Empty -> return payloadResult
                 is DataResult.Error -> return payloadResult
                 is DataResult.NoPermission -> return payloadResult
@@ -734,8 +738,23 @@ internal class SharedThreadDataSource(
                 throw cancellation
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = "thread_save_network", retryable = true))
-            }
+        }
         return response.toUnitDataResult("thread_save_network")
+    }
+
+    suspend fun unsaveMessage(messageId: String): DataResult<Unit> {
+        if (messageId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "message_id_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.unsaveMessage(messageId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_unsave_network", retryable = true))
+            }
+        return response.toUnitDataResult("thread_unsave_network")
     }
 
     suspend fun setMessageReaction(messageId: String, emoji: String, selected: Boolean): DataResult<MessageMutationSummary> {
@@ -927,35 +946,42 @@ internal class SharedThreadDataSource(
         val session =
             readSession()
                 ?: return authSessionRequiredResult()
-        return if (conversationRepository != null) {
-            fetchThreadPayloadFromRepository(
-                session = session,
-                fallbackCode = "thread_${source}_network",
-                call = { repository -> repositoryCall(repository, ThreadId(threadId)) },
-                transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
-            )
-        } else {
-            val response =
-                try {
-                    call(threadId)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
-                }
-            val page =
-                when (response) {
-                    is ThreadApiResult.Success -> response.data
-                    is ThreadApiResult.Failure ->
-                        return response.toThreadDataError("thread_${source}_network")
-                }
-            DataResult.Content(
-                buildSharedThreadPayloadFromMessagesPage(
-                    basePayload = basePayload,
-                    page = page,
-                    session = session
-                ).withCachedSenderProfiles(session)
-            )
+        val result =
+            if (conversationRepository != null) {
+                fetchThreadPayloadFromRepository(
+                    session = session,
+                    fallbackCode = "thread_${source}_network",
+                    call = { repository -> repositoryCall(repository, ThreadId(threadId)) },
+                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+                )
+            } else {
+                val response =
+                    try {
+                        call(threadId)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        return DataResult.Error(ScreenError(code = "thread_${source}_network", retryable = true))
+                    }
+                val page =
+                    when (response) {
+                        is ThreadApiResult.Success -> response.data
+                        is ThreadApiResult.Failure ->
+                            return response.toThreadDataError("thread_${source}_network")
+                    }
+                DataResult.Content(
+                    buildSharedThreadPayloadFromMessagesPage(
+                        basePayload = basePayload,
+                        page = page,
+                        session = session
+                    ).withCachedSenderProfiles(session)
+                )
+            }
+        return when (result) {
+            is DataResult.Content -> DataResult.Content(result.data.withSavedStatus(session))
+            is DataResult.Empty -> result
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
         }
     }
 
@@ -1018,6 +1044,34 @@ internal class SharedThreadDataSource(
         val cachedProfiles = senderProfilesCache[serverId].orEmpty()
         return withSenderProfiles(cachedProfiles).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
+
+    private suspend fun KuiklyThreadScreenPayload.withSavedStatus(
+        session: StoredAuthSession
+    ): KuiklyThreadScreenPayload {
+        val repository = savedStatusRepository ?: return this
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        val messageIds =
+            (messages.map { it.id } + listOfNotNull(originMessage?.id))
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .map(::MessageId)
+        if (messageIds.isEmpty()) return this
+        val result =
+            try {
+                repository.checkSavedMessages(serverId, messageIds)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return this
+            }
+        return when (result) {
+            is DataResult.Content -> withSavedMessageIds(result.data.savedIds.map { it.value }.toSet())
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> this
+        }
+    }
 }
 
 private fun ThreadApiResult.Failure.toThreadDataError(fallbackCode: String): DataResult.Error =
@@ -1060,6 +1114,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyMessageMutation(val summary: MessageMutationSummary) : SharedThreadIntent
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
+    data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyTaskStatus(val taskId: String, val statusLabel: String?) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
@@ -1113,6 +1168,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyMessageMutation,
             is SharedThreadIntent.ApplyActionCard,
+            is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyTaskStatus,
             is SharedThreadIntent.ApplyMembersPatch,
             is SharedThreadIntent.SetAddMemberStatus,
@@ -1153,6 +1209,7 @@ internal class SharedThreadStore(
                 applyMessageReactions(intent.messageId, intent.reactions)
             is SharedThreadIntent.ApplyMessageMutation -> applyMessageMutation(intent.summary)
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
+            is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyTaskStatus -> applyTaskStatus(intent.taskId, intent.statusLabel)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
@@ -1399,6 +1456,13 @@ internal class SharedThreadStore(
             cachePayload = true,
             writeCachedPayload = true
         ) { payload -> payload.withActionCard(messageId, card) }
+    }
+
+    private suspend fun applyMessageSaved(messageId: String, saved: Boolean) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload -> payload.withMessageSaved(messageId, saved) }
     }
 
     private suspend fun applyTaskStatus(taskId: String, statusLabel: String?) {
@@ -1990,6 +2054,28 @@ internal fun KuiklyThreadScreenPayload.withMessageReactions(
     )
 }
 
+internal fun KuiklyThreadScreenPayload.withMessageSaved(
+    messageId: String,
+    saved: Boolean
+): KuiklyThreadScreenPayload {
+    val cleanMessageId = messageId.trim()
+    if (cleanMessageId.isBlank()) return this
+    return copy(
+        messages = messages.map { message ->
+            if (message.id == cleanMessageId) message.copy(isSaved = saved) else message
+        },
+        originMessage = originMessage?.let { message ->
+            if (message.id == cleanMessageId) message.copy(isSaved = saved) else message
+        }
+    )
+}
+
+internal fun KuiklyThreadScreenPayload.withSavedMessageIds(savedIds: Set<String>): KuiklyThreadScreenPayload =
+    copy(
+        messages = messages.map { message -> message.copy(isSaved = message.id in savedIds) },
+        originMessage = originMessage?.let { message -> message.copy(isSaved = message.id in savedIds) }
+    )
+
 private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
     summary: MessageMutationSummary,
     currentUserId: String?
@@ -2093,6 +2179,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         replyCount = maxOf(replyCount, update.replyCount),
         unreadReplyCount = maxOf(unreadReplyCount, update.unreadReplyCount),
         firstUnreadReplyMessageId = update.firstUnreadReplyMessageId ?: firstUnreadReplyMessageId,
+        isSaved = isSaved || update.isSaved,
         taskId = update.taskId ?: taskId,
         taskNumber = update.taskNumber ?: taskNumber,
         taskStatus = update.taskStatus ?: taskStatus,
@@ -2316,7 +2403,8 @@ private fun KuiklyThreadMessageItem.toMessage(
         task = taskSummary,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
-        firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId)
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
+        isSaved = isSaved
     )
 }
 
@@ -2362,6 +2450,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.value,
+        isSaved = isSaved,
         taskId = task?.id?.value,
         taskNumber = task?.taskNumber,
         taskStatus = task?.status?.name,

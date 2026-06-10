@@ -106,6 +106,17 @@ class ThreadApiTest {
         assertEquals("thread_create_contract_mismatch", assertIs<ThreadApiResult.Failure>(result).contractCode)
     }
 
+    @Test
+    fun unsaveMessageCallsCanonicalTransport() = runBlocking {
+        val transport = FakeThreadNetworkApi()
+        val api = SlockThreadApiClient(transport)
+
+        val result = api.unsaveMessage("msg-1")
+
+        assertIs<ThreadApiResult.Success<Unit>>(result)
+        assertEquals(listOf("msg-1"), transport.unsavedMessageIds)
+    }
+
     private class FakeThreadNetworkApi(
         var channelMessagesBody: String = """{"messages":[],"historyLimited":false}""",
         var syncBody: String = "[]",
@@ -114,6 +125,7 @@ class ThreadApiTest {
         var reactionBody: String = """{"id":"m1","reactions":[]}""",
         var createThreadBody: String = """{"threadChannelId":"thread-1"}"""
     ) : SharedThreadNetworkApi {
+        val unsavedMessageIds = mutableListOf<String>()
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
 
@@ -136,6 +148,11 @@ class ThreadApiTest {
 
         override suspend fun saveMessage(messageId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+
+        override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse {
+            unsavedMessageIds += messageId
+            return HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+        }
 
         override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = reactionBody)

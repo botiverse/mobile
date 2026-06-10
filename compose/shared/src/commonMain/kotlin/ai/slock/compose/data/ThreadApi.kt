@@ -43,6 +43,7 @@ internal interface SlockThreadApi {
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
     suspend fun saveMessage(messageId: String): ThreadApiResult<Unit>
+    suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): ThreadApiResult<Unit>
@@ -110,6 +111,9 @@ internal class SlockThreadApiClient(
 
     override suspend fun saveMessage(messageId: String): ThreadApiResult<Unit> =
         transport.saveMessage(messageId).mapThreadUnit()
+
+    override suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit> =
+        transport.unsaveMessage(messageId).mapThreadUnit()
 
     override suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> =
         transport.addReaction(messageId, emoji)

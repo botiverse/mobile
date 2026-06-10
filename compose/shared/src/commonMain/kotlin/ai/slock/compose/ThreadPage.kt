@@ -14,6 +14,7 @@ import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.StoredAuthSession
@@ -262,6 +263,7 @@ internal data class KuiklyThreadMessageItem(
     val replyCount: Int = 0,
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: String? = null,
+    val isSaved: Boolean = false,
     val taskId: String? = null,
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
@@ -557,7 +559,13 @@ private fun ThreadPageScreen() {
                 agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
                     SlockIntegrationsActionsPushNetworkApi(networkClient)
-                )
+                ),
+                savedStatusRepository =
+                    RealSavedRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        warningLogger = { message -> bridge.log("thread_saved_repository $message") }
+                    )
             )
         }
     val tasksDataSource =
@@ -614,6 +622,7 @@ private fun ThreadMessageVisualScreen() {
                 onOpenTask = {},
                 onOpenTaskStatusMenu = {},
                 onToggleReaction = {},
+                onToggleSaved = {},
                 onOpenAttachment = {},
                 onOpenMarkdownTag = {},
                 onOpenMarkdownUrl = {},
@@ -1260,15 +1269,32 @@ internal fun SharedThreadRouteContent(
                         onBack()
                     }
                 }
-                action == "saveMessage" && !itemId.isNullOrBlank() -> {
+                action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
+                    val previousSaved =
+                        renderedPayload.threadActionMessage(itemId)?.isSaved
+                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }?.isSaved
+                            ?: false
+                    val nextSaved = !previousSaved
+                    threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
                     coroutineScope.launch {
-                        when (val result = dataSource.saveMessage(itemId)) {
-                            is DataResult.Content -> bridge.toast("Saved")
-                            is DataResult.Empty -> bridge.toast("Unable to save message")
-                            is DataResult.Error -> bridge.toast("Unable to save message")
+                        val result =
+                            if (nextSaved) {
+                                dataSource.saveMessage(itemId)
+                            } else {
+                                dataSource.unsaveMessage(itemId)
+                            }
+                        when (result) {
+                            is DataResult.Content ->
+                                bridge.toast(if (nextSaved) "Saved" else "Removed from saved")
+                            is DataResult.Empty,
+                            is DataResult.Error -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
+                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
+                            }
                             is DataResult.NoPermission -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
                                 if (routeAuthRequired(result)) return@launch
-                                bridge.toast("Unable to save message")
+                                bridge.toast(if (nextSaved) "Unable to save message" else "Unable to remove saved message")
                             }
                         }
                     }
@@ -3052,6 +3078,7 @@ private fun ThreadMessagesList(
                             taskStatusMenuAnchor = anchor
                         },
                         onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                        onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                         onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                         attachmentOpenStates = attachmentOpenStates,
@@ -3123,7 +3150,7 @@ private fun ThreadMessagesList(
                     },
                     onSave = {
                         actionMessageId = null
-                        onThreadEvent("saveMessage", message.id, null, null)
+                        onThreadEvent("toggleMessageSaved", message.id, null, null)
                     },
                     onReact = { emoji ->
                         actionMessageId = null
@@ -3567,6 +3594,7 @@ private fun ThreadMessageCard(
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
+    showSaveAction: Boolean = true,
     timestampLabel: String = message.timestampLabel,
     onShowActions: (Offset) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -3574,6 +3602,7 @@ private fun ThreadMessageCard(
     onOpenTask: (String) -> Unit,
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: (String) -> Unit,
+    onToggleSaved: () -> Unit,
     onOpenAttachment: (String) -> Unit,
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
@@ -3611,95 +3640,110 @@ private fun ThreadMessageCard(
                         onClick = { onOpenMember(message.authorId) }
                     )
                 }
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .threadMessageLongPressActions(message.id, onShowActions),
-                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    horizontalAlignment = contentAlignment
-                ) {
-                    Button(
-                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
-                            .background(Color.Transparent),
-                        onClick2 = onShowActions,
-                        pressFeedback = false
+                Box(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(end = if (showSaveAction) 30.dp else 0.dp)
+                                .threadMessageLongPressActions(message.id, onShowActions),
+                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                        horizontalAlignment = contentAlignment
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement =
-                                if (alignOwnMessageRight) {
-                                    Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
-                                } else {
-                                    Arrangement.spacedBy(SlockSpacing.Sm)
-                                }
-                        ) {
-                            Text(
-                                text = message.authorName,
-                                style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
-                            )
-                            Text(
-                                text = timestampLabel,
-                                style =
-                                    SlockType.Caption.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        color = SlockColor.TextBlack.copy(alpha = 0.4f)
-                                    ),
-                                color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-                    if (actionCard != null) {
-                        ThreadActionCardView(
-                            card = actionCard,
-                            pending = message.id in pendingActionCardIds,
-                            modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                            onCommit = { onCommitActionCard(message.id) }
-                        )
-                    } else if (message.body.isNotBlank()) {
                         Button(
-                            modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)
-                                .background(Color.Transparent),
+                            modifier =
+                                Modifier
+                                    .threadMessageContentWidth(messageMaxWidthFraction)
+                                    .background(Color.Transparent),
                             onClick2 = onShowActions,
                             pressFeedback = false
                         ) {
-                            SlockMarkdownBody(
-                                body = message.body,
-                                textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                                highlightedMentions = highlightedMentions,
-                                resolveTagLabel = resolveMarkdownTagLabel,
-                                onOpenTag = onOpenMarkdownTag,
-                                onOpenUrl = onOpenMarkdownUrl
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement =
+                                    if (alignOwnMessageRight) {
+                                        Arrangement.spacedBy(SlockSpacing.Sm, Alignment.End)
+                                    } else {
+                                        Arrangement.spacedBy(SlockSpacing.Sm)
+                                    }
+                            ) {
+                                Text(
+                                    text = message.authorName,
+                                    style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                                    color = SlockColor.TextBlack,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
+                                )
+                                Text(
+                                    text = timestampLabel,
+                                    style =
+                                        SlockType.Caption.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            color = SlockColor.TextBlack.copy(alpha = 0.4f)
+                                        ),
+                                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        if (actionCard != null) {
+                            ThreadActionCardView(
+                                card = actionCard,
+                                pending = message.id in pendingActionCardIds,
+                                modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                onCommit = { onCommitActionCard(message.id) }
+                            )
+                        } else if (message.body.isNotBlank()) {
+                            Button(
+                                modifier =
+                                    Modifier
+                                        .threadMessageContentWidth(messageMaxWidthFraction)
+                                        .background(Color.Transparent),
+                                onClick2 = onShowActions,
+                                pressFeedback = false
+                            ) {
+                                SlockMarkdownBody(
+                                    body = message.body,
+                                    textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                    highlightedMentions = highlightedMentions,
+                                    resolveTagLabel = resolveMarkdownTagLabel,
+                                    onOpenTag = onOpenMarkdownTag,
+                                    onOpenUrl = onOpenMarkdownUrl
+                                )
+                            }
+                        }
+                        Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                            ThreadMessageAttachments(
+                                attachments = message.attachments,
+                                alignEnd = alignOwnMessageRight,
+                                attachmentOpenStates = attachmentOpenStates,
+                                onOpenAttachment = onOpenAttachment
+                            )
+                        }
+                        Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                            ThreadMessageFooterMeta(
+                                message = message,
+                                showReplyAction = showReplyAction,
+                                taskOpenEnabled = taskOpenEnabled,
+                                taskStatusActionsEnabled = taskStatusActionsEnabled,
+                                resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                alignEnd = alignOwnMessageRight,
+                                onOpenThread = { onOpenThread(message.id) },
+                                onOpenTask = onOpenTask,
+                                onShowActions = onShowActions,
+                                onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                onToggleReaction = onToggleReaction
                             )
                         }
                     }
-                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                        ThreadMessageAttachments(
-                            attachments = message.attachments,
-                            alignEnd = alignOwnMessageRight,
-                            attachmentOpenStates = attachmentOpenStates,
-                            onOpenAttachment = onOpenAttachment
-                        )
-                    }
-                    Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                        ThreadMessageFooterMeta(
-                            message = message,
-                            showReplyAction = showReplyAction,
-                            taskOpenEnabled = taskOpenEnabled,
-                            taskStatusActionsEnabled = taskStatusActionsEnabled,
-                            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                            alignEnd = alignOwnMessageRight,
-                            onOpenThread = { onOpenThread(message.id) },
-                            onOpenTask = onOpenTask,
-                            onShowActions = onShowActions,
-                            onOpenTaskStatusMenu = onOpenTaskStatusMenu,
-                            onToggleReaction = onToggleReaction
+                    if (showSaveAction) {
+                        ThreadMessageBookmarkButton(
+                            saved = message.isSaved,
+                            onClick = onToggleSaved,
+                            modifier = Modifier.align(Alignment.TopEnd)
                         )
                     }
                 }
@@ -3713,6 +3757,29 @@ private fun ThreadMessageCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadMessageBookmarkButton(
+    saved: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Button(
+        modifier =
+            modifier
+                .size(24.dp)
+                .background(if (saved) SlockColor.AccentOrange else Color.Transparent)
+                .border(SlockStroke.Thin, if (saved) SlockColor.BorderBlack else Color.Transparent),
+        onClick = onClick,
+        pressFeedback = false
+    ) {
+        SlockLucideIcon(
+            name = "bookmark",
+            modifier = Modifier.size(13.dp),
+            color = if (saved) "#FF000000" else "#66000000"
+        )
     }
 }
 
@@ -4261,7 +4328,14 @@ private fun ThreadMessageActionMenu(
             }
             add(ThreadMessageMenuAction("Copy markdown", "copy", "copy", onCopy))
             if (showSaveAction) {
-                add(ThreadMessageMenuAction("Save message", "bookmark", "message", onSave))
+                add(
+                    ThreadMessageMenuAction(
+                        label = if (message.isSaved) "Remove from saved" else "Save message",
+                        icon = "bookmark",
+                        group = "message",
+                        onClick = onSave
+                    )
+                )
             }
             message.taskId?.takeIf { showTaskStatusAction && it.isNotBlank() }?.let {
                 val isDone = message.taskStatus?.trim()?.lowercase() in setOf("done", "closed")
@@ -4659,12 +4733,14 @@ private fun ThreadOriginCard(
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                             taskOpenEnabled = payload.showTaskOpenActions,
                             taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            showSaveAction = payload.showMessageSaveAction,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = { onThreadEvent("openMember", it, null, null) },
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
+                            onToggleSaved = { onThreadEvent("toggleMessageSaved", origin.id, null, null) },
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentOpenStates = attachmentOpenStates,

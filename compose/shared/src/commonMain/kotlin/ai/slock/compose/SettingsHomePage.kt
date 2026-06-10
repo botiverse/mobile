@@ -730,6 +730,14 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("shared_conversation_repository $message") }
             )
         }
+    val savedRepository =
+        remember {
+            RealSavedRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = { message -> bridge.log("shared_saved_repository $message") }
+            )
+        }
     val threadDataSource =
         remember {
             SharedThreadDataSource(
@@ -742,15 +750,8 @@ private fun SlockAppShellContent() {
                 agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(appShellNetworkClient)),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
                     SlockIntegrationsActionsPushNetworkApi(appShellNetworkClient)
-                )
-            )
-        }
-    val savedRepository =
-        remember {
-            RealSavedRepository(
-                sessionStore = authStore,
-                networkClient = appShellNetworkClient,
-                warningLogger = { message -> bridge.log("shared_saved_repository $message") }
+                ),
+                savedStatusRepository = savedRepository
             )
         }
     val searchRepository =

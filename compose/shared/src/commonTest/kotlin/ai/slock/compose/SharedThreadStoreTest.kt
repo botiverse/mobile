@@ -43,6 +43,8 @@ import ai.slock.compose.data.MessageMutationSummary
 import ai.slock.compose.data.MessageReactionSummary
 import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SendMessageResult
+import ai.slock.compose.data.SavedMessageStatusSnapshot
+import ai.slock.compose.data.SavedStatusRepository
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
@@ -85,6 +87,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SharedThreadStoreTest {
@@ -1075,6 +1078,60 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun unsaveMessageCallsThreadApi() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        dataSource.unsaveMessage("m1")
+
+        assertEquals(listOf("m1"), api.unsavedMessageIds)
+    }
+
+    @Test
+    fun fetchThreadPayloadChecksSavedStatus() = runBlocking {
+        val savedStatusRepository = FakeSavedStatusRepository(savedIds = setOf(MessageId("m1")))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedStatusRepository = savedStatusRepository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+
+        assertEquals(listOf(listOf(MessageId("m1"))), savedStatusRepository.checkedMessageIds)
+        assertTrue(payload.messages.single().isSaved)
+    }
+
+    @Test
+    fun applyMessageSavedPatchesPayloadAndCache() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("saveable body"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertFalse(store.state.value.payload.messages.single().isSaved)
+
+        store.accept(SharedThreadIntent.ApplyMessageSaved("m1", saved = true))
+
+        assertTrue(store.state.value.payload.messages.single().isSaved)
+        assertTrue(dataSource.cachedPayload("channel-1")?.messages?.single()?.isSaved == true)
+        val cached = localStore.readThread(ThreadId("channel-1"))
+        assertEquals("m1", cached?.messages?.single()?.id?.value)
+        scope.cancel()
+    }
+
+    @Test
     fun setMessageReactionReturnsMutationSummaryWithoutWritingPayload() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val api = FakeThreadApi()
@@ -1358,6 +1415,7 @@ class SharedThreadStoreTest {
         val channelIds: MutableList<String> = mutableListOf()
         var lastAttachmentIds: List<String> = emptyList()
         val savedMessageIds: MutableList<String> = mutableListOf()
+        val unsavedMessageIds: MutableList<String> = mutableListOf()
         val addedReactions: MutableList<Pair<String, String>> = mutableListOf()
         val removedReactions: MutableList<Pair<String, String>> = mutableListOf()
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
@@ -1409,6 +1467,11 @@ class SharedThreadStoreTest {
             return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","saved":true}""")
         }
 
+        override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse {
+            unsavedMessageIds += messageId
+            return HomeNetworkResponse(code = 200, bodyText = """{"id":"$messageId","saved":false}""")
+        }
+
         override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse {
             addedReactions += messageId to emoji
             return HomeNetworkResponse(
@@ -1430,6 +1493,20 @@ class SharedThreadStoreTest {
         override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse {
             createdThreads += channelId to parentMessageId
             return HomeNetworkResponse(code = 200, bodyText = """{"threadChannelId":"thread-$parentMessageId","parentMessageId":"$parentMessageId","created":true}""")
+        }
+    }
+
+    private class FakeSavedStatusRepository(
+        private val savedIds: Set<MessageId>
+    ) : SavedStatusRepository {
+        val checkedMessageIds: MutableList<List<MessageId>> = mutableListOf()
+
+        override suspend fun checkSavedMessages(
+            serverId: ServerId,
+            messageIds: List<MessageId>
+        ): DataResult<SavedMessageStatusSnapshot> {
+            checkedMessageIds += messageIds
+            return DataResult.Content(SavedMessageStatusSnapshot(savedIds))
         }
     }
 
