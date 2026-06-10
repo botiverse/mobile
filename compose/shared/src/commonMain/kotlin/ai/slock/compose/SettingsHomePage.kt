@@ -1324,11 +1324,7 @@ private fun SlockAppShellContent() {
         composable(AppShellRouteThread) {
             val payload = activeThreadPayload
             if (payload == null) {
-                AppShellPlaceholderContent(
-                    title = "Thread",
-                    subtitle = "No conversation selected.",
-                    iconName = "message-square"
-                )
+                SlockCenteredLoading(message = "Opening thread...")
             } else {
                 SharedThreadRouteContent(
                     initialPayload = payload,
@@ -1566,7 +1562,7 @@ private fun SlockAppShellContent() {
                                     shellScope = shellScope
                                 )
                             } else {
-                                SharedHomeDestinationPlaceholder(selectedHomeDestination ?: HomeDestinationActivity)
+                                SlockCenteredLoading(message = "Opening...")
                             }
                     }
             }
@@ -4224,12 +4220,14 @@ private fun SharedMembersScreen(
                     iconName = "users"
                 )
                 SlockCenteredLoading()
-            }
+        }
         is SharedMembersUiState.Error ->
-            AppShellPlaceholderContent(
+            PageErrorContent(
                 title = "Members",
-                subtitle = "Could not load members: ${current.code}",
-                iconName = "users"
+                subtitle = "Workspace members",
+                iconName = "users",
+                message = "Could not load members",
+                code = current.code
             )
         is SharedMembersUiState.Content ->
             MembersRouteContent(
@@ -4582,10 +4580,12 @@ private fun SharedHomeScreen(
                 onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
-            AppShellPlaceholderContent(
+            PageErrorContent(
                 title = "Home",
-                subtitle = "Could not load home: ${current.code}",
-                iconName = "house"
+                subtitle = "Workspace",
+                iconName = "house",
+                message = "Could not load home",
+                code = current.code
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
@@ -6733,35 +6733,6 @@ private fun SharedHomeSessionShell(
     )
 }
 
-@Composable
-private fun SharedHomeDestinationPlaceholder(destination: String) {
-    val title: String
-    val subtitle: String
-    val iconName: String
-    when (destination) {
-        HomeDestinationSearch -> {
-            title = "Search"
-            subtitle = "Search is opening from the shared Home shell."
-            iconName = "search"
-        }
-        HomeDestinationSaved -> {
-            title = "Saved"
-            subtitle = "Saved messages are opening from the shared Home shell."
-            iconName = "bookmark"
-        }
-        else -> {
-            title = "Activity"
-            subtitle = "Activity is opening from the shared Home shell."
-            iconName = "bell"
-        }
-    }
-    AppShellPlaceholderContent(
-        title = title,
-        subtitle = subtitle,
-        iconName = iconName
-    )
-}
-
 internal fun StoredAuthSession.currentServerSummary(): ServerSummary? {
     val currentId = currentServerId
     return servers.firstOrNull { it.id == currentId }?.toServerSummary()
@@ -7256,39 +7227,35 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun AppShellPlaceholderContent(
+private fun PageErrorContent(
     title: String,
     subtitle: String,
-    iconName: String
+    iconName: String,
+    message: String,
+    code: String
 ) {
-    val topSafeArea = slockTopSafeAreaPadding()
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
-                .padding(
-                    start = 24.dp,
-                    top = topSafeArea + 24.dp,
-                    end = 24.dp,
-                    bottom = 24.dp
-                ),
+                .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        SlockLucideIcon(name = iconName, color = "#FF000000", modifier = Modifier.size(36.dp))
-        Text(
-            title,
-            style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-        Text(
-            subtitle,
-            style = SlockType.Input.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
+        SlockTopPageHeader(title = title, subtitle = subtitle, iconName = iconName)
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(SlockSpacing.Md)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Md)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                Text(text = message, style = SlockType.ButtonBold, color = SlockColor.TextBlack)
+                Text(text = code, style = SlockType.Caption, color = SlockColor.AccentRed)
+            }
+        }
     }
 }
 
