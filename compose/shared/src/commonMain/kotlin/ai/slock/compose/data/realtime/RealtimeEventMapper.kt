@@ -1,5 +1,7 @@
 package ai.slock.compose.data.realtime
 
+import ai.slock.compose.model.AgentProfile
+import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
@@ -20,6 +22,7 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ServerDeleted
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.SyncResumeResponse
@@ -120,7 +123,12 @@ class RealtimeEventMapper {
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
-            RealtimeSocketEvents.AgentCreated,
+            RealtimeSocketEvents.AgentCreated -> {
+                val agentWire = (element["agent"] as? JsonObject)
+                    ?.let { decodeOrNull(AgentProfile.serializer(), it) }
+                agentWire?.let(::AgentCreated)
+                    ?: decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
+            }
             RealtimeSocketEvents.AgentDeleted ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.MachineStatus,
@@ -136,6 +144,10 @@ class RealtimeEventMapper {
                 decodeOrNull(ServerMembershipRemovedDto.serializer(), element)?.serverId?.let {
                     ServerMembershipRemoved(ServerId(it))
                 }
+            RealtimeSocketEvents.ServerDeleted -> {
+                val dto = decodeOrNull(ServerDeletedDto.serializer(), element)
+                dto?.serverId?.let { ServerDeleted(ServerId(it)) }
+            }
             RealtimeSocketEvents.AnnouncementNew ->
                 RealtimeRefreshRequired(
                     scope = RealtimeRefreshScope.Announcements,
@@ -355,6 +367,11 @@ private data class AgentActivityDto(
 
 @Serializable
 private data class ServerMembershipRemovedDto(
+    val serverId: String,
+)
+
+@Serializable
+private data class ServerDeletedDto(
     val serverId: String,
 )
 

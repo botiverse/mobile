@@ -39,6 +39,7 @@ object RealtimeSocketEvents {
     const val ServerMemberLeft = "server:member:left"
     const val ServerMemberRemoved = "server:member-removed"
     const val ServerMembershipRemoved = "server:membership-removed"
+    const val ServerDeleted = "server:deleted"
     const val AnnouncementNew = "announcement:new"
     const val ReminderFired = "reminder:fired"
     const val ReminderScheduled = "reminder:scheduled"

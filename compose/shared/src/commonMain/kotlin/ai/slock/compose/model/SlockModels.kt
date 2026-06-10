@@ -240,7 +240,8 @@ data class Message(
     val isSaved: Boolean = false,
     val parentMessageId: MessageId? = null,
     val updatedAtLabel: String? = null,
-    val reactions: List<MessageReaction>? = null
+    val reactions: List<MessageReaction>? = null,
+    val senderMembershipStatus: String? = null
 )
 
 @Serializable
@@ -270,7 +271,9 @@ data class Attachment(
     val name: String,
     val mimeType: String,
     val sizeLabel: String,
-    val thumbnailUrl: String? = null
+    val thumbnailUrl: String? = null,
+    val width: Int? = null,
+    val height: Int? = null
 )
 
 // Task Models
@@ -410,6 +413,16 @@ data class RealtimeRefreshRequired(
 @Serializable
 data class ServerMembershipRemoved(
     val serverId: ServerId
+) : RealtimeEvent
+
+@Serializable
+data class ServerDeleted(
+    val serverId: ServerId
+) : RealtimeEvent
+
+@Serializable
+data class AgentCreated(
+    val agent: AgentProfile
 ) : RealtimeEvent
 
 @Serializable

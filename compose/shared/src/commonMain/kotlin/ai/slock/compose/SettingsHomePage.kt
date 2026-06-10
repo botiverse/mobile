@@ -181,8 +181,10 @@ import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ServerDeleted
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.ServerSummary
@@ -1246,6 +1248,19 @@ private fun SlockAppShellContent() {
                         }
                         return
                     }
+                    if (
+                        event is ServerDeleted &&
+                        event.serverId.value == readySession?.currentServerId
+                    ) {
+                        bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
+                        bridge.realtimeDisconnect("server_deleted")
+                        resetAppShellSessionState(clearReturnThread = true)
+                        appShellCoroutineScope.launch {
+                            authStore.updateSelectedServer(serverId = null, serverSlug = null)
+                            authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
+                        }
+                        return
+                    }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     threadRealtimeEventSequence += 1
                     threadRealtimeEventSignal =
@@ -1258,6 +1273,7 @@ private fun SlockAppShellContent() {
                     }
                     if (
                         event is MemberPresenceUpdated && event.kind == MemberKind.Agent ||
+                        event is AgentCreated ||
                         event is RealtimeRefreshRequired &&
                             (
                                 event.scope == RealtimeRefreshScope.ServerMembers ||
