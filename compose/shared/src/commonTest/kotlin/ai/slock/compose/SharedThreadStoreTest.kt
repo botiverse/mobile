@@ -1358,7 +1358,7 @@ class SharedThreadStoreTest {
             return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
         }
 
-        override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
+        override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
 
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse {

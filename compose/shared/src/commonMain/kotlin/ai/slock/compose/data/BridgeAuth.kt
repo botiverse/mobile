@@ -561,7 +561,7 @@ internal interface SharedThreadNetworkApi {
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList()
     ): HomeNetworkResponse
-    suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse
+    suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
     suspend fun saveMessage(messageId: String): HomeNetworkResponse
     suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse
@@ -610,8 +610,11 @@ internal class BridgeThreadApi(
             )
         )
 
-    override suspend fun attachmentUrl(attachmentId: String): HomeNetworkResponse =
-        request("attachments/${attachmentId.trim()}/url")
+    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+        request(
+            path = "attachments/${attachmentId.trim()}/url",
+            query = disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition=$it" }
+        )
 
     override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
         request(path = "channels/${channelId.trim()}/read-all", method = "POST")

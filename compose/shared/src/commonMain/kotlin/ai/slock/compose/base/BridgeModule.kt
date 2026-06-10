@@ -78,6 +78,23 @@ internal class BridgeModule : Module() {
         callNativeMethod("openUrl", methodArgs, null)
     }
 
+    suspend fun openAttachment(
+        url: String,
+        attachmentId: String,
+        fileName: String,
+        mimeType: String? = null
+    ): JSONObject? =
+        suspendCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("url", url)
+            methodArgs.put("attachmentId", attachmentId)
+            methodArgs.put("fileName", fileName)
+            mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
+            callNativeMethod(OPEN_ATTACHMENT, methodArgs) {
+                continuation.resume(it)
+            }
+        }
+
     fun settingsEvent(instanceId: String, action: String, itemId: String? = null) {
         val methodArgs = JSONObject()
         methodArgs.put("instanceId", instanceId)
@@ -450,6 +467,7 @@ internal class BridgeModule : Module() {
         const val OPEN_PAGE = "openPage"
         const val CLOSE_PAGE = "closePage"
         const val LOG = "log"
+        const val OPEN_ATTACHMENT = "openAttachment"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"

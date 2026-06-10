@@ -306,6 +306,11 @@ private data class ThreadImageAttachmentGroup(
     val currentIndex: Int
 )
 
+private data class ThreadAttachmentOpenResult(
+    val status: String,
+    val message: String = ""
+)
+
 private fun <T> DataResult<T>.threadActionErrorCode(fallback: String): String =
     when (this) {
         is DataResult.Content -> fallback
@@ -876,6 +881,9 @@ internal fun SharedThreadRouteContent(
     var removedAttachmentIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var attachmentOpenStates by remember(initialPayload.instanceId) {
+        mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
+    }
     var uploadedAttachments by remember(initialPayload.instanceId) {
         mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
     }
@@ -904,6 +912,7 @@ internal fun SharedThreadRouteContent(
         composerFailureLabel = null
         removedAttachmentIds = emptySet()
         pendingActionCardIds = emptySet()
+        attachmentOpenStates = emptyMap()
         uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
@@ -1133,6 +1142,28 @@ internal fun SharedThreadRouteContent(
         imagePreviewState = preview.copy(currentIndex = nextIndex)
         requestImagePreviewUrl(preview.images[nextIndex].id)
     }
+    fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
+        if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        attachmentOpenStates =
+            attachmentOpenStates +
+                (attachment.id to ThreadAttachmentOpenUiState(status = "downloading"))
+        coroutineScope.launch {
+            val result =
+                openSharedThreadAttachment(
+                    bridge = bridge,
+                    dataSource = dataSource,
+                    attachment = attachment
+                )
+            if (result.status == "opened") {
+                attachmentOpenStates = attachmentOpenStates - attachment.id
+            } else {
+                attachmentOpenStates =
+                    attachmentOpenStates +
+                        (attachment.id to ThreadAttachmentOpenUiState(status = result.status, message = result.message))
+                bridge.toast(result.message.ifBlank { "Unable to open attachment" })
+            }
+        }
+    }
     LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.selectedTab) {
         if (renderedPayload.selectedTab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
             loadThreadFiles("initial_tab")
@@ -1162,6 +1193,7 @@ internal fun SharedThreadRouteContent(
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
+            attachmentOpenStates = attachmentOpenStates,
             onBack = onBack,
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 when {
@@ -1172,23 +1204,19 @@ internal fun SharedThreadRouteContent(
                         if (imageGroup != null) {
                             openImagePreview(imageGroup)
                         } else {
-                            coroutineScope.launch {
-                                openSharedThreadAttachment(
-                                    bridge = bridge,
-                                    dataSource = dataSource,
-                                    attachmentId = attachmentId
-                                )
-                            }
+                            val attachment =
+                                renderedPayload.findThreadAttachment(attachmentId)
+                                    ?: filesPayload.findThreadAttachment(attachmentId)
+                                    ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
+                            openAttachmentExternally(attachment)
                         }
                     }
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
-                        coroutineScope.launch {
-                            openSharedThreadAttachment(
-                                bridge = bridge,
-                                dataSource = dataSource,
-                                attachmentId = attachmentId
-                            )
-                        }
+                        val attachment =
+                            renderedPayload.findThreadAttachment(attachmentId)
+                                ?: filesPayload.findThreadAttachment(attachmentId)
+                                ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
+                        openAttachmentExternally(attachment)
                     }
                 action == "copyMessage" && !itemId.isNullOrBlank() -> {
                     val body = renderedPayload.messages.firstOrNull { it.id == itemId }?.body.orEmpty()
@@ -1790,13 +1818,7 @@ internal fun SharedThreadRouteContent(
                 resolvedUrls = imagePreviewUrlCache,
                 onDismiss = { imagePreviewState = null },
                 onOpenExternally = { attachment ->
-                    coroutineScope.launch {
-                        openSharedThreadAttachment(
-                            bridge = bridge,
-                            dataSource = dataSource,
-                            attachmentId = attachment.id
-                        )
-                    }
+                    openAttachmentExternally(attachment)
                 },
                 onSelectIndex = ::selectImagePreviewIndex
             )
@@ -1807,11 +1829,40 @@ internal fun SharedThreadRouteContent(
 private suspend fun openSharedThreadAttachment(
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    attachmentId: String
-) {
-    when (val response = dataSource.attachmentUrl(attachmentId)) {
-        is ThreadApiResult.Success -> bridge.openUrl(response.data.url)
-        is ThreadApiResult.Failure -> bridge.toast("Unable to open attachment")
+    attachment: KuiklyThreadAttachmentItem
+): ThreadAttachmentOpenResult {
+    val attachmentId = attachment.id.takeIf { it.isNotBlank() }
+        ?: return ThreadAttachmentOpenResult(status = "failed", message = "Unable to open attachment")
+    return when (val response = dataSource.attachmentUrl(attachmentId, disposition = "attachment")) {
+        is ThreadApiResult.Success -> {
+            val nativeResult =
+                bridge.openAttachment(
+                    url = response.data.url,
+                    attachmentId = attachmentId,
+                    fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
+                    mimeType = attachment.mimeType
+                )
+            when (nativeResult?.optString("status").orEmpty()) {
+                "opened" -> ThreadAttachmentOpenResult(status = "opened")
+                "no_app" ->
+                    ThreadAttachmentOpenResult(
+                        status = "no_app",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "No app can open this file" }
+                    )
+                "storage_failed" ->
+                    ThreadAttachmentOpenResult(
+                        status = "storage_failed",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+                    )
+                else ->
+                    ThreadAttachmentOpenResult(
+                        status = "failed",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Unable to download attachment" }
+                    )
+            }
+        }
+        is ThreadApiResult.Failure ->
+            ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
     }
 }
 
@@ -1871,6 +1922,12 @@ private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentI
     return null
 }
 
+private fun KuiklyThreadScreenPayload.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+    (listOfNotNull(originMessage) + messages)
+        .asSequence()
+        .flatMap { it.attachments.asSequence() }
+        .firstOrNull { it.id == attachmentId }
+
 private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val images =
         items
@@ -1887,6 +1944,17 @@ private fun KuiklyThreadFilesPayload.findThreadImageAttachmentGroup(attachmentId
     val currentIndex = images.indexOfFirst { it.id == attachmentId }
     return if (currentIndex >= 0) ThreadImageAttachmentGroup(images = images, currentIndex = currentIndex) else null
 }
+
+private fun KuiklyThreadFilesPayload.findThreadAttachment(attachmentId: String): KuiklyThreadAttachmentItem? =
+    items.firstOrNull { it.attachmentId == attachmentId }?.let { item ->
+        KuiklyThreadAttachmentItem(
+            id = item.attachmentId,
+            name = item.name,
+            mimeType = item.mimeType,
+            sizeLabel = item.sizeLabel,
+            thumbnailUrl = item.thumbnailUrl
+        )
+    }
 
 @Composable
 private fun ThreadImagePreviewOverlay(
@@ -2283,6 +2351,7 @@ private fun ThreadPageContent(
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -2374,6 +2443,7 @@ private fun ThreadPageContent(
                             linkedTasksByMessageId = linkedTasksByMessageId,
                             highlightedMentions = highlightedMentions,
                             pendingActionCardIds = pendingActionCardIds,
+                            attachmentOpenStates = attachmentOpenStates,
                             onThreadEvent = onThreadEvent,
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
@@ -2388,7 +2458,7 @@ private fun ThreadPageContent(
                             onIntent = onTasksIntent
                         )
                     KuiklyThreadTab.Files ->
-                        ThreadFilesContent(payload = filesPayload) { action, attachmentId ->
+                        ThreadFilesContent(payload = filesPayload, attachmentOpenStates = attachmentOpenStates) { action, attachmentId ->
                             when (action) {
                                 "open" ->
                                     onThreadEvent("openAttachment", null, attachmentId, null)
@@ -2655,6 +2725,7 @@ private fun ThreadChatTab(
     linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -2678,6 +2749,7 @@ private fun ThreadChatTab(
                     linkedTasksByMessageId = linkedTasksByMessageId,
                     highlightedMentions = highlightedMentions,
                     pendingActionCardIds = pendingActionCardIds,
+                    attachmentOpenStates = attachmentOpenStates,
                     onThreadEvent = onThreadEvent,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -2693,6 +2765,7 @@ private fun ThreadChatTab(
                 linkedTasksByMessageId = linkedTasksByMessageId,
                 highlightedMentions = highlightedMentions,
                 pendingActionCardIds = pendingActionCardIds,
+                attachmentOpenStates = attachmentOpenStates,
                 onThreadEvent = onThreadEvent,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
@@ -2708,6 +2781,7 @@ private fun ThreadMessagesList(
     linkedTasksByMessageId: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -2878,6 +2952,7 @@ private fun ThreadMessagesList(
                 payload = payload,
                 highlightedMentions = highlightedMentions,
                 pendingActionCardIds = pendingActionCardIds,
+                attachmentOpenStates = attachmentOpenStates,
                 onThreadEvent = onThreadEvent,
                 onShowActions = { message, anchor ->
                     actionMenuAnchor = anchor
@@ -2981,6 +3056,7 @@ private fun ThreadMessagesList(
                         onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
                         timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                         onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                        attachmentOpenStates = attachmentOpenStates,
                         pendingActionCardIds = pendingActionCardIds,
                         onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                         onOpenMarkdownTag = onOpenMarkdownTag,
@@ -3501,6 +3577,7 @@ private fun ThreadMessageCard(
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: (String) -> Unit,
     onOpenAttachment: (String) -> Unit,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     onCommitActionCard: (String) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -3608,6 +3685,7 @@ private fun ThreadMessageCard(
                         ThreadMessageAttachments(
                             attachments = message.attachments,
                             alignEnd = alignOwnMessageRight,
+                            attachmentOpenStates = attachmentOpenStates,
                             onOpenAttachment = onOpenAttachment
                         )
                     }
@@ -4483,6 +4561,7 @@ private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
@@ -4563,6 +4642,7 @@ private fun ThreadOriginCard(
                             onToggleReaction = { emoji -> onThreadEvent("toggleReaction", origin.id, null, emoji) },
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                            attachmentOpenStates = attachmentOpenStates,
                             pendingActionCardIds = pendingActionCardIds,
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             onOpenMarkdownTag = onOpenMarkdownTag,
@@ -4768,6 +4848,7 @@ private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
 private fun ThreadMessageAttachments(
     attachments: List<KuiklyThreadAttachmentItem>,
     alignEnd: Boolean,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onOpenAttachment: (String) -> Unit
 ) {
     if (attachments.isEmpty()) return
@@ -4801,6 +4882,7 @@ private fun ThreadMessageAttachments(
         fileAttachments.forEach { attachment ->
             ThreadAttachmentChip(
                 attachment = attachment,
+                openState = attachmentOpenStates[attachment.id],
                 onOpen = { onOpenAttachment(attachment.id) }
             )
         }
@@ -4851,12 +4933,14 @@ private fun ThreadImageAttachmentTile(
 @Composable
 private fun ThreadAttachmentChip(
     attachment: KuiklyThreadAttachmentItem,
+    openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit
 ) {
+    val isOpening = openState.threadAttachmentIsOpening()
     Row(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack)
             .background(SlockColor.SurfaceWhite)
-            .clickable(onClick = onOpen)
+            .clickable(onClick = if (isOpening) ({}) else onOpen)
             .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -4895,6 +4979,17 @@ private fun ThreadAttachmentChip(
                     text = meta,
                     style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(
+                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray
+                    ),
+                    color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )

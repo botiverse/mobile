@@ -22,6 +22,8 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Base64
@@ -33,6 +35,7 @@ import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.ViewTreeObserver
 import android.view.inputmethod.InputMethodManager
+import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
@@ -1176,6 +1179,10 @@ internal class SlockKuiklyBridgeModule(
         return when (method) {
             "toast" -> toast(params)
             "openUrl" -> openUrl(params)
+            "openAttachment" -> {
+                openAttachment(params, callback)
+                null
+            }
             "closePage" -> {
                 activity?.finish()
                 null
@@ -1958,6 +1965,188 @@ internal class SlockKuiklyBridgeModule(
         return null
     }
 
+    private fun openAttachment(params: String?, callback: KuiklyRenderCallback?) {
+        Thread {
+            val request = JSONObject(params ?: "{}")
+            val startedAt = System.currentTimeMillis()
+            val result =
+                    runCatching {
+                        downloadAndOpenAttachment(request)
+                    }.getOrElse { throwable ->
+                        SlockDiagnosticsLogger.record(
+                                "SlockAttachmentOpen",
+                                "attachmentId=${request.optString("attachmentId").take(8)} status=failed type=${throwable::class.java.simpleName} durationMs=${System.currentTimeMillis() - startedAt}"
+                        )
+                        mapOf(
+                                "status" to "failed",
+                                "message" to "Unable to download attachment"
+                        )
+                    }
+            callback?.invoke(result)
+        }.start()
+    }
+
+    private fun downloadAndOpenAttachment(request: JSONObject): Map<String, Any> {
+        val urlText = request.optString("url").takeIf { it.isNotBlank() }
+                ?: return mapOf("status" to "failed", "message" to "Unable to download attachment")
+        val attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment"
+        val requestedFileName = request.optString("fileName").takeIf { it.isNotBlank() } ?: "attachment"
+        val requestedMimeType = request.optString("mimeType").takeIf { it.isNotBlank() }
+        val startedAt = System.currentTimeMillis()
+        val cacheDir = File(appContext.cacheDir, "slock-attachments")
+        if (!cacheDir.exists() && !cacheDir.mkdirs()) {
+            return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+        }
+        cleanupAttachmentCache(cacheDir)
+        val targetFile = File(cacheDir, safeAttachmentCacheFileName(attachmentId, requestedFileName, requestedMimeType))
+        val needsDownload =
+                !targetFile.isFile ||
+                        targetFile.length() <= 0L ||
+                        System.currentTimeMillis() - targetFile.lastModified() > ATTACHMENT_CACHE_MAX_AGE_MS
+        val responseMimeType =
+                if (needsDownload) {
+                    downloadAttachmentToFile(urlText, targetFile)
+                } else {
+                    null
+                }
+        val openMimeType = guessAttachmentMimeType(requestedFileName, requestedMimeType ?: responseMimeType)
+        val attachmentUri =
+                runCatching {
+                    FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", targetFile)
+                }.getOrElse {
+                    return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
+                }
+        val intent =
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(attachmentUri, openMimeType)
+                    clipData = ClipData.newUri(appContext.contentResolver, targetFile.name, attachmentUri)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+        val handlers = appContext.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (handlers.isEmpty()) {
+            showToast("No app can open this attachment")
+            SlockDiagnosticsLogger.record(
+                    "SlockAttachmentOpen",
+                    "attachmentId=${attachmentId.take(8)} status=no_app mimeType=$openMimeType durationMs=${System.currentTimeMillis() - startedAt}"
+            )
+            return mapOf("status" to "no_app", "message" to "No app can open this file")
+        }
+        handlers.forEach { handler ->
+            appContext.grantUriPermission(
+                    handler.activityInfo.packageName,
+                    attachmentUri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        return runCatching {
+            appContext.startActivity(intent)
+            SlockDiagnosticsLogger.record(
+                    "SlockAttachmentOpen",
+                    "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${!needsDownload} durationMs=${System.currentTimeMillis() - startedAt}"
+            )
+            mapOf("status" to "opened")
+        }.getOrElse { throwable ->
+            if (throwable is ActivityNotFoundException) {
+                showToast("No app can open this attachment")
+                mapOf("status" to "no_app", "message" to "No app can open this file")
+            } else {
+                showToast("Unable to open attachment")
+                mapOf("status" to "failed", "message" to "Unable to open attachment")
+            }
+        }
+    }
+
+    private fun downloadAttachmentToFile(urlText: String, targetFile: File): String? {
+        val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
+        runCatching { tempFile.delete() }
+        val connection = (URL(urlText).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 30_000
+            readTimeout = 60_000
+            setRequestProperty("Accept", "*/*")
+        }
+        try {
+            val code = connection.responseCode
+            if (code !in 200..299) {
+                throw IllegalStateException("Attachment download failed: HTTP $code")
+            }
+            connection.inputStream.use { input ->
+                tempFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (targetFile.exists()) {
+                targetFile.delete()
+            }
+            if (!tempFile.renameTo(targetFile)) {
+                tempFile.copyTo(targetFile, overwrite = true)
+                tempFile.delete()
+            }
+            return connection.contentType?.substringBefore(';')?.trim()?.takeIf { it.isNotBlank() }
+        } finally {
+            connection.disconnect()
+            runCatching { if (tempFile.exists()) tempFile.delete() }
+        }
+    }
+
+    private fun cleanupAttachmentCache(cacheDir: File) {
+        cacheDir.listFiles()
+                ?.filter { it.isFile }
+                ?.sortedByDescending { it.lastModified() }
+                ?.drop(ATTACHMENT_CACHE_MAX_FILES)
+                ?.forEach { runCatching { it.delete() } }
+    }
+
+    private fun safeAttachmentCacheFileName(
+            attachmentId: String,
+            requestedFileName: String,
+            mimeType: String?
+    ): String {
+        val safeId =
+                attachmentId
+                        .filter { it.isLetterOrDigit() || it == '-' || it == '_' }
+                        .take(36)
+                        .ifBlank { "attachment" }
+        val baseName =
+                requestedFileName
+                        .substringAfterLast('/')
+                        .substringAfterLast('\\')
+                        .ifBlank { "attachment" }
+                        .map { character ->
+                            if (character.isLetterOrDigit() || character == '.' || character == '-' || character == '_' || character == ' ') {
+                                character
+                            } else {
+                                '_'
+                            }
+                        }
+                        .joinToString("")
+                        .trim()
+                        .take(120)
+                        .ifBlank { "attachment" }
+        val withExtension =
+                if (baseName.contains('.')) {
+                    baseName
+                } else {
+                    val extension = MimeTypeMap.getSingleton().getExtensionFromMimeType(mimeType.orEmpty())
+                    if (extension.isNullOrBlank()) baseName else "$baseName.$extension"
+                }
+        return "$safeId-$withExtension"
+    }
+
+    private fun guessAttachmentMimeType(fileName: String, mimeType: String?): String {
+        val normalized = mimeType?.substringBefore(';')?.trim()?.takeIf { it.contains('/') }
+        if (!normalized.isNullOrBlank()) return normalized
+        val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
+        return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
+                ?: "application/octet-stream"
+    }
+
+    private fun showToast(message: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(appContext, message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun socialAuth(params: String?, callback: KuiklyRenderCallback?) {
         val provider = JSONObject(params ?: "{}").optString("provider").trim().lowercase()
         if (provider != "google") {
@@ -2076,6 +2265,8 @@ internal class SlockKuiklyBridgeModule(
         private const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
+        private const val ATTACHMENT_CACHE_MAX_FILES = 80
+        private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
     }
 }
 

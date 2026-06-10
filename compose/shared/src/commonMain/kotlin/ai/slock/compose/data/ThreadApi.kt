@@ -40,7 +40,7 @@ internal interface SlockThreadApi {
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList()
     ): ThreadApiResult<ThreadMessagesPage>
-    suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget>
+    suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
     suspend fun saveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary>
@@ -95,8 +95,8 @@ internal class SlockThreadApiClient(
             )
         }
 
-    override suspend fun attachmentUrl(attachmentId: String): ThreadApiResult<ThreadAttachmentOpenTarget> =
-        transport.attachmentUrl(attachmentId)
+    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> =
+        transport.attachmentUrl(attachmentId, disposition)
             .mapThreadBody(
                 "thread_attachment_url_contract_mismatch",
                 ThreadAttachmentUrlResponseDto.serializer()

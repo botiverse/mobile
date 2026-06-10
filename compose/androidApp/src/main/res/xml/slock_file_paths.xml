@@ -3,4 +3,7 @@
     <cache-path
         name="slock_feedback"
         path="slock-feedback/" />
+    <cache-path
+        name="slock_attachments"
+        path="slock-attachments/" />
 </paths>

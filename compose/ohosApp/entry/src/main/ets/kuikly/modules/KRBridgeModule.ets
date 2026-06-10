@@ -56,6 +56,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly COPY_TO_PASTE_BOARD = "copyToPasteboard";
   static readonly TOAST = "toast";
   static readonly OPEN_URL = "openUrl";
+  static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly LOG = "log";
   static readonly REPORT_DT = "reportDT";
   static readonly REPORT_REAL_TIME = "reportRealTime";
@@ -99,6 +100,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.OPEN_URL: {
         this.openUrl(params);
+        break;
+      }
+      case KRBridgeModule.OPEN_ATTACHMENT: {
+        this.openAttachment(params, callback);
         break;
       }
       case KRBridgeModule.LOG: {
@@ -196,6 +201,69 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }).catch((error: BusinessError) => {
       console.error(`KuiklyRender openUrl failed ${error.code}: ${error.message}`);
     });
+  }
+
+  private async openAttachment(params: KRAny, callback: KuiklyRenderCallback) {
+    const records = this.parseRecord(params);
+    const url = records["url"] as string | undefined;
+    const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
+    const fileName = (records["fileName"] as string | undefined) ?? "attachment";
+    const mimeType = records["mimeType"] as string | undefined;
+    if (url === undefined || url.length === 0) {
+      callback({ "status": "failed", "message": "Unable to download attachment" });
+      return;
+    }
+    const context = getContext(this) as common.UIAbilityContext;
+    const request = http.createHttp();
+    try {
+      const cacheDir = `${context.cacheDir}/slock-attachments`;
+      fs.mkdirSync(cacheDir, true);
+      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName)}`;
+      const response = await request.request(url, {
+        method: http.RequestMethod.GET,
+        header: { "Accept": "*/*" },
+        connectTimeout: 30000,
+        readTimeout: 60000
+      });
+      const responseCode = Number(response.responseCode ?? 0);
+      if (responseCode < 200 || responseCode >= 300) {
+        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${responseCode}`);
+        callback({ "status": "failed", "message": "Unable to download attachment" });
+        return;
+      }
+      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
+      try {
+        fs.writeSync(file.fd, this.httpResultToArrayBuffer(response.result));
+      } finally {
+        fs.closeSync(file);
+      }
+      const uri = fileUri.getUriFromPath(path);
+      try {
+        await context.startAbility({
+          action: "ohos.want.action.viewData",
+          uri: uri,
+          type: mimeType
+        });
+        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened`);
+        callback({ "status": "opened" });
+      } catch (error) {
+        const businessError = error as BusinessError;
+        SlockOhosDiagnostics.record(
+          "SlockAttachmentOpen",
+          `attachmentId=${attachmentId.substring(0, 8)} status=no_app code=${businessError.code ?? "unknown"}`
+        );
+        callback({ "status": "no_app", "message": "No app can open this file" });
+      }
+    } catch (error) {
+      const businessError = error as BusinessError;
+      SlockOhosDiagnostics.record(
+        "SlockAttachmentOpen",
+        `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
+      );
+      callback({ "status": "failed", "message": "Unable to download attachment" });
+    } finally {
+      request.destroy();
+    }
   }
 
   private log(params: KRAny) {
@@ -791,6 +859,43 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "errorCode": errorCode,
       "errorBodyText": message
     };
+  }
+
+  private safeAttachmentCacheFileName(attachmentId: string, fileName: string): string {
+    const safeId = this.safeAttachmentPathSegment(attachmentId).slice(0, 36) || "attachment";
+    const rawName = fileName.split("/").pop()?.split("\\").pop() ?? "attachment";
+    const safeName = this.safeAttachmentPathSegment(rawName).slice(0, 120) || "attachment";
+    return `${safeId}-${safeName}`;
+  }
+
+  private safeAttachmentPathSegment(value: string): string {
+    let result = "";
+    for (let index = 0; index < value.length; index += 1) {
+      const character = value.charAt(index);
+      if (
+        (character >= "a" && character <= "z") ||
+        (character >= "A" && character <= "Z") ||
+        (character >= "0" && character <= "9") ||
+        character === "." ||
+        character === "-" ||
+        character === "_" ||
+        character === " "
+      ) {
+        result += character;
+      } else {
+        result += "_";
+      }
+    }
+    return result.trim();
+  }
+
+  private httpResultToArrayBuffer(result: string | ArrayBuffer | Object): ArrayBuffer {
+    if (result instanceof ArrayBuffer) {
+      return result;
+    }
+    const text = typeof result === "string" ? result : JSON.stringify(result);
+    const encoder = new util.TextEncoder();
+    return encoder.encodeInto(text).buffer as ArrayBuffer;
   }
 
   private httpResultToString(result: string | ArrayBuffer | Object): string {

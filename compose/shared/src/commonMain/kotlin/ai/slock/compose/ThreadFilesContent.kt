@@ -50,6 +50,23 @@ internal data class KuiklyThreadFileItem(
     val thumbnailUrl: String? = null
 )
 
+internal data class ThreadAttachmentOpenUiState(
+    val status: String,
+    val message: String = ""
+)
+
+internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
+    this?.status == "downloading"
+
+internal fun ThreadAttachmentOpenUiState?.threadAttachmentStatusLabel(): String? =
+    when (this?.status) {
+        "downloading" -> "Downloading..."
+        "no_app" -> "No app can open this file"
+        "storage_failed" -> "Storage unavailable"
+        "failed" -> "Download failed"
+        else -> null
+    }
+
 internal fun parseThreadFilesPayload(
     payload: String,
     instanceId: String
@@ -76,6 +93,7 @@ internal fun parseThreadFilesPayload(
 @Composable
 internal fun ThreadFilesContent(
     payload: KuiklyThreadFilesPayload,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     Column(
@@ -87,7 +105,7 @@ internal fun ThreadFilesContent(
             "error" -> ThreadFilesError(payload.errorCode ?: "unknown_error") { onEvent("retry", null) }
             "no_permission" -> ThreadFilesStateMessage("No permission", payload.errorCode ?: "missing capability")
             "empty" -> ThreadFilesStateMessage(payload.emptyTitle, payload.emptyDetail)
-            else -> ThreadFilesList(payload, onEvent)
+            else -> ThreadFilesList(payload, attachmentOpenStates, onEvent)
         }
     }
 }
@@ -95,6 +113,7 @@ internal fun ThreadFilesContent(
 @Composable
 private fun ThreadFilesList(
     payload: KuiklyThreadFilesPayload,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
     onEvent: (action: String, attachmentId: String?) -> Unit
 ) {
     if (payload.items.isEmpty()) {
@@ -108,6 +127,7 @@ private fun ThreadFilesList(
         items(payload.items.size, key = { payload.items[it].attachmentId }) { index ->
             ThreadFileRow(
                 item = payload.items[index],
+                openState = attachmentOpenStates[payload.items[index].attachmentId],
                 onOpen = { onEvent("open", payload.items[index].attachmentId) },
                 onDownload = { onEvent("download", payload.items[index].attachmentId) }
             )
@@ -126,9 +146,13 @@ private fun ThreadFilesList(
 @Composable
 private fun ThreadFileRow(
     item: KuiklyThreadFileItem,
+    openState: ThreadAttachmentOpenUiState?,
     onOpen: () -> Unit,
     onDownload: () -> Unit
 ) {
+    val isOpening = openState.threadAttachmentIsOpening()
+    val openIfIdle = if (isOpening) ({}) else onOpen
+    val downloadIfIdle = if (isOpening) ({}) else onDownload
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -139,11 +163,11 @@ private fun ThreadFileRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Box(modifier = Modifier.clickable(onClick = onOpen)) {
+        Box(modifier = Modifier.clickable(onClick = openIfIdle)) {
             ThreadFileThumbnail(item)
         }
         Column(
-            modifier = Modifier.weight(1f).clickable(onClick = onOpen),
+            modifier = Modifier.weight(1f).clickable(onClick = openIfIdle),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
@@ -171,8 +195,21 @@ private fun ThreadFileRow(
             if (item.sourceLabel.isNotBlank()) {
                 ThreadFileSourcePill(item.sourceLabel)
             }
+            openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Input.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray
+                    ),
+                    color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
-        ThreadFileDownloadButton(onClick = onDownload)
+        ThreadFileDownloadButton(isOpening = isOpening, onClick = downloadIfIdle)
     }
 }
 
@@ -226,7 +263,7 @@ private fun ThreadFileSourcePill(text: String) {
 }
 
 @Composable
-private fun ThreadFileDownloadButton(onClick: () -> Unit) {
+private fun ThreadFileDownloadButton(isOpening: Boolean, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(42.dp)
@@ -235,13 +272,14 @@ private fun ThreadFileDownloadButton(onClick: () -> Unit) {
     ) {
         Button(
             onClick = onClick,
+            enabled = !isOpening,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 0.dp, top = 0.dp, end = 3.dp, bottom = 3.dp)
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
-            SlockLucideIcon(name = "download", modifier = Modifier.size(24.dp))
+            SlockLucideIcon(name = if (isOpening) "loader" else "download", modifier = Modifier.size(24.dp))
         }
     }
 }
