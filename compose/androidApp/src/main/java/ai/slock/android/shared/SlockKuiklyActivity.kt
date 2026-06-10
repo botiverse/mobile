@@ -652,17 +652,21 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun sendRealtimeEventToSharedShell(serverId: ServerId, event: RealtimeEvent) {
-        val payload = event.toSharedShellJson().toString()
+        val json = event.toSharedShellJson()
+        val eventName = json.optString("type", "unsupported")
+        json.remove("type")
+        val rawPayload = json.toString()
         kuiklyRenderViewDelegator.sendEvent(
                 REALTIME_EVENT_NAME,
                 mapOf(
                         "serverId" to serverId.value,
-                        "payload" to payload
+                        "eventName" to eventName,
+                        "rawPayload" to rawPayload
                 )
         )
         SlockDiagnosticsLogger.d(
                 "SlockKuiklyRealtime",
-                "event_forwarded type=${event::class.simpleName} serverId=${serverId.value}"
+                "event_forwarded eventName=$eventName serverId=${serverId.value}"
         )
     }
 
