@@ -3,12 +3,19 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ServerId
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HomeParserTest {
+    private val json = Json {
+        ignoreUnknownKeys = true
+        coerceInputValues = true
+    }
+
     @Test
     fun parsesTypedChannelsDmsAndUnreadCounts() {
         val result =
@@ -85,7 +92,7 @@ class HomeParserTest {
                             listOf(
                                 HomeServerUnreadSummaryWireDto(
                                     serverId = "server-1",
-                                    totalUnreadCount = 9,
+                                    unreadCount = 9,
                                     channelUnreadCount = 4,
                                     directMessageUnreadCount = 1,
                                     mentionCount = 2,
@@ -100,6 +107,39 @@ class HomeParserTest {
         assertEquals(4, result.data.channels.single().unreadCount)
         assertEquals(9, result.data.unreadTotal)
         assertEquals(9, result.data.server.unreadCount)
+    }
+
+    @Test
+    fun decodesServerUnreadSummaryUnreadCountFromServerContract() {
+        val serverUnreadSummary =
+            json.decodeFromString(
+                ListSerializer(HomeServerUnreadSummaryWireDto.serializer()),
+                """[{"serverId":"server-1","unreadCount":12}]"""
+            )
+
+        val result =
+            parseSlockHome(
+                payload =
+                    homePayload(
+                        channels =
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "channel-1",
+                                    name = "native",
+                                    type = "channel",
+                                    joined = true
+                                )
+                            ),
+                        unreadCounts = mapOf(ChannelId("channel-1") to 4),
+                        serverUnreadSummary = serverUnreadSummary
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(4, result.data.channels.single().unreadCount)
+        assertEquals(12, result.data.unreadTotal)
+        assertEquals(12, result.data.server.unreadCount)
     }
 
     @Test

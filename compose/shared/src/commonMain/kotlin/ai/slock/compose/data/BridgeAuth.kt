@@ -210,42 +210,6 @@ internal data class BridgeAuthenticatedRequest(
             .also { command -> bodyText?.let { command.put("bodyText", it) } }
 }
 
-internal class BridgeHomeApi(
-    private val bridge: BridgeModule,
-    private val sessionStore: SlockAuthSessionStore,
-    private val baseUrl: String = AUTH_BASE_URL
-) : SlockHomeApi {
-    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
-
-    override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels")
-
-    override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels/dm")
-
-    override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels/unread")
-
-    override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
-        request("servers/unread-summary")
-
-    override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels", serverId.value)
-
-    override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels/dm", serverId.value)
-
-    override suspend fun channelUnreadCounts(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        request("channels/unread", serverId.value)
-
-    override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-        request("servers/unread-summary", serverId.value)
-
-    private suspend fun request(path: String, serverIdOverride: String? = null): HomeNetworkResponse {
-        return executor.request(path = path, serverIdOverride = serverIdOverride)
-    }
-}
-
 internal class BridgeAnnouncementsRemindersApi(
     bridge: BridgeModule,
     sessionStore: SlockAuthSessionStore,

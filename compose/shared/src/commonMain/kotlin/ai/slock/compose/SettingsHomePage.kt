@@ -13,8 +13,8 @@ import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.data.BridgeAnnouncementsRemindersApi
 import ai.slock.compose.data.BridgeAuthApi
-import ai.slock.compose.data.BridgeHomeApi
 import ai.slock.compose.data.BridgeMembersApi
+import ai.slock.compose.data.NetworkSlockHomeApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
@@ -684,11 +684,19 @@ private fun SlockAppShellContent() {
                 diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
         }
+    val appShellNetworkClient =
+        remember {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("kuikly_network $message") }
+            )
+        }
     val homeDataSource =
         remember {
             SharedHomeDataSource(
                 sessionStore = authStore,
-                api = BridgeHomeApi(bridge, authStore),
+                api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = BridgeAnnouncementsRemindersApi(bridge, authStore),
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
@@ -698,14 +706,6 @@ private fun SlockAppShellContent() {
             )
         }
     val membersApi = remember { BridgeMembersApi(bridge, authStore) }
-    val appShellNetworkClient =
-        remember {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                warningLogger = { message -> bridge.log("kuikly_network $message") }
-            )
-        }
     val memberRepository =
         remember {
             RealMemberRepository(

@@ -62,7 +62,7 @@ data class HomeDirectMessageWireDto(
 @Serializable
 data class HomeServerUnreadSummaryWireDto(
     val serverId: String,
-    val totalUnreadCount: Int = 0,
+    val unreadCount: Int,
     val channelUnreadCount: Int = 0,
     val directMessageUnreadCount: Int = 0,
     val mentionCount: Int = 0,
@@ -102,7 +102,7 @@ fun parseSlockHome(
     val serverUnreadTotal =
         payload.serverUnreadSummary
             .firstOrNull { it.serverId == currentServer.id.value }
-            ?.totalUnreadCount
+            ?.unreadCount
     val unreadTotal = serverUnreadTotal ?: channelUnreadTotal
     val server = currentServer.copy(unreadCount = unreadTotal)
 

@@ -426,7 +426,7 @@ class RealChannelRepository(
     )
 }
 
-private class NetworkSlockHomeApi(
+internal class NetworkSlockHomeApi(
     private val networkClient: SlockNetworkClient
 ) : SlockHomeApi {
     override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =

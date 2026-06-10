@@ -795,7 +795,7 @@ class SharedHomeStoreTest {
                 bodyText =
                     """
                     [
-                      {"serverId":"${serverId.value}","totalUnreadCount":$unread}
+                      {"serverId":"${serverId.value}","unreadCount":$unread}
                     ]
                     """.trimIndent()
             )
