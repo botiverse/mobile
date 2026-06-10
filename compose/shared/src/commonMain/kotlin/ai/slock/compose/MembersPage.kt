@@ -19,7 +19,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
-import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.formatSlockTimestampClockWithSeconds
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -1854,7 +1854,7 @@ private fun String?.membersActivitySortKey(): Long =
     parseSlockTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
 
 private fun String?.membersActivityDisplayTime(): String =
-    formatSlockTimestampLabel(this, localOffsetMinutes = 0, todayEpochDay = 0)
+    formatSlockTimestampClockWithSeconds(this, localOffsetMinutes = 0)
         .takeIf { it.isNotBlank() }
         ?: "No time"
 

@@ -65,6 +65,29 @@ fun formatSlockTimestampEpochMillis(
     }
 }
 
+fun formatSlockTimestampClockWithSeconds(
+    value: String?,
+    localOffsetMinutes: Int
+): String {
+    val trimmed = value?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val epochMillis =
+        parseSlockTimestampEpochMillisOrNull(trimmed, localOffsetMinutes) ?: return trimmed
+    return formatSlockTimestampClockWithSeconds(epochMillis, localOffsetMinutes)
+}
+
+fun formatSlockTimestampClockWithSeconds(
+    epochMillis: Long,
+    localOffsetMinutes: Int
+): String {
+    val localMillis = epochMillis + localOffsetMinutes * MillisPerMinute
+    val millisOfDay = floorMod(localMillis, MillisPerDay)
+    val hour = (millisOfDay / MillisPerHour).toInt()
+    val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
+    val second = ((millisOfDay % MillisPerMinute) / MillisPerSecond).toInt()
+    return "${hour.twoDigits()}:${minute.twoDigits()}:${second.twoDigits()}"
+}
+
 fun slockEpochDayForDate(year: Int, month: Int, day: Int): Long =
     daysSinceUnixEpoch(year, month, day)
 

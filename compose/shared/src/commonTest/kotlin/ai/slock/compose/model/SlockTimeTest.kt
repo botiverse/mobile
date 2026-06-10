@@ -29,6 +29,19 @@ class SlockTimeTest {
     }
 
     @Test
+    fun formatsActivityClockWithSecondsWithoutRawServerTimestamp() {
+        assertEquals(
+            "13:55:27",
+            formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", 0)
+        )
+        assertEquals(
+            "21:55:27",
+            formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", 480)
+        )
+        assertEquals("13:55:27", formatSlockTimestampClockWithSeconds("1781099727466", 0))
+    }
+
+    @Test
     fun includesDateOutsideToday() {
         val today = slockEpochDayForDate(2026, 5, 10)
 
