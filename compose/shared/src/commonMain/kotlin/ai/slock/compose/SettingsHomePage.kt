@@ -185,6 +185,7 @@ import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerDeleted
+import ai.slock.compose.model.ServerPlanUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.ServerSummary
@@ -1270,6 +1271,10 @@ private fun SlockAppShellContent() {
                         )
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
+                    }
+                    if (event is ServerPlanUpdated) {
+                        bridge.log("shared_realtime_server_plan_updated serverId=${event.serverId.value} plan=${event.plan}")
+                        membersAgentDetailRefreshKey += 1
                     }
                     if (
                         event is MemberPresenceUpdated && event.kind == MemberKind.Agent ||

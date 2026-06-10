@@ -26,6 +26,7 @@ import ai.slock.android.core.model.MemberPresenceUpdated
 import ai.slock.android.core.model.RealtimeRefreshRequired
 import ai.slock.android.core.model.ServerMembershipRemoved
 import ai.slock.android.core.model.ServerDeleted
+import ai.slock.android.core.model.ServerPlanUpdated
 import ai.slock.android.core.model.AgentCreated
 import ai.slock.android.core.model.SyncResumeResponse
 import ai.slock.android.core.model.Heartbeat
@@ -350,6 +351,7 @@ class SocketIoRealtimeClient(
             RealtimeSocketEvents.ServerMemberRemoved,
             RealtimeSocketEvents.ServerMembershipRemoved,
             RealtimeSocketEvents.ServerDeleted,
+            RealtimeSocketEvents.ServerPlanUpdated,
             RealtimeSocketEvents.AnnouncementNew,
             RealtimeSocketEvents.ReminderFired,
             RealtimeSocketEvents.ReminderScheduled,
@@ -406,6 +408,7 @@ private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is RealtimeRefreshRequired -> "refresh_required"
     is ServerMembershipRemoved -> "server_membership_removed"
     is ServerDeleted -> "server_deleted"
+    is ServerPlanUpdated -> "server_plan_updated"
     is AgentCreated -> "agent_created"
     is SyncResumeResponse -> "sync_resume_response"
     is Heartbeat -> "heartbeat"
@@ -428,6 +431,7 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
         "scope=$scope reason=$reason serverId=${serverId?.value.orEmpty()} channelId=${channelId?.value.orEmpty()} memberId=${memberId?.value.orEmpty()} subjectId=${subjectId.orEmpty()}"
     is ServerMembershipRemoved -> "serverId=${serverId.value}"
     is ServerDeleted -> "serverId=${serverId.value}"
+    is ServerPlanUpdated -> "serverId=${serverId.value} plan=${plan}"
     is AgentCreated -> "agentId=${agent.id.value}"
     is SyncResumeResponse ->
         "currentSeq=$currentSeq messages=${messages.size} hasMore=$hasMore"

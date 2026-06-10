@@ -23,6 +23,7 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerDeleted
+import ai.slock.compose.model.ServerPlanUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.SyncResumeResponse
@@ -143,6 +144,10 @@ class RealtimeEventMapper {
             RealtimeSocketEvents.ServerDeleted -> {
                 val dto = decodeOrNull(ServerDeletedDto.serializer(), element)
                 dto?.serverId?.let { ServerDeleted(ServerId(it)) }
+            }
+            RealtimeSocketEvents.ServerPlanUpdated -> {
+                val dto = decodeOrNull(ServerPlanUpdatedDto.serializer(), element)
+                dto?.let { ServerPlanUpdated(ServerId(it.serverId), it.plan) }
             }
             RealtimeSocketEvents.AnnouncementNew ->
                 RealtimeRefreshRequired(
@@ -372,6 +377,12 @@ private data class ServerMembershipRemovedDto(
 @Serializable
 private data class ServerDeletedDto(
     val serverId: String,
+)
+
+@Serializable
+private data class ServerPlanUpdatedDto(
+    val serverId: String,
+    val plan: String,
 )
 
 @Serializable

@@ -43,6 +43,7 @@ typealias RealtimeRefreshRequired = ai.slock.compose.model.RealtimeRefreshRequir
 typealias RealtimeRefreshScope = ai.slock.compose.model.RealtimeRefreshScope
 typealias ServerMembershipRemoved = ai.slock.compose.model.ServerMembershipRemoved
 typealias ServerDeleted = ai.slock.compose.model.ServerDeleted
+typealias ServerPlanUpdated = ai.slock.compose.model.ServerPlanUpdated
 typealias AgentCreated = ai.slock.compose.model.AgentCreated
 typealias SyncResumeResponse = ai.slock.compose.model.SyncResumeResponse
 typealias Heartbeat = ai.slock.compose.model.Heartbeat

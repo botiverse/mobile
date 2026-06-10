@@ -29,6 +29,8 @@ const WIRE_EVENTS: Array<string> = [
   'server:member:left',
   'server:member-removed',
   'server:membership-removed',
+  'server:deleted',
+  'server:plan-updated',
   'announcement:new',
   'reminder:fired',
   'reminder:scheduled',

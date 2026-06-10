@@ -421,6 +421,12 @@ data class ServerDeleted(
 ) : RealtimeEvent
 
 @Serializable
+data class ServerPlanUpdated(
+    val serverId: ServerId,
+    val plan: String
+) : RealtimeEvent
+
+@Serializable
 data class AgentCreated(
     val agent: AgentProfile
 ) : RealtimeEvent
