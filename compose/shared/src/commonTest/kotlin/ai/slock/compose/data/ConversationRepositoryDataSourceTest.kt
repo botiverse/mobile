@@ -37,9 +37,52 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(2, message.unreadReplyCount)
         assertEquals(
             listOf(
-                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "50")),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
                 RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads", listOf("limit" to "50")),
                 RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/threads/followed", listOf("limit" to "50"))
+            ),
+            network.requests
+        )
+    }
+
+    @Test
+    fun getChannelThreadsParsesParentMessageKeyedRecordResponse() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET channels/channel-1/threads" to
+                            """
+                            {
+                              "parent-1": {
+                                "threadChannelId": "thread-1",
+                                "replyCount": 7,
+                                "lastReplyAt": "2026-05-22T10:05:00.000Z",
+                                "participantIds": ["user-1", "agent-1"],
+                                "unreadCount": 2,
+                                "firstUnreadMessageId": "reply-2"
+                              }
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getChannelThreads(ChannelId("channel-1"), limit = 25)
+
+        val snapshot = assertIs<DataResult.Content<ThreadListSnapshot>>(result).data
+        val thread = snapshot.threads.single()
+        assertEquals("thread:thread-1", thread.key)
+        assertEquals("thread-1", thread.threadChannelId?.value)
+        assertEquals("parent-1", thread.parentMessageId?.value)
+        assertEquals(7, thread.replyCount)
+        assertEquals(2, thread.unreadCount)
+        assertEquals("reply-2", thread.firstUnreadMessageId?.value)
+        assertEquals("2026-05-22T10:05:00.000Z", thread.latestActivityAt)
+        assertEquals(listOf("user-1", "agent-1"), thread.participantIds.map { it.value })
+        assertEquals(
+            listOf(
+                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads", listOf("limit" to "25"))
             ),
             network.requests
         )

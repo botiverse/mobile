@@ -3,11 +3,14 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.TaskStatus
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
 
 /**
  * Strict parser for `GET /api/channels/inbox`.
@@ -56,6 +59,7 @@ private data class WireInboxItem(
     val lastActivityAt: String? = null,
     val lastReplyAt: String? = null,
     val replyCount: Int = 0,
+    val participantIds: List<String> = emptyList(),
     val taskNumber: Int? = null,
     val taskStatus: String? = null,
     val taskClaimedByName: String? = null,
@@ -89,22 +93,47 @@ data class SharedThreadListItems(
 
 /**
  * Parses both `GET /api/channels/threads/followed` and
- * `GET /api/channels/:id/threads`-style responses that wrap an array of
- * inbox-thread-shaped objects under a `threads` key. Each entry is forced
- * to the thread variant; entries without a usable thread id are dropped.
+ * `GET /api/channels/:id/threads` responses. Followed threads wrap an array
+ * under `threads`; channel threads are a parentMessageId-keyed record of
+ * summary objects. Each entry is forced to the thread variant; entries
+ * without a usable thread id are dropped.
  */
 fun parseSharedThreadListItems(bodyText: String): SharedThreadListItems? = runCatching {
-    val decoded = inboxJson.decodeFromString(WireThreadListResponse.serializer(), bodyText)
-    val items = decoded.threads
-        .map { it.copy(kind = "thread") }
-        .mapNotNull { it.toThreadDomain() }
-        .distinctBy { it.key }
-    SharedThreadListItems(
-        items = items,
-        totalCount = decoded.totalCount ?: items.size,
-        hasMore = decoded.hasMore,
-        nextOffset = decoded.nextOffset,
-    )
+    when (val root = inboxJson.parseToJsonElement(bodyText)) {
+        is JsonObject ->
+            if ("threads" in root) {
+                val decoded = inboxJson.decodeFromJsonElement(WireThreadListResponse.serializer(), root)
+                val items = decoded.threads
+                    .map { it.copy(kind = "thread") }
+                    .mapNotNull { it.toThreadDomain() }
+                    .distinctBy { it.key }
+                SharedThreadListItems(
+                    items = items,
+                    totalCount = decoded.totalCount ?: items.size,
+                    hasMore = decoded.hasMore,
+                    nextOffset = decoded.nextOffset,
+                )
+            } else {
+                val items = root.entries
+                    .asSequence()
+                    .mapNotNull { (parentMessageId, value) ->
+                        val record = value as? JsonObject ?: return@mapNotNull null
+                        inboxJson.decodeFromJsonElement(WireInboxItem.serializer(), record)
+                            .copy(kind = "thread", parentMessageId = parentMessageId)
+                    }
+                    .mapNotNull { it.toThreadDomain() }
+                    .distinctBy { it.key }
+                    .toList()
+                SharedThreadListItems(
+                    items = items,
+                    totalCount = items.size,
+                    hasMore = false,
+                    nextOffset = null,
+                )
+            }
+
+        else -> null
+    }
 }.getOrNull()
 
 data class SharedInboxSnapshot(
@@ -172,11 +201,12 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
         parentMessagePreview = parentMessagePreview,
         latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
         latestActivityPreview = latestActivityPreview,
-        latestActivityAt = lastActivityAt,
+        latestActivityAt = lastActivityAt ?: lastReplyAt,
         latestActivitySenderName = latestActivitySenderName,
         latestActivitySenderId = latestActivitySenderId,
         latestActivitySenderKind = latestActivitySenderType.toSenderKind(),
         replyCount = replyCount,
+        participantIds = participantIds.mapNotNull { id -> id.takeIf { it.isNotBlank() }?.let(::MemberId) },
         taskNumber = taskNumber,
         taskStatus = TaskStatus.fromWireValue(taskStatus),
         taskClaimedByName = taskClaimedByName,
