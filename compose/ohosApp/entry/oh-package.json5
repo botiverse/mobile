@@ -6,7 +6,7 @@
   "author": "",
   "license": "",
   "dependencies": {
-    "@kuikly-open/render": '2.20.1',
+    "@kuikly-open/render": '2.21.0',
     "@ohos/apng": "^1.0.0-rc.8",
     "bugly": "0.5.1",
     "libentry.so": "file:./src/main/cpp/types/libentry"

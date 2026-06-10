@@ -2,20 +2,22 @@
 set -euo pipefail
 
 # Build and publish our KuiklyUI fork to mavenLocal.
-# Run before building the Slock Android app to consume forked Kuikly fixes.
+# Run before building Slock to consume forked Kuikly fixes.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 KUIKLY_DIR="$REPO_ROOT/third_party/kuikly-ui"
 
-# Slock currently uses Kuikly 2.20.1. Publish the fork with this version
-# so it overrides the upstream mavenLocal artifact.
-export KUIKLY_VERSION="${KUIKLY_VERSION:-2.20.1}"
+# This intentionally publishes the Slock fork under the selected Kuikly release
+# line so mavenLocal overrides the public artifacts with our staging fixes.
+export KUIKLY_VERSION="${KUIKLY_VERSION:-2.21.0}"
 
 cd "$KUIKLY_DIR"
 
 ARGS=(
   -c settings.2.1.21.gradle.kts
+  --no-daemon
+  --console=plain
   :core:publishToMavenLocal
   :core-annotations:publishToMavenLocal
   :core-ksp:publishToMavenLocal
@@ -23,7 +25,24 @@ ARGS=(
   :compose:publishToMavenLocal
 )
 
-echo "==> Publishing KuiklyUI fork (staging, version $KUIKLY_VERSION) to mavenLocal..."
-./gradlew "${ARGS[@]}"
+OHOS_ARGS=(
+  -c settings.2.0.ohos.gradle.kts
+  --no-daemon
+  --console=plain
+  :core:publishKotlinMultiplatformPublicationToMavenLocal
+  :core:publishOhosArm64PublicationToMavenLocal
+  :core-annotations:publishKotlinMultiplatformPublicationToMavenLocal
+  :core-annotations:publishOhosArm64PublicationToMavenLocal
+  :core-ksp:publishMavenPublicationToMavenLocal
+  :core-render-android:publishMavenPublicationToMavenLocal
+  :compose:publishKotlinMultiplatformPublicationToMavenLocal
+  :compose:publishOhosArm64PublicationToMavenLocal
+)
 
-echo "==> Done. Slock can now consume the forked Kuikly artifacts."
+echo "==> Publishing KuiklyUI fork Android artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
+KUIKLY_KOTLIN_VERSION=2.1.21 ./gradlew "${ARGS[@]}"
+
+echo "==> Publishing KuiklyUI fork OHOS artifacts (staging, version $KUIKLY_VERSION) to mavenLocal..."
+KUIKLY_KOTLIN_VERSION=2.0.21-KBA-010 ./gradlew "${OHOS_ARGS[@]}"
+
+echo "==> Done. Slock can now consume the forked Kuikly Android and OHOS artifacts."

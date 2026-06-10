@@ -96,10 +96,13 @@ scripts/sync_kuikly_ai_skills.sh
   git submodule at `third_party/kuikly-ui/` (branch `staging`).
 - Patches that fix Kuikly upstream bugs land on `staging` first, then a PR is
   submitted to `Tencent-TDS/KuiklyUI`.
-- Current patches on staging:
-  - `toKuiklyFontFamily()` weight serialization: includes FontWeight in the
-    serialized font family string (`"fontName:weight"`) so multi-weight
-    FontFamily entries resolve correctly on the platform side.
+- Current `staging` may sit ahead of the latest public Kuikly tag. Treat the
+  fork `git describe` as part of the dependency version evidence. For example,
+  a build pinned to public `2.21.0` may still need fork artifacts from
+  `2.21.0-33-gea0788c8` in mavenLocal.
+- Current staging patches include font-family serialization/input fixes,
+  reverse lazy-list behavior, and OHOS/Compose cancellation/runtime fixes that
+  may not exist in the public Maven artifacts for the same release line.
 - When a fix is accepted upstream and released as a new Kuikly version, update
   `KUIKLY_VERSION` in `compose/buildSrc/src/main/java/KotlinBuildVar.kt` and
   simplify any workaround code that the fix obsoletes (e.g. per-weight
@@ -109,10 +112,10 @@ scripts/sync_kuikly_ai_skills.sh
   cd /Users/artin/AndroidStudioProjects/Slock
   sh scripts/build_kuikly_fork.sh
   ```
-- After publishing, the Slock Android build picks up the forked artifacts
-  from mavenLocal automatically (`mavenLocal()` is already in the repository
-  config). Android Studio Run works without extra steps — only re-run the
-  script after pulling fork changes (e.g. `git submodule update`).
+- After publishing, Slock Android and OHOS Gradle builds pick up the forked
+  artifacts from mavenLocal automatically (`mavenLocal()` is already in the
+  repository config). Android Studio Run works without extra steps — only
+  re-run the script after pulling fork changes (e.g. `git submodule update`).
 - Do not use `includeBuild` for the fork. The KuiklyUI project includes
   androidApp/demo/ohosApp/h5App/iosApp in its settings, causing composite
   builds to configure the entire project tree on every Gradle sync and
