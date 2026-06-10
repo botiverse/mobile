@@ -12,6 +12,7 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
@@ -275,7 +276,16 @@ private data class MessageWireDto(
     val senderDescription: String? = null,
     val roleDescription: String? = null,
     val attachments: List<AttachmentWireDto> = emptyList(),
+    val reactions: List<MessageReactionWireDto>? = null,
     val actionMetadata: WireActionCardMetadata? = null,
+)
+
+@Serializable
+private data class MessageReactionWireDto(
+    val emoji: String,
+    val count: Int = 0,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList(),
 )
 
 @Serializable
@@ -395,6 +405,18 @@ private fun MessageWireDto.toDomain(): Message {
         replyCount = 0,
         parentMessageId = null,
         updatedAtLabel = updatedAt,
+        reactions = reactions?.mapNotNull { it.toDomain() },
+    )
+}
+
+private fun MessageReactionWireDto.toDomain(): MessageReaction? {
+    val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
+    if (count < 0) return null
+    return MessageReaction(
+        emoji = cleanEmoji,
+        count = count,
+        reactorIds = reactorIds,
+        reactorNames = reactorNames
     )
 }
 

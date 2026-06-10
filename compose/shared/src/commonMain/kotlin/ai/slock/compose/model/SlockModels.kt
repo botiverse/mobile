@@ -238,7 +238,16 @@ data class Message(
     val unreadReplyCount: Int = 0,
     val firstUnreadReplyMessageId: MessageId? = null,
     val parentMessageId: MessageId? = null,
-    val updatedAtLabel: String? = null
+    val updatedAtLabel: String? = null,
+    val reactions: List<MessageReaction>? = null
+)
+
+@Serializable
+data class MessageReaction(
+    val emoji: String,
+    val count: Int,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList()
 )
 
 @Serializable

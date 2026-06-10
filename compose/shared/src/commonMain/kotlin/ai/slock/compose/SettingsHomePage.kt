@@ -176,6 +176,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
@@ -252,6 +253,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -858,6 +860,8 @@ private fun SlockAppShellContent() {
     val shellScope = rememberSlockAppShellScope()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
+    var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
+    var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
@@ -1242,6 +1246,12 @@ private fun SlockAppShellContent() {
                         return
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    threadRealtimeEventSequence += 1
+                    threadRealtimeEventSignal =
+                        SharedThreadRealtimeEventSignal(
+                            sequence = threadRealtimeEventSequence,
+                            event = event
+                        )
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
                     }
@@ -1347,7 +1357,8 @@ private fun SlockAppShellContent() {
                                 true
                             }
                         }
-                    }
+                    },
+                    realtimeEventSignal = threadRealtimeEventSignal
                 )
             }
         }
@@ -7119,9 +7130,39 @@ private fun JSONObject?.toSharedMessage(): Message {
                 .ifBlank { json.optString("firstUnreadMessageId") }
                 .takeIf { it.isNotBlank() }
                 ?.let(::MessageId),
-        parentMessageId = json.optString("parentMessageId").takeIf { it.isNotBlank() }?.let(::MessageId)
+        parentMessageId = json.optString("parentMessageId").takeIf { it.isNotBlank() }?.let(::MessageId),
+        reactions = json.optJSONArray("reactions")?.toSharedMessageReactions()
     )
 }
+
+private fun JSONArray.toSharedMessageReactions(): List<MessageReaction> =
+    buildList {
+        for (index in 0 until length()) {
+            val reaction = optJSONObject(index) ?: continue
+            val emoji = reaction.optString("emoji").takeIf { it.isNotBlank() } ?: continue
+            val count = reaction.optInt("count", 0)
+            if (count < 0) continue
+            add(
+                MessageReaction(
+                    emoji = emoji,
+                    count = count,
+                    reactorIds = reaction.optJSONArray("reactorIds").toStringList(),
+                    reactorNames = reaction.optJSONArray("reactorNames").toStringList()
+                )
+            )
+        }
+    }
+
+private fun JSONArray?.toStringList(): List<String> =
+    if (this == null) {
+        emptyList()
+    } else {
+        buildList {
+            for (index in 0 until length()) {
+                optString(index)?.takeIf { it.isNotBlank() }?.let(::add)
+            }
+        }
+    }
 
 private fun JSONObject?.toSharedMemberProfile(): MemberProfile {
     val json = this ?: JSONObject()

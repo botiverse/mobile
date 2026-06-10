@@ -59,6 +59,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
@@ -1787,7 +1788,11 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     val matchesExisting = messages.any { it.id == message.id.value } || originMessage?.id == message.id.value
     if (!matchesExisting && !message.matchesSharedThread(this, activeReplyParentMessageId)) return this
     val incoming = message.toKuiklyThreadMessageItem(currentUserId)
-    val updatedMessages = messages.map { item -> if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming) else item }
+    val reactionUpdate = message.reactions.toRealtimeThreadReactionItems(currentUserId)
+    val updatedMessages =
+        messages.map { item ->
+            if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming, reactionUpdate) else item
+        }
     val mergedMessages =
         if (updatedMessages.any { it.id == incoming.id }) {
             updatedMessages
@@ -1796,7 +1801,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
         }
     val updatedOrigin =
         if (originMessage?.id == incoming.id) {
-            originMessage.mergeRealtimeUpdate(incoming)
+            originMessage.mergeRealtimeUpdate(incoming, reactionUpdate)
         } else {
             originMessage
         }
@@ -2041,6 +2046,17 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: St
         )
     }
 
+private fun List<MessageReaction>?.toRealtimeThreadReactionItems(currentUserId: String?): List<KuiklyThreadReactionItem>? =
+    this?.mapNotNull { reaction ->
+        val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
+        KuiklyThreadReactionItem(
+            emoji = emoji,
+            count = count,
+            selected = currentUserId != null && currentUserId in reaction.reactorIds
+        )
+    }
+
 private fun Message.matchesSharedThread(
     payload: KuiklyThreadScreenPayload,
     activeReplyParentMessageId: MessageId?
@@ -2056,7 +2072,10 @@ private fun Message.matchesSharedThread(
         activeReplyParentMessageId?.let { parentMessageId == it } == true
 }
 
-private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMessageItem): KuiklyThreadMessageItem =
+private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
+    update: KuiklyThreadMessageItem,
+    reactionUpdate: List<KuiklyThreadReactionItem>? = null
+): KuiklyThreadMessageItem =
     copy(
         authorId = update.authorId.ifBlank { authorId },
         authorName = update.authorName.takeUnless { it.isBlank() || it == update.authorId } ?: authorName,
@@ -2079,7 +2098,7 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(update: KuiklyThreadMess
         taskStatus = update.taskStatus ?: taskStatus,
         taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
-        reactions = update.reactions.ifEmpty { reactions },
+        reactions = reactionUpdate ?: update.reactions.ifEmpty { reactions },
         attachments = update.attachments.ifEmpty { attachments }
     )
 
@@ -2356,7 +2375,8 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
                 sizeLabel = attachment.sizeLabel,
                 thumbnailUrl = attachment.thumbnailUrl
             )
-        }
+        },
+        reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty()
     )
 
 private fun KuiklyThreadTaskItem.toTaskSummary(

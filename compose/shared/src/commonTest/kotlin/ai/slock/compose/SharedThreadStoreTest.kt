@@ -64,6 +64,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
@@ -870,6 +871,67 @@ class SharedThreadStoreTest {
         val message = store.state.value.payload.messages.single()
         assertEquals("edited body", message.body)
         assertEquals("Artin", message.authorName)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Cindy"),
+                        timestampLabel = "",
+                        body = "cached body",
+                        reactions =
+                            listOf(
+                                MessageReaction(
+                                    emoji = "👀",
+                                    count = 1,
+                                    reactorIds = listOf("u1"),
+                                    reactorNames = listOf("Artin")
+                                )
+                            )
+                    )
+                )
+            )
+        )
+
+        assertEquals(
+            listOf(KuiklyThreadReactionItem("👀", count = 1, selected = true)),
+            store.state.value.payload.messages.single().reactions
+        )
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    Message(
+                        id = MessageId("m1"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Cindy"),
+                        timestampLabel = "",
+                        body = "cached body",
+                        reactions = emptyList()
+                    )
+                )
+            )
+        )
+
+        assertEquals(emptyList(), store.state.value.payload.messages.single().reactions)
         scope.cancel()
     }
 

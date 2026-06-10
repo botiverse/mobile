@@ -24,6 +24,7 @@ typealias AvatarReference = ai.slock.compose.model.AvatarReference
 typealias MemberProfile = ai.slock.compose.model.MemberProfile
 typealias AgentProfile = ai.slock.compose.model.AgentProfile
 typealias Message = ai.slock.compose.model.Message
+typealias MessageReaction = ai.slock.compose.model.MessageReaction
 typealias MessageType = ai.slock.compose.model.MessageType
 typealias MessageDeliveryState = ai.slock.compose.model.MessageDeliveryState
 typealias Attachment = ai.slock.compose.model.Attachment

@@ -70,6 +70,7 @@ import ai.slock.android.core.model.Heartbeat
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberPresenceUpdated
 import ai.slock.android.core.model.MessageNew
+import ai.slock.android.core.model.MessageReaction
 import ai.slock.android.core.model.MessageUpdated
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.RealtimeEvent
@@ -790,6 +791,18 @@ private fun ai.slock.android.core.model.Message.toJson(): JSONObject =
                 .put("systemEventType", systemEventType)
                 .put("replyCount", replyCount)
                 .put("parentMessageId", parentMessageId?.value)
+                .apply {
+                    reactions?.let { items ->
+                        put("reactions", JSONArray().also { array -> items.forEach { array.put(it.toJson()) } })
+                    }
+                }
+
+private fun MessageReaction.toJson(): JSONObject =
+        JSONObject()
+                .put("emoji", emoji)
+                .put("count", count)
+                .put("reactorIds", JSONArray().also { array -> reactorIds.forEach { array.put(it) } })
+                .put("reactorNames", JSONArray().also { array -> reactorNames.forEach { array.put(it) } })
 
 private fun ai.slock.android.core.model.MemberProfile.toJson(): JSONObject =
         JSONObject()

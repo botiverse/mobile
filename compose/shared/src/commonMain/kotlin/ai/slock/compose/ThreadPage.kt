@@ -47,6 +47,7 @@ import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -459,6 +460,11 @@ private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     }
 }
 
+internal data class SharedThreadRealtimeEventSignal(
+    val sequence: Long,
+    val event: RealtimeEvent
+)
+
 private val KuiklyThreadTab.icon: String
     get() =
         when (this) {
@@ -839,7 +845,8 @@ internal fun SharedThreadRouteContent(
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
     onOpenParentThread: () -> Boolean = { false },
-    onAuthRequired: (String) -> Unit = {}
+    onAuthRequired: (String) -> Unit = {},
+    realtimeEventSignal: SharedThreadRealtimeEventSignal? = null
 ) {
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
@@ -899,6 +906,19 @@ internal fun SharedThreadRouteContent(
         pendingActionCardIds = emptySet()
         uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+    LaunchedEffect(realtimeEventSignal?.sequence, initialPayload.instanceId) {
+        val signal = realtimeEventSignal ?: return@LaunchedEffect
+        val activeReplyParentMessageId =
+            initialPayload.originParentMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::MessageId)
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                event = signal.event,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
+        )
     }
     LaunchedEffect(payload.sourceThreadId, payload.tasks) {
         if (payload.tasks.isNotEmpty()) {
