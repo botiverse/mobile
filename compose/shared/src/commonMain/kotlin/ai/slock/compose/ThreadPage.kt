@@ -1318,14 +1318,12 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val previousPayload = renderedPayload
-                    val currentMessage =
-                        previousPayload.messages.firstOrNull { it.id == itemId }
-                            ?: previousPayload.originMessage?.takeIf { it.id == itemId }
-                    if (currentMessage == null || currentMessage.isSystemMessage()) {
+                    val toggleTarget = previousPayload.threadReactionToggleTarget(itemId, tab)
+                    if (toggleTarget == null) {
                         return@ThreadPageContent
                     }
-                    val nextSelected = currentMessage.reactions.firstOrNull { it.emoji == tab }?.selected != true
-                    val previousReactions = currentMessage.reactions
+                    val nextSelected = toggleTarget.nextSelected
+                    val previousReactions = toggleTarget.message.reactions
                     pendingReactionKeys = pendingReactionKeys + reactionKey
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyMessageReactionSelection(itemId, tab, selected = nextSelected)
@@ -4149,6 +4147,33 @@ private fun String?.threadTaskStatusOption(): ThreadTaskStatusOption {
 
 internal fun KuiklyThreadMessageItem.isSystemMessage(): Boolean =
     messageType.equals("System", ignoreCase = true) || messageType.equals("system", ignoreCase = true)
+
+internal data class ThreadReactionToggleTarget(
+    val message: KuiklyThreadMessageItem,
+    val nextSelected: Boolean
+)
+
+internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
+    messageId: String,
+    emoji: String
+): ThreadReactionToggleTarget? {
+    val cleanMessageId = messageId.trim()
+    val cleanEmoji = emoji.trim()
+    if (cleanMessageId.isBlank() || cleanEmoji.isBlank()) return null
+    val candidates =
+        (messages + listOfNotNull(originMessage))
+            .filter { message -> message.id == cleanMessageId && !message.isSystemMessage() }
+    if (candidates.isEmpty()) return null
+    val selectedCandidate =
+        candidates.firstOrNull { message ->
+            message.reactions.any { reaction -> reaction.emoji == cleanEmoji && reaction.selected }
+        }
+    val message = selectedCandidate ?: candidates.first()
+    return ThreadReactionToggleTarget(
+        message = message,
+        nextSelected = selectedCandidate == null
+    )
+}
 
 internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): String =
     listOf(timestamp, body.sanitizeThreadSystemText())

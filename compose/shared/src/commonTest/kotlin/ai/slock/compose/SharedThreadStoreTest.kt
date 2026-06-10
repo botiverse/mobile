@@ -180,6 +180,23 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun reactionToggleTargetPrefersSelectedDuplicateForRemoval() {
+        val selectedReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = true))
+        val staleReactions = listOf(KuiklyThreadReactionItem("🔥", count = 1, selected = false))
+        val baseMessage = contentPayload("reactable body").messages.single()
+        val payload =
+            contentPayload("reactable body").copy(
+                messages = listOf(baseMessage.copy(reactions = staleReactions)),
+                originMessage = baseMessage.copy(reactions = selectedReactions)
+            )
+
+        val toggleTarget = payload.threadReactionToggleTarget("m1", "🔥")
+
+        assertEquals(false, toggleTarget?.nextSelected)
+        assertEquals(selectedReactions, toggleTarget?.message?.reactions)
+    }
+
+    @Test
     fun appendSentPagePatchesTimelineAndPreservesHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -1113,6 +1130,23 @@ class SharedThreadStoreTest {
         assertEquals(true, reaction.selected)
         assertEquals("reactable body", localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.body)
         scope.cancel()
+    }
+
+    @Test
+    fun setMessageReactionRemovesSelectedReaction() = runBlocking {
+        val api = FakeThreadApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+
+        val result = dataSource.setMessageReaction("m1", "🔥", selected = false)
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(emptyList(), api.addedReactions)
+        assertEquals(listOf("m1" to "🔥"), api.removedReactions)
+        assertEquals(emptyList(), result.data.reactions)
     }
 
     @Test
