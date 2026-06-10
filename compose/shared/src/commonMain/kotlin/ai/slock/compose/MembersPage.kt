@@ -6,8 +6,11 @@ import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentLifecycleActionResult
+import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.ScreenError
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -60,6 +63,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -104,6 +108,67 @@ private sealed interface MembersAgentDetailLoadState {
     data class Error(val code: String) : MembersAgentDetailLoadState
     data object Empty : MembersAgentDetailLoadState
 }
+
+internal enum class MembersAgentLifecycleAction(
+    val actionKey: String,
+    val label: String,
+    val iconName: String,
+    val successLabel: String,
+    val destructive: Boolean = false
+) {
+    Start("start", "Start", "play", "Started"),
+    Stop("stop", "Stop", "square", "Stopped"),
+    Restart("restart", "Restart", "rotate-cw", "Restarted"),
+    ResetSession("reset_session", "Reset session", "refresh-cw", "Session reset"),
+    ResetFull("reset_full", "Full reset", "eraser", "Full reset"),
+    Delete("delete", "Delete Agent", "trash-2", "Deleted", destructive = true),
+    UnassignMachine("assign_machine", "Unassign machine", "monitor-x", "Machine unassigned");
+
+    val resetMode: AgentResetMode?
+        get() =
+            when (this) {
+                Restart -> AgentResetMode.Restart
+                ResetSession -> AgentResetMode.Session
+                ResetFull -> AgentResetMode.Full
+                Start,
+                Stop,
+                Delete,
+                UnassignMachine -> null
+            }
+
+    val requiresConfirmation: Boolean
+        get() = this != Start
+}
+
+private data class MembersAgentActionState(
+    val action: MembersAgentLifecycleAction,
+    val inProgress: Boolean,
+    val errorCode: String? = null,
+    val successLabel: String? = null
+)
+
+private data class MembersAgentDiagnosticActionState(
+    val actionKey: String,
+    val inProgress: Boolean,
+    val errorCode: String? = null,
+    val successLabel: String? = null
+)
+
+internal fun membersPrimaryLifecycleAction(status: AgentStatus?, deleted: Boolean): MembersAgentLifecycleAction? =
+    if (deleted) {
+        null
+    } else {
+        when (status) {
+            AgentStatus.Offline,
+            AgentStatus.Disconnected,
+            AgentStatus.Error,
+            null -> MembersAgentLifecycleAction.Start
+            AgentStatus.Online,
+            AgentStatus.Working,
+            AgentStatus.Thinking,
+            AgentStatus.Idle -> MembersAgentLifecycleAction.Stop
+        }
+    }
 
 @Page(MEMBERS_SMOKE_PAGE, supportInLocal = true)
 internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
@@ -310,6 +375,9 @@ internal fun MembersRouteContent(
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
     agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
+    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)? = null,
+    onCopyAgentDiagnostics: (String) -> Unit = {},
+    onReportAgentIssue: (suspend (String) -> Boolean)? = null,
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
     onUnavailableAction: (String) -> Unit = {}
@@ -355,6 +423,9 @@ internal fun MembersRouteContent(
             onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
             onCopyMemberId = { onCopyMemberId(selectedMember) },
             onUpdateAgentProfile = onUpdateAgentProfile,
+            onAgentLifecycleAction = onAgentLifecycleAction,
+            onCopyAgentDiagnostics = onCopyAgentDiagnostics,
+            onReportAgentIssue = onReportAgentIssue,
             onUnavailableAction = onUnavailableAction
         )
     } else {
@@ -501,12 +572,19 @@ private fun MembersDetailContent(
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
+    onCopyAgentDiagnostics: (String) -> Unit,
+    onReportAgentIssue: (suspend (String) -> Boolean)?,
     onUnavailableAction: (String) -> Unit
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
+    val scope = rememberCoroutineScope()
+    var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
+    var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
+    var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     val visibleTabs = remember(canViewPrivate, deleted, member.kind) {
         if (member.kind == MemberKind.Agent) {
@@ -518,6 +596,76 @@ private fun MembersDetailContent(
     LaunchedEffect(visibleTabs, selectedTab) {
         if (selectedTab !in visibleTabs) {
             selectedTab = MembersAgentDetailTab.Profile
+        }
+    }
+    fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
+        if (actionState?.inProgress == true) return
+        val callback = onAgentLifecycleAction
+        if (!canManage || callback == null) {
+            onUnavailableAction("Agent management is not available.")
+            return
+        }
+        if (action.requiresConfirmation && !confirmed) {
+            pendingConfirmation = action
+            actionState = null
+            return
+        }
+        scope.launch {
+            pendingConfirmation = null
+            actionState = MembersAgentActionState(action, inProgress = true)
+            val result =
+                try {
+                    callback(member.id, action)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                }
+            val errorCode = result.membersLifecycleErrorCode(action)
+            actionState =
+                MembersAgentActionState(
+                    action = action,
+                    inProgress = false,
+                    errorCode = errorCode,
+                    successLabel = action.successLabel.takeIf { errorCode == null }
+                )
+        }
+    }
+    fun copyDiagnostics() {
+        onCopyAgentDiagnostics(buildMembersAgentDiagnostics(member, detail))
+        diagnosticActionState =
+            MembersAgentDiagnosticActionState(
+                actionKey = "copy",
+                inProgress = false,
+                successLabel = "Diagnostics copied"
+            )
+    }
+    fun reportIssue() {
+        val callback = onReportAgentIssue
+        if (diagnosticActionState?.inProgress == true) return
+        if (callback == null) {
+            onUnavailableAction("Agent issue reporting is not available.")
+            return
+        }
+        scope.launch {
+            diagnosticActionState =
+                MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
+            val diagnostics = buildMembersAgentDiagnostics(member, detail)
+            val reported =
+                try {
+                    callback(diagnostics)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    false
+                }
+            diagnosticActionState =
+                MembersAgentDiagnosticActionState(
+                    actionKey = "report",
+                    inProgress = false,
+                    errorCode = if (reported) null else "agent_issue_report_failed",
+                    successLabel = "Issue reported".takeIf { reported }
+                )
         }
     }
     Column(
@@ -554,6 +702,26 @@ private fun MembersDetailContent(
                 )
             }
             if (member.kind == MemberKind.Agent) {
+                item {
+                    MembersAgentLifecycleSection(
+                        member = member,
+                        detail = detail,
+                        canManage = canManage,
+                        deleted = deleted,
+                        actionState = actionState,
+                        diagnosticActionState = diagnosticActionState,
+                        pendingConfirmation = pendingConfirmation,
+                        onRequestAction = { runLifecycleAction(it) },
+                        onConfirmAction = { runLifecycleAction(it, confirmed = true) },
+                        onCancelConfirmation = {
+                            pendingConfirmation = null
+                            actionState = null
+                        },
+                        onCopyDiagnostics = { copyDiagnostics() },
+                        onReportIssue = onReportAgentIssue?.let { { reportIssue() } },
+                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                    )
+                }
                 item {
                     MembersAgentTabBar(
                         tabs = visibleTabs,
@@ -621,6 +789,15 @@ private fun MembersDetailContent(
         }
     }
 }
+
+private fun DataResult<AgentLifecycleActionResult>.membersLifecycleErrorCode(action: MembersAgentLifecycleAction): String? =
+    when (this) {
+        is DataResult.Content ->
+            if (data.success) null else "agent_${action.actionKey}_failed"
+        is DataResult.Empty -> reason.name
+        is DataResult.Error -> error.code
+        is DataResult.NoPermission -> blocker.code
+    }
 
 @Composable
 private fun MembersDetailHeader(title: String, subtitle: String, onBack: () -> Unit) {
@@ -729,6 +906,206 @@ private fun MembersDetailActions(
             onClick = onCopyMemberId,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+@Composable
+private fun MembersAgentLifecycleSection(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    canManage: Boolean,
+    deleted: Boolean,
+    actionState: MembersAgentActionState?,
+    diagnosticActionState: MembersAgentDiagnosticActionState?,
+    pendingConfirmation: MembersAgentLifecycleAction?,
+    onRequestAction: (MembersAgentLifecycleAction) -> Unit,
+    onConfirmAction: (MembersAgentLifecycleAction) -> Unit,
+    onCancelConfirmation: () -> Unit,
+    onCopyDiagnostics: () -> Unit,
+    onReportIssue: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val summary = detail?.summary
+    val status = member.membersResolvedAgentStatus(summary?.status, summary?.activity)
+    val primaryAction = membersPrimaryLifecycleAction(status, deleted)
+    val machineAssigned = summary?.machineId?.isNotBlank() == true
+    val copyState = diagnosticActionState?.takeIf { it.actionKey == "copy" }
+    val reportState = diagnosticActionState?.takeIf { it.actionKey == "report" }
+    MembersDetailSection(title = "AGENT ACTIONS", modifier = modifier) {
+        when {
+            deleted -> MembersDetailField("Management", "Agent is deleted.")
+            !canManage -> MembersDetailField("Management", "Management actions require permission.")
+            primaryAction != null -> {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersLifecycleActionButton(
+                        action = primaryAction,
+                        actionState = actionState,
+                        enabled = actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onRequestAction(primaryAction) }
+                    )
+                    MembersLifecycleActionButton(
+                        action = MembersAgentLifecycleAction.Restart,
+                        actionState = actionState,
+                        enabled = actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onRequestAction(MembersAgentLifecycleAction.Restart) }
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersLifecycleActionButton(
+                        action = MembersAgentLifecycleAction.ResetSession,
+                        actionState = actionState,
+                        enabled = actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onRequestAction(MembersAgentLifecycleAction.ResetSession) }
+                    )
+                    MembersLifecycleActionButton(
+                        action = MembersAgentLifecycleAction.ResetFull,
+                        actionState = actionState,
+                        enabled = actionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onClick = { onRequestAction(MembersAgentLifecycleAction.ResetFull) }
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersLifecycleActionButton(
+                        action = MembersAgentLifecycleAction.Delete,
+                        actionState = actionState,
+                        enabled = actionState?.inProgress != true,
+                        modifier = if (machineAssigned) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                        onClick = { onRequestAction(MembersAgentLifecycleAction.Delete) }
+                    )
+                    if (machineAssigned) {
+                        MembersLifecycleActionButton(
+                            action = MembersAgentLifecycleAction.UnassignMachine,
+                            actionState = actionState,
+                            enabled = actionState?.inProgress != true,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onRequestAction(MembersAgentLifecycleAction.UnassignMachine) }
+                        )
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                    MembersSmallActionButton(
+                        label = copyState?.successLabel ?: "Copy diagnostics",
+                        iconName = "clipboard",
+                        enabled = diagnosticActionState?.inProgress != true,
+                        modifier = Modifier.weight(1f),
+                        onClick = onCopyDiagnostics
+                    )
+                    onReportIssue?.let { reportIssue ->
+                        MembersSmallActionButton(
+                            label =
+                                when {
+                                    reportState?.inProgress == true -> "Reporting..."
+                                    reportState?.errorCode != null -> "Report failed"
+                                    reportState?.successLabel != null -> reportState.successLabel
+                                    else -> "Report issue"
+                                },
+                            iconName = if (reportState?.inProgress == true) "loader" else "message-square-plus",
+                            enabled = diagnosticActionState?.inProgress != true,
+                            modifier = Modifier.weight(1f),
+                            onClick = reportIssue
+                        )
+                    }
+                }
+                reportState?.errorCode?.let { errorCode ->
+                    MembersDetailField("Diagnostics", "Failed: $errorCode")
+                }
+                pendingConfirmation?.let { action ->
+                    MembersLifecycleConfirmation(
+                        action = action,
+                        agentName = member.displayName,
+                        busy = actionState?.inProgress == true,
+                        onConfirm = { onConfirmAction(action) },
+                        onCancel = onCancelConfirmation
+                    )
+                }
+                actionState?.let { state ->
+                    if (!state.inProgress) {
+                        MembersDetailField(
+                            "Result",
+                            state.errorCode?.let { "Failed: $it" } ?: state.successLabel ?: "Done"
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersLifecycleActionButton(
+    action: MembersAgentLifecycleAction,
+    actionState: MembersAgentActionState?,
+    enabled: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val current = actionState?.takeIf { it.action == action }
+    val label =
+        when {
+            current?.inProgress == true -> "${action.label}..."
+            current?.errorCode == null && current?.successLabel != null -> current.successLabel
+            else -> action.label
+        }
+    SlockBrutalActionButton(
+        label = label,
+        leadingIcon = if (current?.inProgress == true) "loader" else action.iconName,
+        onClick = onClick,
+        modifier = modifier,
+        enabled = enabled,
+        backgroundColor = if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceWhite,
+        minWidth = 0.dp,
+        minHeight = 36.dp,
+        shadowOffset = 1.dp,
+        textStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp).withSlockFontWeight(FontWeight.Bold)
+    )
+}
+
+@Composable
+private fun MembersLifecycleConfirmation(
+    action: MembersAgentLifecycleAction,
+    agentName: String,
+    busy: Boolean,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceCream)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = "Confirm ${action.label}",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack
+        )
+        Text(
+            text = "${action.label} ${agentName}. This uses the real agent management API.",
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = SlockColor.TextBlack
+        )
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+            MembersSmallActionButton(
+                label = "Cancel",
+                iconName = "x",
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
+                onClick = onCancel
+            )
+            MembersSmallActionButton(
+                label = "Confirm",
+                iconName = "check",
+                enabled = !busy,
+                modifier = Modifier.weight(1f),
+                onClick = onConfirm
+            )
+        }
     }
 }
 
@@ -1404,6 +1781,36 @@ private val MemberProfile.detailStatusLabel: String
             MemberKind.Human -> "Human"
             MemberKind.System -> "System"
         }
+
+private fun MemberProfile.membersResolvedAgentStatus(
+    summaryStatus: String?,
+    summaryActivity: String?
+): AgentStatus? =
+    AgentStatus.fromWireValue(summaryActivity)
+        ?: AgentStatus.fromWireValue(summaryStatus)
+        ?: agentStatus
+
+internal fun buildMembersAgentDiagnostics(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?
+): String {
+    val summary = detail?.summary
+    return listOf(
+        "Slock agent diagnostics",
+        "agentId=${member.id.value}",
+        "displayName=${member.displayName}",
+        "handle=${member.detailHandle}",
+        "status=${member.membersResolvedAgentStatus(summary?.status, summary?.activity)?.label ?: member.detailStatusLabel}",
+        "activity=${summary?.activity.orDash()}",
+        "activityDetail=${summary?.activityDetail.orDash()}",
+        "runtime=${summary?.runtime.orDash()}",
+        "model=${summary?.model.orDash()}",
+        "machineId=${summary?.machineId.orBadgeFallback(member.membersComputerId)}",
+        "machineName=${summary?.machineName.orBadgeFallback(member.membersComputerName)}",
+        "daemon=${summary?.daemonVersion.orDash()}",
+        "deleted=${summary?.deletedAt?.isNotBlank() == true}"
+    ).joinToString("\n")
+}
 
 private val ai.slock.compose.data.AgentDetailSummary?.creatorLabel: String?
     get() =

@@ -4,7 +4,11 @@ import ai.slock.compose.model.MemberId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 
 class MemberRepositoryDataSourceTest {
     @Test
@@ -71,6 +75,56 @@ class MemberRepositoryDataSourceTest {
     }
 
     @Test
+    fun agentActivityCacheCanBeClearedAfterSessionReset() = runBlocking {
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(), network)
+        val agentId = MemberId("agent-1")
+
+        val first = repository.getAgentActivity(DataRequestPriority.Visible, agentId)
+        assertTrue(first is DataResult.Content)
+        assertTrue(first.data.activity.any { it.body == "Running task" })
+
+        network.activityLogBody =
+            """
+            [{"timestamp":1710000999,"entry":{"kind":"agent_status","activity":"idle","detail":"After reset"}}]
+            """.trimIndent()
+        val merged = repository.getAgentActivity(DataRequestPriority.Visible, agentId)
+        assertTrue(merged is DataResult.Content)
+        assertTrue(merged.data.activity.any { it.body == "Running task" })
+        assertTrue(merged.data.activity.any { it.body == "After reset" })
+
+        repository.clearAgentActivityCache(agentId)
+
+        val cleared = repository.getAgentActivity(DataRequestPriority.Visible, agentId)
+        assertTrue(cleared is DataResult.Content)
+        assertTrue(!cleared.data.activity.any { it.body == "Running task" })
+        assertTrue(cleared.data.activity.any { it.body == "After reset" })
+    }
+
+    @Test
+    fun agentLifecycleDuplicateSubmitIsGuardedInRepository() = runBlocking {
+        val network = FakeMemberNetworkClient()
+        val repository = RealMemberRepository(sampleStore(), network)
+        val agentId = MemberId("agent-1")
+        val blocker = CompletableDeferred<Unit>()
+        network.startBlocker = blocker
+
+        val first = async { repository.startAgent(DataRequestPriority.Foreground, agentId) }
+        withTimeout(1_000) {
+            while (!network.calls.contains("POST agents/agent-1/start")) {
+                yield()
+            }
+        }
+
+        val duplicate = repository.stopAgent(DataRequestPriority.Foreground, agentId)
+        assertTrue(duplicate is DataResult.Error)
+        assertEquals("agent_stop_in_flight", duplicate.error.code)
+
+        blocker.complete(Unit)
+        assertTrue(first.await() is DataResult.Content)
+    }
+
+    @Test
     fun agentProfileUpdateBodyKeepsAvatarChangesExplicit() {
         assertEquals(
             """{"name":"Noel Bot","displayName":"Noel Bot","description":null}""",
@@ -110,6 +164,11 @@ class MemberRepositoryDataSourceTest {
 
     private class FakeMemberNetworkClient : SlockNetworkClient {
         val calls = mutableListOf<String>()
+        var activityLogBody: String =
+            """
+            [{"timestamp":1710000000,"entry":{"kind":"agent_status","activity":"working","detail":"Running task"}}]
+            """.trimIndent()
+        var startBlocker: CompletableDeferred<Unit>? = null
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -157,11 +216,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "agents/agent-1/activity-log" && method == "GET" -> {
                     calls += "GET agents/agent-1/activity-log limit=${query.toMap()["limit"]}"
-                    ok(
-                        """
-                        [{"timestamp":1710000000,"entry":{"kind":"agent_status","activity":"working","detail":"Running task"}}]
-                        """.trimIndent()
-                    )
+                    ok(activityLogBody)
                 }
                 normalized == "agents" && method == "GET" -> {
                     calls += "GET agents"
@@ -177,6 +232,7 @@ class MemberRepositoryDataSourceTest {
                 }
                 normalized == "agents/agent-1/start" && method == "POST" -> {
                     calls += "POST agents/agent-1/start"
+                    startBlocker?.await()
                     ok("""{"ok":true}""")
                 }
                 normalized == "agents/agent-1/stop" && method == "POST" -> {

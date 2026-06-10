@@ -1,8 +1,10 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.parseSharedAgentActivity
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -129,6 +131,50 @@ class SharedMembersParserTest {
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true)
         )
+    }
+
+    @Test
+    fun agentLifecyclePrimaryActionFollowsRuntimeStatus() {
+        assertEquals(
+            MembersAgentLifecycleAction.Start,
+            membersPrimaryLifecycleAction(AgentStatus.Offline, deleted = false)
+        )
+        assertEquals(
+            MembersAgentLifecycleAction.Start,
+            membersPrimaryLifecycleAction(AgentStatus.Disconnected, deleted = false)
+        )
+        assertEquals(
+            MembersAgentLifecycleAction.Stop,
+            membersPrimaryLifecycleAction(AgentStatus.Online, deleted = false)
+        )
+        assertEquals(
+            MembersAgentLifecycleAction.Stop,
+            membersPrimaryLifecycleAction(AgentStatus.Working, deleted = false)
+        )
+        assertEquals(null, membersPrimaryLifecycleAction(AgentStatus.Online, deleted = true))
+    }
+
+    @Test
+    fun agentDiagnosticsExportUsesSafeSummaryOnly() {
+        val diagnostics =
+            buildMembersAgentDiagnostics(
+                MemberProfile(
+                    id = MemberId("agent-1"),
+                    displayName = "Cindy",
+                    handle = "@Cindy",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working,
+                    permissionBadges = listOf("computer:MacBook")
+                ),
+                detail = null
+            )
+
+        assertTrue(diagnostics.contains("agentId=agent-1"))
+        assertTrue(diagnostics.contains("machineName=MacBook"))
+        assertTrue(!diagnostics.contains("OPENAI_API_KEY"))
+        assertTrue(!diagnostics.contains("Authorization"))
+        assertTrue(!diagnostics.contains("accessToken"))
+        assertTrue(!diagnostics.contains("Bearer"))
     }
 
     @Test

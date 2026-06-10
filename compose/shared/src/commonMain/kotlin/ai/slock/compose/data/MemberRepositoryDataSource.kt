@@ -133,6 +133,8 @@ class RealMemberRepository(
     private val agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient))
     private val agentActivityCacheMutex = Mutex()
     private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
+    private val agentLifecycleActionMutex = Mutex()
+    private val agentLifecycleActionsInFlight = mutableSetOf<MemberId>()
 
     override suspend fun getMembers(priority: DataRequestPriority, serverId: ServerId): DataResult<MemberSnapshot> {
         val context = sessionStore.readSession()?.toNetworkServerContext(serverId) ?: return authRequired()
@@ -319,6 +321,12 @@ class RealMemberRepository(
         }
     }
 
+    override suspend fun clearAgentActivityCache(agentId: MemberId) {
+        agentActivityCacheMutex.withLock {
+            agentActivityCache.remove(agentId)
+        }
+    }
+
     override suspend fun getAgentWorkspaces(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentWorkspaceSnapshot> {
         val context = currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
@@ -452,7 +460,9 @@ class RealMemberRepository(
     ): DataResult<AgentLifecycleActionResult> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return agentsApiClient.startAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "start")
+        return executeAgentLifecycleAction(agentId, "start") {
+            agentsApiClient.startAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "start")
+        }
     }
 
     override suspend fun stopAgent(
@@ -461,7 +471,9 @@ class RealMemberRepository(
     ): DataResult<AgentLifecycleActionResult> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return agentsApiClient.stopAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "stop")
+        return executeAgentLifecycleAction(agentId, "stop") {
+            agentsApiClient.stopAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "stop")
+        }
     }
 
     override suspend fun resetAgent(
@@ -470,14 +482,16 @@ class RealMemberRepository(
     ): DataResult<AgentLifecycleActionResult> {
         currentContext() ?: return authRequired()
         if (request.agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return agentsApiClient.resetAgent(
-            request.agentId,
-            buildResetAgentBody(request.mode.wireValue)
-        ).toLifecycleActionResult(
-            agentId = request.agentId,
-            action = "reset",
-            resetMode = request.mode
-        )
+        return executeAgentLifecycleAction(request.agentId, "reset") {
+            agentsApiClient.resetAgent(
+                request.agentId,
+                buildResetAgentBody(request.mode.wireValue)
+            ).toLifecycleActionResult(
+                agentId = request.agentId,
+                action = "reset",
+                resetMode = request.mode
+            )
+        }
     }
 
     override suspend fun deleteAgent(
@@ -486,7 +500,9 @@ class RealMemberRepository(
     ): DataResult<AgentLifecycleActionResult> {
         currentContext() ?: return authRequired()
         if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
-        return agentsApiClient.deleteAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "delete")
+        return executeAgentLifecycleAction(agentId, "delete") {
+            agentsApiClient.deleteAgent(agentId).toLifecycleActionResult(agentId = agentId, action = "delete")
+        }
     }
 
     override suspend fun assignAgentMachine(
@@ -496,14 +512,16 @@ class RealMemberRepository(
         currentContext() ?: return authRequired()
         if (request.agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
         val machineId = request.machineId?.trim()?.takeIf { it.isNotBlank() }
-        return agentsApiClient.assignMachine(
-            request.agentId,
-            buildAssignAgentMachineBody(machineId)
-        ).toLifecycleActionResult(
-            agentId = request.agentId,
-            action = "assign_machine",
-            machineId = machineId
-        )
+        return executeAgentLifecycleAction(request.agentId, "assign_machine") {
+            agentsApiClient.assignMachine(
+                request.agentId,
+                buildAssignAgentMachineBody(machineId)
+            ).toLifecycleActionResult(
+                agentId = request.agentId,
+                action = "assign_machine",
+                machineId = machineId
+            )
+        }
     }
 
     override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> {
@@ -582,6 +600,27 @@ class RealMemberRepository(
                 }
             )
         return (result as? DataResult.Content)?.data.orEmpty()
+    }
+
+    private suspend fun executeAgentLifecycleAction(
+        agentId: MemberId,
+        action: String,
+        block: suspend () -> DataResult<AgentLifecycleActionResult>
+    ): DataResult<AgentLifecycleActionResult> {
+        val accepted =
+            agentLifecycleActionMutex.withLock {
+                agentLifecycleActionsInFlight.add(agentId)
+            }
+        if (!accepted) {
+            return DataResult.Error(ScreenError("agent_${action}_in_flight"))
+        }
+        return try {
+            block()
+        } finally {
+            agentLifecycleActionMutex.withLock {
+                agentLifecycleActionsInFlight.remove(agentId)
+            }
+        }
     }
 
     private suspend fun getHumanProfile(

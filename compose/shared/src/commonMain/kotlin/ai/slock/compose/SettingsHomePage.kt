@@ -124,6 +124,9 @@ import ai.slock.compose.data.SharedHomeSearchSavedIntent
 import ai.slock.compose.data.SharedHomeSearchSavedViewModel
 import ai.slock.compose.data.AccountProfileUpdateRequest
 import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.AgentMachineAssignmentRequest
+import ai.slock.compose.data.AgentResetMode
+import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.ConnectedAccountStatus
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
@@ -1423,6 +1426,7 @@ private fun SlockAppShellContent() {
                                 bridge = bridge,
                                 authStore = authStore,
                                 memberRepository = memberRepository,
+                                settingsCapabilities = settingsCapabilities,
                                 agentDetailRefreshKey = membersAgentDetailRefreshKey
                             )
                         else ->
@@ -4159,9 +4163,11 @@ private fun SharedMembersScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     authStore: SlockAuthSessionStore,
     memberRepository: MemberRepository,
+    settingsCapabilities: BridgeSettingsPlatformCapabilities,
     agentDetailRefreshKey: Int
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
+    var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         state = SharedMembersUiState.Loading
@@ -4224,7 +4230,7 @@ private fun SharedMembersScreen(
                 agentDetailLoader = { agentId ->
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },
-                agentDetailRefreshKey = agentDetailRefreshKey,
+                agentDetailRefreshKey = "$agentDetailRefreshKey:$localAgentDetailRefreshKey",
                 onUpdateAgentProfile = { request ->
                     val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
                     if (result is DataResult.Content) {
@@ -4241,6 +4247,50 @@ private fun SharedMembersScreen(
                             }
                     }
                     result
+                },
+                onAgentLifecycleAction = { agentId, action ->
+                    val result =
+                        when (action) {
+                            MembersAgentLifecycleAction.Start ->
+                                memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
+                            MembersAgentLifecycleAction.Stop ->
+                                memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
+                            MembersAgentLifecycleAction.Restart,
+                            MembersAgentLifecycleAction.ResetSession,
+                            MembersAgentLifecycleAction.ResetFull ->
+                                memberRepository.resetAgent(
+                                    DataRequestPriority.Foreground,
+                                    AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
+                                )
+                            MembersAgentLifecycleAction.Delete ->
+                                memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
+                            MembersAgentLifecycleAction.UnassignMachine ->
+                                memberRepository.assignAgentMachine(
+                                    DataRequestPriority.Foreground,
+                                    AgentMachineAssignmentRequest(agentId, machineId = null)
+                                )
+                        }
+                    if (result is DataResult.Content && result.data.success) {
+                        if (
+                            action == MembersAgentLifecycleAction.ResetSession ||
+                            action == MembersAgentLifecycleAction.ResetFull
+                        ) {
+                            memberRepository.clearAgentActivityCache(agentId)
+                        }
+                        state = state.withMembersLifecycleResult(action, agentId)
+                        localAgentDetailRefreshKey += 1
+                    }
+                    result
+                },
+                onCopyAgentDiagnostics = { diagnostics ->
+                    bridge.copyToPasteboard(diagnostics)
+                    bridge.toast("Copied agent diagnostics")
+                },
+                onReportAgentIssue = { diagnostics ->
+                    bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
+                    val ok = settingsCapabilities.sendFeedback()
+                    bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
+                    ok
                 },
                 canViewPrivateAgentSurfaces = { _, detail ->
                     current.server.permissions.canManageSettings ||
@@ -4264,6 +4314,66 @@ private sealed interface SharedMembersUiState {
         val currentUserId: String?
     ) : SharedMembersUiState
 }
+
+private fun SharedMembersUiState.withMembersLifecycleResult(
+    action: MembersAgentLifecycleAction,
+    agentId: MemberId
+): SharedMembersUiState {
+    val content = this as? SharedMembersUiState.Content ?: return this
+    return when (action) {
+        MembersAgentLifecycleAction.Delete ->
+            content.copy(members = content.members.filterNot { it.id == agentId })
+        MembersAgentLifecycleAction.Start,
+        MembersAgentLifecycleAction.Restart ->
+            content.copy(
+                members =
+                    content.members.map { member ->
+                        if (member.id == agentId) {
+                            member.copy(agentStatus = AgentStatus.Working, presence = Presence.Active)
+                        } else {
+                            member
+                        }
+                    }
+            )
+        MembersAgentLifecycleAction.Stop ->
+            content.copy(
+                members =
+                    content.members.map { member ->
+                        if (member.id == agentId) {
+                            member.copy(agentStatus = AgentStatus.Offline, presence = Presence.Offline)
+                        } else {
+                            member
+                        }
+                    }
+            )
+        MembersAgentLifecycleAction.UnassignMachine ->
+            content.copy(
+                members =
+                    content.members.map { member ->
+                        if (member.id == agentId) {
+                            member.copy(
+                                permissionBadges =
+                                    member.permissionBadges.filterNot {
+                                        it.startsWith("computer:") || it.startsWith("computer-id:")
+                                    }
+                            )
+                        } else {
+                            member
+                        }
+                    }
+            )
+        MembersAgentLifecycleAction.ResetSession,
+        MembersAgentLifecycleAction.ResetFull ->
+            content
+    }
+}
+
+private fun String.toSingleLineDiagnostics(): String =
+    lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString(" | ")
+        .take(1200)
 
 internal fun parseSharedMembers(bodyText: String): List<MemberProfile> =
     runCatching { Json.parseToJsonElement(bodyText).collectMemberProfiles() }
