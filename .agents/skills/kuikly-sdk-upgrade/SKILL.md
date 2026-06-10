@@ -141,9 +141,7 @@ Run the shared and host builds after every Kuikly upgrade:
 cd /Users/artin/AndroidStudioProjects/Slock/compose
 ./gradlew :shared:compileDebugKotlinAndroid :shared:publishAndroidReleasePublicationToMavenLocal
 ./gradlew -c settings.ohos.gradle.kts :shared:compileKotlinOhosArm64
-
-cd /Users/artin/AndroidStudioProjects/Slock
-./gradlew :app:compileDebugKotlin
+./gradlew :androidApp:compileDebugKotlin
 
 cd /Users/artin/AndroidStudioProjects/Slock/compose/ohosApp
 SDK_HOME=/Applications/DevEco-Studio.app/Contents
