@@ -3476,21 +3476,12 @@ private fun ThreadSystemMessageRow(
         horizontalAlignment = Alignment.Start
     ) {
         Text(
-            text = message.collapsedSystemSummary(timestampLabel),
+            text = if (expanded) message.expandedSystemSummary(timestampLabel) else message.collapsedSystemSummary(timestampLabel),
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            maxLines = if (expanded) Int.MAX_VALUE else 1,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis
         )
-        if (expanded) {
-            ThreadSystemMessageExpandedContent(
-                message = message,
-                highlightedMentions = highlightedMentions,
-                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
-                onOpenMarkdownTag = onOpenMarkdownTag,
-                onOpenMarkdownUrl = onOpenMarkdownUrl
-            )
-        }
         ThreadMessageFooterMeta(
             message = message,
             showReplyAction = showReplyAction,
@@ -3503,46 +3494,6 @@ private fun ThreadSystemMessageRow(
             onShowActions = {},
             onOpenTaskStatusMenu = onOpenTaskStatusMenu
         )
-    }
-}
-
-@Composable
-private fun ThreadSystemMessageExpandedContent(
-    message: KuiklyThreadMessageItem,
-    highlightedMentions: Set<String>,
-    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
-) {
-    Column(
-        modifier =
-            Modifier.fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(SlockSpacing.Sm),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        Text(
-            text = "Body",
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
-        )
-        SlockMarkdownBody(
-            body = message.body.sanitizeThreadSystemText(),
-            textStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 21.sp, color = SlockColor.TextBlack),
-            highlightedMentions = highlightedMentions,
-            resolveTagLabel = resolveMarkdownTagLabel,
-            onOpenTag = onOpenMarkdownTag,
-            onOpenUrl = onOpenMarkdownUrl
-        )
-        val details = message.expandedSystemDetails()
-        if (details.isNotBlank()) {
-            Text(
-                text = details,
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
-            )
-        }
     }
 }
 
@@ -4245,7 +4196,12 @@ internal fun KuiklyThreadScreenPayload.threadReactionToggleTarget(
 internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): String =
     listOf(timestamp, body.sanitizeThreadSystemText())
         .filter { it.isNotBlank() }
-        .joinToString(" · ")
+        .joinToString(" ")
+
+internal fun KuiklyThreadMessageItem.expandedSystemSummary(timestamp: String): String =
+    listOf(collapsedSystemSummary(timestamp), expandedSystemDetails())
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
 
 internal fun KuiklyThreadMessageItem.expandedSystemDetails(): String =
     buildList {
