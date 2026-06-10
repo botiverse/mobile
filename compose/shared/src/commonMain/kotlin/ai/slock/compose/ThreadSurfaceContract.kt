@@ -39,7 +39,7 @@ internal fun threadSurfaceComposerPlaceholder(
         else -> "Message #${displayName.removePrefix("#").ifBlank { fallbackId }}"
     }
 
-internal fun buildThreadSurfaceComposerPayloadJson(
+internal fun buildThreadSurfaceComposerPayload(
     surfaceKind: String,
     displayName: String,
     fallbackId: String,
@@ -54,26 +54,24 @@ internal fun buildThreadSurfaceComposerPayloadJson(
     mentionChannelId: String? = null,
     parentMessageId: String? = null,
     streamChannelId: String? = null
-): String =
-    buildSharedThreadComposerPayloadJson(
-        SharedThreadComposerPayloadInput(
-            seedText = seedText,
-            seedAsTask = seedAsTask,
-            syncNonce = syncNonce,
-            focusRequestNonce = focusRequestNonce,
-            placeholder =
-                threadSurfaceComposerPlaceholder(
-                    surfaceKind = surfaceKind,
-                    displayName = displayName,
-                    fallbackId = fallbackId
-                ),
-            enabled = enabled,
-            showAsTaskToggle = showAsTaskToggle,
-            composerMode = composerMode,
-            statusLabel = statusLabel,
-            surfaceKind = surfaceKind,
-            mentionChannelId = mentionChannelId,
-            parentMessageId = parentMessageId,
-            streamChannelId = streamChannelId
-        )
+): KuiklyThreadComposerPayload =
+    KuiklyThreadComposerPayload(
+        seedText = seedText,
+        seedAsTask = seedAsTask,
+        syncNonce = syncNonce,
+        focusRequestNonce = focusRequestNonce,
+        placeholder =
+            threadSurfaceComposerPlaceholder(
+                surfaceKind = surfaceKind,
+                displayName = displayName,
+                fallbackId = fallbackId
+            ),
+        enabled = enabled,
+        showAsTaskToggle = showAsTaskToggle,
+        composerMode = composerMode,
+        statusLabel = statusLabel,
+        surfaceKind = surfaceKind,
+        mentionChannelId = mentionChannelId,
+        parentMessageId = parentMessageId,
+        streamChannelId = streamChannelId
     )

@@ -258,7 +258,7 @@ class ThreadPayloadTest {
             listOf("visibility", "archive", "delete"),
             payload.settingsActions.map { it.id }
         )
-        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        val composer = payload.resolveThreadComposer()
         assertEquals("Message #general", composer.placeholder)
         assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
         assertEquals("channel-1", composer.streamChannelId)
@@ -284,7 +284,7 @@ class ThreadPayloadTest {
         assertEquals("dm-agent-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
-        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        val composer = payload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, composer.surfaceKind)
         assertEquals("dm-agent-1", composer.streamChannelId)
         assertEquals("Message @Product-UX-Designer", composer.placeholder)
@@ -405,7 +405,7 @@ class ThreadPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
-        val composer = parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
+        val composer = payload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
         assertEquals("channel-1", composer.mentionChannelId)
         assertEquals("message-1", composer.parentMessageId)

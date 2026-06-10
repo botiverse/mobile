@@ -167,69 +167,6 @@ data class SharedThreadComposerChannelSuggestion(
     val subtitle: String? = null
 )
 
-data class SharedThreadComposerPayloadInput(
-    val seedText: String,
-    val seedAsTask: Boolean,
-    val syncNonce: Int,
-    val focusRequestNonce: Int,
-    val placeholder: String,
-    val enabled: Boolean,
-    val showAsTaskToggle: Boolean,
-    val composerMode: String,
-    val statusLabel: String? = null,
-    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
-    val mentionChannelId: String? = null,
-    val parentMessageId: String? = null,
-    val streamChannelId: String? = null,
-    val pendingAttachments: List<SharedThreadComposerAttachment> = emptyList(),
-    val memberSuggestions: List<SharedThreadComposerMemberSuggestion> = emptyList(),
-    val channelSuggestions: List<SharedThreadComposerChannelSuggestion> = emptyList()
-)
-
-fun buildSharedThreadComposerPayloadJson(input: SharedThreadComposerPayloadInput): String =
-    threadComposerJson.encodeToString(
-        KuiklyThreadComposerPayload.serializer(),
-        KuiklyThreadComposerPayload(
-            seedText = input.seedText,
-            seedAsTask = input.seedAsTask,
-            syncNonce = input.syncNonce,
-            focusRequestNonce = input.focusRequestNonce,
-            placeholder = input.placeholder,
-            enabled = input.enabled,
-            showAsTaskToggle = input.showAsTaskToggle,
-            composerMode = input.composerMode,
-            statusLabel = input.statusLabel,
-            surfaceKind = input.surfaceKind,
-            mentionChannelId = input.mentionChannelId,
-            parentMessageId = input.parentMessageId,
-            streamChannelId = input.streamChannelId,
-            pendingAttachments =
-                input.pendingAttachments.map { attachment ->
-                    KuiklyPendingAttachmentItem(
-                        id = attachment.id,
-                        fileName = attachment.fileName,
-                        sizeLabel = attachment.sizeLabel,
-                        mimeType = attachment.mimeType,
-                        status = attachment.status
-                    )
-                },
-            memberSuggestions =
-                input.memberSuggestions.map { member ->
-                    KuiklyComposerMemberItem(
-                        displayName = member.displayName,
-                        handle = member.handle
-                    )
-                },
-            channelSuggestions =
-                input.channelSuggestions.map { channel ->
-                    KuiklyComposerChannelItem(
-                        name = channel.name,
-                        subtitle = channel.subtitle
-                    )
-                }
-        )
-    )
-
 private sealed class KuiklyComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
     data class ChannelTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
@@ -326,6 +263,40 @@ private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: Strin
     } else {
         this
     }
+
+internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
+    this == KuiklyThreadComposerPayload()
+
+internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComposerPayload {
+    val resolvedSurfaceKind =
+        if (composer.surfaceKind == KuiklyThreadSurfaceKind.Channel && surfaceKind != KuiklyThreadSurfaceKind.Channel) {
+            surfaceKind
+        } else {
+            composer.surfaceKind
+        }
+    val resolvedStreamChannelId = composer.streamChannelId ?: streamChannelId ?: sourceThreadId
+    val resolvedParentMessageId = composer.parentMessageId ?: parentMessageId ?: originParentMessageId
+    val resolvedMentionChannelId = composer.mentionChannelId ?: parentChannelId
+    val resolvedPlaceholder =
+        if (composer.placeholder == "Message") {
+            threadSurfaceComposerPlaceholder(
+                surfaceKind = resolvedSurfaceKind,
+                displayName = title,
+                fallbackId = sourceThreadId ?: instanceId
+            )
+        } else {
+            composer.placeholder
+        }
+    return composer.copy(
+        instanceId = composer.instanceId.ifBlank { instanceId },
+        placeholder = resolvedPlaceholder,
+        enabled = canSend && composer.enabled,
+        surfaceKind = resolvedSurfaceKind,
+        mentionChannelId = resolvedMentionChannelId,
+        parentMessageId = resolvedParentMessageId,
+        streamChannelId = resolvedStreamChannelId
+    )
+}
 
 @Composable
 internal fun ThreadComposerContent(

@@ -88,50 +88,23 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun buildsSharedComposerPayloadJsonFromCommonInput() {
-        val json =
-            buildSharedThreadComposerPayloadJson(
-                SharedThreadComposerPayloadInput(
-                    seedText = "draft",
-                    seedAsTask = true,
-                    syncNonce = 3,
-                    focusRequestNonce = 5,
-                    placeholder = "Message #kmp",
-                    enabled = false,
-                    showAsTaskToggle = true,
-                    composerMode = "sending",
-                    statusLabel = "Sending",
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                    mentionChannelId = "channel-1",
-                    parentMessageId = "message-1",
-                    streamChannelId = "thread-1",
-                    pendingAttachments =
-                        listOf(
-                            SharedThreadComposerAttachment(
-                                id = "a1",
-                                fileName = "log.txt",
-                                sizeLabel = "1 KB",
-                                mimeType = "text/plain",
-                                status = "uploading"
-                            )
-                        ),
-                    memberSuggestions =
-                        listOf(
-                            SharedThreadComposerMemberSuggestion(
-                                displayName = "Cindy",
-                                handle = "cindy"
-                            )
-                        ),
-                    channelSuggestions =
-                        listOf(
-                            SharedThreadComposerChannelSuggestion(
-                                name = "general",
-                                subtitle = "team"
-                            )
-                        )
-                )
+    fun buildsThreadSurfaceComposerPayloadFromTypedProps() {
+        val payload =
+            buildThreadSurfaceComposerPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                displayName = "Threads",
+                fallbackId = "fallback-1",
+                enabled = false,
+                seedText = "draft",
+                seedAsTask = true,
+                syncNonce = 3,
+                focusRequestNonce = 5,
+                composerMode = "sending",
+                statusLabel = "Sending",
+                mentionChannelId = "channel-1",
+                parentMessageId = "message-1",
+                streamChannelId = "thread-1"
             )
-        val payload = parseThreadComposerPayload(json, fallbackPageData = "{}", instanceId = "host-5")
 
         assertEquals("draft", payload.seedText)
         assertTrue(payload.seedAsTask)
@@ -144,6 +117,39 @@ class ThreadComposerPayloadTest {
         assertEquals("channel-1", payload.mentionChannelId)
         assertEquals("message-1", payload.parentMessageId)
         assertEquals("thread-1", payload.streamChannelId)
+        assertEquals("Reply in thread", payload.placeholder)
+    }
+
+    @Test
+    fun typedComposerPayloadKeepsSuggestionsAndAttachmentsWithoutBuilderJson() {
+        val payload =
+            KuiklyThreadComposerPayload(
+                pendingAttachments =
+                    listOf(
+                        KuiklyPendingAttachmentItem(
+                            id = "a1",
+                            fileName = "log.txt",
+                            sizeLabel = "1 KB",
+                            mimeType = "text/plain",
+                            status = "uploading"
+                        )
+                    ),
+                memberSuggestions =
+                    listOf(
+                        KuiklyComposerMemberItem(
+                            displayName = "Cindy",
+                            handle = "cindy"
+                        )
+                    ),
+                channelSuggestions =
+                    listOf(
+                        KuiklyComposerChannelItem(
+                            name = "general",
+                            subtitle = "team"
+                        )
+                    )
+            )
+
         assertEquals("log.txt", payload.pendingAttachments.single().fileName)
         assertEquals("Cindy", payload.memberSuggestions.single().displayName)
         assertEquals("general", payload.channelSuggestions.single().name)

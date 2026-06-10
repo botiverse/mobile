@@ -6804,6 +6804,17 @@ internal fun buildAppShellThreadPayload(
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val canSend = conversation.joined && conversation.permissions.canSend
+    val composer =
+        buildThreadSurfaceComposerPayload(
+            surfaceKind = surfaceKind,
+            displayName = conversation.name,
+            fallbackId = conversation.threadId.value,
+            enabled = canSend,
+            showAsTaskToggle = true,
+            mentionChannelId = parentChannelId,
+            parentMessageId = parentMessageId,
+            streamChannelId = streamChannelId
+        )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = conversation.name.ifBlank { "Thread" },
@@ -6830,17 +6841,7 @@ internal fun buildAppShellThreadPayload(
         settingsActions = defaultThreadSettingsChannelActions(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
-        composerPayload =
-            buildThreadSurfaceComposerPayloadJson(
-                surfaceKind = surfaceKind,
-                displayName = conversation.name,
-                fallbackId = conversation.threadId.value,
-                enabled = canSend,
-                showAsTaskToggle = true,
-                mentionChannelId = parentChannelId,
-                parentMessageId = parentMessageId,
-                streamChannelId = streamChannelId
-            )
+        composer = composer
     )
 }
 
@@ -6948,6 +6949,16 @@ internal fun buildAppShellTaskThreadLoadingPayload(
 ): KuiklyThreadScreenPayload {
     val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val parentMessage = task.toAppShellTaskParentMessage()
+    val composer =
+        buildThreadSurfaceComposerPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            displayName = task.channelName.orEmpty(),
+            fallbackId = task.id.value,
+            enabled = true,
+            mentionChannelId = task.channelId?.value,
+            parentMessageId = parentMessage?.id,
+            streamChannelId = threadId
+        )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-task-thread-${threadId ?: task.id.value}",
         title = task.tasksDisplayTitleForAppShell(),
@@ -6973,16 +6984,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         showSettingsAction = false,
         emptyTitle = "Opening task",
         emptyDetail = "Loading the task conversation.",
-        composerPayload =
-            buildThreadSurfaceComposerPayloadJson(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                displayName = task.channelName.orEmpty(),
-                fallbackId = task.id.value,
-                enabled = true,
-                mentionChannelId = task.channelId?.value,
-                parentMessageId = parentMessage?.id,
-                streamChannelId = threadId
-            )
+        composer = composer
     )
 }
 

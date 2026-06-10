@@ -870,8 +870,8 @@ internal class SharedThreadDataSource(
                 messages = emptyList(),
                 canLoadMoreBefore = false,
                 canLoadMoreAfter = false,
-                composerPayload =
-                    buildThreadSurfaceComposerPayloadJson(
+                composer =
+                    buildThreadSurfaceComposerPayload(
                         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                         displayName = ThreadReplyPageTitle,
                         fallbackId = parentMessage.id,
@@ -891,7 +891,7 @@ internal class SharedThreadDataSource(
                         streamChannelId = replyBase.streamChannelId,
                         parentChannelId = replyBase.parentChannelId,
                         parentMessageId = replyBase.parentMessageId,
-                        composerPayload = loaded.data.composerPayload.takeIf { it != "{}" } ?: replyBase.composerPayload,
+                        composer = loaded.data.composer.takeUnless { it.isDefaultThreadComposer() } ?: replyBase.composer,
                         originMessage = loaded.data.originMessage ?: resolvedOrigin,
                         originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
                         originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
@@ -1646,7 +1646,7 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         canSend = base.canSend,
         joined = base.joined,
         membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
-        composerPayload = base.composerPayload.ifBlank { composerPayload },
+        composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
     )
@@ -2032,7 +2032,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         newerMessagesStatus = patch.newerMessagesStatus,
         errorCode = patch.errorCode,
         filesPayload = patch.filesPayload,
-        composerPayload = patch.composerPayload,
+        composer = patch.composer,
         showComposer = patch.showComposer,
         joined = patch.joined,
         canSend = patch.canSend,

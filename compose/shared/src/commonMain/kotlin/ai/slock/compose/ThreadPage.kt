@@ -220,7 +220,7 @@ internal data class KuiklyThreadScreenPayload(
     val emptyTitle: String = "No messages yet",
     val emptyDetail: String = "This conversation has no messages yet.",
     val filesPayload: String = "{}",
-    val composerPayload: String = "{}",
+    val composer: KuiklyThreadComposerPayload = KuiklyThreadComposerPayload(),
     val showComposer: Boolean = true,
     val joined: Boolean = true,
     val canSend: Boolean = true,
@@ -952,7 +952,7 @@ internal fun SharedThreadRouteContent(
         }
 
     LaunchedEffect(initialPayload) {
-        val composer = parseThreadComposerPayload(initialPayload.composerPayload, "{}", initialPayload.instanceId)
+        val composer = initialPayload.resolveThreadComposer()
         composerDraftText = composer.seedText
         composerDraftAsTask = composer.seedAsTask
         composerSyncNonce = composer.syncNonce
@@ -1055,12 +1055,24 @@ internal fun SharedThreadRouteContent(
             filesPayload = routeFilesPayload
         }
     }
-    val renderedComposerPayload = remember(payload.composerPayload, payload.instanceId) {
-        parseThreadComposerPayload(payload.composerPayload, "{}", payload.instanceId)
-    }
-    val composerPayload =
+    val renderedComposerState =
         remember(
-            renderedComposerPayload,
+            payload.composer,
+            payload.instanceId,
+            payload.title,
+            payload.surfaceKind,
+            payload.sourceThreadId,
+            payload.streamChannelId,
+            payload.parentChannelId,
+            payload.parentMessageId,
+            payload.originParentMessageId,
+            payload.canSend
+        ) {
+            payload.resolveThreadComposer()
+        }
+    val composerState =
+        remember(
+            renderedComposerState,
             composerDraftText,
             composerDraftAsTask,
             composerSyncNonce,
@@ -1071,7 +1083,7 @@ internal fun SharedThreadRouteContent(
             payload.canSend
         ) {
             val pendingAttachments =
-                (renderedComposerPayload.pendingAttachments.map { attachment ->
+                (renderedComposerState.pendingAttachments.map { attachment ->
                     SharedThreadComposerAttachment(
                         id = attachment.id,
                         fileName = attachment.fileName,
@@ -1082,8 +1094,8 @@ internal fun SharedThreadRouteContent(
                 } + uploadedAttachments)
                     .distinctBy { attachment -> attachment.id }
                     .filterNot { attachment -> attachment.id in removedAttachmentIds }
-            renderedComposerPayload.copy(
-                instanceId = renderedComposerPayload.instanceId.ifBlank { payload.instanceId },
+            renderedComposerState.copy(
+                instanceId = renderedComposerState.instanceId.ifBlank { payload.instanceId },
                 seedText = composerDraftText,
                 seedAsTask = composerDraftAsTask,
                 syncNonce = composerSyncNonce,
@@ -1101,15 +1113,15 @@ internal fun SharedThreadRouteContent(
                     when {
                         composerSending -> "sending"
                         composerFailureLabel != null -> "failed"
-                        renderedComposerPayload.composerMode == "failed" -> "failed"
-                        else -> renderedComposerPayload.composerMode
+                        renderedComposerState.composerMode == "failed" -> "failed"
+                        else -> renderedComposerState.composerMode
                     },
                 statusLabel =
                     when {
                         composerSending -> "Sending..."
                         composerFailureLabel != null -> composerFailureLabel
-                        renderedComposerPayload.composerMode == "failed" -> renderedComposerPayload.statusLabel
-                        else -> renderedComposerPayload.statusLabel
+                        renderedComposerState.composerMode == "failed" -> renderedComposerState.statusLabel
+                        else -> renderedComposerState.statusLabel
                     },
                 enabled = payload.canSend && !composerSending
             )
@@ -1286,7 +1298,7 @@ internal fun SharedThreadRouteContent(
         ThreadPageContent(
             payload = renderedPayload,
             filesPayload = filesPayload,
-            composerPayload = composerPayload,
+            composerState = composerState,
             tasksState = tasksState,
             onTasksIntent = tasksViewModel::dispatch,
             highlightedMentions = threadState.highlightedMentions,
@@ -1764,7 +1776,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                val composerInstanceId = composerPayload.instanceId.ifBlank { payload.instanceId }
+                val composerInstanceId = composerState.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
                     if (composerSending) {
@@ -1784,7 +1796,7 @@ internal fun SharedThreadRouteContent(
                 "send" -> {
                     val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
                     val draftText = composerDraftText.trim()
-                    val attachmentIds = composerPayload.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
+                    val attachmentIds = composerState.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
                     if (!payload.canSend || composerSending || threadId == null ||
                         (draftText.isBlank() && attachmentIds.isEmpty())
                     ) {
@@ -2005,8 +2017,16 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     return SlockThreadWebLinkTarget(channelId = channelId, messageId = messageId)
 }
 
-private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload =
-    copy(
+private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {
+    val composer =
+        buildThreadSurfaceComposerPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            displayName = "Thread",
+            fallbackId = target.channelId,
+            enabled = canSend,
+            streamChannelId = target.channelId
+        )
+    return copy(
         instanceId = "shared-shell-thread-${target.channelId}",
         title = "Thread",
         subtitle = null,
@@ -2025,8 +2045,9 @@ private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadW
         originErrorCode = null,
         errorCode = null,
         filesPayload = "{}",
-        composerPayload = "{}"
+        composer = composer
     )
+}
 
 private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
@@ -2381,8 +2402,18 @@ private fun ThreadImagePreviewThumbnail(
 
 internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
     parentMessage: KuiklyThreadMessageItem
-): KuiklyThreadScreenPayload =
-    copy(
+): KuiklyThreadScreenPayload {
+    val composer =
+        buildThreadSurfaceComposerPayload(
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            displayName = ThreadReplyPageTitle,
+            fallbackId = parentMessage.id,
+            enabled = canSend,
+            mentionChannelId = sourceThreadId,
+            parentMessageId = parentMessage.id,
+            streamChannelId = null
+        )
+    return copy(
         instanceId = "shared-shell-thread-pending-${parentMessage.id}",
         title = ThreadReplyPageTitle,
         subtitle = null,
@@ -2405,17 +2436,9 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         canLoadMoreAfter = false,
         emptyTitle = "Opening replies",
         emptyDetail = "Loading the message thread.",
-        composerPayload =
-            buildThreadSurfaceComposerPayloadJson(
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                displayName = ThreadReplyPageTitle,
-                fallbackId = parentMessage.id,
-                enabled = canSend,
-                mentionChannelId = sourceThreadId,
-                parentMessageId = parentMessage.id,
-                streamChannelId = null
-            )
+        composer = composer
     )
+}
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
     status == "loading" || (status == "error" && items.isEmpty())
@@ -2477,7 +2500,7 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
-    composerPayload: KuiklyThreadComposerPayload,
+    composerState: KuiklyThreadComposerPayload,
     tasksState: TasksUiState,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     highlightedMentions: Set<String>,
@@ -2617,7 +2640,7 @@ private fun ThreadPageContent(
                             )
                     ) {
                         ThreadComposerContent(
-                            payload = composerPayload,
+                            payload = composerState,
                             onEvent = onComposerEvent,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
