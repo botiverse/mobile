@@ -681,25 +681,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         )
     }
 
-    private fun sendRealtimeEventToSharedShell(serverId: ServerId, event: RealtimeEvent) {
-        val json = event.toSharedShellJson()
-        val eventName = json.optString("type", "unsupported")
-        json.remove("type")
-        val rawPayload = json.toString()
-        kuiklyRenderViewDelegator.sendEvent(
-                REALTIME_EVENT_NAME,
-                mapOf(
-                        "serverId" to serverId.value,
-                        "eventName" to eventName,
-                        "rawPayload" to rawPayload
-                )
-        )
-        SlockDiagnosticsLogger.d(
-                "SlockKuiklyRealtime",
-                "event_forwarded eventName=$eventName serverId=${serverId.value}"
-        )
-    }
-
     companion object {
         const val PAGE_LOGIN = SlockKuiklyPages.LOGIN
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
@@ -766,105 +747,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
         RealtimeCursorPolicy.updateAppliedSeq(this, event)
-
-private fun RealtimeEvent.toSharedShellJson(): JSONObject =
-        when (this) {
-            is MessageNew -> JSONObject().put("type", "message_new").put("message", message.toJson())
-            is MessageUpdated -> JSONObject().put("type", "message_updated").put("message", message.toJson())
-            is SyncResumeResponse ->
-                    JSONObject()
-                            .put("type", "sync_resume")
-                            .put("currentSeq", currentSeq)
-                            .put("hasMore", hasMore)
-                            .put("messages", JSONArray().also { array -> messages.forEach { array.put(it.toJson()) } })
-            is ThreadUpdated ->
-                    JSONObject()
-                            .put("type", "thread_updated")
-                            .put("parentMessageId", parentMessageId.value)
-                            .put("threadChannelId", threadChannelId.value)
-                            .put("replyCount", replyCount)
-                            .put("lastReplyAt", lastReplyAt)
-                            .put("participantIds", JSONArray().also { array -> participantIds.forEach { array.put(it.value) } })
-            is MemberPresenceUpdated ->
-                    JSONObject()
-                            .put("type", "member_presence")
-                            .put("memberId", memberId.value)
-                            .put("presence", presence.toWireValue())
-                            .put("kind", kind?.toWireValue())
-                            .put("agentStatus", agentStatus?.name)
-                            .put("statusLabel", statusLabel)
-            is RealtimeRefreshRequired ->
-                    JSONObject()
-                            .put("type", "refresh_required")
-                            .put("scope", scope.name)
-                            .put("reason", reason)
-                            .put("serverId", serverId?.value)
-                            .put("channelId", channelId?.value)
-                            .put("memberId", memberId?.value)
-                            .put("subjectId", subjectId)
-            is ServerMembershipRemoved ->
-                    JSONObject()
-                            .put("type", "server_membership_removed")
-                            .put("serverId", serverId.value)
-            is DirectMessageCreated ->
-                    JSONObject()
-                            .put("type", "direct_message_created")
-                            .put("channelId", channelId.value)
-            is Heartbeat -> JSONObject().put("type", "heartbeat").put("seq", seq)
-            else -> JSONObject().put("type", "unsupported")
-        }
-
-private fun ai.slock.android.core.model.Message.toJson(): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("threadId", threadId.value)
-                .put("channelId", channelId?.value)
-                .put("threadChannelId", threadChannelId?.value)
-                .put("seq", seq)
-                .put("author", author.toJson())
-                .put("timestampLabel", timestampLabel)
-                .put("body", body)
-                .put("messageType", messageType.name)
-                .put("systemEventType", systemEventType)
-                .put("replyCount", replyCount)
-                .put("parentMessageId", parentMessageId?.value)
-                .apply {
-                    reactions?.let { items ->
-                        put("reactions", JSONArray().also { array -> items.forEach { array.put(it.toJson()) } })
-                    }
-                }
-
-private fun MessageReaction.toJson(): JSONObject =
-        JSONObject()
-                .put("emoji", emoji)
-                .put("count", count)
-                .put("reactorIds", JSONArray().also { array -> reactorIds.forEach { array.put(it) } })
-                .put("reactorNames", JSONArray().also { array -> reactorNames.forEach { array.put(it) } })
-
-private fun ai.slock.android.core.model.MemberProfile.toJson(): JSONObject =
-        JSONObject()
-                .put("id", id.value)
-                .put("displayName", displayName)
-                .put("handle", handle)
-                .put("kind", kind.toWireValue())
-                .put("avatarUrl", avatarUrl)
-                .put("avatarLabel", avatarLabel)
-                .put("presence", presence.toWireValue())
-                .put("agentStatus", agentStatus?.name)
-
-private fun MemberKind.toWireValue(): String =
-        when (this) {
-            MemberKind.Agent -> "agent"
-            MemberKind.Human -> "human"
-            MemberKind.System -> "system"
-        }
-
-private fun Presence.toWireValue(): String =
-        when (this) {
-            Presence.Active -> "active"
-            Presence.Away -> "away"
-            Presence.Offline -> "offline"
-        }
 
 internal object SlockKuiklyAdapters {
     private var initialized = false
