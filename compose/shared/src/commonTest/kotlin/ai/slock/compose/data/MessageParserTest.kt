@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 class MessageParserTest {
     @Test
@@ -74,5 +75,60 @@ class MessageParserTest {
         assertEquals("thread-1", message.threadChannelId?.value)
         assertEquals(5, message.replyCount)
         assertEquals(3, message.unreadReplyCount)
+    }
+
+    @Test
+    fun preservesInitialMessageReactionsMembershipStatusAndAttachmentDimensions() {
+        val payload =
+            parseSharedChannelMessages(
+                """
+                {
+                  "messages": [
+                    {
+                      "id": "m-2",
+                      "channelId": "channel-1",
+                      "senderType": "user",
+                      "senderId": "u-1",
+                      "senderName": "Artin",
+                      "senderMembershipStatus": "removed",
+                      "content": "image",
+                      "createdAt": "2026-06-06T00:00:00.000Z",
+                      "attachments": [
+                        {
+                          "id": "att-1",
+                          "filename": "diagram.png",
+                          "mimeType": "image/png",
+                          "sizeBytes": 2048,
+                          "width": 640,
+                          "height": 360
+                        }
+                      ],
+                      "reactions": [
+                        {
+                          "emoji": "\uD83D\uDC40",
+                          "count": 2,
+                          "reactorIds": ["u-1", "agent-1"],
+                          "reactorNames": ["Artin", "Bot"]
+                        }
+                      ]
+                    }
+                  ]
+                }
+                """.trimIndent(),
+                fallbackThreadId = ThreadId("channel-1")
+            )
+
+        val message = payload.messages.single()
+        assertEquals("removed", message.senderMembershipStatus)
+
+        val attachment = message.attachments.single()
+        assertEquals(640, attachment.width)
+        assertEquals(360, attachment.height)
+
+        val reaction = assertNotNull(message.reactions).single()
+        assertEquals("\uD83D\uDC40", reaction.emoji)
+        assertEquals(2, reaction.count)
+        assertEquals(listOf("u-1", "agent-1"), reaction.reactorIds)
+        assertEquals(listOf("Artin", "Bot"), reaction.reactorNames)
     }
 }

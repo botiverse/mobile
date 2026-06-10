@@ -9,6 +9,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskId
@@ -80,12 +81,21 @@ private data class MessagesWireMessage(
     val createdAt: String = "",
     val updatedAt: String = "",
     val attachments: List<MessagesWireAttachment> = emptyList(),
+    val reactions: List<MessagesWireReaction> = emptyList(),
     val threadSummary: MessagesWireThreadSummary? = null,
     val replyCount: Int? = null,
     val unreadReplyCount: Int? = null,
     val threadUnreadCount: Int? = null,
     val firstUnreadReplyMessageId: String? = null,
     val actionMetadata: WireActionCardMetadata? = null,
+)
+
+@Serializable
+private data class MessagesWireReaction(
+    val emoji: String,
+    val count: Int = 0,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList(),
 )
 
 @Serializable
@@ -238,6 +248,8 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         },
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
+        reactions = reactions.mapNotNull { it.toDomain() }.takeIf { it.isNotEmpty() },
+        senderMembershipStatus = senderMembershipStatus,
         deliveryState = MessageDeliveryState.Sent,
         task = task,
         replyCount = replyCount ?: summary?.replyCount ?: 0,
@@ -252,5 +264,17 @@ private fun MessagesWireAttachment.toDomain(): Attachment = Attachment(
     name = filename.ifBlank { "Attachment" },
     mimeType = mimeType.ifBlank { "application/octet-stream" },
     sizeLabel = formatAttachmentSizeLabel(sizeBytes),
+    width = width,
+    height = height,
     thumbnailUrl = thumbnailUrl,
 )
+
+private fun MessagesWireReaction.toDomain(): MessageReaction? {
+    val resolvedEmoji = emoji.takeIf { it.isNotBlank() } ?: return null
+    return MessageReaction(
+        emoji = resolvedEmoji,
+        count = count,
+        reactorIds = reactorIds,
+        reactorNames = reactorNames,
+    )
+}
