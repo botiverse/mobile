@@ -32,8 +32,9 @@ class AuthDataSourceTest {
         assertEquals("Bearer access-token", api.serversAuthorization)
         assertEquals("user-1", store.readSession()?.user?.id)
         assertEquals("access-token", store.readSession()?.accessToken)
-        assertEquals("server-1", store.readSession()?.selectedServerId)
-        assertEquals("slock", store.readSession()?.selectedServerSlug)
+        assertEquals(null, store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerSlug)
+        assertEquals(1, store.readSession()?.servers?.size)
     }
 
     @Test
@@ -225,7 +226,7 @@ class AuthDataSourceTest {
         assertEquals("user-1", store.readSession()?.user?.id)
         assertEquals("social-access", store.readSession()?.accessToken)
         assertEquals("social-refresh", store.readSession()?.refreshToken)
-        assertEquals("server-1", store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerId)
     }
 
     @Test
@@ -244,7 +245,7 @@ class AuthDataSourceTest {
         assertEquals("user-1", store.readSession()?.user?.id)
         assertEquals("social-access", store.readSession()?.accessToken)
         assertEquals("social-refresh", store.readSession()?.refreshToken)
-        assertEquals("server-1", store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerId)
     }
 
     @Test
@@ -261,6 +262,7 @@ class AuthDataSourceTest {
         assertEquals("""{"email":"user@slock.ai","password":"password123","name":"Artin"}""", api.registerBody)
         assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)
         assertEquals("user-1", store.readSession()?.user?.id)
+        assertEquals(null, store.readSession()?.selectedServerId)
     }
 
 
@@ -389,6 +391,29 @@ class AuthDataSourceTest {
         assertTrue(result is SharedAuthResult.Success)
         assertEquals("server-2", store.readSession()?.selectedServerId)
         assertEquals("ops", store.readSession()?.selectedServerSlug)
+    }
+
+    @Test
+    fun loadServersClearsStaleSelectedServerInSharedLayer() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    selectedServerId = "server-old",
+                    selectedServerSlug = "old",
+                    servers = listOf(StoredAuthServer(id = "server-old", name = "Old", slug = "old"))
+                )
+            )
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(null, store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerSlug)
+        assertEquals(listOf("server-1"), store.readSession()?.servers?.map { it.id })
     }
 
     @Test

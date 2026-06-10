@@ -84,18 +84,15 @@ class SharedAuthDataSource(
                     emptyList()
                 }
             }
-        val selectedServer = servers.firstOrNull()
-        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=${selectedServer != null}")
+        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=false")
         val session =
             StoredAuthSession(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
-                selectedServerId = selectedServer?.id,
-                selectedServerSlug = selectedServer?.slug,
                 servers = servers
             )
-        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=${selectedServer != null}")
+        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=false")
         runCatching { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -104,9 +101,9 @@ class SharedAuthDataSource(
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
         diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
-        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=${selectedServer != null}")
+        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=false")
         diagnosticsLogger(
-            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=${selectedServer != null}"
+            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=false"
         )
         return SharedAuthResult.Success(session)
     }
@@ -170,14 +167,11 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> emptyList()
             }
-        val selectedServer = servers.firstOrNull()
         val session =
             StoredAuthSession(
                 user = user,
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
-                selectedServerId = selectedServer?.id,
-                selectedServerSlug = selectedServer?.slug,
                 servers = servers
             )
         sessionStore.saveSession(session)
@@ -212,14 +206,11 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> emptyList()
             }
-        val selectedServer = servers.firstOrNull()
         val session =
             StoredAuthSession(
                 user = register.user,
                 accessToken = register.accessToken,
                 refreshToken = register.refreshToken,
-                selectedServerId = selectedServer?.id,
-                selectedServerSlug = selectedServer?.slug,
                 servers = servers
             )
         sessionStore.saveSession(session)
@@ -384,13 +375,7 @@ class SharedAuthDataSource(
                     return response.toSharedAuthFailure()
                 }
             }
-        val selected = session.selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
-        val updated =
-            session.copy(
-                servers = servers,
-                selectedServerId = selected?.id ?: session.selectedServerId,
-                selectedServerSlug = selected?.slug ?: session.selectedServerSlug
-            )
+        val updated = session.withValidatedServerSelection(servers)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
@@ -482,17 +467,19 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> session.servers
             }
-        val selected = session.selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
-        val updated =
-            session.copy(
-                user = user,
-                servers = servers,
-                selectedServerId = selected?.id ?: session.selectedServerId,
-                selectedServerSlug = selected?.slug ?: session.selectedServerSlug
-            )
+        val updated = session.copy(user = user).withValidatedServerSelection(servers)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
+}
+
+private fun StoredAuthSession.withValidatedServerSelection(servers: List<StoredAuthServer>): StoredAuthSession {
+    val selected = selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
+    return copy(
+        servers = servers,
+        selectedServerId = selected?.id,
+        selectedServerSlug = selected?.slug
+    )
 }
 
 private fun SharedAuthResult.Failure.isRecoverableRestoreFailure(): Boolean =
