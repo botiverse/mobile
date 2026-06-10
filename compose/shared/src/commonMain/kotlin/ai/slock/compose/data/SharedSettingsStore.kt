@@ -226,7 +226,6 @@ sealed interface SharedSettingsIntent {
     data object RefreshRecompositionProfilerReport : SharedSettingsIntent
     data object ExportRecompositionProfilerReport : SharedSettingsIntent
     data object SendFeedback : SharedSettingsIntent
-    data class RunBuglyCrashMonitorAction(val action: String) : SharedSettingsIntent
     data object ConsumeEffect : SharedSettingsIntent
 }
 
@@ -242,7 +241,6 @@ sealed interface SharedSettingsEffect {
     data object ShareDiagnostics : SharedSettingsEffect
     data object ClearDiagnostics : SharedSettingsEffect
     data object SendFeedback : SharedSettingsEffect
-    data class RunBuglyCrashMonitorAction(val action: String) : SharedSettingsEffect
 }
 
 interface SharedSettingsPlatformCapabilities {
@@ -884,8 +882,6 @@ class SharedSettingsStore(
             }
             SharedSettingsIntent.SendFeedback ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.SendFeedback)
-            is SharedSettingsIntent.RunBuglyCrashMonitorAction ->
-                _state.value = _state.value.copy(effect = SharedSettingsEffect.RunBuglyCrashMonitorAction(intent.action))
             SharedSettingsIntent.ConsumeEffect ->
                 _state.value = _state.value.copy(effect = null)
         }
@@ -1220,7 +1216,6 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RefreshRecompositionProfilerReport,
             SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
-            is SharedSettingsIntent.RunBuglyCrashMonitorAction,
             SharedSettingsIntent.ConsumeEffect -> false
         }
 

@@ -30,7 +30,7 @@ class SettingsHomePageDiagnosticsTest {
 
         assertEquals("Sanitized app diagnostics", payload.detail)
         assertEquals(
-            listOf("Actions", "Bugly validation", "Log"),
+            listOf("Actions", "Log"),
             payload.sections.map { it.title }
         )
     }
@@ -73,7 +73,7 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Recomposition profiler", "Profiler defaults", "Profiler report", "Analyzer", "Actions", "Bugly validation", "Log"),
+            listOf("Recomposition profiler", "Profiler defaults", "Profiler report", "Analyzer", "Actions", "Log"),
             payload.sections.map { it.title }
         )
         assertTrue(

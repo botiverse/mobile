@@ -342,22 +342,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(this.uploadBuglyDiagnosticsCapability());
           return;
         }
-        case "buglyPostTestError": {
-          callback(this.postBuglyTestErrorCapability());
-          return;
-        }
-        case "buglyTestJsCrash": {
-          callback(SlockOhosBuglyDiagnostics.testCrash("js"));
-          return;
-        }
-        case "buglyTestCppCrash": {
-          callback(SlockOhosBuglyDiagnostics.testCrash("cpp"));
-          return;
-        }
-        case "buglyTestFreeze": {
-          callback(SlockOhosBuglyDiagnostics.testCrash("freeze"));
-          return;
-        }
         case "requestNotificationPermission": {
           callback(await this.requestNotificationPermissionCapability());
           return;
@@ -528,16 +512,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       SlockOhosDiagnostics.record("Settings", "diagnostics_upload_requested");
     }
     return result;
-  }
-
-  private postBuglyTestErrorCapability(): Record<string, Object> {
-    const extraData = SlockOhosBuglyDiagnostics.exportDiagnosticsText(getContext(this) as common.UIAbilityContext);
-    return SlockOhosBuglyDiagnostics.reportCaughtError(
-      "SlockManualBuglyError",
-      "Manual Bugly custom error from Settings",
-      "at Settings.Diagnostics.UploadCrashMonitorValidation",
-      extraData
-    );
   }
 
   private async requestNotificationPermissionCapability(): Promise<Record<string, Object>> {

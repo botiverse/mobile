@@ -389,9 +389,6 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun sendFeedback(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
 
-    suspend fun buglyCrashMonitorAction(action: String): Boolean =
-        bridge.settingsCapability(JSONObject().put("action", action))?.optString("status") == "ok"
-
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
         systemNotificationAction("requestNotificationPermission")
 
