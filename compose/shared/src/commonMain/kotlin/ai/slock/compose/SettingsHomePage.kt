@@ -4539,16 +4539,11 @@ private fun SharedHomeScreen(
     val serverSwitchState = state.serverSwitchState
     val serverSwitcherExpanded = state.serverSwitcherExpanded
     when (val current = state.content) {
-        is SharedHomeContentState.Loading ->
-            if (current.session == null) {
-                AppShellPlaceholderContent(
-                    title = "Home",
-                    subtitle = "Loading workspace...",
-                    iconName = "house"
-                )
-            } else {
+        is SharedHomeContentState.Loading -> {
+            val session = current.session
+            if (session != null) {
                 SharedHomeSessionShell(
-                    session = current.session,
+                    session = session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
                     contentRefreshing = true,
                     bottomContentPadding = bottomContentPadding,
@@ -4564,7 +4559,10 @@ private fun SharedHomeScreen(
                     },
                     onCreateChannelClick = onCreateChannel
                 )
+            } else {
+                SlockCenteredLoading()
             }
+        }
         is SharedHomeContentState.Empty ->
             SharedHomeSessionShell(
                 session = current.session,
