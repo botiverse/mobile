@@ -92,11 +92,7 @@ class HomeParserTest {
                             listOf(
                                 HomeServerUnreadSummaryWireDto(
                                     serverId = "server-1",
-                                    unreadCount = 9,
-                                    channelUnreadCount = 4,
-                                    directMessageUnreadCount = 1,
-                                    mentionCount = 2,
-                                    taskUnreadCount = 3
+                                    unreadCount = 9
                                 )
                             )
                     ),

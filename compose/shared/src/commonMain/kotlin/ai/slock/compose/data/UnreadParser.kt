@@ -4,6 +4,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -14,8 +15,7 @@ import kotlinx.serialization.json.Json
  * Server contracts (`packages/server/src/routes/unread.ts`,
  * `packages/server/src/routes/messages.ts`):
  *  - GET  /api/unread/counts                  → `{ channels: {[channelId]: number} }`
- *  - GET  /api/servers/:id/unread/summary     → `{ servers: ServerUnreadSummary[],
- *                                                  totalUnreadCount, mentionCount }`
+ *  - GET  /api/servers/unread-summary          → `[{ serverId, unreadCount }]`
  *  - POST /api/messages/channels/:id/read     → `{ channelId, seq, unreadCount, changed }`
  *  - POST /api/messages/channels/:id/read/all → same shape
  *  - POST /api/messages/channels/:id/unread   → same shape
@@ -37,19 +37,7 @@ private data class WireChannelUnreadCounts(
 @Serializable
 private data class WireServerUnreadSummary(
     val serverId: String,
-    val totalUnreadCount: Int = 0,
-    val channelUnreadCount: Int = 0,
-    val directMessageUnreadCount: Int = 0,
-    val mentionCount: Int = 0,
-    val taskUnreadCount: Int = 0,
-    val updatedAt: String? = null,
-)
-
-@Serializable
-private data class WireServerUnreadSummaryResponse(
-    val servers: List<WireServerUnreadSummary> = emptyList(),
-    val totalUnreadCount: Int? = null,
-    val mentionCount: Int? = null,
+    val unreadCount: Int,
 )
 
 @Serializable
@@ -83,28 +71,24 @@ fun parseChannelUnreadSnapshot(
 }.getOrNull()
 
 /**
- * Parse `/api/servers/:id/unread/summary`.
+ * Parse `/api/servers/unread-summary`.
  */
 fun parseServerUnreadSummarySnapshot(
     bodyText: String,
     selectedServer: ServerSummary,
 ): ServerUnreadSummarySnapshot? = runCatching {
-    val decoded =
-        unreadJson.decodeFromString(WireServerUnreadSummaryResponse.serializer(), bodyText)
-    val summaries = decoded.servers.map { it.toDomain() }
+    val summaries =
+        unreadJson.decodeFromString(ListSerializer(WireServerUnreadSummary.serializer()), bodyText)
+            .map { it.toDomain() }
     val selectedSummary = summaries.firstOrNull { it.serverId == selectedServer.id }
-    val totalUnread =
-        decoded.totalUnreadCount
-            ?: selectedSummary?.totalUnreadCount
-            ?: summaries.sumOf { it.totalUnreadCount }
-    val mentionCount =
-        decoded.mentionCount ?: selectedSummary?.mentionCount ?: 0
+    val totalUnread = summaries.sumOf { it.totalUnreadCount }
+    val selectedUnread = selectedSummary?.totalUnreadCount ?: 0
     ServerUnreadSummarySnapshot(
-        server = selectedServer.copy(unreadCount = selectedSummary?.totalUnreadCount ?: totalUnread),
+        server = selectedServer.copy(unreadCount = selectedUnread),
         summaries = summaries,
         selectedServerSummary = selectedSummary,
         totalUnreadCount = totalUnread,
-        mentionCount = mentionCount,
+        mentionCount = 0,
     )
 }.getOrNull()
 
@@ -133,10 +117,5 @@ fun parseReadReceiptResult(
 private fun WireServerUnreadSummary.toDomain(): ServerUnreadSummary =
     ServerUnreadSummary(
         serverId = ServerId(serverId),
-        totalUnreadCount = totalUnreadCount,
-        channelUnreadCount = channelUnreadCount,
-        directMessageUnreadCount = directMessageUnreadCount,
-        mentionCount = mentionCount,
-        taskUnreadCount = taskUnreadCount,
-        updatedAt = updatedAt,
+        totalUnreadCount = unreadCount,
     )

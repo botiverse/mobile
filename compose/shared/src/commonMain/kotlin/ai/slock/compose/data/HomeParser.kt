@@ -62,12 +62,7 @@ data class HomeDirectMessageWireDto(
 @Serializable
 data class HomeServerUnreadSummaryWireDto(
     val serverId: String,
-    val unreadCount: Int,
-    val channelUnreadCount: Int = 0,
-    val directMessageUnreadCount: Int = 0,
-    val mentionCount: Int = 0,
-    val taskUnreadCount: Int = 0,
-    val updatedAt: String? = null
+    val unreadCount: Int
 )
 
 fun parseSlockHome(
