@@ -140,6 +140,40 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun memberProfilePreservesMembershipAndCreatedAgents() {
+        val profile = parseSharedMemberProfile(
+            """
+            {
+              "userId": "user-1",
+              "name": "artin",
+              "displayName": "Artin",
+              "role": "owner",
+              "joinedAt": "2026-06-01T00:00:00.000Z",
+              "membershipStatus": "active",
+              "createdAgents": [
+                {
+                  "id": "agent-1",
+                  "name": "builder",
+                  "displayName": "Builder",
+                  "runtime": "claude",
+                  "status": "online"
+                }
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertNotNull(profile)
+        assertEquals("2026-06-01T00:00:00.000Z", profile.joinedAt)
+        assertEquals("active", profile.membershipStatus)
+        assertEquals("Owner", profile.roleDescription)
+        val agent = profile.createdAgents.single()
+        assertEquals("agent-1", agent.id.value)
+        assertEquals("Builder", agent.displayName)
+        assertEquals("claude", agent.runtime)
+    }
+
+    @Test
     fun workspaceLookupReadsRuntimeProfileSummaryCurrent() {
         val lookup = parseSharedAgentWorkspaceLookup(
             """

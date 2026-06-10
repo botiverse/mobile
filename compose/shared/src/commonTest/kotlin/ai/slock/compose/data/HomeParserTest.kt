@@ -106,6 +106,50 @@ class HomeParserTest {
     }
 
     @Test
+    fun preservesPrivateAndJointChannelMetadata() {
+        val result =
+            parseSlockHome(
+                payload =
+                    homePayload(
+                        channels =
+                            listOf(
+                                HomeChannelWireDto(
+                                    id = "private-1",
+                                    name = "ops",
+                                    type = "private",
+                                    joined = true
+                                ),
+                                HomeChannelWireDto(
+                                    id = "joint-1",
+                                    name = "partner",
+                                    type = "joint",
+                                    joined = true,
+                                    jointChannelId = "joint-root-1",
+                                    jointRole = "host",
+                                    jointPeerServerId = "server-2",
+                                    jointPeerServerName = "Partner",
+                                    jointPeerServerSlug = "partner",
+                                    jointPeerStatus = "pending"
+                                )
+                            )
+                    ),
+                session = sampleSession()
+            )
+
+        assertTrue(result is DataResult.Content)
+        val private = result.data.channels.first { it.channelId?.value == "private-1" }
+        val joint = result.data.channels.first { it.channelId?.value == "joint-1" }
+        assertEquals("private", private.channelType)
+        assertEquals("joint", joint.channelType)
+        assertEquals("joint-root-1", joint.jointChannelId)
+        assertEquals("host", joint.jointRole)
+        assertEquals("server-2", joint.jointPeerServerId?.value)
+        assertEquals("Partner", joint.jointPeerServerName)
+        assertEquals("partner", joint.jointPeerServerSlug)
+        assertEquals("pending", joint.jointPeerStatus)
+    }
+
+    @Test
     fun decodesServerUnreadSummaryUnreadCountFromServerContract() {
         val serverUnreadSummary =
             json.decodeFromString(

@@ -56,14 +56,26 @@ private data class WireChannelFileSourceDto(
 )
 
 @Serializable
+private data class WireChannelFileUploaderDto(
+    val type: String? = null,
+    val id: String? = null,
+    val name: String? = null,
+    val displayName: String? = null,
+)
+
+@Serializable
 private data class WireChannelFileDto(
     val id: String? = null,
+    val channelId: String? = null,
     val filename: String = "",
     val mimeType: String = "",
     val sizeBytes: Long = 0,
+    val width: Int? = null,
+    val height: Int? = null,
     val thumbnailUrl: String? = null,
     val createdAt: String? = null,
     val messageId: String? = null,
+    val uploader: WireChannelFileUploaderDto? = null,
     val source: WireChannelFileSourceDto? = null,
     val attachment: WireAttachmentDto? = null,
 )
@@ -134,6 +146,8 @@ private fun WireAttachmentDto.toDomain(index: Int): Attachment =
         mimeType = mimeType.ifBlank { "application/octet-stream" },
         sizeLabel = formatAttachmentSizeLabel(sizeBytes),
         thumbnailUrl = thumbnailUrl,
+        width = width,
+        height = height,
     )
 
 private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
@@ -143,6 +157,8 @@ private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
             filename = filename,
             mimeType = mimeType,
             sizeBytes = sizeBytes,
+            width = width,
+            height = height,
             thumbnailUrl = thumbnailUrl,
         )
     } ?: return null
@@ -150,6 +166,11 @@ private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
         attachment = attachmentWire.toDomain(index),
         createdAt = createdAt,
         messageId = messageId?.let(::MessageId),
+        channelId = channelId?.let(::ChannelId),
+        uploaderType = uploader?.type,
+        uploaderId = uploader?.id,
+        uploaderName = uploader?.name,
+        uploaderDisplayName = uploader?.displayName,
         sourceType = source?.type,
         sourceParentMessageId = source?.parentMessageId?.let(::MessageId),
         sourceParentMessageShortId = source?.parentMessageShortId,

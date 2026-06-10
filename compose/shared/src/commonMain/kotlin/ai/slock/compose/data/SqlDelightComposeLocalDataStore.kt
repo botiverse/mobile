@@ -140,6 +140,12 @@ internal class SqlDelightComposeLocalDataStore(
                 lastMessageSenderName = channel.lastMessageSenderName,
                 hasDraft = channel.hasDraft.toLongFlag(),
                 replyCount = snapshot.parentMessage?.replyCount?.toLong() ?: 0L,
+                jointChannelId = channel.jointChannelId,
+                jointRole = channel.jointRole,
+                jointPeerServerId = channel.jointPeerServerId?.value,
+                jointPeerServerName = channel.jointPeerServerName,
+                jointPeerServerSlug = channel.jointPeerServerSlug,
+                jointPeerStatus = channel.jointPeerStatus,
                 capabilities = channel.permissions.toCapabilityMask(),
                 updatedAtLabel = channel.lastMessageAt,
                 lastSyncedAtMs = now
@@ -182,6 +188,8 @@ internal class SqlDelightComposeLocalDataStore(
                         mimeType = attachment.mimeType,
                         sizeLabel = attachment.sizeLabel,
                         thumbnailUrl = attachment.thumbnailUrl,
+                        width = attachment.width?.toLong(),
+                        height = attachment.height?.toLong(),
                         sortOrder = index.toLong()
                     )
                 }
@@ -273,6 +281,7 @@ internal class SqlDelightComposeLocalDataStore(
         return ConversationSummary(
             threadId = if (thread != null) threadIdentity(thread.parentChannelId, thread.parentMessageId) else ThreadId(channelId),
             channelId = if (thread != null) thread.parentChannelId else ChannelId(channelId),
+            channelType = type,
             thread = thread,
             kind = kind,
             name = name,
@@ -296,6 +305,12 @@ internal class SqlDelightComposeLocalDataStore(
             joined = joined != 0L,
             archived = archived != 0L,
             memberCount = memberCount?.toInt(),
+            jointChannelId = jointChannelId,
+            jointRole = jointRole,
+            jointPeerServerId = jointPeerServerId?.let(::ServerId),
+            jointPeerServerName = jointPeerServerName,
+            jointPeerServerSlug = jointPeerServerSlug,
+            jointPeerStatus = jointPeerStatus,
             permissions = capabilities.toConversationPermissions()
         )
     }
@@ -306,7 +321,9 @@ internal class SqlDelightComposeLocalDataStore(
             name = name,
             mimeType = mimeType,
             sizeLabel = sizeLabel,
-            thumbnailUrl = thumbnailUrl
+            thumbnailUrl = thumbnailUrl,
+            width = width?.toInt(),
+            height = height?.toInt()
         )
 
     private fun TaskSummaryEntity.toTaskSummary(): TaskSummary =
@@ -347,7 +364,7 @@ internal class SqlDelightComposeLocalDataStore(
             presence = presence.name,
             description = description,
             roleDescription = roleDescription,
-            membershipStatus = null,
+            membershipStatus = membershipStatus,
             lastSyncedAtMs = now
         )
     }
@@ -378,7 +395,7 @@ internal class SqlDelightComposeLocalDataStore(
         runCatching { json.decodeFromString<Map<String, String>>(value) }.getOrDefault(emptyMap())
 
     private fun ConversationSummary.toChannelType(): String =
-        when (kind) {
+        channelType?.takeIf { it.isNotBlank() } ?: when (kind) {
             ConversationKind.Thread -> "thread"
             ConversationKind.DirectMessage -> "dm"
             ConversationKind.Channel -> "channel"

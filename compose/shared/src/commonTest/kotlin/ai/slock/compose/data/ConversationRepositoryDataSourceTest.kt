@@ -136,7 +136,7 @@ class ConversationRepositoryDataSourceTest {
                         "GET messages/context/message-1" to
                             """{"channelId":"channel-1","targetMessageId":"message-1","hasOlder":true,"hasNewer":false,"messages":[${messageJson("message-1", "channel-1")}]}""",
                         "GET channels/channel-1/files" to
-                            """{"files":[{"id":"file-1","filename":"a.png","mimeType":"image/png","sizeBytes":128,"messageId":"message-1","source":{"type":"channel"}}],"nextCursor":"cursor-2"}""",
+                            """{"files":[{"id":"file-1","channelId":"channel-1","filename":"a.png","mimeType":"image/png","sizeBytes":128,"width":640,"height":480,"messageId":"message-1","uploader":{"type":"user","id":"user-1","name":"artin","displayName":"Artin"},"source":{"type":"channel","parentMessageId":"parent-1","parentMessageShortId":"p1"}}],"nextCursor":"cursor-2"}""",
                         "GET attachments/attachment-1/url" to """{"url":"https://cdn.slock.test/a.png","expiresAt":"2026-05-22T10:00:00.000Z"}"""
                     ),
                 uploadBody =
@@ -166,7 +166,16 @@ class ConversationRepositoryDataSourceTest {
 
         assertEquals("older-1", assertIs<DataResult.Content<ThreadSnapshot>>(older).data.messages.single().id.value)
         assertEquals("message-1", assertIs<DataResult.Content<ThreadSnapshot>>(context).data.highlightedMessageId?.value)
-        assertEquals("cursor-2", assertIs<DataResult.Content<ChannelFilesSnapshot>>(files).data.nextCursor)
+        val fileSnapshot = assertIs<DataResult.Content<ChannelFilesSnapshot>>(files).data
+        assertEquals("cursor-2", fileSnapshot.nextCursor)
+        val file = fileSnapshot.items.single()
+        assertEquals("channel-1", file.channelId?.value)
+        assertEquals(640, file.attachment.width)
+        assertEquals(480, file.attachment.height)
+        assertEquals("user", file.uploaderType)
+        assertEquals("user-1", file.uploaderId)
+        assertEquals("Artin", file.uploaderDisplayName)
+        assertEquals("parent-1", file.sourceParentMessageId?.value)
         assertEquals("https://cdn.slock.test/a.png", assertIs<DataResult.Content<AttachmentOpenTarget>>(target).data.url)
         assertEquals("uploaded-1", assertIs<DataResult.Content<AttachmentUploadResult>>(uploaded).data.attachments.single().id.value)
         assertEquals(listOf("upload.txt"), network.uploadedFileNames)

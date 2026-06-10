@@ -23,6 +23,12 @@ CREATE TABLE channelEntity (
   lastMessageSenderName TEXT,
   hasDraft INTEGER NOT NULL DEFAULT 0,
   replyCount INTEGER NOT NULL DEFAULT 0,
+  jointChannelId TEXT,
+  jointRole TEXT,
+  jointPeerServerId TEXT,
+  jointPeerServerName TEXT,
+  jointPeerServerSlug TEXT,
+  jointPeerStatus TEXT,
   -- Bit mask for channel-level permissions:
   -- 1 = read, 2 = send, 4 = attach, 8 = create task.
   capabilities INTEGER NOT NULL DEFAULT 15,
@@ -107,6 +113,8 @@ CREATE TABLE attachmentEntity (
   mimeType TEXT NOT NULL,
   sizeLabel TEXT NOT NULL,
   thumbnailUrl TEXT,
+  width INTEGER,
+  height INTEGER,
   sortOrder INTEGER NOT NULL
 );
 
@@ -290,10 +298,16 @@ INSERT OR REPLACE INTO channelEntity(
   lastMessageSenderName,
   hasDraft,
   replyCount,
+  jointChannelId,
+  jointRole,
+  jointPeerServerId,
+  jointPeerServerName,
+  jointPeerServerSlug,
+  jointPeerStatus,
   capabilities,
   updatedAtLabel,
   lastSyncedAtMs
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectChannelReadState:
 SELECT *
@@ -460,8 +474,10 @@ INSERT INTO attachmentEntity(
   mimeType,
   sizeLabel,
   thumbnailUrl,
+  width,
+  height,
   sortOrder
-) VALUES (?, ?, ?, ?, ?, ?, ?);
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectAttachmentsForMessage:
 SELECT *

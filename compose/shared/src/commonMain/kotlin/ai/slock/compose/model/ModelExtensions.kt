@@ -18,6 +18,7 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         name = if (shouldUseFallbackName) fallback.name else name,
         subtitle = subtitle ?: fallback.subtitle,
         channelId = channelId ?: fallback.channelId.takeIf { sameConversation },
+        channelType = channelType ?: fallback.channelType.takeIf { sameConversation },
         thread = thread ?: fallback.thread.takeIf { sameConversation },
         kind = if (shouldUseFallbackName) fallback.kind else kind,
         unreadCount = if (unreadCountKnown) unreadCount else fallback.unreadCount,
@@ -31,7 +32,13 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
         lastMessageSenderName = lastMessageSenderName ?: fallback.lastMessageSenderName,
         hasDraft = if (hasDraftKnown) hasDraft else fallback.hasDraft,
         hasDraftKnown = hasDraftKnown || fallback.hasDraftKnown,
-        memberCount = memberCount ?: fallback.memberCount
+        memberCount = memberCount ?: fallback.memberCount,
+        jointChannelId = jointChannelId ?: fallback.jointChannelId.takeIf { sameConversation },
+        jointRole = jointRole ?: fallback.jointRole.takeIf { sameConversation },
+        jointPeerServerId = jointPeerServerId ?: fallback.jointPeerServerId.takeIf { sameConversation },
+        jointPeerServerName = jointPeerServerName ?: fallback.jointPeerServerName.takeIf { sameConversation },
+        jointPeerServerSlug = jointPeerServerSlug ?: fallback.jointPeerServerSlug.takeIf { sameConversation },
+        jointPeerStatus = jointPeerStatus ?: fallback.jointPeerStatus.takeIf { sameConversation }
     )
 }
 

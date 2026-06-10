@@ -6,6 +6,7 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.toGravatarAvatarUrl
@@ -40,7 +41,13 @@ data class HomeChannelWireDto(
     val description: String? = null,
     val archivedAt: String? = null,
     val joined: Boolean = true,
-    val lastMessageAt: String? = null
+    val lastMessageAt: String? = null,
+    val jointChannelId: String? = null,
+    val jointRole: String? = null,
+    val jointPeerServerId: String? = null,
+    val jointPeerServerName: String? = null,
+    val jointPeerServerSlug: String? = null,
+    val jointPeerStatus: String? = null,
 )
 
 @Serializable
@@ -191,12 +198,19 @@ private fun HomeChannelWireDto.toConversation(): ConversationSummary =
     ConversationSummary(
         threadId = ThreadId(id),
         channelId = ChannelId(id),
+        channelType = type.takeIf { it.isNotBlank() },
         kind = ConversationKind.Channel,
         name = name,
         subtitle = description?.takeIf { it.isNotBlank() },
         joined = joined,
         archived = archivedAt != null,
         lastMessageAt = lastMessageAt,
+        jointChannelId = jointChannelId?.takeIf { it.isNotBlank() },
+        jointRole = jointRole?.takeIf { it.isNotBlank() },
+        jointPeerServerId = jointPeerServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        jointPeerServerName = jointPeerServerName?.takeIf { it.isNotBlank() },
+        jointPeerServerSlug = jointPeerServerSlug?.takeIf { it.isNotBlank() },
+        jointPeerStatus = jointPeerStatus?.takeIf { it.isNotBlank() },
         permissions = ConversationPermissions(
             canSend = joined,
             canAttach = joined,

@@ -107,6 +107,11 @@ data class ChannelFileItem(
     val attachment: Attachment,
     val createdAt: String? = null,
     val messageId: MessageId? = null,
+    val channelId: ChannelId? = null,
+    val uploaderType: String? = null,
+    val uploaderId: String? = null,
+    val uploaderName: String? = null,
+    val uploaderDisplayName: String? = null,
     val sourceType: String? = null,
     val sourceParentMessageId: MessageId? = null,
     val sourceParentMessageShortId: String? = null

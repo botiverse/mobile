@@ -51,6 +51,7 @@ data class ThreadConversation(
 data class ConversationSummary(
     val threadId: ThreadId,
     val channelId: ChannelId? = null,
+    val channelType: String? = null,
     val thread: ThreadConversation? = null,
     val kind: ConversationKind,
     val name: String,
@@ -74,6 +75,12 @@ data class ConversationSummary(
     val joined: Boolean = true,
     val archived: Boolean = false,
     val memberCount: Int? = null,
+    val jointChannelId: String? = null,
+    val jointRole: String? = null,
+    val jointPeerServerId: ServerId? = null,
+    val jointPeerServerName: String? = null,
+    val jointPeerServerSlug: String? = null,
+    val jointPeerStatus: String? = null,
     val permissions: ConversationPermissions = ConversationPermissions()
 )
 
@@ -193,6 +200,9 @@ data class MemberProfile(
     val avatarLabel: String = displayName.take(1).uppercase(),
     val presence: Presence = Presence.Offline,
     val agentStatus: AgentStatus? = null,
+    val joinedAt: String? = null,
+    val membershipStatus: String? = null,
+    val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList()
 )
 

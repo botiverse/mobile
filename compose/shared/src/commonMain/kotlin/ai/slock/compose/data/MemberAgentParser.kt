@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.AgentProfile
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberId
@@ -32,6 +33,9 @@ private data class WireServerMember(
     val avatarUrl: String? = null,
     val role: String? = null,
     val gravatarHash: String? = null,
+    val joinedAt: String? = null,
+    val membershipStatus: String? = null,
+    val createdAgents: List<WireAgent> = emptyList(),
 )
 
 @Serializable
@@ -71,6 +75,7 @@ private data class WireChannelHuman(
 @Serializable
 private data class WireAgent(
     val id: String,
+    val userId: String? = null,
     val name: String,
     val displayName: String? = null,
     val description: String? = null,
@@ -607,6 +612,10 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
         presence = Presence.Offline,
+        joinedAt = joinedAt,
+        membershipStatus = membershipStatus?.takeIf { it.isNotBlank() }
+            ?: joinedAt?.let { "active" },
+        createdAgents = createdAgents.filterNot { it.isDeletedAgent }.map { it.toAgentProfile() },
     )
 }
 
@@ -643,6 +652,36 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         avatarLabel = label.take(1).uppercase(),
         presence = agentStatus.presence,
         agentStatus = agentStatus,
+        permissionBadges = listOfNotNull(
+            runtime?.takeIf { it.isNotBlank() },
+            firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
+                ?.let { "computer:$it" },
+            firstNonBlank(computerId, machineId, runtimeProfile?.current?.machineId)
+                ?.let { "computer-id:$it" },
+        ),
+    )
+}
+
+private fun WireAgent.toAgentProfile(): AgentProfile {
+    val label = displayName?.takeIf { it.isNotBlank() } ?: name
+    val statusValue = activity ?: status
+    val agentStatus = AgentStatus.fromWireValue(statusValue) ?: AgentStatus.Offline
+    return AgentProfile(
+        id = MemberId(id),
+        userId = userId ?: id,
+        displayName = label,
+        handle = name,
+        description = description,
+        roleDescription = runtime,
+        avatarUrl = avatarUrl,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.take(1).uppercase(),
+        presence = agentStatus.presence,
+        agentStatus = agentStatus,
+        statusLabel = statusValue,
+        runtime = runtime,
+        model = model,
+        reasoning = reasoningEffort,
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)
