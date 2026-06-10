@@ -77,6 +77,41 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun selectServerShowsSelectedSessionWhileNetworkLoadIsPending() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource = source(api = api, sessionStore = sessionStore),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        val initialContent = store.state.value.content
+        assertTrue(initialContent is SharedHomeContentState.Content)
+        assertEquals("server-1", initialContent.snapshot.server.id.value)
+
+        val blockedSwitch = api.blockNextChannels()
+        val switchJob = launch { store.accept(SharedHomeIntent.SelectServer("server-2")) }
+        blockedSwitch.awaitStarted()
+
+        val switchingContent = store.state.value.content
+        assertTrue(switchingContent is SharedHomeContentState.Loading)
+        assertEquals("server-2", switchingContent.session?.currentServerId)
+        assertEquals("server-2", sessionStore.readSession()?.selectedServerId)
+        assertEquals("server-2", store.state.value.serverSwitchState.pendingServerId)
+
+        blockedSwitch.release()
+        switchJob.join()
+
+        val finalContent = store.state.value.content
+        assertTrue(finalContent is SharedHomeContentState.Content)
+        assertEquals("server-2", finalContent.snapshot.server.id.value)
+        assertEquals(null, store.state.value.serverSwitchState.pendingServerId)
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerLoadsUnreadSummaryForSelectedServerOnly() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
@@ -650,10 +685,11 @@ class SharedHomeStoreTest {
 
     private fun source(
         api: SlockHomeApi,
-        announcementsApi: SlockAnnouncementsRemindersApi? = null
+        announcementsApi: SlockAnnouncementsRemindersApi? = null,
+        sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession())
     ): SharedHomeDataSource =
         SharedHomeDataSource(
-            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            sessionStore = sessionStore,
             api = api,
             announcementsApi = announcementsApi,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }

@@ -211,6 +211,9 @@ class SharedHomeStore(
             )
 
             val requestedServerId = request.selectedServerId
+            val switchingServers =
+                requestedServerId != null &&
+                    requestedServerId != (previous as? SharedHomeContentState.Content)?.snapshot?.server?.id?.value
             requestedServerId?.let { serverId ->
                 val server = session.servers.firstOrNull { it.id == serverId }
                 authStore.updateSelectedServer(serverId = serverId, serverSlug = server?.slug)
@@ -219,7 +222,12 @@ class SharedHomeStore(
             val activeSession = authStore.readSession() ?: session
             reduceState(
                 _state.value.copy(
-                    content = _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
+                    content =
+                        if (switchingServers) {
+                            SharedHomeContentState.Loading(activeSession)
+                        } else {
+                            _state.value.content.asRefreshing(activeSession, showRefreshAffordance)
+                        }
                 )
             )
             val activeServerId = requestedServerId ?: activeSession.currentServerId
