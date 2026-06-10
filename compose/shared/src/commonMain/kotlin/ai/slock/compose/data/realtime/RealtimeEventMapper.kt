@@ -123,12 +123,8 @@ class RealtimeEventMapper {
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
-            RealtimeSocketEvents.AgentCreated -> {
-                val agentWire = (element["agent"] as? JsonObject)
-                    ?.let { decodeOrNull(AgentProfile.serializer(), it) }
-                agentWire?.let(::AgentCreated)
-                    ?: decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
-            }
+            RealtimeSocketEvents.AgentCreated ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentDeleted ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.MachineStatus,
@@ -286,6 +282,7 @@ private data class MessageWireDto(
     val updatedAt: String? = null,
     val senderName: String? = null,
     val senderDescription: String? = null,
+    val senderMembershipStatus: String? = null,
     val roleDescription: String? = null,
     val attachments: List<AttachmentWireDto> = emptyList(),
     val reactions: List<MessageReactionWireDto>? = null,
@@ -307,6 +304,8 @@ private data class AttachmentWireDto(
     val mimeType: String,
     val sizeBytes: Long? = null,
     val thumbnailUrl: String? = null,
+    val width: Int? = null,
+    val height: Int? = null,
 )
 
 @Serializable
@@ -419,6 +418,7 @@ private fun MessageWireDto.toDomain(): Message {
         systemEventType = null,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },
+        senderMembershipStatus = senderMembershipStatus,
         replyCount = 0,
         parentMessageId = null,
         updatedAtLabel = updatedAt,
@@ -443,6 +443,8 @@ private fun AttachmentWireDto.toDomain(): Attachment = Attachment(
     mimeType = mimeType,
     sizeLabel = sizeBytes?.let { "$it B" } ?: "",
     thumbnailUrl = thumbnailUrl,
+    width = width,
+    height = height,
 )
 
 private fun ThreadUpdatedDto.toDomain(): ThreadUpdated = ThreadUpdated(

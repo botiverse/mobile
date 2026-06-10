@@ -349,6 +349,7 @@ class SocketIoRealtimeClient(
             RealtimeSocketEvents.ServerMemberLeft,
             RealtimeSocketEvents.ServerMemberRemoved,
             RealtimeSocketEvents.ServerMembershipRemoved,
+            RealtimeSocketEvents.ServerDeleted,
             RealtimeSocketEvents.AnnouncementNew,
             RealtimeSocketEvents.ReminderFired,
             RealtimeSocketEvents.ReminderScheduled,
