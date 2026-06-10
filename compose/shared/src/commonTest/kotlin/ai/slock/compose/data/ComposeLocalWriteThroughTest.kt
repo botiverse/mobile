@@ -443,6 +443,58 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
+    fun realtimePresenceBatchUpdatesCachedDirectMessagesWithSingleHomeWrite() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        store.writeHome(
+            home(
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Agent One",
+                            presence = Presence.Offline,
+                            presenceMemberId = MemberId("agent-1")
+                        ),
+                        ConversationSummary(
+                            threadId = ThreadId("dm-2"),
+                            channelId = ChannelId("dm-2"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Agent Two",
+                            presence = Presence.Offline,
+                            presenceMemberId = MemberId("agent-2")
+                        )
+                    )
+            )
+        )
+
+        writer.writeRealtimeEvents(
+            serverId,
+            listOf(
+                MemberPresenceUpdated(
+                    memberId = MemberId("agent-1"),
+                    presence = Presence.Active,
+                    kind = MemberKind.Agent
+                ),
+                MemberPresenceUpdated(
+                    memberId = MemberId("agent-2"),
+                    presence = Presence.Away,
+                    kind = MemberKind.Agent
+                )
+            )
+        )
+
+        val cached = store.readHome(serverId)?.directMessages.orEmpty()
+        assertEquals(Presence.Active, cached[0].presence)
+        assertEquals(Presence.Away, cached[1].presence)
+        assertEquals(1, logs.count { it.startsWith("write_home_realtime source=presence_batch") })
+        assertTrue(logs.single { it.startsWith("write_home_realtime source=presence_batch") }.contains("members=2 changed=2"))
+    }
+
+    @Test
     fun clearConversationUnreadUpdatesCachedHomeRow() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)

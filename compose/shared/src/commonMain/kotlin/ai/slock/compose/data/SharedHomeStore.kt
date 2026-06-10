@@ -3,6 +3,8 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
@@ -11,6 +13,7 @@ import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,16 +23,22 @@ class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedHomeDataSource,
     private val scope: CoroutineScope,
-    private val diagnosticsLogger: (String) -> Unit = {}
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val presenceFlushDelayMillis: Long = 250L
 ) {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
 
     private var loadJob: Job? = null
+    private var refreshJob: Job? = null
+    private var presenceFlushJob: Job? = null
+    private var pendingPresenceServerId: ServerId? = null
+    private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
             loadJob?.cancel()
+            refreshJob?.cancel()
             loadJob =
                 scope.launch {
                     accept(intent)
@@ -44,6 +53,12 @@ class SharedHomeStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        refreshJob?.cancel()
+        refreshJob = null
+        presenceFlushJob?.cancel()
+        presenceFlushJob = null
+        pendingPresenceEvents.clear()
+        pendingPresenceServerId = null
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
@@ -136,6 +151,10 @@ class SharedHomeStore(
         }
         if (event is RealtimeRefreshRequired) {
             applyRealtimeRefresh(event)
+            return
+        }
+        if (event is MemberPresenceUpdated) {
+            enqueuePresenceEvent(serverId, event)
             return
         }
         val result = dataSource.applyRealtimeEvent(
@@ -249,51 +268,25 @@ class SharedHomeStore(
                                 serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId)
                             )
                         )
+                        launchNetworkRefresh(
+                            request = request,
+                            activeSession = activeSession,
+                            activeServer = activeServer ?: cachedServerId
+                        )
+                        return
                     }
                 }
                 is DataResult.Empty,
                 is DataResult.Error,
                 is DataResult.NoPermission -> Unit
             }
-            val result =
-                when (val result = dataSource.loadHome(serverId = activeServer, priority = DataRequestPriority.Visible)) {
-                    is DataResult.Content -> SharedHomeContentState.Content(result.data, activeSession)
-                    is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
-                    is DataResult.Error -> {
-                        diagnosticsLogger(
-                            "home_ui_error source=shared_home_load code=${result.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                        )
-                        _state.value.content.asRefreshFailed(result.error.code)
-                    }
-                    is DataResult.NoPermission -> {
-                        diagnosticsLogger(
-                            "home_ui_error source=shared_home_load code=${result.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
-                        )
-                        _state.value.content.asRefreshFailed(result.blocker.code)
-                    }
-                }
-            val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
-                ?: activeServerId?.let(::ServerId)
-            val latestSwitch = _state.value.serverSwitchState
-            if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
-                val nextContent =
-                    (result as? SharedHomeContentState.Content)?.let { content ->
-                        val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
-                        content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
-                    } ?: result
-                reduceState(
-                    _state.value.copy(
-                        content = nextContent,
-                        serverSwitchState =
-                            if (resultServerId != null) {
-                                latestSwitch.complete(request.requestGeneration, resultServerId)
-                            } else {
-                                latestSwitch
-                            }
-                    )
-                )
-                loadNotifications()
-            }
+            loadHomeFromNetwork(
+                request = request,
+                activeSession = activeSession,
+                activeServer = activeServer,
+                priority = DataRequestPriority.Visible,
+                forceNetwork = false
+            )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (throwable: Throwable) {
@@ -301,6 +294,134 @@ class SharedHomeStore(
                 "home_ui_exception source=shared_home_load errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
             )
             reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+        }
+    }
+
+    private fun launchNetworkRefresh(
+        request: HomeServerSwitchState,
+        activeSession: StoredAuthSession,
+        activeServer: ServerId
+    ) {
+        refreshJob?.cancel()
+        refreshJob =
+            scope.launch {
+                try {
+                    loadHomeFromNetwork(
+                        request = request,
+                        activeSession = activeSession,
+                        activeServer = activeServer,
+                        priority = DataRequestPriority.Background,
+                        forceNetwork = true
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (throwable: Throwable) {
+                    diagnosticsLogger(
+                        "home_ui_exception source=shared_home_background_refresh errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
+                    )
+                    reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+                }
+            }
+    }
+
+    private suspend fun loadHomeFromNetwork(
+        request: HomeServerSwitchState,
+        activeSession: StoredAuthSession,
+        activeServer: ServerId?,
+        priority: DataRequestPriority,
+        forceNetwork: Boolean
+    ) {
+        val result =
+            when (val result = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)) {
+                is DataResult.Content -> SharedHomeContentState.Content(result.data, activeSession)
+                is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
+                is DataResult.Error -> {
+                    diagnosticsLogger(
+                        "home_ui_error source=shared_home_load code=${result.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                    )
+                    _state.value.content.asRefreshFailed(result.error.code)
+                }
+                is DataResult.NoPermission -> {
+                    diagnosticsLogger(
+                        "home_ui_error source=shared_home_load code=${result.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                    )
+                    _state.value.content.asRefreshFailed(result.blocker.code)
+                }
+            }
+        val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
+            ?: activeServer
+        val latestSwitch = _state.value.serverSwitchState
+        if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
+            val nextContent =
+                (result as? SharedHomeContentState.Content)?.let { content ->
+                    val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
+                    content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
+                } ?: result
+            reduceState(
+                _state.value.copy(
+                    content = nextContent,
+                    serverSwitchState =
+                        if (resultServerId != null) {
+                            latestSwitch.complete(request.requestGeneration, resultServerId)
+                        } else {
+                            latestSwitch
+                        }
+                )
+            )
+            loadNotifications()
+        }
+    }
+
+    private fun enqueuePresenceEvent(serverId: ServerId, event: MemberPresenceUpdated) {
+        val pendingServerId = pendingPresenceServerId
+        if (pendingServerId != null && pendingServerId != serverId) {
+            presenceFlushJob?.cancel()
+            presenceFlushJob = null
+            pendingPresenceEvents.clear()
+        }
+        pendingPresenceServerId = serverId
+        pendingPresenceEvents[event.memberId] = event
+        if (presenceFlushJob?.isActive == true) return
+        presenceFlushJob =
+            scope.launch {
+                if (presenceFlushDelayMillis > 0) {
+                    delay(presenceFlushDelayMillis)
+                }
+                flushPresenceEvents()
+            }
+    }
+
+    private suspend fun flushPresenceEvents() {
+        val serverId = pendingPresenceServerId ?: return
+        val events = pendingPresenceEvents.values.toList()
+        pendingPresenceEvents.clear()
+        pendingPresenceServerId = null
+        presenceFlushJob = null
+        if (events.isEmpty()) return
+        val visibleServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        val selectedServerId = _state.value.serverSwitchState.selectedServerId
+        if (visibleServerId != null && visibleServerId != serverId) return
+        if (selectedServerId != null && selectedServerId != serverId.value) return
+        val result = dataSource.applyRealtimeEvents(
+            serverId = serverId,
+            events = events,
+            activeConversationId = _state.value.selectedConversationId
+        )
+        if (result is DataResult.Content) {
+            val currentContent = _state.value.content as? SharedHomeContentState.Content
+            val session = currentContent?.session
+                ?: authStore.readSession()
+                ?: return
+            reduceState(
+                _state.value.copy(
+                    content =
+                        SharedHomeContentState.Content(
+                            snapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot),
+                            session = session,
+                            contentRefreshing = currentContent?.contentRefreshing == true
+                        )
+                )
+            )
         }
     }
 

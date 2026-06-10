@@ -25,6 +25,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -224,6 +225,49 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun cacheHitStartRendersCachedHomeBeforeNetworkRefreshCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(
+                            sampleHome(payload.serverId).copy(
+                                channels = listOf(channel("channel-network", "network"))
+                            )
+                        )
+                    }
+                ),
+            scope = scope
+        )
+        val blockedRefresh = api.blockNextChannels()
+
+        store.accept(SharedHomeIntent.Start)
+        blockedRefresh.awaitStarted()
+
+        val cachedContent = store.state.value.content
+        assertTrue(cachedContent is SharedHomeContentState.Content)
+        assertEquals("general", cachedContent.snapshot.channels.single().name)
+        assertEquals(true, cachedContent.contentRefreshing)
+
+        blockedRefresh.release()
+        yield()
+
+        val refreshedContent = store.state.value.content
+        assertTrue(refreshedContent is SharedHomeContentState.Content)
+        assertEquals("network", refreshedContent.snapshot.channels.single().name)
+        assertEquals(false, refreshedContent.contentRefreshing)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatesVisibleHomeFromLocalSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -342,7 +386,8 @@ class SharedHomeStoreTest {
                     localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
                     parseHome = { _, _ -> error("network failure should not parse") }
                 ),
-            scope = scope
+            scope = scope,
+            presenceFlushDelayMillis = 0L
         )
         store.accept(SharedHomeIntent.Start)
         logs.clear()
@@ -461,7 +506,8 @@ class SharedHomeStoreTest {
                     localWriteThrough = ComposeLocalWriteThrough(localStore),
                     parseHome = { _, _ -> error("network failure should not parse") }
                 ),
-            scope = scope
+            scope = scope,
+            presenceFlushDelayMillis = 0L
         )
         store.accept(SharedHomeIntent.Start)
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages

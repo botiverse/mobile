@@ -42,7 +42,8 @@ class SharedHomeDataSource(
 
     suspend fun loadHome(
         serverId: ServerId? = null,
-        priority: DataRequestPriority = DataRequestPriority.Visible
+        priority: DataRequestPriority = DataRequestPriority.Visible,
+        forceNetwork: Boolean = false
     ): DataResult<HomeSnapshot> {
         val session = sessionStore.readSession()
             ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false)).also {
@@ -57,8 +58,11 @@ class SharedHomeDataSource(
 
         localWriteThrough?.readHomeSnapshot(resolvedServerId)?.let { cached ->
             if (priority == DataRequestPriority.Background) {
-                diagnosticsLogger("home_bootstrap_result result=content source=cache priority=$priority")
-                return DataResult.Content(cached)
+                if (!forceNetwork) {
+                    diagnosticsLogger("home_bootstrap_result result=content source=cache priority=$priority")
+                    return DataResult.Content(cached)
+                }
+                diagnosticsLogger("home_bootstrap_cache_bypass priority=$priority reason=force_network")
             }
         }
 
@@ -107,10 +111,17 @@ class SharedHomeDataSource(
         serverId: ServerId,
         event: RealtimeEvent,
         activeConversationId: String? = null
+    ): DataResult<HomeSnapshot> =
+        applyRealtimeEvents(serverId, listOf(event), activeConversationId)
+
+    suspend fun applyRealtimeEvents(
+        serverId: ServerId,
+        events: List<RealtimeEvent>,
+        activeConversationId: String? = null
     ): DataResult<HomeSnapshot> {
-        val homeUpdated = localWriteThrough?.writeRealtimeEvent(serverId, event, activeConversationId)
+        val homeUpdated = localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
             ?: return DataResult.Empty(EmptyReason.NoChannels)
-        if (!homeUpdated || !event.updatesHomeSnapshot()) {
+        if (!homeUpdated || events.none { event -> event.updatesHomeSnapshot() }) {
             return DataResult.Empty(EmptyReason.NoChannels)
         }
         return readCachedHome(serverId)

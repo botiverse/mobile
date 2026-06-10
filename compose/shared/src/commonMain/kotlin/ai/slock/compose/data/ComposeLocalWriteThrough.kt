@@ -4,6 +4,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.Heartbeat
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
@@ -144,6 +145,30 @@ class ComposeLocalWriteThrough(
         event: RealtimeEvent,
         activeConversationId: String? = null
     ): Boolean =
+        writeRealtimeEvents(serverId, listOf(event), activeConversationId)
+
+    suspend fun writeRealtimeEvents(
+        serverId: ServerId,
+        events: List<RealtimeEvent>,
+        activeConversationId: String? = null
+    ): Boolean {
+        if (events.isEmpty()) return false
+        val presenceEvents = events.filterIsInstance<MemberPresenceUpdated>()
+        var wrote = false
+        if (presenceEvents.isNotEmpty()) {
+            wrote = updateHomePresence(serverId, presenceEvents) || wrote
+        }
+        events.filterNot { it is MemberPresenceUpdated }.forEach { event ->
+            wrote = writeRealtimeEventSingle(serverId, event, activeConversationId) || wrote
+        }
+        return wrote
+    }
+
+    private suspend fun writeRealtimeEventSingle(
+        serverId: ServerId,
+        event: RealtimeEvent,
+        activeConversationId: String? = null
+    ): Boolean =
         when (event) {
             is MessageNew -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = true, activeConversationId)
             is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false, activeConversationId)
@@ -151,7 +176,6 @@ class ComposeLocalWriteThrough(
             is ThreadUpdated -> writeThreadMetadata(serverId, event)
             is TaskCreated -> writeRealtimeTasks(event.tasks)
             is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
-            is ai.slock.compose.model.MemberPresenceUpdated -> updateHomePresence(serverId, event)
             is RealtimeRefreshRequired -> {
                 logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
                 true
@@ -365,25 +389,42 @@ class ComposeLocalWriteThrough(
 
     private suspend fun updateHomePresence(
         serverId: ServerId,
-        event: ai.slock.compose.model.MemberPresenceUpdated
+        event: MemberPresenceUpdated
+    ): Boolean =
+        updateHomePresence(serverId, listOf(event))
+
+    private suspend fun updateHomePresence(
+        serverId: ServerId,
+        events: List<MemberPresenceUpdated>
     ): Boolean {
+        if (events.isEmpty()) return false
+        val latestEvents = events.associateBy { event -> event.memberId }
         val home = store.readHome(serverId) ?: return false
+        var changedCount = 0
         val updatedDirectMessages =
             home.directMessages.map { conversation ->
-                if (conversation.matchesPresenceMember(event)) {
-                    conversation.copy(
-                        presence = event.presence,
-                        agentStatus = event.agentStatus ?: conversation.agentStatus,
-                        presenceMemberId = conversation.presenceMemberId ?: event.memberId
-                    )
-                } else {
+                val event = latestEvents.values.firstOrNull { presenceEvent ->
+                    conversation.matchesPresenceMember(presenceEvent)
+                }
+                if (event == null) {
                     conversation
+                } else {
+                    val updatedConversation =
+                        conversation.copy(
+                            presence = event.presence,
+                            agentStatus = event.agentStatus ?: conversation.agentStatus,
+                            presenceMemberId = conversation.presenceMemberId ?: event.memberId
+                        )
+                    if (updatedConversation != conversation) {
+                        changedCount += 1
+                    }
+                    updatedConversation
                 }
             }
         if (updatedDirectMessages == home.directMessages) return false
         store.writeHome(home.copy(directMessages = updatedDirectMessages))
         logger(
-            "write_home_realtime source=presence serverId=${serverId.value} memberId=${event.memberId.value}"
+            "write_home_realtime source=presence_batch serverId=${serverId.value} members=${latestEvents.size} changed=$changedCount"
         )
         return true
     }
@@ -733,7 +774,7 @@ private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnap
 }
 
 private fun ConversationSummary.matchesPresenceMember(
-    event: ai.slock.compose.model.MemberPresenceUpdated
+    event: MemberPresenceUpdated
 ): Boolean =
     kind == ConversationKind.DirectMessage &&
         (event.kind == null || event.kind == ai.slock.compose.model.MemberKind.Agent || event.kind == ai.slock.compose.model.MemberKind.Human) &&
