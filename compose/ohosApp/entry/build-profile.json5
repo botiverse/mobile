@@ -13,6 +13,15 @@
   },
   "buildOptionSet": [
     {
+      "name": "debug",
+      "nativeLib": {
+        "debugSymbol": {
+          "strip": false,
+          "exclude": []
+        }
+      }
+    },
+    {
       "name": "release",
       "arkOptions": {
         "obfuscation": {
