@@ -878,6 +878,12 @@ private fun SlockAppShellContent() {
     }
 
     fun requireSessionReauth(returnPayload: KuiklyThreadScreenPayload? = activeThreadPayload) {
+        // Guard: if the auth gate already has a valid session, the 401 that triggered
+        // this callback is stale (from before login/re-auth). Don't override the valid state.
+        val currentGate = authGateViewModel.state.value
+        if (currentGate is SharedAuthGateState.Ready || currentGate is SharedAuthGateState.ServerRequired) {
+            return
+        }
         pendingAuthReturnThreadPayload =
             returnPayload
                 ?.copy(status = "loading", errorCode = null)
