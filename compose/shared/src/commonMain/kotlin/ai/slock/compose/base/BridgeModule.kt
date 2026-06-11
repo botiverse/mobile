@@ -46,44 +46,111 @@ internal class BridgeModule : Module() {
         routeName: String,
         reason: String,
         threadId: String?,
-        data: PerformanceData?
-    ) {
+        data: PerformanceData?,
+        statusOverride: String? = null
+    ): String {
+        val cleanRouteName = routeName.trim().ifBlank { "unknown" }
+        val cleanReason = reason.trim().ifBlank { "unknown" }
+        val status = statusOverride?.trim()?.takeIf { it.isNotBlank() }
+            ?: if (data == null) "missing" else "content"
+        val threadHash = threadId.stableShortHash()
+        val metrics = JSONObject()
+        val dimensions = JSONObject()
         val methodArgs = JSONObject()
-        methodArgs.put("routeName", routeName)
-        methodArgs.put("reason", reason)
-        threadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("threadId", it) }
-        if (data == null) {
-            methodArgs.put("status", "missing")
-        } else {
-            methodArgs.put("status", "content")
-            methodArgs.put("pageExistTime", data.pageExistTime)
-            methodArgs.put("mode", data.mode.name)
-            methodArgs.put("isFirstLaunchOfProcess", data.isFirstLaunchOfProcess)
-            methodArgs.put("isFirstLaunchOfPage", data.isFirstLaunchOfPage)
-            data.mainFPS?.let { methodArgs.put("mainFPS", it) }
-            data.kotlinFPS?.let { methodArgs.put("kotlinFPS", it) }
+
+        dimensions.put("route", cleanRouteName)
+        dimensions.put("reason", cleanReason)
+        dimensions.put("status", status)
+        dimensions.put("threadHash", threadHash)
+
+        if (data != null) {
+            val mode = data.mode.name
+            dimensions.put("mode", mode)
+            dimensions.put("firstProcessLaunch", data.isFirstLaunchOfProcess.toString())
+            dimensions.put("firstPageLaunch", data.isFirstLaunchOfPage.toString())
+            metrics.put("pageExistTime", data.pageExistTime)
+            data.mainFPS?.let { metrics.put("mainFPS", it) }
+            data.kotlinFPS?.let { metrics.put("kotlinFPS", it) }
             data.pageLoadTime?.let { launch ->
-                methodArgs.put("launchFirstPaintCost", launch.firstPaintCost)
-                methodArgs.put("launchInitViewCost", launch.initViewCost)
-                methodArgs.put("launchPreloadClassCost", launch.preloadClassCost)
-                methodArgs.put("launchFetchContextCodeCost", launch.fetchContextCodeCost)
-                methodArgs.put("launchInitRenderContextCost", launch.initRenderContextCost)
-                methodArgs.put("launchInitRenderCoreCost", launch.initRenderCoreCost)
-                methodArgs.put("launchNewPageCost", launch.newPageCost)
-                methodArgs.put("launchPageBuildCost", launch.pageBuildCost)
-                methodArgs.put("launchPageLayoutCost", launch.pageLayoutCost)
-                methodArgs.put("launchCreatePageCost", launch.createPageCost)
-                methodArgs.put("launchCreateInstanceCost", launch.createInstanceCost)
-                methodArgs.put("launchRenderCost", launch.renderCost)
+                metrics.put("launchFirstPaintCost", launch.firstPaintCost)
+                metrics.put("launchInitViewCost", launch.initViewCost)
+                metrics.put("launchPreloadClassCost", launch.preloadClassCost)
+                metrics.put("launchFetchContextCodeCost", launch.fetchContextCodeCost)
+                metrics.put("launchInitRenderContextCost", launch.initRenderContextCost)
+                metrics.put("launchInitRenderCoreCost", launch.initRenderCoreCost)
+                metrics.put("launchNewPageCost", launch.newPageCost)
+                metrics.put("launchPageBuildCost", launch.pageBuildCost)
+                metrics.put("launchPageLayoutCost", launch.pageLayoutCost)
+                metrics.put("launchCreatePageCost", launch.createPageCost)
+                metrics.put("launchCreateInstanceCost", launch.createInstanceCost)
+                metrics.put("launchRenderCost", launch.renderCost)
             }
             data.memory?.let { memory ->
-                methodArgs.put("memoryAvgIncrement", memory.avgIncrement)
-                methodArgs.put("memoryPeakIncrement", memory.peakIncrement)
-                methodArgs.put("memoryAppPeak", memory.appPeak)
-                methodArgs.put("memoryAppAvg", memory.appAvg)
+                metrics.put("memoryAvgIncrement", memory.avgIncrement)
+                metrics.put("memoryPeakIncrement", memory.peakIncrement)
+                metrics.put("memoryAppPeak", memory.appPeak)
+                metrics.put("memoryAppAvg", memory.appAvg)
             }
         }
+        val summary = buildKuiklyPerformanceSnapshotSummary(
+            routeName = cleanRouteName,
+            reason = cleanReason,
+            status = status,
+            threadHash = threadHash,
+            data = data
+        )
+
+        methodArgs.put("routeName", cleanRouteName)
+        methodArgs.put("reason", cleanReason)
+        methodArgs.put("status", status)
+        methodArgs.put("threadHash", threadHash)
+        methodArgs.put("summary", summary)
+        methodArgs.put("metrics", metrics)
+        methodArgs.put("dimensions", dimensions)
         callNativeMethod("kuiklyPerformanceSnapshot", methodArgs, null)
+        return summary
+    }
+
+    private fun buildKuiklyPerformanceSnapshotSummary(
+        routeName: String,
+        reason: String,
+        status: String,
+        threadHash: String,
+        data: PerformanceData?
+    ): String {
+        val launch = data?.pageLoadTime
+        return buildString {
+            append("route=$routeName reason=$reason status=$status threadHash=$threadHash")
+            append(" firstPaintMs=${launch?.firstPaintCost ?: "na"}")
+            append(" mainFPS=${data?.mainFPS ?: "na"}")
+            append(" kotlinFPS=${data?.kotlinFPS ?: "na"}")
+            append(" pageExistMs=${data?.pageExistTime ?: "na"}")
+            data?.mode?.name?.let { mode -> append(" mode=$mode") }
+            data?.let {
+                append(" firstProcess=${it.isFirstLaunchOfProcess} firstPage=${it.isFirstLaunchOfPage}")
+            }
+            launch?.let {
+                append(" buildMs=${it.pageBuildCost}")
+                append(" layoutMs=${it.pageLayoutCost}")
+                append(" renderMs=${it.renderCost}")
+            }
+            data?.memory?.let { memory ->
+                append(" memoryAvg=${memory.appAvg}")
+                append(" memoryPeak=${memory.appPeak}")
+                append(" memoryAvgDelta=${memory.avgIncrement}")
+                append(" memoryPeakDelta=${memory.peakIncrement}")
+            }
+        }
+    }
+
+    private fun String?.stableShortHash(): String {
+        val value = this?.takeIf { it.isNotBlank() } ?: return "unknown"
+        var hash = 2166136261L
+        value.forEach { char ->
+            hash = hash xor char.code.toLong()
+            hash = (hash * 16777619L) and 0xffffffffL
+        }
+        return hash.toString(16)
     }
 
     fun copyToPasteboard(content: String) {

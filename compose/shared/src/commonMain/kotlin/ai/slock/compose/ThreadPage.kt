@@ -116,7 +116,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
-import com.tencent.kuikly.core.module.PerformanceData
 import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
@@ -477,51 +476,23 @@ private fun requestKuiklyThreadPerformanceSnapshot(
         PagerManager.getCurrentPager()
             .acquireModule<PerformanceModule>(PerformanceModule.MODULE_NAME)
             .getPerformanceData { data ->
-                bridge.log(data.threadPerformanceSnapshotLog(threadId, reason))
-                bridge.reportKuiklyPerformanceSnapshot(
+                val summary = bridge.reportKuiklyPerformanceSnapshot(
                     routeName = "kuikly_thread",
                     reason = reason,
                     threadId = threadId,
                     data = data
                 )
+                bridge.log("kuikly_perf_snapshot $summary")
             }
     }.onFailure { error ->
-        bridge.log(
-            "kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason " +
-                "result=failed error=${error.message.orEmpty()}"
-        )
-        bridge.reportKuiklyPerformanceSnapshot(
+        val summary = bridge.reportKuiklyPerformanceSnapshot(
             routeName = "kuikly_thread",
             reason = reason,
             threadId = threadId,
-            data = null
+            data = null,
+            statusOverride = "failed"
         )
-    }
-}
-
-private fun PerformanceData?.threadPerformanceSnapshotLog(threadId: String, reason: String): String {
-    if (this == null) {
-        return "kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason result=missing"
-    }
-    val launch = pageLoadTime
-    val memory = memory
-    return buildString {
-        append("kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason result=content")
-        append(" pageExistMs=$pageExistTime mode=${mode.name}")
-        append(" firstProcess=${isFirstLaunchOfProcess} firstPage=${isFirstLaunchOfPage}")
-        append(" mainFPS=${mainFPS ?: -1} kotlinFPS=${kotlinFPS ?: -1}")
-        if (launch != null) {
-            append(" firstPaintMs=${launch.firstPaintCost}")
-            append(" buildMs=${launch.pageBuildCost}")
-            append(" layoutMs=${launch.pageLayoutCost}")
-            append(" renderMs=${launch.renderCost}")
-        }
-        if (memory != null) {
-            append(" memoryAvg=${memory.appAvg}")
-            append(" memoryPeak=${memory.appPeak}")
-            append(" memoryAvgDelta=${memory.avgIncrement}")
-            append(" memoryPeakDelta=${memory.peakIncrement}")
-        }
+        bridge.log("kuikly_perf_snapshot $summary error=${error.message.orEmpty()}")
     }
 }
 
@@ -1070,6 +1041,7 @@ internal fun SharedThreadRouteContent(
             )
             if (performanceSnapshotLoggedThreadId != threadRouteKey) {
                 performanceSnapshotLoggedThreadId = threadRouteKey
+                delay(ThreadFirstContentTaskJoinDelayMs)
                 requestKuiklyThreadPerformanceSnapshot(
                     bridge = bridge,
                     threadId = threadRouteKey.orEmpty(),

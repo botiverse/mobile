@@ -7,7 +7,6 @@ import com.tencent.bugly.library.Bugly
 import com.tencent.bugly.library.BuglyAppVersionMode
 import com.tencent.bugly.library.BuglyBuilder
 import com.tencent.bugly.library.BuglyLogLevel
-import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 
@@ -105,32 +104,15 @@ object SlockAndroidBuglyDiagnostics {
     }
 
     fun reportKuiklySnapshot(payload: JSONObject) {
-        val routeName = payload.optString("routeName").ifBlank { "unknown" }
-        val reason = payload.optString("reason").ifBlank { "unknown" }
-        val status = payload.optString("status").ifBlank { "unknown" }
-        val summary =
-            "route=$routeName reason=$reason status=$status " +
-                "firstPaintMs=${payload.optMetricString("launchFirstPaintCost")} " +
-                "mainFPS=${payload.optMetricString("mainFPS")} " +
-                "kotlinFPS=${payload.optMetricString("kotlinFPS")} " +
-                "pageExistMs=${payload.optMetricString("pageExistTime")}"
+        val summary = payload.optString("summary").ifBlank { "route=unknown reason=unknown status=unknown" }
 
         if (!initialized.get()) {
             SlockDiagnosticsLogger.d(SnapshotTag, "$summary bugly=disabled")
             return
         }
 
-        val metrics = payload.snapshotMetrics()
-        val dimensions =
-            mutableMapOf(
-                "route" to routeName,
-                "reason" to reason,
-                "status" to status,
-                "threadHash" to payload.optString("threadId").stableHashLabel(),
-                "mode" to payload.optString("mode").ifBlank { "unknown" },
-                "firstProcessLaunch" to payload.optBoolean("isFirstLaunchOfProcess").toString(),
-                "firstPageLaunch" to payload.optBoolean("isFirstLaunchOfPage").toString()
-            )
+        val metrics = payload.optJSONObjectOrString("metrics").toDoubleMap()
+        val dimensions = payload.optJSONObjectOrString("dimensions").toStringMap()
         val reported =
             runCatching {
                 Bugly.monitorEvent(SnapshotEvent, metrics, dimensions)
@@ -147,41 +129,37 @@ object SlockAndroidBuglyDiagnostics {
         )
     }
 
-    private fun JSONObject.snapshotMetrics(): Map<String, Double> {
-        val source = this
-        return buildMap {
-            fun addMetric(key: String) {
-                if (!source.has(key)) return
-                val value = source.optDouble(key)
-                if (!value.isNaN()) {
-                    put(key, value)
-                }
-            }
-            addMetric("pageExistTime")
-            addMetric("mainFPS")
-            addMetric("kotlinFPS")
-            addMetric("launchFirstPaintCost")
-            addMetric("launchInitViewCost")
-            addMetric("launchInitRenderCoreCost")
-            addMetric("launchInitRenderContextCost")
-            addMetric("launchCreateInstanceCost")
-            addMetric("launchCreatePageCost")
-            addMetric("launchPageBuildCost")
-            addMetric("launchPageLayoutCost")
-            addMetric("launchRenderCost")
-            addMetric("memoryAvgIncrement")
-            addMetric("memoryPeakIncrement")
-            addMetric("memoryAppAvg")
-            addMetric("memoryAppPeak")
-        }
+    private fun JSONObject.optJSONObjectOrString(key: String): JSONObject? {
+        optJSONObject(key)?.let { return it }
+        val raw = optString(key).takeIf { it.isNotBlank() } ?: return null
+        return runCatching { JSONObject(raw) }.getOrNull()
     }
 
-    private fun JSONObject.optMetricString(key: String): String =
-        if (has(key)) optDouble(key).toString() else "na"
+    private fun JSONObject?.toDoubleMap(): Map<String, Double> {
+        if (this == null) return emptyMap()
+        val result = mutableMapOf<String, Double>()
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = optDouble(key)
+            if (!value.isNaN()) {
+                result[key] = value
+            }
+        }
+        return result
+    }
 
-    private fun String.stableHashLabel(): String {
-        if (isBlank()) return "unknown"
-        val digest = MessageDigest.getInstance("SHA-256").digest(toByteArray())
-        return digest.take(6).joinToString(separator = "") { byte -> "%02x".format(byte) }
+    private fun JSONObject?.toStringMap(): Map<String, String> {
+        if (this == null) return emptyMap()
+        val result = mutableMapOf<String, String>()
+        val keys = keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val value = optString(key)
+            if (value.isNotBlank()) {
+                result[key] = value
+            }
+        }
+        return result
     }
 }
