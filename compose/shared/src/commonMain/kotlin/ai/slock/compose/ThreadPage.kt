@@ -5746,7 +5746,7 @@ private fun ThreadSettingsModal(
         }?.let { it to action }
     }
     val activeDanger = dangerAction
-    val confirmationMatches = confirmationName.trim() == channelName.trim()
+    val archiveConfirmationMatches = confirmationName.trim() == channelName.trim()
     SlockUnifiedDialog(
         title = activeDanger?.title ?: "EDIT CHANNEL",
         onDismiss = onDismiss
@@ -5811,44 +5811,49 @@ private fun ThreadSettingsModal(
                     }
                     ThreadSettingsDangerAction.Archive,
                     ThreadSettingsDangerAction.Delete -> {
-                        Text(
-                            text =
-                                if (activeDanger == ThreadSettingsDangerAction.Archive) {
-                                    "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars."
-                                } else {
-                                    "Delete #$channelName? This permanently removes the channel and its messages."
-                                },
-                            style = SlockType.Body,
-                            color = SlockColor.TextBlack
-                        )
-                        Text(
-                            text = "Type $channelName to confirm.",
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextMutedGray
-                        )
-                        SlockBrutalTextField(
-                            label = "Channel name",
-                            value = confirmationName,
-                            placeholder = channelName,
-                            onValueChange = { confirmationName = it },
-                            required = true,
-                            fieldMinHeight = 42.dp
-                        )
-                        if (confirmationName.isNotBlank() && !confirmationMatches) {
+                        if (activeDanger == ThreadSettingsDangerAction.Delete) {
+                            ThreadDeleteChannelWarning(channelName)
+                        } else {
                             Text(
-                                text = "Channel name does not match.",
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                                color = SlockColor.AccentRed
+                                text = "Archive #$channelName? Members keep read access and history, but writes will be frozen and the channel will be hidden from sidebars.",
+                                style = SlockType.Body,
+                                color = SlockColor.TextBlack
                             )
+                            Text(
+                                text = "Type $channelName to confirm.",
+                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.TextMutedGray
+                            )
+                            SlockBrutalTextField(
+                                label = "Channel name",
+                                value = confirmationName,
+                                placeholder = channelName,
+                                onValueChange = { confirmationName = it },
+                                required = true,
+                                fieldMinHeight = 42.dp
+                            )
+                            if (confirmationName.isNotBlank() && !archiveConfirmationMatches) {
+                                Text(
+                                    text = "Channel name does not match.",
+                                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                                    color = SlockColor.AccentRed
+                                )
+                            }
                         }
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SlockModalActionButton(label = "Back", icon = "arrow-left", onClick = { dangerAction = null })
+                    val isDelete = activeDanger == ThreadSettingsDangerAction.Delete
+                    SlockModalActionButton(
+                        label = if (isDelete) "Cancel" else "Back",
+                        icon = if (isDelete) "x" else "arrow-left",
+                        onClick = { dangerAction = null }
+                    )
                     Spacer(modifier = Modifier.weight(1f))
                     val enabled =
                         activeDanger == ThreadSettingsDangerAction.Visibility ||
-                            confirmationMatches
+                            activeDanger == ThreadSettingsDangerAction.Delete ||
+                            archiveConfirmationMatches
                     SlockModalActionButton(
                         label = activeDanger.buttonLabel,
                         icon = activeDanger.icon,
@@ -5863,6 +5868,32 @@ private fun ThreadSettingsModal(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadDeleteChannelWarning(channelName: String) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.AccentRed.copy(alpha = 0.22f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            name = "triangle-alert",
+            modifier = Modifier.size(26.dp),
+            color = "#FF000000"
+        )
+        Text(
+            text = "Are you sure you want to delete \"$channelName\"?\nAll messages will be lost.",
+            style = SlockType.Body,
+            color = SlockColor.TextBlack,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
