@@ -107,7 +107,6 @@ interface ConversationRepository {
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>
     suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult>
-    suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult>
     suspend fun markThreadUndone(threadChannelId: ChannelId): DataResult<ThreadActionResult>

@@ -1980,8 +1980,6 @@ class SharedThreadStoreTest {
 
         override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> = error("unused")
 
-        override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
-
         override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")
 
         override suspend fun markThreadDone(threadChannelId: ChannelId): DataResult<ThreadActionResult> = error("unused")

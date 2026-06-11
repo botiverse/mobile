@@ -274,11 +274,6 @@ class RealConversationRepository(
             networkClient.followThread(DataRequestPriority.Foreground, parentMessageId.toParentMessageThreadBody())
         }
 
-    override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
-        threadAction(threadChannelId, source = "thread_follow") {
-            networkClient.followThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
-        }
-
     override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
         threadAction(threadChannelId, source = "thread_unfollow") {
             networkClient.unfollowThread(DataRequestPriority.Foreground, threadChannelId.toThreadActionBody())
@@ -726,7 +721,6 @@ private fun ConversationSummary.withThreadAnchor(
 @Serializable
 data class ThreadChannelActionRequestBody(
     val threadChannelId: String,
-    val channelId: String
 )
 
 @Serializable
@@ -734,7 +728,7 @@ data class ParentMessageThreadRequestBody(val parentMessageId: String)
 
 private fun ChannelId.toThreadActionBody(): String =
     conversationRepositoryJson.encodeToString(
-        ThreadChannelActionRequestBody(threadChannelId = value, channelId = value)
+        ThreadChannelActionRequestBody(threadChannelId = value)
     )
 
 private fun MessageId.toParentMessageThreadBody(): String =

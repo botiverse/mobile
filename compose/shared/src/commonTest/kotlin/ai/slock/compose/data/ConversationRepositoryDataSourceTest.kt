@@ -121,7 +121,7 @@ class ConversationRepositoryDataSourceTest {
                 asTask = true
             )
         val created = repository.createOrOpenThread(ChannelId("channel-1"), MessageId("parent-1"))
-        val followed = repository.followThread(ChannelId("thread-1"))
+        val followed = repository.followThread(MessageId("parent-1"))
 
         assertEquals("sent-1", assertIs<DataResult.Content<SendMessageResult>>(sent).data.message.id.value)
         assertEquals("thread-1", assertIs<DataResult.Content<ThreadActionResult>>(created).data.threadChannelId.value)
@@ -130,7 +130,7 @@ class ConversationRepositoryDataSourceTest {
             listOf(
                 """{"channelId":"channel-1","content":"ship it","attachmentIds":["attachment-1"],"asTask":true}""",
                 """{"parentMessageId":"parent-1"}""",
-                """{"threadChannelId":"thread-1","channelId":"thread-1"}"""
+                """{"parentMessageId":"parent-1"}"""
             ),
             network.bodies
         )
