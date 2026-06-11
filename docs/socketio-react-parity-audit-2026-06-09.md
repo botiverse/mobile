@@ -36,7 +36,6 @@ Commit range: `1400b359`, `6d6bbfae`, `d6a4bcd3`, `a3a7cdbf`, `8346b041`, `43cbc
 - `:shared:testDebugUnitTest --tests RealtimeEventMapperTest` ✅
 
 ### Still Missing (unchanged from original audit)
-- `daemon:status` — React still listens as a legacy transition event; current server source only emits `machine:status`, so this is now documented as a compatibility decision gap rather than an active known server emit.
 - OHOS refreshed-token reconnect handoff
 - Real-device proof for Android and OHOS
 - Conservative refresh intents for agent activity/machine status/reminders/announcements
@@ -45,11 +44,6 @@ Commit range: `1400b359`, `6d6bbfae`, `d6a4bcd3`, `a3a7cdbf`, `8346b041`, `43cbc
 ### 2026-06-11 Re-Audit Notes
 
 The 2026-06-11 re-audit found one stale contradiction in this document: `server:plan-updated` was listed both as missing and as completed. The current source has it in `RealtimeSocketEvents`, `RealtimeEventMapper`, Android raw forwarding, and the OHOS `WIRE_EVENTS` allowlist, so it should no longer be treated as missing.
-
-`daemon:status` was different. React's `MainLayout.tsx` still registers it with the comment "Legacy: handle old daemon:status events during transition", but the checked server source under `third_party/slock-source/packages/server` has no `daemon:status` emit; machine connectivity now emits `machine:status`. That means the remaining work is either:
-
-- explicitly decide not to support the legacy alias and remove it from parity requirements, or
-- add a small compatibility mapping from `daemon:status { daemonId, status, statusVersion }` into the existing machine status refresh path.
 
 ---
 
@@ -67,7 +61,7 @@ At audit time the mobile stack was not truly aligned with React. The highest-ris
 
 Task #65 now closes those product-risk paths in source: raw message rows decode, heartbeat server max is separate from applied resume cursor, resume waits for `rooms:joined`, Android/OHOS share the same heartbeat watchdog thresholds, Android refreshes Socket.IO auth during reconnect/auth failures, the missing React refresh events are wired to typed refresh intents, server membership removal exits the current server, and Home preview/unread merge now dedupes by message id and suppresses self/current-conversation unread increments.
 
-Remaining audit caveats after Task #65 and the 2026-06-11 follow-up: no real-device OHOS proof yet, OHOS still does not have a true refreshed-token handoff before reconnect, React's legacy `daemon:status` compatibility listener has no mobile mapping, and reminder/announcement handling is a conservative refresh/reload path rather than full surface-specific local mutation.
+Remaining audit caveats after Task #65 and the 2026-06-11 follow-up: no real-device OHOS proof yet, OHOS still does not have a true refreshed-token handoff before reconnect, and reminder/announcement handling is a conservative refresh/reload path rather than full surface-specific local mutation.
 
 ## 2026-06-09 OHOS Socket.IO Pitfall Record
 
@@ -254,7 +248,7 @@ The most dangerous original combination was:
 
 That is why fixing payload shape and heartbeat cursor semantics has higher product impact than adding more low-level Socket.IO features.
 
-Remaining shared parity caveats: React's legacy `daemon:status` listener is still not represented in the mobile event model, reminder and announcement events currently trigger conservative reloads rather than fine-grained local mutation, and durable agent activity / machine status recovery still uses refresh intents rather than the full React local merge policy.
+Remaining shared parity caveats: reminder and announcement events currently trigger conservative reloads rather than fine-grained local mutation, and durable agent activity / machine status recovery still uses refresh intents rather than the full React local merge policy.
 
 ## Implementation Update: Task #65
 
@@ -272,7 +266,7 @@ Implementation on 2026-06-09 closed the highest-risk loss/skip and stale-Home pa
 - Server membership removal for the current server disconnects realtime, clears selected server, and returns the app shell to auth/server restore flow instead of staying in stale server UI.
 - Home realtime merge now dedupes resume/live messages by message id, counts multiple missed non-self messages, avoids unread increments for self-authored messages, suppresses unread when the affected conversation is currently visible, and still updates the preview to the latest message.
 
-Remaining gaps from this audit after Task #65 and the 2026-06-11 typed-event follow-up: OHOS refreshed-token reconnect handoff, real-device proof, legacy `daemon:status` compatibility decision, and finer local mutation for announcement/reminder/agent activity/machine status surfaces.
+Remaining gaps from this audit after Task #65 and the 2026-06-11 typed-event follow-up: OHOS refreshed-token reconnect handoff, real-device proof, and finer local mutation for announcement/reminder/agent activity/machine status surfaces.
 
 ## React / Server Contract
 
@@ -344,7 +338,6 @@ React listens for the main message/task/member/activity events in `MainLayout`:
 - `machine:status`
 - `machine:capabilities`
 - `machine:updated`
-- `daemon:status`
 - `agent:created`
 - `agent:deleted`
 - `channel:updated`
@@ -417,7 +410,6 @@ Source: `third_party/slock-source/packages/web/src/components/layout/MainLayout.
 | `machine:status` | `agentOrchestrator.ts` | Updates machine status, forces attached agents offline on offline, reloads machines/agents on online | Subscribed/mapped to Machines refresh intent. |
 | `machine:capabilities` | `agentOrchestrator.ts` | Updates runtimes/host/os/daemon version | Subscribed/mapped to Machines refresh intent. |
 | `machine:updated` | `routes/servers.ts` | Reloads machines | Subscribed/mapped to Machines refresh intent. |
-| `daemon:status` | React-only legacy transition listener; current checked server source has no emit | Updates machine status by `daemonId` alias | Still not subscribed/mapped; decide whether to drop as obsolete or add alias compatibility. |
 | `agent:created/deleted` | `routes/agents.ts` | Reloads agents | Subscribed/mapped to Agents refresh intent. |
 | `channel:updated` | `routes/channels.ts`, onboarding/action-card services | Reloads channel list; joined/private projections refresh via user/server rooms | Subscribed/mapped to Home refresh intent. |
 | `channel:members-updated` | `routes/channels.ts`, internal membership routes | Reloads channel list globally and channel members in open member hooks | Subscribed/mapped to ChannelMembers refresh intent. |
@@ -487,7 +479,7 @@ KMP event constants include the core events:
 
 Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeSocketEvents.kt`.
 
-Android and OHOS now subscribe to the same expanded Slock event set above. `server:plan-updated` and `server:deleted` were added 2026-06-11. `daemon:status` removed from the gap list — server no longer emits this event.
+Android and OHOS now subscribe to the same expanded Slock event set above. `server:plan-updated` and `server:deleted` were added 2026-06-11.
 
 ### KMP Message Decode Mismatch
 
@@ -690,7 +682,6 @@ This is the actionable split between Android-native, OHOS-native, and shared KMP
 
 Task #65 completed the shared payload/cursor/resume/refresh-intent/Home-unread work. Remaining shared items:
 
-- Decide `daemon:status` compatibility explicitly. Current server source does not emit it, but React still has a legacy listener; if we keep React parity literally, map it to the existing machine-status refresh path.
 - Replace conservative refresh intents with finer local mutation where the product needs it, especially durable agent activity trajectory, machine online/offline merge, and Agent detail reminders.
 - Add broader shared contract tests based on pinned server payload fixtures beyond the focused raw-message/watchdog/Home tests already added.
 - Add real read-position / near-bottom awareness if Thread unread parity needs to go beyond current visible-conversation suppression.
@@ -701,7 +692,6 @@ Task #65 completed the shared payload/cursor/resume/refresh-intent/Home-unread w
 Task #65 completed the duplicate-resume, reconnect-auth, heartbeat-watchdog, event-subscription, and diagnostics work. Remaining Android items:
 
 - Device/network proof for stale-token reconnect and heartbeat-silence reconnect.
-- Add legacy `daemon:status` subscription only if the shared model keeps that React compatibility alias.
 
 ### OHOS Remaining Work
 
@@ -709,7 +699,6 @@ Task #65 completed the duplicate-resume, reconnect-auth, heartbeat-watchdog, eve
 - Forward connection lifecycle events (`connect`, `disconnect`, reconnect attempt/error/failed or equivalent bridge states) into shared diagnostics.
 - Add token-refresh/reconnect handoff. The bridge currently uses the token it was given; it needs a path to refresh or request a new access token before reconnect if the access token is near expiry/expired.
 - Add real-device proof for field diagnostics and heartbeat watchdog.
-- Add legacy `daemon:status` forwarding only if the shared model keeps that React compatibility alias.
 
 ## Confirmation Plan
 
@@ -787,23 +776,20 @@ After fixing decode/cursor first, retest Home:
 
 ### P1
 
-3. Add remaining legacy event coverage if still used.
-   - `daemon:status`
-
-4. Replace conservative refresh intents where fine-grained local parity matters.
+3. Replace conservative refresh intents where fine-grained local parity matters.
    - durable agent activity trajectory
    - machine online/offline merge
    - Agent detail reminder rows
    - announcement dedupe/local insertion
 
-5. Add OHOS Socket.IO parser tests.
+4. Add OHOS Socket.IO parser tests.
    - Engine.IO open/ping/pong/close
    - Socket.IO connect/connect error/event/disconnect
    - reconnect after close
 
 ### P2
 
-6. Expand live contract tests against pinned server payload fixtures.
+5. Expand live contract tests against pinned server payload fixtures.
    - raw `message:new`
    - raw `message:updated`
    - raw messages in `sync:resume:response`
@@ -814,4 +800,4 @@ After fixing decode/cursor first, retest Home:
 
 After Task #65, mobile source is aligned with the React Socket.IO semantics that were most likely to cause lost messages or stale Home state.
 
-The OHOS implementation did already include the low-level Engine.IO ping/pong path; the original likely defects were at the app Socket.IO layer: raw message decoding, heartbeat cursor handling, resume timing, app heartbeat silence recovery, missing refresh events, server removal handling, and Home unread merge. Those source paths are now fixed. Remaining work is proof and narrower parity: OHOS token refresh on reconnect, real-device verification, the React-only legacy `daemon:status` compatibility decision, deprecated parser cleanup, and finer local mutation for some refresh-driven surfaces.
+The OHOS implementation did already include the low-level Engine.IO ping/pong path; the original likely defects were at the app Socket.IO layer: raw message decoding, heartbeat cursor handling, resume timing, app heartbeat silence recovery, missing refresh events, server removal handling, and Home unread merge. Those source paths are now fixed. Remaining work is proof and narrower parity: OHOS token refresh on reconnect, real-device verification, deprecated parser cleanup, and finer local mutation for some refresh-driven surfaces.

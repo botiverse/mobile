@@ -122,7 +122,7 @@ The KMP shell now has the main app frame, email login, server gate, Home list, T
 | Agent skills | React `AgentSkills` shows global and workspace skills grouped by path | KMP parses agent skills into `AgentSkillsSnapshot`, but visible detail parity needs route validation | VERIFY | Experience/Visual | P2 | KMP |
 | Agent diagnostics/report issue | React builds diagnostic bundle, report issue dialog, activity/log surfaces | KMP Settings Diagnostics exists, but agent-specific report issue/log bundle parity not found | MISSING | Entry/API/Bridge | P2 | KMP |
 | Release notes/profile/legacy task overlays | React has lazy panels and query-synced right-panel stack | KMP app shell does not expose full overlay stack parity | MISSING | Entry | P2 | Android-App-Integrator |
-| Realtime | React socket event handlers update channels/members/server/unread/saved | Android realtime exists; OHOS realtime bridge in #97; broad event parity needs device/server validation | VERIFY | API/Bridge/Experience | P0 | KMP |
+| Realtime | React socket event handlers update channels/members/server/unread/saved | Android raw `eventName + rawPayload` bridge and OHOS expanded event allowlist are now aligned for the main event set, including `server:plan-updated`; remaining gaps are device proof, OHOS token-refresh handoff, and fine-grained mutation parity. | PARTIAL / VERIFY | API/Bridge/Experience | P0 | KMP |
 
 ## Detailed Findings
 
@@ -270,10 +270,10 @@ Recommended split:
 
 ### Realtime, Notifications, and Host Capabilities
 
-React realtime updates many surfaces through socket events. KMP has Android realtime and a new OHOS realtime bridge, plus shared notifications. These should be treated as VERIFY until tested against a real server/session on both platforms:
+React realtime updates many surfaces through socket events. KMP now has Android raw realtime forwarding, an expanded OHOS bridge allowlist, and shared notification handling. These should still be treated as VERIFY until tested against a real server/session on both platforms:
 
 - Home/Thread receive `message:new`, `dm:new`, unread, saved, member, server, and notification updates.
-- OHOS `slockRealtimeEvent` reaches the shared reducer with the same payload shape as Android.
+- OHOS `slockRealtimeEvent` reaches the shared reducer with the same raw `eventName + rawPayload` shape as Android.
 - Notification permission/settings/channel/local notification host capabilities are validated on device.
 
 ## Priority Plan
