@@ -141,6 +141,23 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 internal const val ThreadReplyPageTitle = "Threads"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
+private val threadHeaderUuidRegex =
+    Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
+private val threadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
+
+internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
+    val raw = channelName?.trim().orEmpty()
+    if (raw.isBlank() || raw.startsWith("Origin:", ignoreCase = true)) return null
+    val name = raw.removePrefix("#").substringBefore(":").trim()
+    if (name.isBlank()) return null
+    if (name.equals(ThreadReplyPageTitle, ignoreCase = true)) return null
+    if (name.equals("Thread", ignoreCase = true) || name.equals("Channel", ignoreCase = true)) return null
+    if (threadHeaderUuidRegex.matches(name) || threadHeaderShortIdRegex.matches(name)) return null
+    return "#$name"
+}
+
+internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
+    subtitle?.trim()?.takeIf { it.startsWith("#") }?.let(::threadChannelHeaderSubtitle)
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
@@ -248,10 +265,19 @@ internal data class KuiklyThreadScreenPayload(
 
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
+        subtitle =
+            if (showModeTabs) {
+                subtitle
+            } else {
+                existingThreadChannelHeaderSubtitle(subtitle)
+            },
         showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
         showSettingsAction = showSettingsAction && showModeTabs,
         showMembersAction = showMembersAction && showModeTabs
     )
+
+internal fun KuiklyThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
+    threadChannelHeaderSubtitle(title)
 
 @Serializable
 internal data class KuiklyThreadMessageItem(
@@ -2461,7 +2487,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
     return copy(
         instanceId = "shared-shell-thread-pending-${parentMessage.id}",
         title = ThreadReplyPageTitle,
-        subtitle = null,
+        subtitle = replyThreadHeaderSubtitle(),
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = null,

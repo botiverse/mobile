@@ -852,7 +852,7 @@ internal class SharedThreadDataSource(
             basePayload.copy(
                 instanceId = "shared-shell-thread-$threadChannelId",
                 title = ThreadReplyPageTitle,
-                subtitle = null,
+                subtitle = basePayload.replyThreadHeaderSubtitle(),
                 status = "loading",
                 surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                 sourceThreadId = threadChannelId,
@@ -2429,9 +2429,22 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         messages
             .filterNot { message -> parentId != null && message.id.value == parentId }
             .map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+    val headerTitle =
+        when (surfaceKind) {
+            KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
+            else -> conversation.name.takeIf { it.isNotBlank() } ?: base.title
+        }
+    val headerSubtitle =
+        when (surfaceKind) {
+            KuiklyThreadSurfaceKind.ReplyThread ->
+                base.subtitle
+                    ?: existingThreadChannelHeaderSubtitle(conversation.subtitle)
+                    ?: threadChannelHeaderSubtitle(conversation.name)
+            else -> conversation.subtitle ?: base.subtitle
+        }
     return base.copy(
-        title = conversation.name.takeIf { it.isNotBlank() } ?: base.title,
-        subtitle = conversation.subtitle ?: base.subtitle,
+        title = headerTitle,
+        subtitle = headerSubtitle,
         status = if (cachedMessages.isEmpty() && resolvedOrigin == null && tasks.isEmpty()) "empty" else "content",
         sourceThreadId =
             base.sourceThreadId

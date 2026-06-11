@@ -6870,6 +6870,7 @@ internal fun buildAppShellThreadPayload(
     val streamChannelId = conversation.threadStreamChannelId()
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
+    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val canSend = conversation.joined && conversation.permissions.canSend
     val composer =
         buildThreadSurfaceComposerPayload(
@@ -6884,8 +6885,13 @@ internal fun buildAppShellThreadPayload(
         )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
-        title = conversation.name.ifBlank { "Thread" },
-        subtitle = conversation.subtitle?.takeIf { it.isNotBlank() },
+        title = if (isReplyThread) ThreadReplyPageTitle else conversation.name.ifBlank { "Thread" },
+        subtitle =
+            if (isReplyThread) {
+                threadChannelHeaderSubtitle(conversation.name)
+            } else {
+                conversation.subtitle?.takeIf { it.isNotBlank() }
+            },
         status = "loading",
         surfaceKind = surfaceKind,
         sourceThreadId = conversation.threadId.value,
@@ -6894,18 +6900,18 @@ internal fun buildAppShellThreadPayload(
         parentMessageId = parentMessageId,
         selectedTab = "chat",
         navigationLabel = "Back",
-        showModeTabs = true,
-        showReplyActions = conversation.kind != ConversationKind.Thread,
+        showModeTabs = !isReplyThread,
+        showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
-        showOpenInChannelAction = false,
+        showOpenInChannelAction = isReplyThread && parentMessageId != null,
         joined = conversation.joined,
         canSend = canSend,
         membersCount = conversation.memberCount ?: 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
-        showMembersAction = true,
-        showSettingsAction = true,
-        settingsActions = defaultThreadSettingsChannelActions(),
+        showMembersAction = !isReplyThread,
+        showSettingsAction = !isReplyThread,
+        settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActions(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
@@ -7028,8 +7034,8 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-task-thread-${threadId ?: task.id.value}",
-        title = task.tasksDisplayTitleForAppShell(),
-        subtitle = task.channelName,
+        title = ThreadReplyPageTitle,
+        subtitle = threadChannelHeaderSubtitle(task.channelName),
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = threadId,

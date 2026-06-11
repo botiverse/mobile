@@ -11,7 +11,9 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.data.StoredAuthServer
@@ -292,6 +294,37 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sharedShellReplyThreadRouteUsesThreadTitleAndChannelSubtitle() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = threadIdentity(ChannelId("channel-1"), MessageId("message-1")),
+                    channelId = ChannelId("channel-1"),
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("message-1"),
+                            streamChannelId = ChannelId("thread-1")
+                        ),
+                    kind = ConversationKind.Thread,
+                    name = "general",
+                    subtitle = "Parent message preview",
+                    joined = true,
+                    memberCount = 7,
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
+        assertEquals(true, payload.showOpenInChannelAction)
+    }
+
+    @Test
     fun sharedShellThreadRouteOmitsSubtitleWhenChannelDescriptionIsMissing() {
         val payload =
             buildAppShellThreadPayload(
@@ -330,8 +363,8 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
-        assertEquals("#42", payload.title)
-        assertEquals("general", payload.subtitle)
+        assertEquals("Threads", payload.title)
+        assertEquals("#general", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
@@ -366,7 +399,8 @@ class ThreadPayloadTest {
 
         requireNotNull(payload)
         assertEquals("shared-shell-task-thread-thread-channel-1", payload.instanceId)
-        assertEquals("bug triage", payload.title)
+        assertEquals("Threads", payload.title)
+        assertEquals("#bug triage", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals("thread-channel-1", payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
@@ -376,6 +410,8 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showReplyActions)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals(true, payload.alignOwnMessagesRight)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
     }
 
     @Test
@@ -398,7 +434,7 @@ class ThreadPayloadTest {
 
         assertEquals("shared-shell-thread-pending-message-1", payload.instanceId)
         assertEquals("Threads", payload.title)
-        assertEquals(null, payload.subtitle)
+        assertEquals("#general", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
         assertEquals("message-1", payload.originParentMessageId)
@@ -414,6 +450,27 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showModeTabs)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals("Opening replies", payload.emptyTitle)
+    }
+
+    @Test
+    fun replyThreadLoadingPayloadOmitsUnreadableChannelSubtitle() {
+        val parent =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "Parent message"
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                title = "76c3c868",
+                sourceThreadId = "channel-1",
+                status = "content",
+                messages = listOf(parent)
+            ).replyThreadLoadingPayload(parent)
+
+        assertEquals("Threads", payload.title)
+        assertEquals(null, payload.subtitle)
     }
 
     @Test
@@ -1301,6 +1358,7 @@ class ThreadPayloadTest {
             KuiklyThreadScreenPayload(
                 instanceId = "thread-reply-1",
                 title = "Threads",
+                subtitle = "Origin: #general · hello",
                 showModeTabs = false,
                 showMembersAction = true,
                 showSettingsAction = true,
@@ -1311,6 +1369,7 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showSettingsAction)
         assertEquals(false, payload.showMembersAction)
         assertEquals(true, payload.showOpenInChannelAction)
+        assertEquals(null, payload.subtitle)
     }
 
     @Test
