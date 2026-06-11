@@ -143,6 +143,108 @@ internal class SlockThreadApiClient(
             }
 }
 
+internal class NetworkSlockThreadApi(
+    private val networkClient: SlockNetworkClient
+) : SharedThreadNetworkApi {
+    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "messages/channel/${threadId.trim()}",
+            query = listOfNotNull(
+                "limit" to limit.toString(),
+                beforeSeq?.let { "before" to it.toString() }
+            )
+        )
+
+    override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "messages/sync",
+            query =
+                listOf(
+                    "since_seq" to sinceSeq.toString(),
+                    "limit" to limit.toString(),
+                    "channel_id" to channelId.trim()
+                )
+        )
+
+    override suspend fun sendMessage(
+        channelId: String,
+        body: String,
+        asTask: Boolean,
+        attachmentIds: List<String>
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages",
+            method = "POST",
+            bodyText =
+                buildSharedThreadSendMessageBody(
+                    channelId = channelId,
+                    body = body,
+                    attachmentIds = attachmentIds,
+                    asTask = asTask
+                )
+        )
+
+    override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "attachments/${attachmentId.trim()}/url",
+            query = listOfNotNull(disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition" to it })
+        )
+
+    override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "channels/${channelId.trim()}/read-all", method = "POST")
+
+    override suspend fun saveMessage(messageId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "channels/saved",
+            method = "POST",
+            bodyText = buildSharedSaveMessageBody(MessageId(messageId.trim()))
+        )
+
+    override suspend fun unsaveMessage(messageId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "channels/saved/${messageId.trim()}",
+            method = "DELETE"
+        )
+
+    override suspend fun addReaction(messageId: String, emoji: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages/${messageId.trim()}/reactions",
+            method = "POST",
+            bodyText = buildSharedReactionBody(emoji)
+        )
+
+    override suspend fun removeReaction(messageId: String, emoji: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages/${messageId.trim()}/reactions",
+            method = "DELETE",
+            bodyText = buildSharedReactionBody(emoji)
+        )
+
+    override suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/${taskId.trim()}/status",
+            method = "PATCH",
+            bodyText = buildSharedTaskStatusBody(status)
+        )
+
+    override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "channels/${channelId.trim()}/threads",
+            method = "POST",
+            bodyText = buildSharedCreateOrOpenThreadBody(parentMessageId.trim())
+        )
+}
+
 internal sealed interface ThreadApiResult<out T> {
     data class Success<T>(val data: T) : ThreadApiResult<T>
     data class Failure(
@@ -241,3 +343,6 @@ fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): Str
     threadApiJson.encodeToString(
         request
     )
+
+internal fun buildSharedCreateOrOpenThreadBody(parentMessageId: String): String =
+    threadApiJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId))

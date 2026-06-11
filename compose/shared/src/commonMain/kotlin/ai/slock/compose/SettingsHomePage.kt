@@ -98,13 +98,13 @@ import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.data.parseSlockHome
-import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.MemberRepository
+import ai.slock.compose.data.NetworkSlockThreadApi
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -739,7 +739,7 @@ private fun SlockAppShellContent() {
     val threadDataSource =
         remember {
             SharedThreadDataSource(
-                networkApi = BridgeThreadApi(bridge, authStore),
+                networkApi = NetworkSlockThreadApi(appShellNetworkClient),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
                 memberRepository = memberRepository,

@@ -5,12 +5,12 @@ import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
-import ai.slock.compose.data.BridgeThreadApi
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.NetworkSlockTasksApi
+import ai.slock.compose.data.NetworkSlockThreadApi
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -602,7 +602,7 @@ private fun ThreadPageScreen() {
     val dataSource =
         remember {
             SharedThreadDataSource(
-                networkApi = BridgeThreadApi(bridge, authStore),
+                networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
                 memberRepository =
