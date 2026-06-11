@@ -93,7 +93,6 @@ import com.tencent.kuikly.core.render.android.adapter.IKRFontAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRImageAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRLogAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRRouterAdapter
-import com.tencent.kuikly.core.render.android.adapter.IKRThreadAdapter
 import com.tencent.kuikly.core.render.android.adapter.IKRUncaughtExceptionHandlerAdapter
 import com.tencent.kuikly.core.render.android.adapter.KuiklyRenderAdapterManager
 import com.tencent.kuikly.core.render.android.expand.KuiklyRenderViewBaseDelegator
@@ -115,7 +114,6 @@ import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.Executors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -373,7 +371,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
         }
-        Thread {
+        SlockKuiklyThreadAdapter.execute("thread-attachment-upload") {
                     val result =
                             runCatching {
                                         readThreadAttachmentUploadFiles(uris)
@@ -388,7 +386,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                     }
                     pending.callback?.invoke(result)
                 }
-                .start()
     }
 
     private fun readThreadAttachmentUploadFiles(uris: List<Uri>): Map<String, Any> {
@@ -879,14 +876,6 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
     }
 }
 
-private object SlockKuiklyThreadAdapter : IKRThreadAdapter {
-    private val executor = Executors.newFixedThreadPool(2)
-
-    override fun executeOnSubThread(task: () -> Unit) {
-        executor.execute(task)
-    }
-}
-
 private class SlockKuiklyImageAdapter(
         private val context: Context
 ) : IKRImageAdapter {
@@ -1226,7 +1215,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
-        Thread {
+        SlockKuiklyThreadAdapter.execute("relational-store") {
             val result =
                     runCatching {
                         val request = JSONObject(params ?: "{}")
@@ -1254,7 +1243,7 @@ internal class SlockKuiklyBridgeModule(
                         )
                     }
             callback?.invoke(result)
-        }.start()
+        }
     }
 
     private fun database(databaseName: String): SQLiteDatabase =
@@ -1930,7 +1919,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun openAttachment(params: String?, callback: KuiklyRenderCallback?) {
-        Thread {
+        SlockKuiklyThreadAdapter.execute("attachment-open") {
             val request = JSONObject(params ?: "{}")
             val startedAt = System.currentTimeMillis()
             val result =
@@ -1947,7 +1936,7 @@ internal class SlockKuiklyBridgeModule(
                         )
                     }
             callback?.invoke(result)
-        }.start()
+        }
     }
 
     private fun downloadAndOpenAttachment(request: JSONObject): Map<String, Any> {
@@ -2155,7 +2144,7 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun authRequest(params: String?, callback: KuiklyRenderCallback?) {
-        Thread {
+        SlockKuiklyThreadAdapter.execute("auth-request") {
             val request = JSONObject(params ?: "{}")
             val urlText = request.optString("url")
             val method = request.optString("method").ifBlank { "GET" }
@@ -2210,7 +2199,7 @@ internal class SlockKuiklyBridgeModule(
                         )
                     }
             callback?.invoke(result)
-        }.start()
+        }
     }
 
     private fun safeUrlForDiagnostics(rawUrl: String): String =

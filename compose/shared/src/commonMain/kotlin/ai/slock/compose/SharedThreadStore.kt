@@ -907,9 +907,14 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun writeRealtimeEvent(event: RealtimeEvent) {
+        writeRealtimeEvents(listOf(event))
+    }
+
+    suspend fun writeRealtimeEvents(events: List<RealtimeEvent>) {
+        if (events.isEmpty()) return
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return
-        localWriteThrough?.writeRealtimeEvent(serverId, event)
+        localWriteThrough?.writeRealtimeEvents(serverId, events)
     }
 
     suspend fun markChannelReadAll(channelId: String): DataResult<ReadReceiptResult> {
@@ -1113,6 +1118,7 @@ internal object SharedThreadPaging {
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
+internal const val SharedThreadRealtimePersistenceBatchDelayMillis = 64L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -1173,6 +1179,8 @@ internal class SharedThreadStore(
     private val _state = MutableStateFlow(SharedThreadState())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     private var loadJob: Job? = null
+    private var realtimePersistenceJob: Job? = null
+    private val pendingRealtimePersistenceEvents = mutableListOf<RealtimeEvent>()
 
     fun dispatch(intent: SharedThreadIntent) {
         when (intent) {
@@ -1253,6 +1261,9 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+        realtimePersistenceJob?.cancel()
+        realtimePersistenceJob = null
+        pendingRealtimePersistenceEvents.clear()
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
@@ -1378,12 +1389,45 @@ internal class SharedThreadStore(
                 currentUserId = dataSource.readSession()?.user?.id,
                 activeReplyParentMessageId = activeReplyParentMessageId
         )
-        dataSource.writeRealtimeEvent(event)
         val stableMerged = merged.preserveStableTimelineFrom(existing)
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { currentPayload -> currentPayload.withContentPatchFrom(stableMerged) }
+        val emitted =
+            reducePayloadPatch(cachePayload = true) { currentPayload ->
+                currentPayload.withContentPatchFrom(stableMerged)
+            }
+        if (emitted) {
+            writeCachedPayloadAfterFrame(_state.value.payload)
+        }
+        enqueueRealtimePersistence(event)
+    }
+
+    private fun enqueueRealtimePersistence(event: RealtimeEvent) {
+        pendingRealtimePersistenceEvents += event
+        if (realtimePersistenceJob?.isActive == true) return
+        startRealtimePersistenceJob()
+    }
+
+    private fun startRealtimePersistenceJob() {
+        realtimePersistenceJob =
+            scope.launch {
+                delay(SharedThreadRealtimePersistenceBatchDelayMillis)
+                val events = pendingRealtimePersistenceEvents.toList()
+                pendingRealtimePersistenceEvents.clear()
+                try {
+                    runCatching {
+                        dataSource.writeRealtimeEvents(events)
+                    }.onFailure { throwable ->
+                        if (throwable is CancellationException) throw throwable
+                        diagnosticsLogger?.invoke(
+                            "thread_realtime_persist_failed events=${events.size} type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
+                        )
+                    }
+                } finally {
+                    realtimePersistenceJob = null
+                    if (pendingRealtimePersistenceEvents.isNotEmpty()) {
+                        startRealtimePersistenceJob()
+                    }
+                }
+            }
     }
 
     private suspend fun markVisibleReadAll() {

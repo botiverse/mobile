@@ -154,38 +154,48 @@ class ComposeLocalWriteThrough(
     ): Boolean {
         if (events.isEmpty()) return false
         val presenceEvents = events.filterIsInstance<MemberPresenceUpdated>()
+        val newMessages = mutableListOf<Message>()
+        val updatedMessages = mutableListOf<Message>()
+        val threadUpdates = mutableListOf<ThreadUpdated>()
+        val taskPatches = mutableListOf<ai.slock.compose.model.TaskSummary>()
         var wrote = false
         if (presenceEvents.isNotEmpty()) {
             wrote = updateHomePresence(serverId, presenceEvents) || wrote
         }
-        events.filterNot { it is MemberPresenceUpdated }.forEach { event ->
-            wrote = writeRealtimeEventSingle(serverId, event, activeConversationId) || wrote
+        events.forEach { event ->
+            when (event) {
+                is MemberPresenceUpdated -> Unit
+                is MessageNew -> newMessages += event.message
+                is MessageUpdated -> updatedMessages += event.message
+                is SyncResumeResponse -> newMessages += event.messages
+                is ThreadUpdated -> threadUpdates += event
+                is TaskCreated -> taskPatches += event.tasks
+                is TaskUpdated -> taskPatches += event.task
+                is RealtimeRefreshRequired -> {
+                    logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
+                    wrote = true
+                }
+                is Heartbeat -> {
+                    logger("write_realtime_skip type=heartbeat seq=${event.seq}")
+                }
+                else -> Unit
+            }
+        }
+        latestThreadUpdates(threadUpdates).forEach { event ->
+            wrote = writeThreadMetadata(serverId, event) || wrote
+        }
+        if (newMessages.isNotEmpty()) {
+            wrote = writeRealtimeMessages(serverId, newMessages, incrementUnread = true, activeConversationId) || wrote
+        }
+        if (updatedMessages.isNotEmpty()) {
+            wrote = writeRealtimeMessages(serverId, updatedMessages, incrementUnread = false, activeConversationId) || wrote
+        }
+        val latestTasks = latestTasks(taskPatches)
+        if (latestTasks.isNotEmpty()) {
+            wrote = writeRealtimeTasks(latestTasks) || wrote
         }
         return wrote
     }
-
-    private suspend fun writeRealtimeEventSingle(
-        serverId: ServerId,
-        event: RealtimeEvent,
-        activeConversationId: String? = null
-    ): Boolean =
-        when (event) {
-            is MessageNew -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = true, activeConversationId)
-            is MessageUpdated -> writeRealtimeMessages(serverId, listOf(event.message), incrementUnread = false, activeConversationId)
-            is SyncResumeResponse -> writeRealtimeMessages(serverId, event.messages, incrementUnread = true, activeConversationId)
-            is ThreadUpdated -> writeThreadMetadata(serverId, event)
-            is TaskCreated -> writeRealtimeTasks(event.tasks)
-            is TaskUpdated -> writeRealtimeTasks(listOf(event.task))
-            is RealtimeRefreshRequired -> {
-                logger("write_realtime_refresh_required scope=${event.scope} reason=${event.reason} serverId=${event.serverId?.value.orEmpty()}")
-                true
-            }
-            is Heartbeat -> {
-                logger("write_realtime_skip type=heartbeat seq=${event.seq}")
-                false
-            }
-            else -> false
-        }
 
     private suspend fun writeThreadSnapshot(
         snapshot: ThreadSnapshot,
@@ -386,6 +396,26 @@ class ComposeLocalWriteThrough(
         }
         return wroteThread
     }
+
+    private fun latestThreadUpdates(events: List<ThreadUpdated>): List<ThreadUpdated> =
+        events
+            .fold(mutableMapOf<Pair<MessageId, ChannelId>, ThreadUpdated>()) { latest, event ->
+                latest[event.parentMessageId to event.threadChannelId] = event
+                latest
+            }
+            .values
+            .toList()
+
+    private fun latestTasks(
+        tasks: List<ai.slock.compose.model.TaskSummary>
+    ): List<ai.slock.compose.model.TaskSummary> =
+        tasks
+            .fold(mutableMapOf<TaskId, ai.slock.compose.model.TaskSummary>()) { latest, task ->
+                latest[task.id] = task
+                latest
+            }
+            .values
+            .toList()
 
     private suspend fun updateHomePresence(
         serverId: ServerId,

@@ -1,7 +1,8 @@
 package ai.slock.compose
 
-import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.ComposeLocalDataStore
+import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.AgentActivitySnapshot
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDmSnapshot
@@ -82,6 +83,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -822,9 +824,52 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
         assertEquals(
+            null,
+            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
+        )
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
+        assertEquals(
             "realtime body",
             localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePersistenceFailureDoesNotRollbackVisiblePayload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val backingStore = InMemoryComposeLocalDataStore()
+        backingStore.writeThread(threadSnapshot(body = "cached body"))
+        val logs = mutableListOf<String>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(FailingThreadWriteStore(backingStore))
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "realtime body"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
+        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
+        assertTrue(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
 
@@ -1822,6 +1867,14 @@ class SharedThreadStoreTest {
             attachmentIds: List<ai.slock.compose.model.AttachmentId>,
             asTask: Boolean
         ): DataResult<SendMessageResult> = error("unused")
+    }
+
+    private class FailingThreadWriteStore(
+        private val delegate: ComposeLocalDataStore
+    ) : ComposeLocalDataStore by delegate {
+        override suspend fun writeThread(snapshot: ThreadSnapshot) {
+            error("thread write failed")
+        }
     }
 
     private fun basePayload(): KuiklyThreadScreenPayload =

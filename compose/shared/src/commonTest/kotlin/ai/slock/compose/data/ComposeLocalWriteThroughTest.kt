@@ -19,6 +19,7 @@ import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.threadIdentity
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -412,6 +413,60 @@ class ComposeLocalWriteThroughTest {
         assertTrue(cachedTasks[0] !== taskOne)
         assertTrue(cachedTasks[1] === taskTwo)
         assertTrue(logs.any { it.contains("thread_patch source=realtime_task") && it.contains("changedTaskIds=[task-1]") })
+    }
+
+    @Test
+    fun realtimeBatchMergesSameThreadMessagesMetadataAndTasks() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val parent = message("parent-1", "channel-1", "channel-1", seq = 1, body = "parent")
+        val existingTask = task("task-1", "Old task", TaskStatus.Todo)
+        store.writeHome(home(channels = listOf(channel().copy(lastMessageId = MessageId("parent-1")))))
+        store.writeThread(
+            ThreadSnapshot(
+                conversation = channel(),
+                messages = listOf(parent),
+                tasks = listOf(existingTask),
+                lastSeq = 1
+            )
+        )
+
+        writer.writeRealtimeEvents(
+            serverId,
+            listOf(
+                MessageNew(message("m2", "channel-1", "channel-1", seq = 2, body = "second")),
+                MessageNew(message("m3", "channel-1", "channel-1", seq = 3, body = "third")),
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-1"),
+                    threadChannelId = ChannelId("thread-parent-1"),
+                    replyCount = 2,
+                    lastReplyAt = "12:05",
+                    participantIds = emptyList(),
+                    unreadCount = 1
+                ),
+                ThreadUpdated(
+                    parentMessageId = MessageId("parent-1"),
+                    threadChannelId = ChannelId("thread-parent-1"),
+                    replyCount = 3,
+                    lastReplyAt = "12:06",
+                    participantIds = emptyList(),
+                    unreadCount = 2
+                ),
+                TaskUpdated(existingTask.copy(title = "Updated task", status = TaskStatus.InReview))
+            )
+        )
+
+        val cached = store.readThread(ThreadId("channel-1"))
+        assertEquals(listOf("parent-1", "m2", "m3"), cached?.messages?.map { it.id.value })
+        assertEquals(3, cached?.lastSeq)
+        assertEquals(3, cached?.messages?.first()?.replyCount)
+        assertEquals(2, cached?.messages?.first()?.unreadReplyCount)
+        assertEquals("Updated task", cached?.tasks?.single()?.title)
+        assertEquals(TaskStatus.InReview, cached?.tasks?.single()?.status)
+        assertEquals(1, logs.count { it.contains("thread_patch source=realtime_message") })
+        assertEquals(1, logs.count { it.contains("thread_patch source=thread_metadata") })
+        assertEquals(1, logs.count { it.contains("thread_patch source=realtime_task") })
     }
 
     @Test

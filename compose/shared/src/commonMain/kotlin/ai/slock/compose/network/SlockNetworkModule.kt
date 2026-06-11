@@ -7,16 +7,31 @@ import kotlin.coroutines.resume
 import kotlinx.coroutines.suspendCancellableCoroutine
 
 class SlockNetworkModule : Module() {
+    private var nextRequestOrdinal = 0L
+
     override fun moduleName(): String = MODULE_NAME
 
     suspend fun request(command: JSONObject): SlockNativeNetworkResponse =
         suspendCancellableCoroutine { continuation ->
+            val requestId = nextRequestId()
+            command.put("requestId", requestId)
             val callback: CallbackFn =
                 { response: JSONObject? ->
                     if (continuation.isActive) {
                         continuation.resume(response.toSlockNativeNetworkResponse())
                     }
                 }
+            continuation.invokeOnCancellation {
+                val cancelCommand = JSONObject()
+                cancelCommand.put("requestId", requestId)
+                toNative(
+                    false,
+                    METHOD_CANCEL,
+                    cancelCommand.toString(),
+                    null,
+                    false
+                )
+            }
             toNative(
                 false,
                 METHOD_REQUEST,
@@ -25,6 +40,9 @@ class SlockNetworkModule : Module() {
                 false
             )
         }
+
+    private fun nextRequestId(): String =
+        "request-${nextRequestOrdinal++}"
 
     private fun JSONObject?.toSlockNativeNetworkResponse(): SlockNativeNetworkResponse =
         SlockNativeNetworkResponse(
@@ -37,6 +55,7 @@ class SlockNetworkModule : Module() {
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
+        private const val METHOD_CANCEL = "cancel"
     }
 }
 

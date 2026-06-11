@@ -2,11 +2,15 @@ package ai.slock.android.shared
 
 import android.net.Uri
 import android.util.Base64
+import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
+import okhttp3.Call
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -22,6 +26,10 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                 request(params, callback)
                 null
             }
+            METHOD_CANCEL -> {
+                cancel(params)
+                null
+            }
             else -> {
                 callback?.invoke(mapOf("code" to -1, "message" to "Method not implemented"))
                 null
@@ -30,10 +38,14 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
     }
 
     private fun request(params: String?, callback: KuiklyRenderCallback?) {
-        Thread {
+        val command = JSONObject(params ?: "{}")
+        val requestId = command.optString("requestId").takeIf { it.isNotBlank() }
+                ?: "android-${System.nanoTime()}"
+        val active = ActiveNetworkRequest()
+        activeRequests[requestId] = active
+        SlockKuiklyThreadAdapter.execute("network-request-$requestId") {
             val result =
                     runCatching {
-                                val command = JSONObject(params ?: "{}")
                                 val headers = command.optJSONObject("headers") ?: JSONObject()
                                 val method = command.optString("method", "GET").uppercase()
                                 val requestBody = command.requestBody(method, headers, activity)
@@ -43,7 +55,12 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                                                 .applyHeaders(headers, skipContentType = requestBody is MultipartBody)
                                                 .method(method, requestBody)
                                                 .build()
-                                CLIENT.newCall(request).execute().use { response ->
+                                if (active.cancelled.get()) {
+                                    throw RequestCancelledException()
+                                }
+                                val call = CLIENT.newCall(request)
+                                active.call = call
+                                call.execute().use { response ->
                                     val body = response.body?.string().orEmpty()
                                     mapOf(
                                             "code" to response.code,
@@ -60,8 +77,31 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                                         "message" to (throwable.message ?: "Network unavailable")
                                 )
                             }
-            callback?.invoke(result)
-        }.start()
+            if (active.cancelled.get()) {
+                SlockDiagnosticsLogger.record(
+                        "SlockKuiklyNetwork",
+                        "request_callback_drop requestId=$requestId reason=cancelled thread=${Thread.currentThread().name}"
+                )
+            } else {
+                SlockDiagnosticsLogger.record(
+                        "SlockKuiklyNetwork",
+                        "request_callback requestId=$requestId thread=${Thread.currentThread().name}"
+                )
+                callback?.invoke(result)
+            }
+            activeRequests.remove(requestId, active)
+        }
+    }
+
+    private fun cancel(params: String?) {
+        val requestId = JSONObject(params ?: "{}").optString("requestId").takeIf { it.isNotBlank() } ?: return
+        val active = activeRequests.remove(requestId) ?: return
+        active.cancelled.set(true)
+        active.call?.cancel()
+        SlockDiagnosticsLogger.record(
+                "SlockKuiklyNetwork",
+                "request_cancel requestId=$requestId thread=${Thread.currentThread().name}"
+        )
     }
 
     private fun Request.Builder.applyHeaders(headers: JSONObject, skipContentType: Boolean): Request.Builder {
@@ -154,6 +194,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
     companion object {
         const val MODULE_NAME = "HRSlockNetworkModule"
         private const val METHOD_REQUEST = "request"
+        private const val METHOD_CANCEL = "cancel"
         private val METHODS_REQUIRING_BODY = setOf("POST", "PUT", "PATCH")
         private val CLIENT =
                 OkHttpClient.Builder()
@@ -162,4 +203,15 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                         .writeTimeout(30, TimeUnit.SECONDS)
                         .build()
     }
+
+    private class ActiveNetworkRequest {
+        val cancelled = AtomicBoolean(false)
+
+        @Volatile
+        var call: Call? = null
+    }
+
+    private class RequestCancelledException : IOException("Request cancelled")
+
+    private val activeRequests = ConcurrentHashMap<String, ActiveNetworkRequest>()
 }
