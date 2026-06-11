@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
@@ -2219,7 +2220,7 @@ private fun ThreadImagePreviewOverlay(
                 modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
             )
             Box(
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(14.dp),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
@@ -2252,20 +2253,12 @@ private fun ThreadImagePreviewOverlay(
                         )
                 ) {
                     if (displayUrl != null) {
-                        Box(
+                        SlockCachedImage(
+                            source = displayUrl,
+                            contentDescription = current.name,
+                            contentScale = ContentScale.FillBounds,
                             modifier = Modifier.fillMaxSize()
-                                .background(SlockColor.SurfaceWhite)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                                .padding(6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            SlockCachedImage(
-                                source = displayUrl,
-                                contentDescription = current.name,
-                                contentScale = ContentScale.Fit,
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                        )
                     } else {
                         ThreadImagePreviewEmptyState(
                             title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
@@ -2311,7 +2304,14 @@ private fun ThreadImagePreviewOverlay(
                     }
                 }
             } else {
-                Spacer(modifier = Modifier.height(bottomSafeArea))
+                if (bottomSafeArea > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(bottomSafeArea)
+                            .background(SlockColor.TextBlack.copy(alpha = 0.92f))
+                    )
+                }
             }
         }
     }
@@ -2323,17 +2323,14 @@ private fun ThreadImagePreviewIconButton(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    Button(
+    SlockBrutalIconButton(
+        iconName = icon,
         onClick = onClick,
         enabled = enabled,
-        pressOffset = 2.dp,
-        modifier = Modifier.size(36.dp)
-            .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .alpha(if (enabled) 1f else 0.42f)
-    ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(20.dp), color = "#FF000000")
-    }
+        size = 36.dp,
+        shadowOffset = 3.dp,
+        disabledAlpha = 0.42f
+    )
 }
 
 @Composable
