@@ -1,6 +1,9 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.network.MultipartFile
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -74,6 +77,26 @@ class AnnouncementsRemindersApiTest {
         )
     }
 
+    @Test
+    fun networkAnnouncementsRemindersApiUsesSlockNetworkClientRoutes() = runBlocking {
+        val networkClient = RecordingAnnouncementsRemindersNetworkClient()
+        val client = SlockAnnouncementsRemindersApiClient(NetworkSlockAnnouncementsRemindersApi(networkClient))
+        val agentId = MemberId("agent-1")
+
+        assertIs<DataResult.Content<AnnouncementsPage>>(client.activeAnnouncements())
+        assertIs<DataResult.Content<AnnouncementCommandResult>>(client.dismissAnnouncement("announcement-1"))
+        assertIs<DataResult.Content<RemindersPage>>(client.reminders(agentId, "scheduled,fired"))
+
+        assertEquals(
+            listOf(
+                "GET announcements/active priority=Visible query= server= body=",
+                "POST announcements/announcement-1/dismiss priority=Foreground query= server= body=",
+                "GET reminders priority=Visible query=ownerAgentId=agent-1&status=scheduled,fired server= body="
+            ),
+            networkClient.calls
+        )
+    }
+
     private class RecordingAnnouncementsRemindersApi(
         private val activeBody: String =
             """{"announcements":[{"id":"announcement-1","title":"Release notes","pages":[{"body":"One"},{"body":"Two"}],"publishedAt":"2026-05-22T00:00:00.000Z"}]}""",
@@ -100,5 +123,47 @@ class AnnouncementsRemindersApiTest {
 
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private class RecordingAnnouncementsRemindersNetworkClient : SlockNetworkClient {
+        val calls = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            val normalizedPath = path.trim('/')
+            calls +=
+                "$method $normalizedPath priority=$priority query=${query.joinToString("&") { "${it.first}=${it.second}" }} " +
+                    "server=${serverIdOverride?.value.orEmpty()} body=${bodyText.orEmpty()}"
+            return when (normalizedPath) {
+                "announcements/active" -> ok(activeBody)
+                "announcements/announcement-1/dismiss" -> ok(dismissBody)
+                "reminders" -> ok(remindersBody)
+                else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
+            }
+        }
+
+        override suspend fun uploadAttachments(
+            priority: DataRequestPriority,
+            channelId: ChannelId,
+            files: List<MultipartFile>
+        ): HomeNetworkResponse =
+            HomeNetworkResponse(code = 501, bodyText = null)
+
+        private fun ok(body: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = body)
+
+        private companion object {
+            const val activeBody =
+                """{"announcements":[{"id":"announcement-1","title":"Release notes","pages":[{"body":"One"},{"body":"Two"}],"publishedAt":"2026-05-22T00:00:00.000Z"}]}"""
+            const val dismissBody = """{"ok":true}"""
+            const val remindersBody =
+                """{"reminders":[{"reminderId":"reminder-1","title":"standup","fireAt":"2026-05-22T00:00:00.000Z","status":"scheduled"}]}"""
+        }
     }
 }

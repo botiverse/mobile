@@ -11,9 +11,7 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
-import ai.slock.compose.data.BridgeAnnouncementsRemindersApi
 import ai.slock.compose.data.BridgeAuthApi
-import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.NetworkSlockHomeApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
@@ -34,6 +32,7 @@ import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import ai.slock.compose.data.MyMessageAlignmentPreference
+import ai.slock.compose.data.NetworkSlockAnnouncementsRemindersApi
 import ai.slock.compose.data.NetworkSlockTasksApi
 import ai.slock.compose.data.SERVER_ACTION_INVITE_CREATE
 import ai.slock.compose.data.SERVER_ACTION_INVITE_REVOKE
@@ -695,7 +694,7 @@ private fun SlockAppShellContent() {
             SharedHomeDataSource(
                 sessionStore = authStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
-                announcementsApi = BridgeAnnouncementsRemindersApi(bridge, authStore),
+                announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
@@ -703,7 +702,6 @@ private fun SlockAppShellContent() {
                 diagnosticsLogger = { message -> bridge.log("shared_home $message") }
             )
         }
-    val membersApi = remember { BridgeMembersApi(bridge, authStore) }
     val memberRepository =
         remember {
             RealMemberRepository(
@@ -1481,7 +1479,6 @@ private fun SlockAppShellContent() {
                                     }
                                 },
                                 onSettingsIntent = settingsViewModel::dispatch,
-                                membersApi = membersApi,
                                 selectedDestination = selectedSettingsDestination,
                                 selectedComputerId = selectedSettingsComputerId,
                                 onDestinationChange = {
@@ -1655,7 +1652,6 @@ private fun SettingsAppShellContent(
     notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
     onToggleNotificationPreference: () -> Unit,
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
-    membersApi: BridgeMembersApi,
     selectedDestination: String,
     selectedComputerId: String?,
     onDestinationChange: (String) -> Unit,

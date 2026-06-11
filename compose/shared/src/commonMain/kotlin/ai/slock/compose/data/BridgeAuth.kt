@@ -177,56 +177,6 @@ internal data class BridgeAuthenticatedRequest(
             .also { command -> bodyText?.let { command.put("bodyText", it) } }
 }
 
-internal class BridgeAnnouncementsRemindersApi(
-    bridge: BridgeModule,
-    sessionStore: SlockAuthSessionStore,
-    baseUrl: String = SLOCK_API_BASE_URL
-) : SlockAnnouncementsRemindersApi {
-    private val executor = BridgeAuthenticatedRequestExecutor(bridge, sessionStore, baseUrl)
-
-    override suspend fun activeAnnouncements(): HomeNetworkResponse =
-        executor.request(path = "announcements/active")
-
-    override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
-        executor.request(
-            path = "announcements/${announcementId.trim()}/dismiss",
-            method = "POST"
-        )
-
-    override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
-        executor.request(
-            path = "reminders",
-            query = "ownerAgentId=${ownerAgentId.value}&status=$status"
-        )
-}
-
-internal class BridgeMembersApi(
-    bridge: BridgeModule,
-    sessionStore: SlockAuthSessionStore,
-    baseUrl: String = SLOCK_API_BASE_URL
-) {
-    private val networkClient =
-        BridgeSlockNetworkClient(
-            bridge = bridge,
-            sessionStore = sessionStore,
-            baseUrl = baseUrl
-        )
-
-    suspend fun serverMembers(serverId: String): HomeNetworkResponse =
-        networkClient.request(
-            priority = DataRequestPriority.Visible,
-            path = "servers/$serverId/members",
-            serverIdOverride = ServerId(serverId)
-        )
-
-    suspend fun agents(serverId: String): HomeNetworkResponse =
-        networkClient.request(
-            priority = DataRequestPriority.Visible,
-            path = "agents",
-            serverIdOverride = ServerId(serverId)
-        )
-}
-
 internal class BridgeSettingsPlatformCapabilities(
     private val bridge: BridgeModule
 ) : SharedSettingsPlatformCapabilities {

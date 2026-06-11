@@ -68,6 +68,27 @@ class SlockAnnouncementsRemindersApiClient(
             }
 }
 
+class NetworkSlockAnnouncementsRemindersApi(
+    private val networkClient: SlockNetworkClient
+) : SlockAnnouncementsRemindersApi {
+    override suspend fun activeAnnouncements(): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Visible, "announcements/active")
+
+    override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "announcements/${announcementId.trim()}/dismiss",
+            method = "POST"
+        )
+
+    override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "reminders",
+            query = listOf("ownerAgentId" to ownerAgentId.value, "status" to status)
+        )
+}
+
 data class AnnouncementsPage(
     val announcementCount: Int,
     val firstTitle: String?,
