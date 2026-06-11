@@ -26,6 +26,7 @@ sqldelight = "2.1.0"
 coil = "3.4.0"
 ktor = "2.3.7"
 androidsvg = "1.4"
+buglyPro = "4.4.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -63,6 +64,7 @@ ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref =
 ktor-client-okhttp = { group = "io.ktor", name = "ktor-client-okhttp", version.ref = "ktor" }
 ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
 androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
+bugly-pro = { group = "com.tencent.bugly", name = "bugly-pro", version.ref = "buglyPro" }
 kuikly-core = { group = "com.tencent.kuikly-open", name = "core", version.ref = "kuiklyAndroid" }
 kuikly-core-annotations = { group = "com.tencent.kuikly-open", name = "core-annotations", version.ref = "kuiklyAndroid" }
 kuikly-compose = { group = "com.tencent.kuikly-open", name = "compose", version.ref = "kuiklyAndroid" }

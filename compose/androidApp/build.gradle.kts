@@ -11,6 +11,20 @@ val googleServerClientId =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
+val buglyAndroidAppId =
+    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_ID")
+        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_ID"))
+        .getOrElse("")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+
+val buglyAndroidAppKey =
+    providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_KEY")
+        .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_KEY"))
+        .getOrElse("")
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+
 android {
     namespace = "ai.slock.android"
     compileSdk {
@@ -28,6 +42,8 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("Boolean", "SHOW_TEST_BUILD_BADGE", "false")
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
+        buildConfigField("String", "BUGLY_ANDROID_APP_ID", "\"$buglyAndroidAppId\"")
+        buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
     }
 
     buildTypes {
@@ -113,6 +129,9 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidsvg)
+    implementation(libs.bugly.pro) {
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
+    }
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

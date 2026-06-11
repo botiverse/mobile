@@ -115,6 +115,9 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.manager.PagerManager
+import com.tencent.kuikly.core.module.PerformanceData
+import com.tencent.kuikly.core.module.PerformanceModule
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
@@ -464,6 +467,63 @@ private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
         errorCode != null -> "error"
         else -> status.ifBlank { "unknown" }
     }
+
+private fun requestKuiklyThreadPerformanceSnapshot(
+    bridge: ai.slock.compose.base.BridgeModule,
+    threadId: String,
+    reason: String
+) {
+    runCatching {
+        PagerManager.getCurrentPager()
+            .acquireModule<PerformanceModule>(PerformanceModule.MODULE_NAME)
+            .getPerformanceData { data ->
+                bridge.log(data.threadPerformanceSnapshotLog(threadId, reason))
+                bridge.reportKuiklyPerformanceSnapshot(
+                    routeName = "kuikly_thread",
+                    reason = reason,
+                    threadId = threadId,
+                    data = data
+                )
+            }
+    }.onFailure { error ->
+        bridge.log(
+            "kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason " +
+                "result=failed error=${error.message.orEmpty()}"
+        )
+        bridge.reportKuiklyPerformanceSnapshot(
+            routeName = "kuikly_thread",
+            reason = reason,
+            threadId = threadId,
+            data = null
+        )
+    }
+}
+
+private fun PerformanceData?.threadPerformanceSnapshotLog(threadId: String, reason: String): String {
+    if (this == null) {
+        return "kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason result=missing"
+    }
+    val launch = pageLoadTime
+    val memory = memory
+    return buildString {
+        append("kuikly_perf_snapshot threadId=$threadId route=kuikly_thread reason=$reason result=content")
+        append(" pageExistMs=$pageExistTime mode=${mode.name}")
+        append(" firstProcess=${isFirstLaunchOfProcess} firstPage=${isFirstLaunchOfPage}")
+        append(" mainFPS=${mainFPS ?: -1} kotlinFPS=${kotlinFPS ?: -1}")
+        if (launch != null) {
+            append(" firstPaintMs=${launch.firstPaintCost}")
+            append(" buildMs=${launch.pageBuildCost}")
+            append(" layoutMs=${launch.pageLayoutCost}")
+            append(" renderMs=${launch.renderCost}")
+        }
+        if (memory != null) {
+            append(" memoryAvg=${memory.appAvg}")
+            append(" memoryPeak=${memory.appPeak}")
+            append(" memoryAvgDelta=${memory.avgIncrement}")
+            append(" memoryPeakDelta=${memory.peakIncrement}")
+        }
+    }
+}
 
 private fun KuiklyThreadScreenPayload.findMarkdownTaskId(tag: ThreadMarkdownTag): String? {
     val key = tag.label.removePrefix("#").trim()
@@ -932,6 +992,7 @@ internal fun SharedThreadRouteContent(
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
     var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
@@ -1007,6 +1068,14 @@ internal fun SharedThreadRouteContent(
             bridge.log(
                 "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
             )
+            if (performanceSnapshotLoggedThreadId != threadRouteKey) {
+                performanceSnapshotLoggedThreadId = threadRouteKey
+                requestKuiklyThreadPerformanceSnapshot(
+                    bridge = bridge,
+                    threadId = threadRouteKey.orEmpty(),
+                    reason = "thread_first_content"
+                )
+            }
         }
     }
     LaunchedEffect(threadRouteKey, taskChannelId.value, payload.status) {

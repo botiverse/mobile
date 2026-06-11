@@ -1,11 +1,13 @@
 package ai.slock.android
 
 import android.app.Application
+import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockCrashReporter
 
 class SlockApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        SlockAndroidBuglyDiagnostics.init(this)
         SlockCrashReporter.install(this)
     }
 }

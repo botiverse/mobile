@@ -4,6 +4,7 @@ import ai.slock.compose.data.SLOCK_SOCKET_BASE_URL
 import com.tencent.kuikly.core.base.toInt
 import com.tencent.kuikly.core.module.CallbackFn
 import com.tencent.kuikly.core.module.Module
+import com.tencent.kuikly.core.module.PerformanceData
 import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.resume
@@ -39,6 +40,50 @@ internal class BridgeModule : Module() {
         methodArgs.put("action", action)
         methodArgs.put("sceneName", cleanScene)
         callNativeMethod("performanceScene", methodArgs, null)
+    }
+
+    fun reportKuiklyPerformanceSnapshot(
+        routeName: String,
+        reason: String,
+        threadId: String?,
+        data: PerformanceData?
+    ) {
+        val methodArgs = JSONObject()
+        methodArgs.put("routeName", routeName)
+        methodArgs.put("reason", reason)
+        threadId?.takeIf { it.isNotBlank() }?.let { methodArgs.put("threadId", it) }
+        if (data == null) {
+            methodArgs.put("status", "missing")
+        } else {
+            methodArgs.put("status", "content")
+            methodArgs.put("pageExistTime", data.pageExistTime)
+            methodArgs.put("mode", data.mode.name)
+            methodArgs.put("isFirstLaunchOfProcess", data.isFirstLaunchOfProcess)
+            methodArgs.put("isFirstLaunchOfPage", data.isFirstLaunchOfPage)
+            data.mainFPS?.let { methodArgs.put("mainFPS", it) }
+            data.kotlinFPS?.let { methodArgs.put("kotlinFPS", it) }
+            data.pageLoadTime?.let { launch ->
+                methodArgs.put("launchFirstPaintCost", launch.firstPaintCost)
+                methodArgs.put("launchInitViewCost", launch.initViewCost)
+                methodArgs.put("launchPreloadClassCost", launch.preloadClassCost)
+                methodArgs.put("launchFetchContextCodeCost", launch.fetchContextCodeCost)
+                methodArgs.put("launchInitRenderContextCost", launch.initRenderContextCost)
+                methodArgs.put("launchInitRenderCoreCost", launch.initRenderCoreCost)
+                methodArgs.put("launchNewPageCost", launch.newPageCost)
+                methodArgs.put("launchPageBuildCost", launch.pageBuildCost)
+                methodArgs.put("launchPageLayoutCost", launch.pageLayoutCost)
+                methodArgs.put("launchCreatePageCost", launch.createPageCost)
+                methodArgs.put("launchCreateInstanceCost", launch.createInstanceCost)
+                methodArgs.put("launchRenderCost", launch.renderCost)
+            }
+            data.memory?.let { memory ->
+                methodArgs.put("memoryAvgIncrement", memory.avgIncrement)
+                methodArgs.put("memoryPeakIncrement", memory.peakIncrement)
+                methodArgs.put("memoryAppPeak", memory.appPeak)
+                methodArgs.put("memoryAppAvg", memory.appAvg)
+            }
+        }
+        callNativeMethod("kuiklyPerformanceSnapshot", methodArgs, null)
     }
 
     fun copyToPasteboard(content: String) {

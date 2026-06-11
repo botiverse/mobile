@@ -61,6 +61,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly LOG = "log";
   static readonly PERFORMANCE_SCENE = "performanceScene";
+  static readonly KUIKLY_PERFORMANCE_SNAPSHOT = "kuiklyPerformanceSnapshot";
   static readonly REPORT_DT = "reportDT";
   static readonly REPORT_REAL_TIME = "reportRealTime";
   static readonly REPORT_REAL_TIME_LEGACY = "reportRealtime";
@@ -115,6 +116,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.PERFORMANCE_SCENE: {
         this.performanceScene(params);
+        break;
+      }
+      case KRBridgeModule.KUIKLY_PERFORMANCE_SNAPSHOT: {
+        this.kuiklyPerformanceSnapshot(params);
         break;
       }
       case KRBridgeModule.REPORT_DT: {
@@ -309,6 +314,26 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     } catch (error) {
       SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=failed ${JSON.stringify(error) ?? ''}`);
     }
+  }
+
+  private kuiklyPerformanceSnapshot(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    const payload = this.parseRecord(params);
+    const routeName = this.recordString(payload, 'routeName', 'unknown');
+    const reason = this.recordString(payload, 'reason', 'unknown');
+    const status = this.recordString(payload, 'status', 'unknown');
+    const threadId = this.recordString(payload, 'threadId', '');
+    const summary =
+      `route=${routeName} reason=${reason} status=${status}` +
+        ` threadHash=${this.stableShortHash(threadId)}` +
+        ` firstPaintMs=${this.recordString(payload, 'launchFirstPaintCost', 'na')}` +
+        ` mainFPS=${this.recordString(payload, 'mainFPS', 'na')}` +
+        ` kotlinFPS=${this.recordString(payload, 'kotlinFPS', 'na')}` +
+        ` pageExistMs=${this.recordString(payload, 'pageExistTime', 'na')}`;
+    SlockOhosDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
+    SlockOhosBuglyDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
   }
 
   private reportRealtime(params: KRAny) {
@@ -954,6 +979,32 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return JSON.parse(params) as Record<string, Object>;
     }
     return params as Record<string, Object>;
+  }
+
+  private recordString(records: Record<string, Object>, key: string, fallback: string): string {
+    const value = records[key];
+    if (value === undefined || value === null) {
+      return fallback;
+    }
+    if (typeof value === 'string') {
+      return value.length > 0 ? value : fallback;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return `${value}`;
+    }
+    return JSON.stringify(value) ?? fallback;
+  }
+
+  private stableShortHash(value: string): string {
+    if (value.length === 0) {
+      return 'unknown';
+    }
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
   }
 
   private readAssetFile(params: KRAny, callback: KuiklyRenderCallback) {

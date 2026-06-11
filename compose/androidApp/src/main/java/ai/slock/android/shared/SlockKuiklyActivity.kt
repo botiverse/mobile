@@ -57,6 +57,7 @@ import ai.slock.android.core.data.auth.GoogleSocialAuthResult
 import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
+import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.storage.StorageClearTarget
@@ -493,11 +494,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             "enter" -> {
                 SlockPerformanceDiagnostics.updateRoute(container, cleanScene)
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_enter")
-                SlockDiagnosticsLogger.d("SlockPerfScene", "enter scene=$cleanScene bugly=not_integrated")
+                SlockAndroidBuglyDiagnostics.enterScene(cleanScene)
             }
             "exit" -> {
                 SlockPerformanceDiagnostics.updateOperation(container, "scene_exit")
-                SlockDiagnosticsLogger.d("SlockPerfScene", "exit scene=$cleanScene bugly=not_integrated")
+                SlockAndroidBuglyDiagnostics.exitScene(cleanScene)
             }
             else ->
                     SlockDiagnosticsLogger.w(
@@ -1146,6 +1147,10 @@ internal class SlockKuiklyBridgeModule(
                 performanceScene(params)
                 null
             }
+            "kuiklyPerformanceSnapshot" -> {
+                kuiklyPerformanceSnapshot(params)
+                null
+            }
             "settingsCapability" -> {
                 settingsCapability(params, callback)
                 null
@@ -1214,6 +1219,10 @@ internal class SlockKuiklyBridgeModule(
                 action = request.optString("action").ifBlank { "enter" },
                 sceneName = sceneName
         )
+    }
+
+    private fun kuiklyPerformanceSnapshot(params: String?) {
+        SlockAndroidBuglyDiagnostics.reportKuiklySnapshot(JSONObject(params ?: "{}"))
     }
 
     private fun relationalStore(params: String?, callback: KuiklyRenderCallback?) {
