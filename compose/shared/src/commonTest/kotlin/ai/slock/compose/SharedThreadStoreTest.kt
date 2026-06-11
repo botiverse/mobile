@@ -47,6 +47,8 @@ import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SavedMessageStatusSnapshot
 import ai.slock.compose.data.SavedStatusRepository
 import ai.slock.compose.data.SharedThreadNetworkApi
+import ai.slock.compose.data.SlockAgentsApi
+import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.StoredAuthSession
@@ -400,6 +402,67 @@ class SharedThreadStoreTest {
             ),
             actionCardsApi.calls
         )
+    }
+
+    @Test
+    fun agentCreateActionCardUsesTypedApiAndMarksExecuted() = runBlocking {
+        val agentsApi = RecordingAgentsApi()
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                agentsApiClient = SlockAgentsApiClient(agentsApi),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "agent:create",
+                name = "@Noel",
+                description = "Helps with release review.",
+                draftHint = "Use the release machine."
+            )
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val executedCard = (result as DataResult.Content).data
+
+        assertEquals(1, agentsApi.createBodies.size)
+        assertTrue(agentsApi.createBodies.single().contains(""""name":"Noel""""))
+        assertTrue(agentsApi.createBodies.single().contains(""""description":"Helps with release review.""""))
+        assertFalse(agentsApi.createBodies.single().contains("@Noel"))
+        assertEquals("executed", executedCard.state)
+        assertEquals("agent", executedCard.resultKind)
+        assertEquals("agent-created", executedCard.resultId)
+        assertEquals("Noel", executedCard.resultName)
+        assertEquals(
+            listOf(
+                """POST actions/m-card/mark-executed body={"result":{"kind":"agent","id":"agent-created","name":"Noel","channelId":null,"channelName":null,"addedHumanIds":null,"addedAgentIds":null}}"""
+            ),
+            actionCardsApi.calls
+        )
+    }
+
+    @Test
+    fun actionCardCreateDoesNotReturnExecutedCardWhenMarkExecutedFails() = runBlocking {
+        val agentsApi = RecordingAgentsApi()
+        val actionCardsApi = RecordingActionCardsApi(
+            markResponse = HomeNetworkResponse(code = 500, bodyText = """{"error":"server_unavailable"}""")
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                agentsApiClient = SlockAgentsApiClient(agentsApi),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card = ThreadActionCard(type = "agent:create", name = "Noel")
+
+        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+
+        assertEquals(1, agentsApi.createBodies.size)
+        assertEquals(1, actionCardsApi.calls.size)
+        assertTrue(result is DataResult.Error)
+        assertEquals("action_mark_executed_contract_mismatch", result.error.code)
     }
 
     @Test
@@ -1632,7 +1695,37 @@ class SharedThreadStoreTest {
         override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
     }
 
-    private class RecordingActionCardsApi : SlockIntegrationsActionsPushApi {
+    private class RecordingAgentsApi : SlockAgentsApi {
+        val createBodies: MutableList<String> = mutableListOf()
+
+        override suspend fun agents(): HomeNetworkResponse = error("unused")
+        override suspend fun agent(agentId: MemberId): HomeNetworkResponse = error("unused")
+
+        override suspend fun createAgent(body: String): HomeNetworkResponse {
+            createBodies += body
+            return HomeNetworkResponse(code = 200, bodyText = """{"id":"agent-created","name":"Noel","status":"active"}""")
+        }
+
+        override suspend fun updateAgent(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun startAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun stopAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun resetAgent(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun deleteAgent(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun assignMachine(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun agentDirectMessages(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun agentActivityLog(agentId: MemberId, limit: Int): HomeNetworkResponse = error("unused")
+        override suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String?): HomeNetworkResponse = error("unused")
+        override suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse = error("unused")
+        override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
+        override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+    }
+
+    private class RecordingActionCardsApi(
+        private val markResponse: HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"messageId":"m-card","metadata":{"kind":"action-card"}}""")
+    ) : SlockIntegrationsActionsPushApi {
         val calls: MutableList<String> = mutableListOf()
 
         override suspend fun integrationsOverview(): HomeNetworkResponse = error("unused")
@@ -1647,7 +1740,7 @@ class SharedThreadStoreTest {
 
         override suspend fun markActionExecuted(messageId: MessageId, body: String): HomeNetworkResponse {
             calls += "POST actions/${messageId.value}/mark-executed body=$body"
-            return HomeNetworkResponse(code = 200, bodyText = """{"messageId":"${messageId.value}","metadata":{"kind":"action-card"}}""")
+            return markResponse
         }
 
         override suspend fun pushVapidKey(): HomeNetworkResponse = error("unused")

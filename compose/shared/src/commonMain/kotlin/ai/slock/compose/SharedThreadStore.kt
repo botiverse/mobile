@@ -212,11 +212,12 @@ internal class SharedThreadDataSource(
             is DataResult.Content -> {
                 val resultName = created.data.name.takeIf { it.isNotBlank() } ?: agentName.removePrefix("@")
                 val executedCard = card.withExecutedAgent(id = created.data.id, name = resultName)
-                actionsApi.markActionExecuted(
-                    MessageId(messageId),
-                    buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName)
+                markThreadActionCardExecuted(
+                    actionsApi = actionsApi,
+                    messageId = messageId,
+                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName),
+                    executedCard = executedCard
                 )
-                DataResult.Content(executedCard)
             }
             is DataResult.Empty ->
                 DataResult.Error(ScreenError(code = "agent_create_empty", retryable = true))
@@ -259,11 +260,16 @@ internal class SharedThreadDataSource(
                 val createdChannelId = channel.channelId?.value ?: channel.threadId.value
                 val createdChannelName = channel.name.takeIf { it.isNotBlank() } ?: channelName
                 val executedCard = card.withExecutedChannel(id = createdChannelId, name = createdChannelName)
-                actionsApi.markActionExecuted(
-                    MessageId(messageId),
-                    buildMarkChannelActionExecutedBody(channelId = createdChannelId, channelName = createdChannelName)
+                markThreadActionCardExecuted(
+                    actionsApi = actionsApi,
+                    messageId = messageId,
+                    body =
+                        buildMarkChannelActionExecutedBody(
+                            channelId = createdChannelId,
+                            channelName = createdChannelName
+                        ),
+                    executedCard = executedCard
                 )
-                DataResult.Content(executedCard)
             }
             is DataResult.Empty ->
                 DataResult.Error(ScreenError(code = "channel_create_empty", retryable = true))
@@ -343,17 +349,33 @@ internal class SharedThreadDataSource(
                 addedHumanIds = addedHumans,
                 addedAgentIds = addedAgents
             )
-        actionsApi.markActionExecuted(
-            MessageId(messageId),
-            buildMarkChannelMembersActionExecutedBody(
-                channelId = targetChannelId,
-                channelName = channelName,
-                addedHumanIds = addedHumans,
-                addedAgentIds = addedAgents
-            )
+        return markThreadActionCardExecuted(
+            actionsApi = actionsApi,
+            messageId = messageId,
+            body =
+                buildMarkChannelMembersActionExecutedBody(
+                    channelId = targetChannelId,
+                    channelName = channelName,
+                    addedHumanIds = addedHumans,
+                    addedAgentIds = addedAgents
+                ),
+            executedCard = executedCard
         )
-        return DataResult.Content(executedCard)
     }
+
+    private suspend fun markThreadActionCardExecuted(
+        actionsApi: SlockIntegrationsActionsPushApiClient,
+        messageId: String,
+        body: String,
+        executedCard: ThreadActionCard
+    ): DataResult<ThreadActionCard> =
+        when (val result = actionsApi.markActionExecuted(MessageId(messageId), body)) {
+            is DataResult.Content -> DataResult.Content(executedCard)
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "action_card_mark_executed_empty", retryable = true))
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
 
     suspend fun fetchThreadPayload(
         basePayload: KuiklyThreadScreenPayload,
