@@ -2,13 +2,35 @@ package ai.slock.compose.markdown
 
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
+import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
+import org.intellij.markdown.MarkdownElementTypes
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
+    @Test
+    fun singleMarkdownLineBreakRendersAsVisibleNewline() {
+        val rendered = renderSlockMarkdownParagraphText("first line\nsecond line")
+
+        assertEquals("first line\nsecond line", rendered)
+    }
+
+    @Test
+    fun escapedSingleLineBreakRendersAsVisibleNewlineWhenDecoded() {
+        val content = "first line\\nsecond line".normalizeThreadMarkdownBody()
+
+        assertEquals("first line\nsecond line", renderSlockMarkdownParagraphText(content))
+    }
+
     @Test
     fun escapedLineBreaksBecomeMarkdownBlocks() {
         assertEquals("hello\n- #thread", "hello\\n- #thread".normalizeThreadMarkdownBody())
@@ -156,5 +178,20 @@ class SlockMarkdownTest {
 
         assertFalse(inlineContent.containsKey("slock:5"))
         assertTrue(inlineContent.containsKey("slock:35"))
+    }
+
+    private fun renderSlockMarkdownParagraphText(content: String): String {
+        val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+        val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
+        val annotator = slockMarkdownAnnotator(content)
+        val settings =
+            DefaultAnnotatorSettings(
+                linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
+                codeSpanStyle = SpanStyle(),
+                annotator = annotator
+            )
+        return buildAnnotatedString {
+            buildMarkdownAnnotatedString(content, paragraph, settings)
+        }.text
     }
 }

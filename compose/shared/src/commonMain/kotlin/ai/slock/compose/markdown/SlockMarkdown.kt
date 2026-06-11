@@ -39,6 +39,7 @@ import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
+import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
@@ -474,7 +475,8 @@ fun slockMarkdownAnnotator(
                     }
                 }
             }
-        }
+        },
+        config = markdownAnnotatorConfig(eolAsNewLine = true)
     )
 }
 
