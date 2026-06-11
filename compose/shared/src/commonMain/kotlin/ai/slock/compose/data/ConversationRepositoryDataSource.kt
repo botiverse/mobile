@@ -638,12 +638,14 @@ private fun ThreadSnapshot.withReplySummaries(
                     "threadChannelId=${summaryThreadChannelId.value} " +
                     "replyCount=${maxOf(message.replyCount, summary.replyCount)} " +
                     "unreadCount=${summary.unreadCount} " +
+                    "firstUnreadMessageId=${summary.firstUnreadMessageId?.value ?: "null"} " +
                     "source=channel_threads"
             )
             message.copy(
                 threadChannelId = message.threadChannelId ?: summaryThreadChannelId,
                 replyCount = maxOf(message.replyCount, summary.replyCount),
-                unreadReplyCount = maxOf(message.unreadReplyCount, summary.unreadCount)
+                unreadReplyCount = maxOf(message.unreadReplyCount, summary.unreadCount),
+                firstUnreadReplyMessageId = message.firstUnreadReplyMessageId ?: summary.firstUnreadMessageId
             )
         }
     if (joinMissCount > 0) {

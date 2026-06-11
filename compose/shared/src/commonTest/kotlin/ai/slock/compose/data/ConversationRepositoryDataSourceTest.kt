@@ -21,7 +21,18 @@ class ConversationRepositoryDataSourceTest {
                         "GET messages/channel/channel-1" to
                             """{"messages":[${messageJson("parent-1", "channel-1", threadId = "thread-1")}],"historyLimited":false}""",
                         "GET channels/channel-1/threads" to
-                            """{"threads":[{"threadChannelId":"thread-1","parentMessageId":"parent-1","parentChannelId":"channel-1","parentChannelName":"android","parentMessagePreview":"Parent","latestActivityPreview":"Reply","replyCount":3,"unreadCount":2}]}""",
+                            """
+                            {
+                              "parent-1": {
+                                "threadChannelId": "thread-1",
+                                "replyCount": 3,
+                                "lastReplyAt": "2026-05-22T10:05:00.000Z",
+                                "participantIds": ["user-1", "agent-1"],
+                                "unreadCount": 2,
+                                "firstUnreadMessageId": "reply-2"
+                              }
+                            }
+                            """.trimIndent(),
                         "GET channels/threads/followed" to """{"threads":[]}"""
                     )
             )
@@ -35,6 +46,7 @@ class ConversationRepositoryDataSourceTest {
         assertEquals("thread-1", message.threadChannelId?.value)
         assertEquals(3, message.replyCount)
         assertEquals(2, message.unreadReplyCount)
+        assertEquals("reply-2", message.firstUnreadReplyMessageId?.value)
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
