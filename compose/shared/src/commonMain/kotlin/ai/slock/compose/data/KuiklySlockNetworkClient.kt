@@ -207,9 +207,9 @@ class KuiklySlockNetworkClient(
     }
 }
 
-private class KuiklySlockAuthTransport(
+internal class KuiklySlockAuthTransport(
     private val networkModule: SlockNetworkModule,
-    private val baseUrl: String
+    private val baseUrl: String = SLOCK_API_BASE_URL
 ) : SlockAuthTransport {
     override suspend fun login(bodyText: String): AuthNetworkResponse =
         request(path = "auth/login", method = "POST", bodyText = bodyText)

@@ -185,6 +185,67 @@ class NetworkPriorityCallSiteTest {
         )
     }
 
+    @Test
+    fun sharedAuthProductsDoNotUseBridgeAuthTransport() {
+        val root = findRepoRoot()
+        val productFiles =
+                listOf(
+                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+                        "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt"
+                )
+
+        val offenders =
+                productFiles.flatMap { path ->
+                    val file = File(root, path)
+                    file.readLines().mapIndexedNotNull { index, line ->
+                        if (line.contains("BridgeAuthApi") || line.contains("bridge.authRequest")) {
+                            "${file.relativeTo(root).path}:${index + 1}: ${line.trim()}"
+                        } else {
+                            null
+                        }
+                    }
+                }
+
+        assertTrue(
+                "Shared AuthPages/app shell auth gate must use KuiklySlockAuthTransport, not bridge authRequest.\n" +
+                        offenders.joinToString("\n"),
+                offenders.isEmpty()
+        )
+    }
+
+    @Test
+    fun sharedCommonMainDoesNotKeepBridgeBusinessRestHelpers() {
+        val root = findRepoRoot()
+        val commonMain = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose")
+        val bannedSymbols =
+                listOf(
+                        "BridgeAuthApi",
+                        "BridgeAuthenticatedRequestExecutor",
+                        "BridgeSlockNetworkClient",
+                        "BridgeTasksApi",
+                        "BridgeThreadApi"
+                )
+
+        val offenders =
+                commonMain
+                        .walkTopDown()
+                        .filter { it.isFile && it.extension == "kt" }
+                        .flatMap { file ->
+                            file.readLines().mapIndexedNotNull { index, line ->
+                                val banned = bannedSymbols.firstOrNull { line.contains(it) }
+                                banned?.let { "${file.relativeTo(root).path}:${index + 1}: $it :: ${line.trim()}" }
+                            }
+                        }
+                        .toList()
+
+        assertTrue(
+                "Business REST must not go through BridgeAuthenticatedRequestExecutor/authRequest bridge helpers. " +
+                        "Use SlockNetworkClient/KuiklySlockAuthTransport; keep platform capability HTTP separate.\n" +
+                        offenders.joinToString("\n"),
+                offenders.isEmpty()
+        )
+    }
+
     private fun isInsidePriorityBlock(lines: List<String>, index: Int): Boolean {
         var balance = 0
         var sawPriority = false

@@ -11,7 +11,6 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
-import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.NetworkSlockHomeApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
@@ -101,6 +100,7 @@ import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.isAuthSessionBlocker
+import ai.slock.compose.data.KuiklySlockAuthTransport
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.NetworkSlockThreadApi
@@ -676,7 +676,10 @@ private fun SlockAppShellContent() {
     val authDataSource =
         remember {
             SharedAuthDataSource(
-                transport = BridgeAuthApi(bridge),
+                transport =
+                    KuiklySlockAuthTransport(
+                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+                    ),
                 sessionStore = authStore,
                 diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )

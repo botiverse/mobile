@@ -9,9 +9,9 @@ import androidx.compose.runtime.setValue
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
-import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.KuiklySlockAuthTransport
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
@@ -20,6 +20,7 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.runCatchingPreservingCancellation
+import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -127,7 +128,10 @@ private fun LoginScreen() {
     val authDataSource =
         remember {
             SharedAuthDataSource(
-                transport = BridgeAuthApi(bridge),
+                transport =
+                    KuiklySlockAuthTransport(
+                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+                    ),
                 sessionStore = sharedStores.authStore,
                 diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
             )
