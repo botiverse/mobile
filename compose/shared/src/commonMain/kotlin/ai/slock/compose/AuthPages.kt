@@ -19,6 +19,7 @@ import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.runCatchingPreservingCancellation
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -141,7 +142,7 @@ private fun LoginScreen() {
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
-            runCatching { authDataSource.login(effect.email, effect.password) }
+            runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
                 .getOrElse { SharedAuthResult.Failure(ai.slock.compose.data.SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
@@ -317,13 +318,13 @@ private fun AuthDiagnosticsScreen() {
 
     LaunchedEffect(refreshNonce) {
         state = state.copy(loading = true, errorMessage = null)
-        val aboutResult = runCatching { settingsDataSource.loadAbout() }.getOrElse {
+        val aboutResult = runCatchingPreservingCancellation { settingsDataSource.loadAbout() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_about_exception"))
         }
-        val diagnosticsResult = runCatching { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
+        val diagnosticsResult = runCatchingPreservingCancellation { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_diagnostics_exception"))
         }
-        val probeResult = runCatching { settingsCapabilities.loadNetworkProbe() }.getOrElse {
+        val probeResult = runCatchingPreservingCancellation { settingsCapabilities.loadNetworkProbe() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_network_probe_exception"))
         }
         state =

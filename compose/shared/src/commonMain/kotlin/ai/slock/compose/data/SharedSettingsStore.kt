@@ -422,7 +422,7 @@ class SharedSettingsDataSource(
         platformCapabilities.clearStorage(target)
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> {
-        val sessionResult = runCatching { sessionStore.readSession() }
+        val sessionResult = runCatchingPreservingCancellation { sessionStore.readSession() }
         sessionResult.exceptionOrNull()?.let { throwable ->
             val diagnostics = throwable.toPersistenceFailureDiagnostics()
             diagnosticsLogger?.invoke(

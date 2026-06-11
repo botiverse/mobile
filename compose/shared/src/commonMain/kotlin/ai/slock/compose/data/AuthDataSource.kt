@@ -41,7 +41,7 @@ class SharedAuthDataSource(
         val login =
             when (
                 val response =
-                    runCatching { api.login(email = email.trim(), password = password) }
+                    runCatchingPreservingCancellation { api.login(email = email.trim(), password = password) }
                         .getOrElse { throwable ->
                             diagnosticsLogger(
                                 "auth_login_result provider=password result=failure stage=login_request errorType=${throwable.safeDiagnosticsType()} mapped=network"
@@ -63,7 +63,7 @@ class SharedAuthDataSource(
         val servers =
             when (
                 val response =
-                    runCatching { api.servers("Bearer ${login.accessToken}") }
+                    runCatchingPreservingCancellation { api.servers("Bearer ${login.accessToken}") }
                         .getOrElse { throwable ->
                             diagnosticsLogger(
                                 "auth_login_servers_result result=failure stage=servers_request errorType=${throwable.safeDiagnosticsType()} mapped=network fallback=empty"
@@ -93,7 +93,7 @@ class SharedAuthDataSource(
                 servers = servers
             )
         diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=false")
-        runCatching { sessionStore.saveSession(session) }
+        runCatchingPreservingCancellation { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
                     "auth_session_persist_result result=failure stage=session_persist ${throwable.persistenceDiagnostics()} mapped=post_login_setup"
@@ -234,7 +234,7 @@ class SharedAuthDataSource(
     suspend fun restoreSession(): SharedAuthResult<StoredAuthSession> {
         diagnosticsLogger("auth_restore_start")
         val session =
-            runCatching { sessionStore.readSession() }
+            runCatchingPreservingCancellation { sessionStore.readSession() }
                 .getOrElse { throwable ->
                     diagnosticsLogger(
                         "auth_restore_result result=failure stage=session_restore ${throwable.persistenceDiagnostics()} mapped=local_setup"
@@ -249,7 +249,7 @@ class SharedAuthDataSource(
                     return SharedAuthResult.Unauthenticated
                 }
         val current =
-            runCatching { currentUserWithSession(session, clearOnUnauthorized = false) }
+            runCatchingPreservingCancellation { currentUserWithSession(session, clearOnUnauthorized = false) }
                 .getOrElse { throwable ->
                     diagnosticsLogger(
                         "auth_restore_current_user_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
@@ -264,7 +264,7 @@ class SharedAuthDataSource(
             SharedAuthResult.Unauthenticated -> {
                 diagnosticsLogger("auth_restore_current_user_result result=unauthenticated action=refresh")
                 val refreshed =
-                    runCatching { refresh(session.refreshToken) }
+                    runCatchingPreservingCancellation { refresh(session.refreshToken) }
                         .getOrElse { throwable ->
                             diagnosticsLogger(
                                 "auth_restore_refresh_exception errorType=${throwable.safeDiagnosticsType()} mapped=network"
@@ -276,7 +276,7 @@ class SharedAuthDataSource(
                         diagnosticsLogger("auth_restore_refresh_result result=success")
                         val updated = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
                         when (val refreshedCurrent =
-                            runCatching { currentUserWithSession(updated, clearOnUnauthorized = true) }
+                            runCatchingPreservingCancellation { currentUserWithSession(updated, clearOnUnauthorized = true) }
                                 .getOrElse {
                                     diagnosticsLogger(
                                         "auth_restore_refreshed_current_user_exception errorType=${it.safeDiagnosticsType()} mapped=network"
@@ -439,7 +439,7 @@ class SharedAuthDataSource(
     suspend fun logout(): SharedAuthResult<Unit> {
         val session = sessionStore.readSession()
         if (session != null) {
-            runCatching {
+            runCatchingPreservingCancellation {
                 api.logout(session.refreshToken)
             }
         }

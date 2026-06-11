@@ -37,6 +37,7 @@ import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
+import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.MemberId
@@ -1202,7 +1203,7 @@ internal fun SharedThreadRouteContent(
             }
         coroutineScope.launch {
             val result =
-                runCatching {
+                runCatchingPreservingCancellation {
                     dataSource.fetchFilesPayload(
                         basePayload = requestBasePayload,
                         cursor = cursor,
@@ -1851,7 +1852,7 @@ internal fun SharedThreadRouteContent(
                     composerSyncNonce += 1
                     coroutineScope.launch {
                         val sendResponse =
-                            runCatching {
+                            runCatchingPreservingCancellation {
                                 dataSource.sendMessage(
                                     channelId = threadId,
                                     body = draftText,

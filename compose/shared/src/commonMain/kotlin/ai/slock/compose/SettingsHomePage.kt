@@ -91,6 +91,7 @@ import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_START
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_STOP
 import ai.slock.compose.data.isRefreshing
+import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.serverConfirmationItemId
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthServer
@@ -1623,7 +1624,7 @@ private fun SettingsAppShellContent(
         val effect = settingsState.effect ?: return@LaunchedEffect
         when (effect) {
             SharedSettingsEffect.Logout -> {
-                runCatching { authDataSource.logout() }
+                runCatchingPreservingCancellation { authDataSource.logout() }
                 onLogout()
             }
             SharedSettingsEffect.CopyDiagnostics -> {
@@ -3789,7 +3790,7 @@ private fun AppShellAuthGateContent(
     LaunchedEffect(pendingLogin) {
         val effect = pendingLogin ?: return@LaunchedEffect
         val result =
-            runCatching { authDataSource.login(effect.email, effect.password) }
+            runCatchingPreservingCancellation { authDataSource.login(effect.email, effect.password) }
                 .getOrElse { SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Sign in could not finish setup. Try again.") }
         pendingLogin = null
         when (result) {
@@ -3945,7 +3946,7 @@ private fun AppShellServerGateContent(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        when (val result = runCatching { authDataSource.loadServers() }.getOrNull()) {
+        when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
             is SharedAuthResult.Success -> latestSession = result.data
             is SharedAuthResult.Failure -> errorMessage = result.message
             SharedAuthResult.Unauthenticated -> onSignOut()
