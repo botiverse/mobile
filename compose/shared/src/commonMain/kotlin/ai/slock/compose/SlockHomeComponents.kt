@@ -19,7 +19,6 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
@@ -83,9 +82,6 @@ private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
-private val SectionChevronSize = 12.dp
-private val MiniActionSize = 30.dp
-private val MiniActionIconSize = 16.dp
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
@@ -480,12 +476,13 @@ fun SlockStructuralHomeShell(
                         item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
-                            SidebarSectionHeader(
-                                labels.channels,
-                                channels.size,
-                                channelsExpanded,
-                                { if (sidebarInteractionsEnabled) channelsExpanded = it },
-                                { anchor ->
+                            SlockCollapsibleSectionHeader(
+                                label = labels.channels,
+                                count = channels.size,
+                                expanded = channelsExpanded,
+                                onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                sortContentDescription = "Sort ${labels.channels}",
+                                onSortClick = { anchor ->
                                     if (sidebarInteractionsEnabled) {
                                         activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Channels) null else SlockHomeSortSection.Channels
                                         sortMenuAnchor = anchor
@@ -493,7 +490,7 @@ fun SlockStructuralHomeShell(
                                 },
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                             ) {
-                                HeaderIconAction("plus", labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
+                                SlockSectionHeaderIconAction("plus", labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
                             }
                         }
                         if (channelsExpanded) {
@@ -511,19 +508,20 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item {
-                            SidebarSectionHeader(
-                                labels.directMessages,
-                                directMessages.size,
-                                directMessagesExpanded,
-                                { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
-                                { anchor ->
+                            SlockCollapsibleSectionHeader(
+                                label = labels.directMessages,
+                                count = directMessages.size,
+                                expanded = directMessagesExpanded,
+                                onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
+                                sortContentDescription = "Sort ${labels.directMessages}",
+                                onSortClick = { anchor ->
                                     if (sidebarInteractionsEnabled) {
                                         activeSortMenu = if (activeSortMenu == SlockHomeSortSection.DirectMessages) null else SlockHomeSortSection.DirectMessages
                                         sortMenuAnchor = anchor
                                     }
                                 },
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                action = null
+                                trailingContent = null
                             )
                         }
                         if (directMessagesExpanded) {
@@ -1143,29 +1141,6 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-@Composable
-private fun SidebarSectionHeader(label: String, count: Int, expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onSortClick: (Offset) -> Unit, modifier: Modifier = Modifier, action: (@Composable BoxScope.() -> Unit)?) {
-    com.tencent.kuikly.compose.foundation.layout.Row(modifier = modifier.fillMaxWidth().heightIn(min = 30.dp).clickable { onExpandedChange(!expanded) }, verticalAlignment = Alignment.CenterVertically) {
-        SlockLucideIcon(if (expanded) "chevron-down" else "chevron-right", Modifier.size(SectionChevronSize))
-        Text(label, style = SlockType.SectionLabel, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SlockSpacing.Xs))
-        Text(count.toString(), style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(start = SlockSpacing.Xs))
-        Spacer(Modifier.weight(1f))
-        HeaderIconAction("arrow-up-down", "Sort $label", onClick2 = onSortClick)
-        if (action != null) Box(content = action)
-    }
-}
-
-@Composable
-private fun HeaderIconAction(icon: String, contentDescription: String, onClick: () -> Unit = {}, onClick2: (Offset) -> Unit = {}) {
-    Button(
-        onClick = onClick,
-        onClick2 = onClick2,
-        modifier = Modifier.size(MiniActionSize)
-    ) {
-        SlockLucideIcon(icon, Modifier.size(MiniActionIconSize))
     }
 }
 

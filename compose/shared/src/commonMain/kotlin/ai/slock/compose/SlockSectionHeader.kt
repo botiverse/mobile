@@ -21,6 +21,7 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -29,6 +30,8 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
+private val SectionHeaderActionSize = 30.dp
+private val SectionHeaderActionIconSize = 16.dp
 
 @Composable
 internal fun SlockTopPageHeader(
@@ -124,6 +127,8 @@ internal fun SlockCollapsibleSectionHeader(
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    sortContentDescription: String? = null,
+    onSortClick: ((Offset) -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     Row(
@@ -151,9 +156,33 @@ internal fun SlockCollapsibleSectionHeader(
             modifier = Modifier.padding(start = SlockSpacing.Xs)
         )
         Spacer(Modifier.weight(1f))
+        if (sortContentDescription != null && onSortClick != null) {
+            SlockSectionHeaderIconAction(
+                icon = "arrow-up-down",
+                contentDescription = sortContentDescription,
+                onClick2 = onSortClick
+            )
+        }
         if (trailingContent != null) {
             Box(content = trailingContent)
         }
+    }
+}
+
+@Suppress("UNUSED_PARAMETER")
+@Composable
+internal fun SlockSectionHeaderIconAction(
+    icon: String,
+    contentDescription: String,
+    onClick: () -> Unit = {},
+    onClick2: (Offset) -> Unit = {}
+) {
+    Button(
+        onClick = onClick,
+        onClick2 = onClick2,
+        modifier = Modifier.size(SectionHeaderActionSize)
+    ) {
+        SlockLucideIcon(icon, Modifier.size(SectionHeaderActionIconSize))
     }
 }
 

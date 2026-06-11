@@ -520,9 +520,7 @@ internal fun MembersListContent(
                     onExpandedChange = { agentsExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        MembersAddButton(
-                            onClick = onAddHuman
-                        )
+                        SlockSectionHeaderIconAction("plus", "Add member", onAddHuman)
                     }
                 )
             }
@@ -558,9 +556,7 @@ internal fun MembersListContent(
                     onExpandedChange = { humansExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        MembersAddButton(
-                            onClick = onAddHuman
-                        )
+                        SlockSectionHeaderIconAction("plus", "Add member", onAddHuman)
                     }
                 )
             }
@@ -2307,16 +2303,6 @@ private fun MembersPageHeader(title: String) {
         title = title,
         subtitle = "Workspace members",
         iconName = "users"
-    )
-}
-
-@Composable
-private fun MembersAddButton(onClick: () -> Unit) {
-    SlockBrutalIconButton(
-        iconName = "plus",
-        onClick = onClick,
-        size = MembersActionSize,
-        shadowOffset = 0.dp
     )
 }
 
