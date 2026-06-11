@@ -1,10 +1,50 @@
 # Socket.IO React Parity Audit
 
-Date: 2026-06-09
-Owner: Cindy
-Scope: React/web Socket.IO source, server Socket.IO contract, Android/KMP realtime client, OHOS ArkTS Socket.IO bridge, and Home merge effects.
+Date: 2026-06-09 (original), updated 2026-06-11
+Owner: Cindy (original), Android-Developer-4 (updates)
 
-## Executive Summary
+## 2026-06-11 Update: Typed Event Alignment & Raw Transport
+
+Commit range: `1400b359`, `6d6bbfae`, `d6a4bcd3`, `a3a7cdbf`, `8346b041`, `43cbce83`, `3cd734ec`, `91384989`
+
+### Completed
+
+**New typed events:**
+- `server:deleted` — typed event, mapper, handler (SettingsHomePage), Android/OHOS whitelist
+- `server:plan-updated` — typed event, mapper, handler, Android/OHOS whitelist (previously listed as "not subscribed/mapped")
+
+**DTO field alignment:**
+- `senderMembershipStatus` — added to `Message` domain model, `MessageWireDto`, `toDomain()`, realtime mapper test
+- Attachment `width`/`height` — added to `Attachment` domain model, `AttachmentWireDto`, `toDomain()`, realtime mapper test
+- `MessageReaction` — already aligned (KMP-专家 task #244)
+
+**Android raw transport:**
+- Deleted `sendRealtimeEventToSharedShell()`, `RealtimeEvent.toSharedShellJson()`, `Message.toJson()`, `MessageReaction.toJson()`, `MemberProfile.toJson()`
+- Android bridge now passes raw `eventName + rawPayload` from Socket.IO client, same as OHOS
+- Added `observeRawEvents` to `SocketIoRealtimeClient` for raw pass-through
+- Raw subscription lifecycle managed via `realtimeRawSubscription`
+- Legacy `payload`/`parseSharedShellRealtimeEvent` path deprecated in shared shell
+
+**Focused test:**
+- `RealtimeEventMapperTest.messageNewRawPayloadMapsWithFullFields` — verifies `message:new` raw payload → `MessageNew` with `senderMembershipStatus`, attachment `width/height`, reactions
+- 3/3 tests passing
+
+**Gates:**
+- `:shared:compileDebugKotlinAndroid` ✅
+- `:androidApp:compileDebugKotlin` ✅
+- `:shared:compileKotlinOhosArm64` (OHOS) ✅
+- `:shared:testDebugUnitTest --tests RealtimeEventMapperTest` ✅
+
+### Still Missing (unchanged from original audit)
+- `daemon:status` — still not subscribed/mapped
+- OHOS refreshed-token reconnect handoff
+- Real-device proof for Android and OHOS
+- Conservative refresh intents for agent activity/machine status/reminders/announcements
+- OHOS Socket.IO parser tests
+
+---
+
+## Executive Summary (original)
 
 The OHOS bridge is not missing the basic Engine.IO ping/pong. `OhosSocketIoClient.ets` handles Engine.IO ping packet `"2"` and replies with pong packet `"3"` (`compose/ohosApp/entry/src/main/ets/kuikly/OhosSocketIoClient.ets:181-187`). So if the question is strictly "does OHOS answer the Socket.IO transport heartbeat?", the source says yes.
 
@@ -375,6 +415,8 @@ Source: `third_party/slock-source/packages/web/src/components/layout/MainLayout.
 | `server:plan-updated` | `billingService.ts` | Reloads servers | Still not subscribed/mapped. |
 | `server:member-added/left/removed/updated` | `routes/auth.ts`, `routes/servers.ts` | Reloads member list for active server | Subscribed/mapped to ServerMembers refresh intent. |
 | `server:membership-removed` | `routes/servers.ts` | Reloads servers and exits the removed current server | Subscribed/mapped; current-server removal disconnects realtime and clears selected server. |
+| `server:deleted` | `routes/servers.ts` | N/A (server emits this as non-authoritative domain event, React may not handle separately) | ✅ Added 2026-06-11: typed event, mapper, handler, Android/OHOS whitelist. |
+| `server:plan-updated` | `billingService.ts` | Reloads servers | ✅ Added 2026-06-11: typed event, mapper, handler, Android/OHOS whitelist. |
 | `announcement:new` | `routes/announcements.ts` | Inserts/dedupes account announcement | Subscribed/mapped to Announcements refresh/load path. |
 | `reminder:fired/scheduled/canceled` | `reminderScheduler.ts`, `agentOrchestrator.ts`, internal reminder routes | Agent detail updates/removes/schedules reminder rows and reloads on reconnect | Subscribed/mapped to Reminders refresh intent; still conservative reload rather than fine-grained Agent detail local mutation. |
 
@@ -435,7 +477,7 @@ KMP event constants include the core events:
 
 Source: `compose/shared/src/commonMain/kotlin/ai/slock/compose/data/realtime/RealtimeSocketEvents.kt`.
 
-Android and OHOS now subscribe to the same expanded Slock event set above. Remaining missing vs React are `daemon:status` and `server:plan-updated`; both should be added if those events still matter for current server behavior.
+Android and OHOS now subscribe to the same expanded Slock event set above. Remaining missing vs React is `daemon:status`; `server:plan-updated` and `server:deleted` were added 2026-06-11.
 
 ### KMP Message Decode Mismatch
 
