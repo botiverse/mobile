@@ -276,7 +276,7 @@ class RealSettingsRepository(
                     SettingsServerSectionSnapshot(
                         key = "machine_status_events",
                         title = "Status Events",
-                        detail = "Web updates status through realtime machine:status and daemon:status events; no Settings detail REST contract is confirmed yet."
+                        detail = "Web updates status through realtime machine status events; no Settings detail REST contract is confirmed yet."
                     ),
                     SettingsServerSectionSnapshot(
                         key = "machine_logs",
