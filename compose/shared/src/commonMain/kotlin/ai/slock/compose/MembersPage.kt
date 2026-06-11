@@ -1010,7 +1010,12 @@ private fun MembersDetailHeader(
                 size = MembersActionSize,
                 shadowOffset = 0.dp
             )
-            MembersAvatar(member = member, avatarSize = 42.dp, statusSize = 10.dp)
+            MembersAvatar(
+                member = member,
+                avatarSize = 42.dp,
+                statusSize = 10.dp,
+                statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing()
+            )
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -1099,7 +1104,12 @@ private fun MembersDetailSummary(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
     ) {
-        MembersAvatar(member = member, avatarSize = 58.dp, statusSize = 12.dp)
+        MembersAvatar(
+            member = member,
+            avatarSize = 58.dp,
+            statusSize = 12.dp,
+            statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing()
+        )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -2118,6 +2128,7 @@ private fun MembersAgentActivityRow(activity: AgentActivityEntry) {
         SlockStatusIndicator(
             color = (activity.statusActivity ?: activity.type).membersActivityAccentColor(),
             size = 9.dp,
+            pulsing = (activity.statusActivity ?: activity.type).membersActivityPulsing(),
             modifier = Modifier.padding(top = 5.dp)
         )
         Column(
@@ -2354,7 +2365,8 @@ private fun MembersListRow(
 private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MemberAvatarSize,
-    statusSize: Dp = MemberStatusDotSize
+    statusSize: Dp = MemberStatusDotSize,
+    statusPulsing: Boolean = member.agentStatus.membersStatusPulsing()
 ) {
     val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
@@ -2367,7 +2379,8 @@ private fun MembersAvatar(
                 null
             },
         avatarSize = avatarSize,
-        statusSize = statusSize
+        statusSize = statusSize,
+        statusPulsing = statusPulsing
     ) {
         SlockAvatar(
             avatarWireValue = avatarWireValue,
@@ -2395,6 +2408,9 @@ private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
         AgentStatus.Error -> SlockColor.AccentOrange
         null -> presence.membersPresenceColor
     }
+
+private fun AgentStatus?.membersStatusPulsing(): Boolean =
+    this == AgentStatus.Working || this == AgentStatus.Thinking
 
 private val Presence.membersPresenceColor: Color
     get() = when (this) {
@@ -2574,15 +2590,29 @@ private fun String.membersActivityTypeLabel(): String =
     }
 
 private fun String.membersActivityAccentColor(): Color =
-    when (this.lowercase()) {
+    when (membersActivityStatusKey()) {
         "error", "failed", "failure" -> SlockColor.AccentOrange
-        "tool_start", "tool", "thinking", "working" -> SlockColor.BrandYellow
+        "tool_start", "tool", "thinking", "working", "busy" -> SlockColor.BrandYellow
         "running", "active", "online", "compaction_finished" -> SlockColor.AccentLime
         "text", "message", "output" -> SlockColor.AccentCyan
         "offline", "disconnected" -> SlockColor.EmptyStateGray
         "system", "slock_action", "compaction_started" -> SlockColor.AccentOrange
         else -> SlockColor.BrandYellow
     }
+
+private fun String.membersActivityPulsing(): Boolean =
+    when (membersActivityStatusKey()) {
+        "tool_start",
+        "tool",
+        "thinking",
+        "working",
+        "running",
+        "busy" -> true
+        else -> false
+    }
+
+private fun String.membersActivityStatusKey(): String =
+    trim().lowercase().replace('-', '_')
 
 private fun String.normalizedMembersToolName(): String =
     trim()

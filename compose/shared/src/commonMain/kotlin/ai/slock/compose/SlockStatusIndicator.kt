@@ -1,5 +1,11 @@
 package ai.slock.compose
 
+import androidx.compose.runtime.getValue
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -36,15 +42,46 @@ internal fun SlockStatusIndicator(
     size: Dp = SlockStatusIndicatorTokens.InlineSize,
     shape: SlockStatusIndicatorShape = SlockStatusIndicatorTokens.Shape,
     borderColor: Color = SlockStatusIndicatorTokens.BorderColor,
-    borderWidth: Dp = SlockStatusIndicatorTokens.BorderWidth
+    borderWidth: Dp = SlockStatusIndicatorTokens.BorderWidth,
+    pulsing: Boolean = false
 ) {
-    Canvas(modifier = modifier.size(size)) {
+    val pulseProgress =
+        if (pulsing) {
+            val transition = rememberInfiniteTransition(label = "slock-status-pulse")
+            val progress by transition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = 1150),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                label = "slock-status-pulse-progress"
+            )
+            progress
+        } else {
+            0f
+        }
+    val pulsePadding = if (pulsing) 5.dp else 0.dp
+    Canvas(modifier = modifier.size(size + pulsePadding)) {
         val stroke = borderWidth.toPx()
         val halfStroke = stroke / 2f
+        val pulseInset = pulsePadding.toPx() / 2f
+        val pulseAlpha = ((1f - pulseProgress) * 0.28f).coerceIn(0f, 0.28f)
         when (shape) {
             SlockStatusIndicatorShape.Circle -> {
-                val radius = (minOf(this.size.width, this.size.height) - stroke).coerceAtLeast(0f) / 2f
+                val coreDiameter = (minOf(this.size.width, this.size.height) - pulsePadding.toPx()).coerceAtLeast(0f)
+                val radius = (coreDiameter - stroke).coerceAtLeast(0f) / 2f
+                val maxRadius = (minOf(this.size.width, this.size.height) - stroke).coerceAtLeast(0f) / 2f
                 val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                if (pulsing) {
+                    drawCircle(
+                        color = color.copy(alpha = pulseAlpha),
+                        radius = radius + ((maxRadius - radius).coerceAtLeast(0f) * pulseProgress),
+                        center = center,
+                        style = Fill
+                    )
+                }
                 drawCircle(color = color, radius = radius, center = center, style = Fill)
                 if (stroke > 0f) {
                     drawCircle(color = borderColor, radius = radius, center = center, style = Stroke(width = stroke))
@@ -53,12 +90,39 @@ internal fun SlockStatusIndicator(
             SlockStatusIndicatorShape.Square -> {
                 val fillSize =
                     Size(
-                        width = (this.size.width - stroke).coerceAtLeast(0f),
-                        height = (this.size.height - stroke).coerceAtLeast(0f)
+                        width = (this.size.width - stroke - pulsePadding.toPx()).coerceAtLeast(0f),
+                        height = (this.size.height - stroke - pulsePadding.toPx()).coerceAtLeast(0f)
                     )
-                drawRect(color = color, topLeft = Offset(halfStroke, halfStroke), size = fillSize, style = Fill)
+                if (pulsing) {
+                    val expandedSize =
+                        Size(
+                            width = (fillSize.width + (pulseInset * 2f * pulseProgress)).coerceAtLeast(0f),
+                            height = (fillSize.height + (pulseInset * 2f * pulseProgress)).coerceAtLeast(0f)
+                        )
+                    drawRect(
+                        color = color.copy(alpha = pulseAlpha),
+                        topLeft =
+                            Offset(
+                                (this.size.width - expandedSize.width) / 2f,
+                                (this.size.height - expandedSize.height) / 2f
+                            ),
+                        size = expandedSize,
+                        style = Fill
+                    )
+                }
+                drawRect(
+                    color = color,
+                    topLeft = Offset(halfStroke + pulseInset, halfStroke + pulseInset),
+                    size = fillSize,
+                    style = Fill
+                )
                 if (stroke > 0f) {
-                    drawRect(color = borderColor, topLeft = Offset(halfStroke, halfStroke), size = fillSize, style = Stroke(width = stroke))
+                    drawRect(
+                        color = borderColor,
+                        topLeft = Offset(halfStroke + pulseInset, halfStroke + pulseInset),
+                        size = fillSize,
+                        style = Stroke(width = stroke)
+                    )
                 }
             }
         }
@@ -72,6 +136,7 @@ internal fun SlockAvatarWithStatus(
     avatarSize: Dp,
     statusSize: Dp = SlockStatusIndicatorTokens.AvatarSize,
     shape: SlockStatusIndicatorShape = SlockStatusIndicatorTokens.Shape,
+    statusPulsing: Boolean = false,
     avatar: @Composable BoxScope.() -> Unit
 ) {
     Box(modifier = modifier.size(avatarSize)) {
@@ -81,6 +146,7 @@ internal fun SlockAvatarWithStatus(
                 color = it,
                 size = statusSize,
                 shape = shape,
+                pulsing = statusPulsing,
                 modifier = Modifier.align(Alignment.BottomEnd)
             )
         }
