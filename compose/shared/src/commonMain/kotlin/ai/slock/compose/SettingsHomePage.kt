@@ -4353,6 +4353,15 @@ private fun SharedMembersScreen(
                     }
                     result
                 },
+                agentWorkspaceTreeLoader = { agentId ->
+                    memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
+                },
+                agentWorkspaceChildrenLoader = { agentId, dirPath ->
+                    memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
+                },
+                agentWorkspaceFileLoader = { agentId, path ->
+                    memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, agentId, path)
+                },
                 onCopyAgentDiagnostics = { diagnostics ->
                     bridge.copyToPasteboard(diagnostics)
                     bridge.toast("Copied agent diagnostics")

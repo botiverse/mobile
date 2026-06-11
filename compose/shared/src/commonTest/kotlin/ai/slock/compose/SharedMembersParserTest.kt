@@ -117,6 +117,7 @@ class SharedMembersParserTest {
                 MembersAgentDetailTab.Dms,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,
+                MembersAgentDetailTab.Apps,
                 MembersAgentDetailTab.Activity
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = false)
@@ -127,6 +128,7 @@ class SharedMembersParserTest {
                 MembersAgentDetailTab.Dms,
                 MembersAgentDetailTab.Reminders,
                 MembersAgentDetailTab.Workspace,
+                MembersAgentDetailTab.Apps,
                 MembersAgentDetailTab.Activity
             ),
             membersVisibleAgentTabs(canViewPrivateSurfaces = true, deleted = true)
