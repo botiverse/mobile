@@ -16,7 +16,6 @@ import ai.slock.compose.data.BridgeAuthApi
 import ai.slock.compose.data.BridgeMembersApi
 import ai.slock.compose.data.NetworkSlockHomeApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
-import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
@@ -35,6 +34,7 @@ import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import ai.slock.compose.data.MyMessageAlignmentPreference
+import ai.slock.compose.data.NetworkSlockTasksApi
 import ai.slock.compose.data.SERVER_ACTION_INVITE_CREATE
 import ai.slock.compose.data.SERVER_ACTION_INVITE_REVOKE
 import ai.slock.compose.data.SERVER_ACTION_JOIN_LINK_CREATE
@@ -763,7 +763,7 @@ private fun SlockAppShellContent() {
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
-                api = BridgeTasksApi(bridge, authStore)
+                api = NetworkSlockTasksApi(appShellNetworkClient)
             )
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }

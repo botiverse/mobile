@@ -6,11 +6,11 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.BridgeThreadApi
-import ai.slock.compose.data.BridgeTasksApi
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.NetworkSlockTasksApi
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
@@ -591,14 +591,16 @@ private fun ThreadPageScreen() {
                 logger = { message -> bridge.log("shared_thread_cache $message") }
             )
         }
+    val networkClient =
+        remember {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("kuikly_network $message") }
+            )
+        }
     val dataSource =
         remember {
-            val networkClient =
-                KuiklySlockNetworkClient(
-                    sessionStore = authStore,
-                    networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                    warningLogger = { message -> bridge.log("kuikly_network $message") }
-                )
             SharedThreadDataSource(
                 networkApi = BridgeThreadApi(bridge, authStore),
                 sessionStore = authStore,
@@ -636,7 +638,7 @@ private fun ThreadPageScreen() {
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
-                api = BridgeTasksApi(bridge, authStore)
+                api = NetworkSlockTasksApi(networkClient)
             )
         }
     SharedThreadRouteContent(

@@ -114,6 +114,59 @@ private suspend fun SlockNetworkClient.updateTaskStatus(
 ): HomeNetworkResponse =
     request(priority, "tasks/${taskId.value}/status", method = "PATCH", bodyText = bodyText)
 
+internal class NetworkSlockTasksApi(
+    private val networkClient: SlockNetworkClient
+) : SlockTasksApi {
+    override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/server", serverIdOverride = serverId)
+
+    override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/channel/${channelId.value}")
+
+    override suspend fun taskByNumber(
+        channelId: ChannelId,
+        taskNumber: Int,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(priority, "tasks/channel/${channelId.value}/number/$taskNumber")
+
+    override suspend fun createTasks(
+        channelId: ChannelId,
+        drafts: List<TaskCreateDraft>,
+        priority: DataRequestPriority
+    ): HomeNetworkResponse =
+        networkClient.request(
+            priority = priority,
+            path = "tasks/channel/${channelId.value}",
+            method = "POST",
+            bodyText = buildSharedTasksCreateBody(drafts)
+        )
+
+    override suspend fun claimTask(taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}/claim", method = "PATCH")
+
+    override suspend fun convertMessage(messageId: MessageId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "tasks/convert-message",
+            method = "POST",
+            bodyText = buildSharedTaskConvertBody(messageId)
+        )
+
+    override suspend fun unclaimTask(taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}/unclaim", method = "PATCH")
+
+    override suspend fun updateTaskStatus(taskId: TaskId, status: TaskStatus): HomeNetworkResponse =
+        networkClient.updateTaskStatus(
+            DataRequestPriority.Foreground,
+            taskId,
+            buildSharedTaskStatusBody(status)
+        )
+
+    override suspend fun deleteTask(taskId: TaskId): HomeNetworkResponse =
+        networkClient.request(DataRequestPriority.Foreground, "tasks/${taskId.value}", method = "DELETE")
+}
+
 class RealTaskRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient

@@ -52,6 +52,45 @@ class TasksDataSourceTest {
     }
 
     @Test
+    fun networkTasksApiUsesSlockNetworkClientRoutesAndBodies() = runBlocking {
+        val networkClient = RecordingTasksNetworkClient()
+        val client = SlockTasksApiClient(NetworkSlockTasksApi(networkClient))
+
+        assertIs<DataResult.Content<TaskSnapshot>>(
+            client.serverTasks(ServerId("server-1"), DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskSnapshot>>(
+            client.channelTasks(ChannelId("channel-1"), DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskActionResult>>(
+            client.taskByNumber(ChannelId("channel-1"), 42, DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskSnapshot>>(
+            client.createTasks(ChannelId("channel-1"), listOf(TaskCreateDraft("Ship KMP")), DataRequestPriority.Visible)
+        )
+        assertIs<DataResult.Content<TaskActionResult>>(client.claimTask(TaskId("task-1")))
+        assertIs<DataResult.Content<TaskActionResult>>(client.convertMessage(MessageId("message-1")))
+        assertIs<DataResult.Content<TaskActionResult>>(client.unclaimTask(TaskId("task-1")))
+        assertIs<DataResult.Content<TaskActionResult>>(client.updateTaskStatus(TaskId("task-1"), TaskStatus.InReview))
+        assertIs<DataResult.Content<Unit>>(client.deleteTask(TaskId("task-1")))
+
+        assertEquals(
+            listOf(
+                "GET tasks/server priority=Visible server=server-1 body=",
+                "GET tasks/channel/channel-1 priority=Visible server= body=",
+                "GET tasks/channel/channel-1/number/42 priority=Visible server= body=",
+                """POST tasks/channel/channel-1 priority=Visible server= body={"tasks":[{"title":"Ship KMP"}]}""",
+                "PATCH tasks/task-1/claim priority=Foreground server= body=",
+                """POST tasks/convert-message priority=Foreground server= body={"messageId":"message-1"}""",
+                "PATCH tasks/task-1/unclaim priority=Foreground server= body=",
+                """PATCH tasks/task-1/status priority=Foreground server= body={"status":"in_review"}""",
+                "DELETE tasks/task-1 priority=Foreground server= body="
+            ),
+            networkClient.calls
+        )
+    }
+
+    @Test
     fun typedTasksApiRejectsGuessedCreateWrappers() = runBlocking {
         val client = SlockTasksApiClient(
             RecordingTasksApi(createBody = """{"data":[{"id":"task-1","title":"Task #1: guessed"}]}""")
@@ -139,5 +178,45 @@ class TasksDataSourceTest {
 
         private fun ok(body: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private class RecordingTasksNetworkClient : SlockNetworkClient {
+        val calls = mutableListOf<String>()
+
+        override suspend fun request(
+            priority: DataRequestPriority,
+            path: String,
+            method: String,
+            query: List<Pair<String, String>>,
+            serverIdOverride: ServerId?,
+            bodyText: String?
+        ): HomeNetworkResponse {
+            calls +=
+                "$method ${path.trim('/')} priority=$priority server=${serverIdOverride?.value.orEmpty()} body=${bodyText.orEmpty()}"
+            return when {
+                path.trim('/') == "tasks/server" -> ok(listBody)
+                path.trim('/').startsWith("tasks/channel/") && path.trim('/').contains("/number/") -> ok(actionBody)
+                path.trim('/').startsWith("tasks/channel/") && method == "POST" -> ok(createBody)
+                path.trim('/').startsWith("tasks/channel/") -> ok(listBody)
+                path.trim('/').startsWith("tasks/") && path.trim('/').endsWith("/claim") -> ok(actionBody)
+                path.trim('/') == "tasks/convert-message" -> ok(actionBody)
+                path.trim('/').startsWith("tasks/") && path.trim('/').endsWith("/unclaim") -> ok(actionBody)
+                path.trim('/').startsWith("tasks/") && path.trim('/').endsWith("/status") -> ok(actionBody)
+                path.trim('/').startsWith("tasks/") && method == "DELETE" -> ok("""{"ok":true}""")
+                else -> HomeNetworkResponse(code = 404, bodyText = null, errorBodyText = "not found")
+            }
+        }
+
+        private fun ok(body: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = body)
+
+        private companion object {
+            const val listBody =
+                """{"tasks":[{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}]}"""
+            const val createBody =
+                """{"tasks":[{"id":"task-2","channelId":"channel-1","taskNumber":2,"title":"Task #2: created","status":"todo","createdByType":"user","createdById":"user-1"}]}"""
+            const val actionBody =
+                """{"task":{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}}"""
+        }
     }
 }
