@@ -1198,6 +1198,13 @@ internal fun SharedThreadRouteContent(
                 enabled = payload.canSend && !composerSending
             )
         }
+    val composerSurface =
+        remember(composerState, payload.sourceThreadId, payload.parentChannelId) {
+            composerState.toThreadComposerSurface(
+                channelId = payload.sourceThreadId.orEmpty(),
+                parentChannelId = payload.parentChannelId
+            )
+        }
     val renderedPayload = remember(payload) {
         payload.withSharedShellEventCapabilities()
     }
@@ -1370,6 +1377,7 @@ internal fun SharedThreadRouteContent(
         ThreadPageContent(
             payload = renderedPayload,
             filesPayload = filesPayload,
+            composerSurface = composerSurface,
             composerState = composerState,
             tasksState = tasksState,
             onTasksIntent = tasksViewModel::dispatch,
@@ -1866,7 +1874,7 @@ internal fun SharedThreadRouteContent(
                     composerFailureLabel = null
                 }
                 "send" -> {
-                    val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
+                    val threadId = composerSurface.sendChannelId
                     val draftText = composerDraftText.trim()
                     val attachmentIds = composerState.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
                     if (!payload.canSend || composerSending || threadId == null ||
@@ -1936,7 +1944,11 @@ internal fun SharedThreadRouteContent(
                 }
                 "attachImage", "attachFile" -> {
                     coroutineScope.launch {
-                        val channelId = renderedPayload.sourceThreadId ?: renderedPayload.instanceId
+                        val channelId = composerSurface.sendChannelId
+                        if (channelId == null) {
+                            bridge.toast("Attachment picker unavailable")
+                            return@launch
+                        }
                         val response =
                             bridge.threadAttachmentUpload(
                                 channelId = channelId,
@@ -2568,6 +2580,7 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
+    composerSurface: ThreadComposerSurface,
     composerState: KuiklyThreadComposerPayload,
     tasksState: TasksUiState,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
@@ -2708,7 +2721,8 @@ private fun ThreadPageContent(
                             )
                     ) {
                         ThreadComposerContent(
-                            payload = composerState,
+                            surface = composerSurface,
+                            state = composerState.toThreadComposerUiState(),
                             onEvent = onComposerEvent,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {

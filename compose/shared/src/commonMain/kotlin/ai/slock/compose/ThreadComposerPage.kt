@@ -83,6 +83,41 @@ internal data class KuiklyThreadComposerPayload(
     val hookLabels: List<String> = emptyList()
 )
 
+internal data class ThreadComposerSurface(
+    val kind: String = KuiklyThreadSurfaceKind.Channel,
+    val channelId: String,
+    val streamChannelId: String? = null,
+    val parentChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val mentionChannelId: String? = null,
+    val showTaskButton: Boolean = true
+) {
+    val sendChannelId: String?
+        get() = streamChannelId?.takeIf { it.isNotBlank() } ?: channelId.takeIf { it.isNotBlank() }
+
+    val mentionScopeChannelId: String?
+        get() =
+            mentionChannelId?.takeIf { it.isNotBlank() }
+                ?: parentChannelId?.takeIf { it.isNotBlank() }
+                ?: channelId.takeIf { it.isNotBlank() }
+}
+
+internal data class ThreadComposerUiState(
+    val instanceId: String = "",
+    val seedText: String = "",
+    val seedAsTask: Boolean = false,
+    val syncNonce: Int = 0,
+    val focusRequestNonce: Int = 0,
+    val placeholder: String = "Message",
+    val enabled: Boolean = true,
+    val composerMode: String = "idle",
+    val statusLabel: String? = null,
+    val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
+    val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val hookLabels: List<String> = emptyList()
+)
+
 @Serializable
 internal data class KuiklyPendingAttachmentItem(
     val id: String,
@@ -267,6 +302,37 @@ private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: Strin
 internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
     this == KuiklyThreadComposerPayload()
 
+internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
+    channelId: String,
+    parentChannelId: String? = null
+): ThreadComposerSurface =
+    ThreadComposerSurface(
+        kind = surfaceKind,
+        channelId = channelId,
+        streamChannelId = streamChannelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
+        mentionChannelId = mentionChannelId,
+        showTaskButton = showAsTaskToggle
+    )
+
+internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadComposerUiState =
+    ThreadComposerUiState(
+        instanceId = instanceId,
+        seedText = seedText,
+        seedAsTask = seedAsTask,
+        syncNonce = syncNonce,
+        focusRequestNonce = focusRequestNonce,
+        placeholder = placeholder,
+        enabled = enabled,
+        composerMode = composerMode,
+        statusLabel = statusLabel,
+        pendingAttachments = pendingAttachments,
+        memberSuggestions = memberSuggestions,
+        channelSuggestions = channelSuggestions,
+        hookLabels = hookLabels
+    )
+
 internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComposerPayload {
     val resolvedSurfaceKind =
         if (composer.surfaceKind == KuiklyThreadSurfaceKind.Channel && surfaceKind != KuiklyThreadSurfaceKind.Channel) {
@@ -304,26 +370,44 @@ internal fun ThreadComposerContent(
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit = {}
 ) {
-    var fieldValue by remember(payload.instanceId) {
-        mutableStateOf(payload.seedText.toComposerFieldValueAtEnd())
+    ThreadComposerContent(
+        surface =
+            payload.toThreadComposerSurface(
+                channelId = payload.streamChannelId ?: payload.instanceId
+            ),
+        state = payload.toThreadComposerUiState(),
+        onEvent = onEvent,
+        onKeyboardHeightChange = onKeyboardHeightChange
+    )
+}
+
+@Composable
+internal fun ThreadComposerContent(
+    surface: ThreadComposerSurface,
+    state: ThreadComposerUiState,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onKeyboardHeightChange: (Float) -> Unit = {}
+) {
+    var fieldValue by remember(state.instanceId) {
+        mutableStateOf(state.seedText.toComposerFieldValueAtEnd())
     }
     val text = fieldValue.text
-    var asTask by remember(payload.instanceId) { mutableStateOf(payload.seedAsTask) }
-    var focused by remember(payload.instanceId) { mutableStateOf(false) }
-    var handledFocusRequestNonce by remember(payload.instanceId) { mutableStateOf(payload.focusRequestNonce) }
-    val shouldAutoFocus = payload.focusRequestNonce > handledFocusRequestNonce
-    LaunchedEffect(payload.instanceId, payload.syncNonce) {
-        fieldValue = payload.seedText.toComposerFieldValueAtEnd()
-        asTask = payload.seedAsTask
+    var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
+    var focused by remember(state.instanceId) { mutableStateOf(false) }
+    var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
+    val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
+    LaunchedEffect(state.instanceId, state.syncNonce) {
+        fieldValue = state.seedText.toComposerFieldValueAtEnd()
+        asTask = state.seedAsTask
         focused = false
     }
     val suggestionTrigger = remember(text) { detectKuiklyComposerSuggestionTrigger(text) }
     val filteredMemberSuggestions =
-        remember(suggestionTrigger, payload.memberSuggestions) {
+        remember(suggestionTrigger, state.memberSuggestions) {
             when (val trigger = suggestionTrigger) {
                 is KuiklyComposerSuggestionTrigger.MemberTrigger -> {
                     val query = trigger.query.lowercase()
-                    payload.memberSuggestions.filter { member ->
+                    state.memberSuggestions.filter { member ->
                         query.isBlank() ||
                             member.displayName.lowercase().contains(query) ||
                             member.handle.lowercase().contains(query)
@@ -334,11 +418,11 @@ internal fun ThreadComposerContent(
             }
         }
     val filteredChannelSuggestions =
-        remember(suggestionTrigger, payload.channelSuggestions) {
+        remember(suggestionTrigger, state.channelSuggestions) {
             when (val trigger = suggestionTrigger) {
                 is KuiklyComposerSuggestionTrigger.ChannelTrigger -> {
                     val query = trigger.query.lowercase()
-                    payload.channelSuggestions.filter { channel ->
+                    state.channelSuggestions.filter { channel ->
                         query.isBlank() ||
                             channel.name.lowercase().contains(query) ||
                             channel.subtitle.orEmpty().lowercase().contains(query)
@@ -350,12 +434,13 @@ internal fun ThreadComposerContent(
         }
     val showMemberSuggestions = focused && filteredMemberSuggestions.isNotEmpty()
     val showChannelSuggestions = focused && filteredChannelSuggestions.isNotEmpty()
+    val composerEnabled = state.enabled && surface.sendChannelId != null
     val canSend =
-        payload.enabled &&
-            payload.composerMode != "sending" &&
-            payload.composerMode != "uploading" &&
-            payload.composerMode != "no_permission" &&
-            (text.isNotBlank() || payload.pendingAttachments.isNotEmpty())
+        composerEnabled &&
+            state.composerMode != "sending" &&
+            state.composerMode != "uploading" &&
+            state.composerMode != "no_permission" &&
+            (text.isNotBlank() || state.pendingAttachments.isNotEmpty())
 
     fun emitChange(nextText: String = text, nextAsTask: Boolean = asTask) {
         onEvent("change", nextText, nextAsTask, null)
@@ -385,27 +470,27 @@ internal fun ThreadComposerContent(
                 .padding(top = 10.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            payload.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
+            state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
                 Text(
                     text = status,
                     style = SlockType.Caption.copy(
-                        color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
+                        color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
                     ),
-                    color = if (payload.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
+                    color = if (state.composerMode == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            if (payload.pendingAttachments.isNotEmpty()) {
+            if (state.pendingAttachments.isNotEmpty()) {
                 ComposerAttachmentTray(
-                    attachments = payload.pendingAttachments,
-                    enabled = payload.enabled
+                    attachments = state.pendingAttachments,
+                    enabled = state.enabled
                 ) { action, attachmentId ->
                     onEvent(action, null, null, attachmentId)
                 }
             }
             if (showMemberSuggestions) {
-                ComposerSuggestionPanel(title = "IN THIS CHANNEL") {
+                ComposerSuggestionPanel(title = surface.memberSuggestionTitle()) {
                     filteredMemberSuggestions.forEach { member ->
                         ComposerSuggestionRow(
                             leading = {
@@ -457,7 +542,7 @@ internal fun ThreadComposerContent(
                 ) {
                     TextField(
                         value = fieldValue,
-                        placeholder = payload.placeholder,
+                        placeholder = state.placeholder,
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
@@ -466,7 +551,7 @@ internal fun ThreadComposerContent(
                         onFocus = {
                             focused = true
                             if (shouldAutoFocus) {
-                                handledFocusRequestNonce = payload.focusRequestNonce
+                                handledFocusRequestNonce = state.focusRequestNonce
                             }
                         },
                         onBlur = {
@@ -485,7 +570,7 @@ internal fun ThreadComposerContent(
                             }
                         ),
                         textStyle = SlockType.Input.copy(
-                            color = if (payload.enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                            color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                             fontSize = 13.sp,
                             lineHeight = 20.sp
                         ),
@@ -496,9 +581,9 @@ internal fun ThreadComposerContent(
                         cursorBrush = SolidColor(SlockColor.TextBlack),
                         modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     )
-                    if (payload.hookLabels.isNotEmpty()) {
+                    if (state.hookLabels.isNotEmpty()) {
                         Text(
-                            text = payload.hookLabels.joinToString(" / "),
+                            text = state.hookLabels.joinToString(" / "),
                             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                             color = SlockColor.TextMutedGray,
                             maxLines = 2,
@@ -515,17 +600,17 @@ internal fun ThreadComposerContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            ComposerIconButton("image-plus", payload.enabled) {
+                            ComposerIconButton("image-plus", composerEnabled) {
                                 onEvent("attachImage", null, null, null)
                             }
-                            ComposerIconButton("paperclip", payload.enabled) {
+                            ComposerIconButton("paperclip", composerEnabled) {
                                 onEvent("attachFile", null, null, null)
                             }
                         }
-                        if (payload.showAsTaskToggle) {
+                        if (surface.showTaskButton) {
                             ComposerAsTaskToggle(
                                 checked = asTask,
-                                enabled = payload.enabled
+                                enabled = composerEnabled
                             ) { checked ->
                                 asTask = checked
                                 onEvent("toggleAsTask", null, checked, null)
@@ -533,7 +618,7 @@ internal fun ThreadComposerContent(
                         }
                         ComposerSendButton(
                             enabled = canSend,
-                            sending = payload.composerMode == "sending" || payload.composerMode == "uploading"
+                            sending = state.composerMode == "sending" || state.composerMode == "uploading"
                         ) {
                             onEvent("send", null, null, null)
                             fieldValue = "".toComposerFieldValueAtEnd()
@@ -545,6 +630,13 @@ internal fun ThreadComposerContent(
         }
     }
 }
+
+private fun ThreadComposerSurface.memberSuggestionTitle(): String =
+    when (kind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> "IN THIS DM"
+        KuiklyThreadSurfaceKind.ReplyThread -> "IN PARENT CHANNEL"
+        else -> "IN THIS CHANNEL"
+    }
 
 @Composable
 private fun ComposerAttachmentTray(

@@ -154,4 +154,43 @@ class ThreadComposerPayloadTest {
         assertEquals("Cindy", payload.memberSuggestions.single().displayName)
         assertEquals("general", payload.channelSuggestions.single().name)
     }
+
+    @Test
+    fun composerSurfaceUsesStreamChannelForSendTarget() {
+        val surface =
+            KuiklyThreadComposerPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                streamChannelId = "reply-thread-1",
+                mentionChannelId = "parent-channel-1",
+                parentMessageId = "parent-message-1",
+                showAsTaskToggle = false
+            ).toThreadComposerSurface(
+                channelId = "route-thread-1",
+                parentChannelId = "parent-channel-1"
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, surface.kind)
+        assertEquals("route-thread-1", surface.channelId)
+        assertEquals("reply-thread-1", surface.sendChannelId)
+        assertEquals("parent-channel-1", surface.mentionScopeChannelId)
+        assertEquals("parent-message-1", surface.parentMessageId)
+        assertFalse(surface.showTaskButton)
+    }
+
+    @Test
+    fun pendingReplyComposerSurfaceHasNoSendTargetUntilStreamExists() {
+        val surface =
+            KuiklyThreadComposerPayload(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                streamChannelId = null,
+                mentionChannelId = "parent-channel-1",
+                parentMessageId = "parent-message-1"
+            ).toThreadComposerSurface(
+                channelId = "",
+                parentChannelId = "parent-channel-1"
+            )
+
+        assertNull(surface.sendChannelId)
+        assertEquals("parent-channel-1", surface.mentionScopeChannelId)
+    }
 }
