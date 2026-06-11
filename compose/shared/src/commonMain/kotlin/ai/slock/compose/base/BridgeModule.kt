@@ -361,7 +361,8 @@ internal class BridgeModule : Module() {
         serverId: String,
         accessToken: String,
         socketUrl: String = SLOCK_SOCKET_BASE_URL,
-        lastSeq: Long = 0L
+        lastSeq: Long = 0L,
+        forceReconnect: Boolean = false
     ) {
         val methodArgs = JSONObject()
         methodArgs.put("action", "connect")
@@ -369,6 +370,7 @@ internal class BridgeModule : Module() {
         methodArgs.put("accessToken", accessToken)
         methodArgs.put("socketUrl", socketUrl)
         methodArgs.put("lastSeq", lastSeq)
+        methodArgs.put("forceReconnect", forceReconnect)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 
@@ -383,6 +385,14 @@ internal class BridgeModule : Module() {
         val methodArgs = JSONObject()
         methodArgs.put("action", "joinChannel")
         methodArgs.put("channelId", channelId)
+        callNativeMethod(REPORT_REALTIME, methodArgs, null)
+    }
+
+    fun realtimeAuthRefreshFinished(reason: String, success: Boolean) {
+        val methodArgs = JSONObject()
+        methodArgs.put("action", "authRefreshFinished")
+        methodArgs.put("reason", reason)
+        methodArgs.put("success", success)
         callNativeMethod(REPORT_REALTIME, methodArgs, null)
     }
 

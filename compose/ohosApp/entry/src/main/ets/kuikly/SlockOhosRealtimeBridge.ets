@@ -54,6 +54,7 @@ export class SlockOhosRealtimeBridge {
   private watchdogTimer?: number;
   private lastHeartbeatAtMillis?: number;
   private lastInboundEventAtMillis?: number;
+  private authRefreshInFlight: boolean = false;
 
   setController(controller?: KRNativeRenderController): void {
     this.controller = controller;
@@ -71,6 +72,7 @@ export class SlockOhosRealtimeBridge {
       onConnectError: (message: string) => {
         this.markInbound();
         console.warn(`[SlockOhosRealtime] socket_io_connect_error ${message}`);
+        this.requestAuthRefresh('connect_error');
       },
       onEvent: (eventName, payload) => {
         this.handleSocketIoEvent(eventName, payload);
@@ -87,7 +89,7 @@ export class SlockOhosRealtimeBridge {
           accessToken: (params['accessToken'] as string) ?? '',
           socketUrl: (params['socketUrl'] as string) ?? DEFAULT_SOCKET_URL,
           lastSeq: Number(params['lastSeq'] ?? 0),
-        });
+        }, params['forceReconnect'] === true);
         break;
       case 'disconnect':
         this.disconnect((params['reason'] as string) ?? 'shared_disconnect');
@@ -97,6 +99,10 @@ export class SlockOhosRealtimeBridge {
         break;
       case 'syncResume':
         this.syncResume(Number(params['lastSeq'] ?? 0));
+        break;
+      case 'authRefreshFinished':
+        this.authRefreshInFlight = false;
+        console.info(`[SlockOhosRealtime] auth_refresh_finished reason=${(params['reason'] as string) ?? ''} success=${params['success'] === true}`);
         break;
       default:
         console.warn(`[SlockOhosRealtime] unsupported action=${action}`);
@@ -112,7 +118,7 @@ export class SlockOhosRealtimeBridge {
     this.socketIo.suspend('background');
   }
 
-  private connect(params: RealtimeConnectParams): void {
+  private connect(params: RealtimeConnectParams, forceReconnect: boolean = false): void {
     if (params.serverId.length === 0 || params.accessToken.length === 0) {
       console.warn('[SlockOhosRealtime] connect skipped: missing server/token');
       return;
@@ -122,9 +128,10 @@ export class SlockOhosRealtimeBridge {
       this.joinedChannels.clear();
     }
     this.connectParams = params;
+    this.authRefreshInFlight = false;
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = undefined;
-    if (this.socketIo.isConnected() && previous?.serverId === params.serverId && previous?.accessToken === params.accessToken) {
+    if (!forceReconnect && this.socketIo.isConnected() && previous?.serverId === params.serverId && previous?.accessToken === params.accessToken) {
       return;
     }
     this.disconnect('reconnect');
@@ -146,6 +153,7 @@ export class SlockOhosRealtimeBridge {
       this.joinedChannels.clear();
       this.connectParams = undefined;
     }
+    this.authRefreshInFlight = false;
     this.stopHeartbeatWatchdog();
     this.socketIo.disconnect(reason);
   }
@@ -248,6 +256,9 @@ export class SlockOhosRealtimeBridge {
     }
     this.lastHeartbeatAtMillis = undefined;
     this.lastInboundEventAtMillis = now;
+    if (this.requestAuthRefresh('heartbeat_silence')) {
+      return;
+    }
     this.socketIo.connect({
       socketUrl: params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL,
       auth: {
@@ -259,6 +270,30 @@ export class SlockOhosRealtimeBridge {
         'X-Server-Id': params.serverId,
       }
     });
+  }
+
+  private requestAuthRefresh(reason: string): boolean {
+    const params = this.connectParams;
+    if (params === undefined || params.serverId.length === 0) {
+      return false;
+    }
+    if (this.authRefreshInFlight) {
+      console.info(`[SlockOhosRealtime] auth_refresh_skip reason=${reason} result=in_flight`);
+      return true;
+    }
+    const controller = this.controller;
+    if (controller === undefined) {
+      console.warn(`[SlockOhosRealtime] auth_refresh_unavailable reason=${reason}`);
+      return false;
+    }
+    this.authRefreshInFlight = true;
+    console.info(`[SlockOhosRealtime] auth_refresh_request reason=${reason} serverId=${params.serverId}`);
+    controller.sendEvent(REALTIME_EVENT_NAME, {
+      action: 'authRefreshRequired',
+      reason: reason,
+      serverId: params.serverId,
+    });
+    return true;
   }
 }
 

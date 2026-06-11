@@ -370,6 +370,45 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun realtimeAuthRefreshUpdatesStoredTokensWithoutChangingServerSelection() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "stale-token"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        refreshResponse = AuthNetworkResponse(200, """{"accessToken":"fresh-token","refreshToken":"fresh-refresh"}""")
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.refreshRealtimeAuth("connect_error")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("fresh-token", store.readSession()?.accessToken)
+        assertEquals("fresh-refresh", store.readSession()?.refreshToken)
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+    }
+
+    @Test
+    fun realtimeAuthRefreshPreservesCachedSessionOnUnauthorized() = runBlocking {
+        val store = InMemorySlockAuthSessionStore(storedSession(accessToken = "stale-token"))
+        val source =
+            SharedAuthDataSource(
+                transport =
+                    FakeAuthApi(
+                        refreshResponse = AuthNetworkResponse(401, null, """{"error":"expired"}""")
+                    ),
+                sessionStore = store
+            )
+
+        val result = source.refreshRealtimeAuth("connect_error")
+
+        assertTrue(result is SharedAuthResult.Failure)
+        assertEquals("stale-token", store.readSession()?.accessToken)
+        assertEquals("refresh-token", store.readSession()?.refreshToken)
+    }
+
+    @Test
     fun selectServerPersistsSelectionInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(

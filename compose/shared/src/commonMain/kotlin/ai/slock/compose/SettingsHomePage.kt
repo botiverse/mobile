@@ -168,7 +168,6 @@ import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.DirectMessageCreated
-import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberId
@@ -177,9 +176,6 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
-import ai.slock.compose.model.MessageReaction
-import ai.slock.compose.model.MessageType
-import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.AgentCreated
@@ -190,10 +186,8 @@ import ai.slock.compose.model.ServerPlanUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.ServerSummary
-import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadConversation
-import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
@@ -257,7 +251,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
-import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -304,6 +297,7 @@ private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationRouter = "router"
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
+private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private val SearchControlsHorizontalPadding = 16.dp
 private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
@@ -868,6 +862,7 @@ private fun SlockAppShellContent() {
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
+    var skipRealtimeDisposeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
     fun resetAppShellSessionState(clearReturnThread: Boolean = false) {
@@ -1006,7 +1001,11 @@ private fun SlockAppShellContent() {
         }
         onDispose {
             if (!serverId.isNullOrBlank()) {
-                bridge.realtimeDisconnect("session_changed")
+                if (skipRealtimeDisposeSessionKey == nextSessionKey) {
+                    skipRealtimeDisposeSessionKey = null
+                } else {
+                    bridge.realtimeDisconnect("session_changed")
+                }
             }
         }
     }
@@ -1234,6 +1233,61 @@ private fun SlockAppShellContent() {
             ?.let { bridge.realtimeJoinChannel(it) }
     }
 
+    fun handleRealtimeAuthRefreshRequest(eventData: JSONObject) {
+        val requestedServerId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
+        val reason = eventData.optString("reason").takeIf { it.isNotBlank() } ?: "reconnect"
+        val currentSession =
+            (authGateViewModel.state.value as? SharedAuthGateState.Ready)?.session
+                ?: readySession
+                ?: run {
+                    bridge.realtimeAuthRefreshFinished(reason, success = false)
+                    return
+                }
+        val currentServerId =
+            currentSession.currentServerId
+                ?: run {
+                    bridge.realtimeAuthRefreshFinished(reason, success = false)
+                    return
+                }
+        if (currentServerId != requestedServerId) {
+            bridge.log("shared_realtime_auth_refresh_skip reason=$reason requestedServerId=$requestedServerId currentServerId=$currentServerId")
+            bridge.realtimeAuthRefreshFinished(reason, success = false)
+            return
+        }
+        appShellCoroutineScope.launch {
+            when (val result = authDataSource.refreshRealtimeAuth(reason)) {
+                is SharedAuthResult.Success -> {
+                    val refreshed = result.data
+                    val refreshedServerId = refreshed.currentServerId
+                    if (refreshedServerId != requestedServerId || refreshed.accessToken.isBlank()) {
+                        bridge.log("shared_realtime_auth_refresh_skip reason=$reason result=server_mismatch")
+                        bridge.realtimeAuthRefreshFinished(reason, success = false)
+                        return@launch
+                    }
+                    skipRealtimeDisposeSessionKey = realtimeSessionKey
+                    authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(refreshed))
+                    realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
+                    bridge.realtimeConnect(
+                        serverId = refreshedServerId,
+                        accessToken = refreshed.accessToken,
+                        lastSeq = realtimeLastSeq,
+                        forceReconnect = true
+                    )
+                    bridge.realtimeAuthRefreshFinished(reason, success = true)
+                    bridge.log("shared_realtime_auth_refresh_success reason=$reason serverId=$refreshedServerId")
+                }
+                SharedAuthResult.Unauthenticated -> {
+                    bridge.realtimeAuthRefreshFinished(reason, success = false)
+                    bridge.log("shared_realtime_auth_refresh_failed reason=$reason result=unauthenticated")
+                }
+                is SharedAuthResult.Failure -> {
+                    bridge.realtimeAuthRefreshFinished(reason, success = false)
+                    bridge.log("shared_realtime_auth_refresh_failed reason=$reason code=${result.code}")
+                }
+            }
+        }
+    }
+
     DisposableEffect(
         pager,
         homeViewModel,
@@ -1247,6 +1301,10 @@ private fun SlockAppShellContent() {
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
                     if (pagerEvent != AppShellRealtimeEvent) return
+                    if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
+                        handleRealtimeAuthRefreshRequest(eventData)
+                        return
+                    }
                     val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
                     val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
                     if (
@@ -7052,167 +7110,8 @@ private fun decodeSharedShellRealtimeEvent(
     return null
 }
 
-private fun parseSharedShellRealtimeEvent(payload: String): Result<RealtimeEvent> =
-    runCatching {
-        val json = JSONObject(payload)
-        when (json.optString("type")) {
-            "message_new" -> MessageNew(json.optJSONObject("message").toSharedMessage())
-            "message_updated" -> MessageUpdated(json.optJSONObject("message").toSharedMessage())
-            "sync_resume" ->
-                SyncResumeResponse(
-                    messages =
-                        buildList {
-                            val messages = json.optJSONArray("messages")
-                            if (messages != null) {
-                                for (index in 0 until messages.length()) {
-                                    add(messages.optJSONObject(index).toSharedMessage())
-                                }
-                            }
-                        },
-                    currentSeq = json.optLong("currentSeq", 0L),
-                    hasMore = json.optBoolean("hasMore", false)
-                )
-            "thread_updated" ->
-                ThreadUpdated(
-                    parentMessageId = MessageId(json.optString("parentMessageId")),
-                    threadChannelId = ChannelId(json.optString("threadChannelId")),
-                    replyCount = json.optInt("replyCount", 0),
-                    lastReplyAt = json.optString("lastReplyAt").takeIf { it.isNotBlank() },
-                    participantIds =
-                        buildList {
-                            val ids = json.optJSONArray("participantIds")
-                            if (ids != null) {
-                                for (index in 0 until ids.length()) {
-                                    ids.optString(index)?.takeIf { it.isNotBlank() }?.let { add(MemberId(it)) }
-                                }
-                            }
-                        },
-                    unreadCount = if (json.has("unreadCount")) json.optInt("unreadCount", 0) else null,
-                    firstUnreadMessageId =
-                        json.optString("firstUnreadMessageId").takeIf { it.isNotBlank() }?.let(::MessageId)
-                )
-            "member_presence" ->
-                MemberPresenceUpdated(
-                    memberId = MemberId(json.optString("memberId")),
-                    presence = json.optString("presence").toRealtimePresence(),
-                    kind = json.optString("kind").toSharedMemberKind(),
-                    agentStatus = AgentStatus.fromWireValue(json.optString("agentStatus")),
-                    statusLabel = json.optString("statusLabel").takeIf { it.isNotBlank() }
-                )
-            "refresh_required" ->
-                RealtimeRefreshRequired(
-                    scope =
-                        json.optString("scope")
-                            .takeIf { it.isNotBlank() }
-                            ?.let { scope -> runCatching { RealtimeRefreshScope.valueOf(scope) }.getOrNull() }
-                            ?: RealtimeRefreshScope.Home,
-                    reason = json.optString("reason").takeIf { it.isNotBlank() } ?: "refresh_required",
-                    serverId = json.optString("serverId").takeIf { it.isNotBlank() }?.let(::ServerId),
-                    channelId = json.optString("channelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
-                    memberId = json.optString("memberId").takeIf { it.isNotBlank() }?.let(::MemberId),
-                    subjectId = json.optString("subjectId").takeIf { it.isNotBlank() }
-                )
-            "server_membership_removed" ->
-                ServerMembershipRemoved(
-                    serverId = ServerId(json.optString("serverId"))
-                )
-            "direct_message_created" -> DirectMessageCreated(ChannelId(json.optString("channelId")))
-            "heartbeat" -> Heartbeat(json.optLong("seq", 0L))
-            else -> error("unsupported realtime event ${json.optString("type")}")
-        }
-    }
-
 private fun Long.updateFrom(event: RealtimeEvent): Long =
     RealtimeCursorPolicy.updateAppliedSeq(this, event)
-
-private fun JSONObject?.toSharedMessage(): Message {
-    val json = this ?: JSONObject()
-    return Message(
-        id = MessageId(json.optString("id")),
-        threadId = ThreadId(json.optString("threadId")),
-        channelId = json.optString("channelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
-        threadChannelId = json.optString("threadChannelId").takeIf { it.isNotBlank() }?.let(::ChannelId),
-        seq = json.optLong("seq", 0L).takeIf { it > 0L },
-        author = json.optJSONObject("author").toSharedMemberProfile(),
-        timestampLabel = json.optString("timestampLabel"),
-        body = json.optString("body"),
-        messageType =
-            when (json.optString("messageType").lowercase()) {
-                "system" -> MessageType.System
-                else -> MessageType.Chat
-            },
-        systemEventType = json.optString("systemEventType").takeIf { it.isNotBlank() },
-        replyCount = json.optInt("replyCount", 0),
-        unreadReplyCount =
-            json.optInt("unreadReplyCount", json.optInt("unreadCount", 0)),
-        firstUnreadReplyMessageId =
-            json.optString("firstUnreadReplyMessageId")
-                .ifBlank { json.optString("firstUnreadMessageId") }
-                .takeIf { it.isNotBlank() }
-                ?.let(::MessageId),
-        parentMessageId = json.optString("parentMessageId").takeIf { it.isNotBlank() }?.let(::MessageId),
-        reactions = json.optJSONArray("reactions")?.toSharedMessageReactions()
-    )
-}
-
-private fun JSONArray.toSharedMessageReactions(): List<MessageReaction> =
-    buildList {
-        for (index in 0 until length()) {
-            val reaction = optJSONObject(index) ?: continue
-            val emoji = reaction.optString("emoji").takeIf { it.isNotBlank() } ?: continue
-            val count = reaction.optInt("count", 0)
-            if (count < 0) continue
-            add(
-                MessageReaction(
-                    emoji = emoji,
-                    count = count,
-                    reactorIds = reaction.optJSONArray("reactorIds").toStringList(),
-                    reactorNames = reaction.optJSONArray("reactorNames").toStringList()
-                )
-            )
-        }
-    }
-
-private fun JSONArray?.toStringList(): List<String> =
-    if (this == null) {
-        emptyList()
-    } else {
-        buildList {
-            for (index in 0 until length()) {
-                optString(index)?.takeIf { it.isNotBlank() }?.let(::add)
-            }
-        }
-    }
-
-private fun JSONObject?.toSharedMemberProfile(): MemberProfile {
-    val json = this ?: JSONObject()
-    val displayName = json.optString("displayName").takeIf { it.isNotBlank() } ?: "Unknown"
-    return MemberProfile(
-        id = MemberId(json.optString("id")),
-        displayName = displayName,
-        handle = json.optString("handle").takeIf { it.isNotBlank() } ?: displayName,
-        kind = json.optString("kind").toSharedMemberKind() ?: MemberKind.Human,
-        avatarUrl = json.optString("avatarUrl").takeIf { it.isNotBlank() },
-        avatarLabel = json.optString("avatarLabel").takeIf { it.isNotBlank() } ?: displayName.take(1).uppercase(),
-        presence = json.optString("presence").toRealtimePresence(),
-        agentStatus = AgentStatus.fromWireValue(json.optString("agentStatus"))
-    )
-}
-
-private fun String.toSharedMemberKind(): MemberKind? =
-    when (trim().lowercase()) {
-        "agent" -> MemberKind.Agent
-        "human", "user" -> MemberKind.Human
-        "system" -> MemberKind.System
-        else -> null
-    }
-
-private fun String.toRealtimePresence(): Presence =
-    when (trim().lowercase()) {
-        "active", "online" -> Presence.Active
-        "away", "idle" -> Presence.Away
-        else -> Presence.Offline
-    }
 
 @Composable
 private fun AppShellRestoreSplashContent() {

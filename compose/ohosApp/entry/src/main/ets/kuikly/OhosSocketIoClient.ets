@@ -25,6 +25,69 @@ export interface OhosSocketIoListener {
   onConnectError?: (message: string) => void;
 }
 
+export interface OhosSocketIoDecodedFrame {
+  kind: string;
+  eventName?: string;
+  payload?: KRAny;
+  message?: string;
+  pingInterval?: number;
+  pingTimeout?: number;
+}
+
+export function decodeOhosSocketIoFrame(frame: string): OhosSocketIoDecodedFrame {
+  if (frame.length === 0) {
+    return { kind: 'empty' };
+  }
+  if (frame.startsWith(ENGINE_IO_OPEN)) {
+    const payload = frame.substring(ENGINE_IO_OPEN.length);
+    try {
+      const values = JSON.parse(payload) as KRRecord;
+      return {
+        kind: 'engine_open',
+        pingInterval: Number(values['pingInterval'] ?? 0),
+        pingTimeout: Number(values['pingTimeout'] ?? 0),
+      };
+    } catch (error) {
+      return { kind: 'engine_open' };
+    }
+  }
+  if (frame.startsWith(ENGINE_IO_CLOSE)) {
+    return { kind: 'engine_close' };
+  }
+  if (frame === ENGINE_IO_PING) {
+    return { kind: 'engine_ping' };
+  }
+  if (frame.startsWith(SOCKET_IO_CONNECT)) {
+    return { kind: 'socket_connect' };
+  }
+  if (frame.startsWith(SOCKET_IO_DISCONNECT)) {
+    return { kind: 'socket_disconnect' };
+  }
+  if (frame.startsWith(SOCKET_IO_CONNECT_ERROR)) {
+    return {
+      kind: 'socket_connect_error',
+      message: frame.substring(SOCKET_IO_CONNECT_ERROR.length),
+    };
+  }
+  if (frame.startsWith(SOCKET_IO_EVENT)) {
+    try {
+      const values = JSON.parse(frame.substring(SOCKET_IO_EVENT.length)) as Array<KRAny>;
+      const eventName = values[0] as string;
+      if (eventName === undefined || eventName.length === 0) {
+        return { kind: 'invalid_event' };
+      }
+      return {
+        kind: 'socket_event',
+        eventName: eventName,
+        payload: values.length > 1 ? values[1] : {},
+      };
+    } catch (error) {
+      return { kind: 'invalid_event', message: `${error}` };
+    }
+  }
+  return { kind: 'unknown' };
+}
+
 interface WebSocketConnectOptions {
   header: Record<string, string>;
 }
@@ -177,15 +240,16 @@ export class OhosSocketIoClient {
   }
 
   private handleFrame(frame: string, params: OhosSocketIoConnectParams): void {
-    if (frame.length === 0) {
+    const decoded = decodeOhosSocketIoFrame(frame);
+    if (decoded.kind === 'empty') {
       return;
     }
-    if (frame.startsWith(ENGINE_IO_OPEN)) {
-      this.logEngineOpen(frame.substring(ENGINE_IO_OPEN.length));
+    if (decoded.kind === 'engine_open') {
+      this.logEngineOpen(decoded);
       this.sendSocketIoConnect(params.auth);
       return;
     }
-    if (frame.startsWith(ENGINE_IO_CLOSE)) {
+    if (decoded.kind === 'engine_close') {
       console.info('[OhosSocketIo] engine_close');
       this.disconnectSocket('engine_io_close');
       this.listener.onDisconnected?.('engine_io_close');
@@ -194,19 +258,19 @@ export class OhosSocketIoClient {
       }
       return;
     }
-    if (frame === ENGINE_IO_PING) {
+    if (decoded.kind === 'engine_ping') {
       console.info('[OhosSocketIo] engine_ping_received');
       this.sendRaw(ENGINE_IO_PONG);
       console.info('[OhosSocketIo] engine_pong_sent');
       return;
     }
-    if (frame.startsWith(SOCKET_IO_CONNECT)) {
+    if (decoded.kind === 'socket_connect') {
       this.connected = true;
       this.reconnectAttempt = 0;
       this.listener.onConnected?.();
       return;
     }
-    if (frame.startsWith(SOCKET_IO_DISCONNECT)) {
+    if (decoded.kind === 'socket_disconnect') {
       console.info('[OhosSocketIo] socket_disconnect');
       this.disconnectSocket('socket_disconnect');
       this.listener.onDisconnected?.('socket_disconnect');
@@ -215,24 +279,25 @@ export class OhosSocketIoClient {
       }
       return;
     }
-    if (frame.startsWith(SOCKET_IO_CONNECT_ERROR)) {
-      const message = frame.substring(SOCKET_IO_CONNECT_ERROR.length);
+    if (decoded.kind === 'socket_connect_error') {
+      const message = decoded.message ?? '';
       console.warn(`[OhosSocketIo] socket_connect_error ${message}`);
       this.listener.onConnectError?.(message);
       return;
     }
-    if (frame.startsWith(SOCKET_IO_EVENT)) {
-      this.handleSocketIoEvent(frame.substring(SOCKET_IO_EVENT.length));
+    if (decoded.kind === 'socket_event') {
+      this.listener.onEvent?.(decoded.eventName ?? '', decoded.payload ?? {});
+    } else if (decoded.kind === 'invalid_event') {
+      console.warn(`[OhosSocketIo] event_decode_failed ${decoded.message ?? ''}`);
     }
   }
 
-  private logEngineOpen(payload: string): void {
-    try {
-      const values = JSON.parse(payload) as KRRecord;
-      const pingInterval = Number(values['pingInterval'] ?? 0);
-      const pingTimeout = Number(values['pingTimeout'] ?? 0);
+  private logEngineOpen(decoded: OhosSocketIoDecodedFrame): void {
+    const pingInterval = decoded.pingInterval ?? 0;
+    const pingTimeout = decoded.pingTimeout ?? 0;
+    if (pingInterval > 0 || pingTimeout > 0) {
       console.info(`[OhosSocketIo] engine_open pingInterval=${pingInterval} pingTimeout=${pingTimeout}`);
-    } catch (error) {
+    } else {
       console.info('[OhosSocketIo] engine_open');
     }
   }
@@ -240,19 +305,6 @@ export class OhosSocketIoClient {
   private sendSocketIoConnect(auth: KRRecord): void {
     console.info(`[OhosSocketIo] socket_auth_connect_sent authKeys=${Object.keys(auth).join(',')}`);
     this.sendRaw(`${SOCKET_IO_CONNECT}${JSON.stringify(auth)}`);
-  }
-
-  private handleSocketIoEvent(payload: string): void {
-    try {
-      const values = JSON.parse(payload) as Array<KRAny>;
-      const eventName = values[0] as string;
-      if (eventName === undefined || eventName.length === 0) {
-        return;
-      }
-      this.listener.onEvent?.(eventName, values.length > 1 ? values[1] : {});
-    } catch (error) {
-      console.warn(`[OhosSocketIo] event_decode_failed ${error}`);
-    }
   }
 
   private sendRaw(text: string): void {
