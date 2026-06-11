@@ -282,8 +282,8 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
 
         store.accept(SharedThreadIntent.Start(basePayload()))
-        assertEquals(0, store.state.value.payload.membersCount)
-        assertEquals(emptyList(), memberRepository.channelMemberRequests)
+        assertEquals(2, store.state.value.payload.membersCount)
+        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         val beforeMessages = store.state.value.payload.messages
 
         store.accept(SharedThreadIntent.LoadMembers)
@@ -293,7 +293,7 @@ class SharedThreadStoreTest {
         assertEquals(2, payload.membersCount)
         assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
         assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
-        assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
+        assertEquals(listOf(ChannelId("channel-1"), ChannelId("channel-1")), memberRepository.channelMemberRequests)
         scope.cancel()
     }
 
@@ -534,7 +534,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startDoesNotLoadThreadMembersUntilRequested() = runBlocking {
+    fun startLoadsThreadMembersEagerlyAfterRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val memberRepository =
             FakeMemberRepository(
@@ -552,11 +552,6 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         assertEquals("content", store.state.value.payload.status)
-        assertEquals(emptyList(), memberRepository.channelMemberRequests)
-        assertEquals(emptyList(), memberRepository.serverMemberRequests)
-
-        store.accept(SharedThreadIntent.LoadMembers)
-
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
         assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
         assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })

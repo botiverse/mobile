@@ -1382,6 +1382,7 @@ internal class SharedThreadStore(
         )
         if (emitted && visiblePayload != null) {
             writeCachedPayloadAfterFrame(_state.value.payload)
+            loadMembers()
         }
     }
 
