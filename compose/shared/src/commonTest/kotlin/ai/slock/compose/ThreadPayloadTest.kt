@@ -1292,21 +1292,24 @@ class ThreadPayloadTest {
         assertEquals(true, payload.canLoadMoreAfter)
         assertEquals(true, payload.canAddMembers)
         assertEquals(true, payload.showSettingsAction)
+        assertEquals(true, payload.showMembersAction)
     }
 
     @Test
-    fun sharedShellHidesSettingsForReplyThreadChrome() {
+    fun sharedShellHidesChannelChromeForReplyThread() {
         val payload =
             KuiklyThreadScreenPayload(
                 instanceId = "thread-reply-1",
                 title = "Threads",
                 showModeTabs = false,
+                showMembersAction = true,
                 showSettingsAction = true,
                 showOpenInChannelAction = true,
                 originParentMessageId = "message-1"
             ).withSharedShellEventCapabilities()
 
         assertEquals(false, payload.showSettingsAction)
+        assertEquals(false, payload.showMembersAction)
         assertEquals(true, payload.showOpenInChannelAction)
     }
 

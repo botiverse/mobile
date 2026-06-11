@@ -249,7 +249,8 @@ internal data class KuiklyThreadScreenPayload(
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
         showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
-        showSettingsAction = showSettingsAction && showModeTabs
+        showSettingsAction = showSettingsAction && showModeTabs,
+        showMembersAction = showMembersAction && showModeTabs
     )
 
 @Serializable
@@ -2773,7 +2774,6 @@ private fun ThreadPageHeader(
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
-    val showCloseActionAtEnd = payload.navigationLabel.equals("Close", ignoreCase = true)
     val topSafeArea = slockTopSafeAreaPadding()
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
@@ -2787,9 +2787,7 @@ private fun ThreadPageHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            if (!showCloseActionAtEnd) {
-                ThreadHeaderIconButton(icon = "arrow-left", onClick = onBack)
-            }
+            ThreadHeaderIconButton(icon = "arrow-left", onClick = onBack)
             if (payload.showModeTabs) {
                 ThreadHashTile()
             }
@@ -2819,9 +2817,6 @@ private fun ThreadPageHeader(
             }
             if (payload.showOpenInChannelAction) {
                 ThreadHeaderIconButton(icon = "external-link", onClick = onOpenInChannel)
-            }
-            if (showCloseActionAtEnd) {
-                ThreadHeaderIconButton(icon = "x", onClick = onBack)
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
@@ -2928,7 +2923,23 @@ private fun ThreadChatTab(
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     when (payload.status) {
-        "loading" -> ThreadStateMessage("Loading thread…", null)
+        "loading" ->
+            if (payload.originStatus != "none") {
+                ThreadMessagesList(
+                    payload = payload,
+                    composerKeyboardInsetDp = composerKeyboardInsetDp,
+                    linkedTasksByMessageId = linkedTasksByMessageId,
+                    highlightedMentions = highlightedMentions,
+                    pendingActionCardIds = pendingActionCardIds,
+                    attachmentOpenStates = attachmentOpenStates,
+                    onThreadEvent = onThreadEvent,
+                    onOpenMarkdownTag = onOpenMarkdownTag,
+                    onOpenMarkdownUrl = onOpenMarkdownUrl,
+                    diagnosticsLogger = diagnosticsLogger
+                )
+            } else {
+                ThreadStateMessage("Loading thread…", null)
+            }
         "error" ->
             ThreadStateActionMessage(
                 title = "Failed to load thread",

@@ -2394,11 +2394,27 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     base: KuiklyThreadScreenPayload,
     currentUserId: String?
 ): KuiklyThreadScreenPayload {
-    val parentId = parentMessage?.id?.value
+    val parentId =
+        parentMessage?.id?.value
+            ?: base.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: conversation.thread?.parentMessageId?.value
+    val resolvedParentMessage =
+        parentMessage
+            ?: parentId?.let { id -> messages.firstOrNull { message -> message.id.value == id } }
+    val resolvedOrigin =
+        resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId)
+            ?: base.originMessage
+    val resolvedOriginStatus =
+        when {
+            resolvedParentMessage != null -> "loaded"
+            resolvedOrigin != null && base.originStatus == "none" -> "loaded"
+            else -> base.originStatus
+        }
     val surfaceKind =
         when {
             conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            parentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank() ->
+            resolvedParentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank() ->
                 KuiklyThreadSurfaceKind.ReplyThread
             else -> base.surfaceKind
         }
@@ -2408,7 +2424,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             ?: conversation.channelId?.value
             ?: conversation.threadId.value
     val parentChannelId = base.parentChannelId ?: conversation.thread?.parentChannelId?.value
-    val parentMessageId = base.parentMessageId ?: parentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
+    val parentMessageId = base.parentMessageId ?: resolvedParentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
     val cachedMessages =
         messages
             .filterNot { message -> parentId != null && message.id.value == parentId }
@@ -2416,7 +2432,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     return base.copy(
         title = conversation.name.takeIf { it.isNotBlank() } ?: base.title,
         subtitle = conversation.subtitle ?: base.subtitle,
-        status = if (cachedMessages.isEmpty() && parentMessage == null && tasks.isEmpty()) "empty" else "content",
+        status = if (cachedMessages.isEmpty() && resolvedOrigin == null && tasks.isEmpty()) "empty" else "content",
         sourceThreadId =
             base.sourceThreadId
                 ?: conversation.thread?.streamChannelId?.value
@@ -2427,9 +2443,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         messages = cachedMessages,
-        originMessage = parentMessage?.toKuiklyThreadMessageItem(currentUserId),
-        originParentMessageId = parentMessage?.id?.value ?: base.originParentMessageId,
-        originStatus = if (parentMessage != null) "loaded" else base.originStatus,
+        originMessage = resolvedOrigin,
+        originParentMessageId = resolvedParentMessage?.id?.value ?: base.originParentMessageId ?: base.parentMessageId,
+        originStatus = resolvedOriginStatus,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,

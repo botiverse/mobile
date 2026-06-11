@@ -1341,6 +1341,51 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadPreservesReplyOriginWhenRepositoryReturnsParentAsMessage() = runBlocking {
+        val parent = contentPayload("parent body").messages.single()
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(threadId = "thread-m1", id = "m1", seq = 10, body = "parent body"),
+                                    message(threadId = "thread-m1", id = "reply-1", seq = 11, body = "reply body")
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originMessage = parent,
+                originParentMessageId = "m1",
+                originStatus = "loaded"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        assertEquals("loaded", payload.originStatus)
+    }
+
+    @Test
     fun createOrOpenReplyThreadUsesRepositoryMetadataForOriginAndPersistentSnapshot() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         val repository = FakeConversationRepository(
