@@ -1,7 +1,7 @@
 # KMP Settings Capability Parity Audit
 
 Date: 2026-05-23
-Last refreshed: 2026-06-02
+Last refreshed: 2026-06-11
 
 Scope: align the shared KMP Settings product route with the React Settings
 source while keeping Settings state, business logic, actions, and effects in
@@ -112,7 +112,7 @@ About or a smoke route.
 | Storage | Wired/partial | Shared MVI now drives refresh/clear and Android returns live storage snapshots; OHOS exposes explicit unsupported/disabled rows until a native storage API is available. | task #37 complete. |
 | About/Diagnostics | Migrated/wired | Core actions are wired; task #37 reverified the Diagnostics route while keeping copy/share/clear/send-feedback behind shared effects/host capabilities. | task #43 complete; task #44 audits all visible rows. |
 | Loading/cache | Partial | Store preserves existing content on refresh failure, but most real repository/cache sources are not connected. | tasks #35-#39 by slice. |
-| Realtime | Missing | Server/machine/billing updates can go stale unless invalidated/refreshed through store. | Later Settings realtime/cache hardening task. |
+| Realtime | Partial | Shared realtime now maps machine status/capability/update, server membership/deleted/plan, announcement, and reminder events into refresh intents, but Settings-specific fine-grained local mutation and OHOS token-refresh proof are still open. | Track remaining gaps through `docs/socketio-react-parity-audit-2026-06-09.md`; add focused Settings realtime/cache hardening only for surfaces that still go stale. |
 
 ## Implementation Order
 
