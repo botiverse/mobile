@@ -129,6 +129,7 @@ data class SlockServerSwitcherItem(
 data class SlockHomeConversationItem(
     val id: String = "",
     val name: String = "",
+    val kind: String = "",
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
     val createdAt: String? = null,
@@ -532,7 +533,7 @@ fun SlockStructuralHomeShell(
                                     avatarLabel = dm.avatarLabel,
                                     avatarUrl = dm.avatarUrl,
                                     avatarWireValue = dm.avatarWireValue,
-                                    presence = homeDmStatusPresence(dm.presence),
+                                    presence = homeDmStatusPresence(if (dm.kind == "human") null else dm.presence),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),

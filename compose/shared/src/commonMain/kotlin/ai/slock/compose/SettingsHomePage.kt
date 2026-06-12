@@ -6816,6 +6816,7 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
     SlockHomeConversationItem(
         id = threadId.value,
         name = name,
+        kind = kind.name.lowercase(),
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
         avatarUrl = avatarUrl,
