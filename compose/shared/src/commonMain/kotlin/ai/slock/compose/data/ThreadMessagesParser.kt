@@ -212,7 +212,7 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         authorId = senderId.ifBlank { "unknown" },
         authorName = resolvedName,
         authorKind = when {
-            isSystem -> ""
+            isSystem -> "system"
             senderType.equals("agent", ignoreCase = true) -> "agent"
             senderType.equals("user", ignoreCase = true) -> "human"
             else -> ""

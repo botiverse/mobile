@@ -71,6 +71,7 @@ import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
@@ -851,6 +852,33 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun restThreadFetchRendersPersistedTaskLifecycleSystemRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(
+                    bodyText =
+                        systemMessagesResponse(
+                            body = "✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done",
+                            id = "sys-done-1",
+                            seq = 44
+                        )
+                ),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val systemRow = store.state.value.payload.messages.single()
+        assertEquals("sys-done-1", systemRow.id)
+        assertEquals("System", systemRow.messageType)
+        assertEquals("system", systemRow.authorKind)
+        assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", systemRow.body)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageNewMergesIntoVisiblePayloadAndPersistentSnapshot() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -890,6 +918,41 @@ class SharedThreadStoreTest {
             "realtime body",
             localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(
+                        id = "sys-done-1",
+                        seq = 44,
+                        body = "✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done",
+                        messageType = MessageType.System,
+                        authorKind = MemberKind.System
+                    )
+                )
+            )
+        )
+
+        val messages = store.state.value.payload.messages
+        assertEquals(listOf("m1", "sys-done-1"), messages.map { it.id })
+        val systemRow = messages.last()
+        assertEquals("System", systemRow.messageType)
+        assertEquals("system", systemRow.authorKind)
+        assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", systemRow.body)
         scope.cancel()
     }
 
@@ -1547,6 +1610,39 @@ class SharedThreadStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun loadNewerMessagesMergesSystemRowsFromSyncRecovery() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText =
+                    syncSystemResponse(
+                        body = "released #252 \"Implement Thread timeline system-message rendering\"",
+                        id = "sys-release-1",
+                        seq = 12
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = true)))
+
+        store.accept(SharedThreadIntent.LoadNewer)
+
+        val messages = store.state.value.payload.messages
+        assertEquals(listOf("m10", "sys-release-1"), messages.map { it.id })
+        val systemRow = messages.last()
+        assertEquals("System", systemRow.messageType)
+        assertEquals("system", systemRow.authorKind)
+        assertEquals("released #252 \"Implement Thread timeline system-message rendering\"", systemRow.body)
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        scope.cancel()
+    }
+
     private class FakeThreadApi(
         var bodyText: String = messagesResponse("network body"),
         var olderBodyText: String = messagesResponse("older body", id = "older", seq = 1, historyLimited = false),
@@ -2094,7 +2190,9 @@ class SharedThreadStoreTest {
             body: String,
             threadChannelId: String? = null,
             replyCount: Int = 0,
-            unreadReplyCount: Int = 0
+            unreadReplyCount: Int = 0,
+            messageType: MessageType = MessageType.Chat,
+            authorKind: MemberKind = MemberKind.Human
         ): Message =
             Message(
                 id = MessageId(id),
@@ -2103,15 +2201,16 @@ class SharedThreadStoreTest {
                 threadChannelId = threadChannelId?.let(::ChannelId),
                 author =
                     MemberProfile(
-                        id = MemberId("u1"),
-                        displayName = "Artin",
-                        handle = "artin",
-                        kind = MemberKind.Human,
+                        id = if (authorKind == MemberKind.System) MemberId("system") else MemberId("u1"),
+                        displayName = if (authorKind == MemberKind.System) "System" else "Artin",
+                        handle = if (authorKind == MemberKind.System) "system" else "artin",
+                        kind = authorKind,
                         presence = Presence.Active
                 ),
                 seq = seq,
                 timestampLabel = "2026-05-19T16:00:00Z",
                 body = body,
+                messageType = messageType,
                 replyCount = replyCount,
                 unreadReplyCount = unreadReplyCount
             )
@@ -2138,6 +2237,33 @@ class SharedThreadStoreTest {
               ]
             }
             """.trimIndent()
+
+        private fun systemMessagesResponse(
+            body: String,
+            id: String,
+            seq: Long,
+            historyLimited: Boolean = false
+        ): String {
+            val escapedBody = body.jsonEscaped()
+            return """
+            {
+              "historyLimited": $historyLimited,
+              "messages": [
+                {
+                  "id": "$id",
+                  "seq": $seq,
+                  "content": "$escapedBody",
+                  "createdAt": "2026-06-13T01:00:00Z",
+                  "channelId": "channel-1",
+                  "senderId": "system",
+                  "senderName": "System",
+                  "senderType": "user",
+                  "messageType": "system"
+                }
+              ]
+            }
+            """.trimIndent()
+        }
 
         private fun agentMessagesResponse(): String =
             """
@@ -2175,5 +2301,32 @@ class SharedThreadStoreTest {
               }
             ]
             """.trimIndent()
+
+        private fun syncSystemResponse(
+            body: String,
+            id: String,
+            seq: Long
+        ): String {
+            val escapedBody = body.jsonEscaped()
+            return """
+            [
+              {
+                "id": "$id",
+                "seq": $seq,
+                "content": "$escapedBody",
+                "createdAt": "2026-06-13T01:00:00Z",
+                "channelId": "channel-1",
+                "senderId": "system",
+                "senderName": "System",
+                "senderType": "user",
+                "messageType": "system"
+              }
+            ]
+            """.trimIndent()
+        }
+
+        private fun String.jsonEscaped(): String =
+            replace("\\", "\\\\")
+                .replace("\"", "\\\"")
     }
 }

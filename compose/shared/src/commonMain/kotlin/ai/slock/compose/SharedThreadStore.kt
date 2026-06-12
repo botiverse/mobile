@@ -2604,7 +2604,12 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         id = id.value,
         authorId = author.id.value,
         authorName = author.displayName,
-        authorKind = if (author.kind == MemberKind.Agent) "agent" else "human",
+        authorKind =
+            when (author.kind) {
+                MemberKind.Agent -> "agent"
+                MemberKind.System -> "system"
+                else -> "human"
+            },
         isOwn = currentUserId != null && author.id.value == currentUserId,
         avatarLabel = author.avatarLabel,
         avatarWireValue = author.avatar?.wireValue ?: author.avatarUrl,

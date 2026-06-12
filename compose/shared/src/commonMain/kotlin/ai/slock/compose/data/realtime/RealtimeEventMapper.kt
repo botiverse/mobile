@@ -398,7 +398,12 @@ private fun MessageWireDto.toDomain(): Message {
         id = MemberId(authorId),
         displayName = senderName ?: authorId,
         handle = senderName ?: authorId,
-        kind = if (senderType == "agent") MemberKind.Agent else MemberKind.Human,
+        kind =
+            when {
+                senderType.equals("agent", ignoreCase = true) -> MemberKind.Agent
+                messageType.equals("system", ignoreCase = true) -> MemberKind.System
+                else -> MemberKind.Human
+            },
         description = senderDescription,
         roleDescription = roleDescription,
         avatarLabel = (senderName ?: authorId).take(1).uppercase(),
@@ -417,7 +422,7 @@ private fun MessageWireDto.toDomain(): Message {
         author = author,
         timestampLabel = updatedAt ?: createdAt ?: "",
         body = content,
-        messageType = if (messageType == "system") MessageType.System else MessageType.Chat,
+        messageType = if (messageType.equals("system", ignoreCase = true)) MessageType.System else MessageType.Chat,
         systemEventType = null,
         metadata = actionMetadata.toThreadActionCard()?.toMessageMetadata().orEmpty(),
         attachments = attachments.map { it.toDomain() },

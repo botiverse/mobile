@@ -74,6 +74,73 @@ class ThreadApiTest {
     }
 
     @Test
+    fun channelMessagesPreserveTaskLifecycleSystemRows() = runBlocking {
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    channelMessagesBody =
+                        """
+                        {
+                          "messages": [
+                            {
+                              "id": "sys-done-1",
+                              "channelId": "thread-1",
+                              "senderType": "user",
+                              "senderId": "system",
+                              "senderName": "System",
+                              "messageType": "system",
+                              "content": "✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done",
+                              "createdAt": "2026-06-13T01:00:00Z",
+                              "seq": 44
+                            }
+                          ],
+                          "historyLimited": false
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = api.channelMessages("thread-1")
+
+        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
+        assertEquals("sys-done-1", message.id)
+        assertEquals("system", message.messageType)
+        assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.content)
+    }
+
+    @Test
+    fun syncPreservesTaskLifecycleSystemRows() = runBlocking {
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    syncBody =
+                        """
+                        [
+                          {
+                            "id": "sys-claim-1",
+                            "channelId": "thread-1",
+                            "senderType": "user",
+                            "senderId": "system",
+                            "senderName": "System",
+                            "messageType": "system",
+                            "content": "claimed #252 \"Implement Thread timeline system-message rendering\"",
+                            "createdAt": "2026-06-13T01:00:00Z",
+                            "seq": 45
+                          }
+                        ]
+                        """.trimIndent()
+                )
+            )
+
+        val result = api.messageSync("thread-1", sinceSeq = 44)
+
+        val message = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messages.single()
+        assertEquals("sys-claim-1", message.id)
+        assertEquals("system", message.messageType)
+        assertEquals("claimed #252 \"Implement Thread timeline system-message rendering\"", message.content)
+    }
+
+    @Test
     fun syncRejectsNestedWrapper() = runBlocking {
         val api = SlockThreadApiClient(FakeThreadNetworkApi(syncBody = """{"data":[{"id":"m2","content":"new","seq":2}]}"""))
 

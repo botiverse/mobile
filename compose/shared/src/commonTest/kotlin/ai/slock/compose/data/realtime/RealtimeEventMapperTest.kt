@@ -1,7 +1,9 @@
 package ai.slock.compose.data.realtime
 
 import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -116,6 +118,34 @@ class RealtimeEventMapperTest {
         assertEquals("👍", reaction?.emoji)
         assertEquals(2, reaction?.count)
         assertEquals(listOf("u2"), reaction?.reactorIds)
+    }
+
+    @Test
+    fun messageNewPreservesThreadSystemMessageType() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "id": "sys-done-1",
+                  "channelId": "thread-1",
+                  "senderType": "user",
+                  "senderId": "system",
+                  "senderName": "System",
+                  "messageType": "system",
+                  "content": "✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done",
+                  "createdAt": "2026-06-13T01:00:00Z",
+                  "seq": 44
+                }
+                """.trimIndent()
+            )
+
+        val message = assertIs<MessageNew>(event).message
+        assertEquals("sys-done-1", message.id.value)
+        assertEquals("thread-1", message.channelId?.value)
+        assertEquals(MessageType.System, message.messageType)
+        assertEquals(MemberKind.System, message.author.kind)
+        assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.body)
     }
 
     @Test
