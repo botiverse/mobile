@@ -53,6 +53,100 @@ git submodule update --init --recursive third_party/slock-source
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
+## Task / Commit / Thread Discipline
+
+Workflow rules for how every agent (human-supervised or autonomous) should move
+work through Slock task threads, commits, and pushes. These rules apply on top
+of the API contract and MVI rules above; they exist so other agents and humans
+can verify any task in this repo from its thread alone, without reading code.
+
+### Delivery four-piece set before moving a task to In Review
+
+When moving a task from `in_progress` to `in_review`, the task's thread **must**
+already contain:
+
+1. **Modified files** (typed API / repository / store / page / test).
+2. **Verification commands** + **results** (e.g. `./gradlew :shared:compileDebugKotlinAndroid` →
+   BUILD SUCCESSFUL, `./gradlew :shared:testDebugUnitTest --tests ...` → N/N pass).
+3. **Entry / walkthrough** in the latest package (which app navigation, which page,
+   which button / shell exposes the wired capability, including loading / success /
+   error / permission / no-op / no-double-submit behavior).
+4. **Boundary** (no token / raw JSON exposed outside the typed API; per-thread
+   shared boundary is honored).
+
+Rationale: assignees other than the original implementer (humans, QA, other
+agents) must be able to judge "is this done?" from the thread alone, without
+checking out the commit and reading the diff.
+
+### Commit message must include the task number
+
+Every commit message must include the corresponding task number, e.g.:
+
+```
+fix: wire shared agent lifecycle actions (#50)
+```
+
+The Slock task board and commit history are otherwise disconnected — without the
+task number you cannot trace a commit back to its task or vice versa.
+
+### One thread, one topic
+
+- Before replying in a thread, resolve the parent message and confirm which task
+  number the thread belongs to (`slock message resolve <msgId>` if uncertain).
+- If your reply actually belongs to a different task (e.g. the thread is #51
+  but you're discussing #72), stop and move the discussion to the right thread.
+- Do not keep expanding a wrong-thread reply just to "close it out"; an out-of-thread
+  closure is worse than acknowledging and moving on.
+
+If a thread has already mixed multiple tasks, restrict the current thread to
+its parent task; other tasks must continue in their own task / spec threads.
+You may ack the cross-task content ("this belongs to task X, continuing there")
+without expanding it.
+
+### DTO mocks must be verified against upstream fixtures, not invented
+
+When writing test fixtures for typed API DTOs, **do not invent a "looks
+reasonable" payload**. The Iron Rule says verify field names against
+`third_party/slock-source/`; that rule also applies to test mocks.
+
+A mock whose only purpose is to make a happy-path test pass is a contract drift
+waiting to happen: the real server returns a different shape, and the field
+that was guessed silently decodes to `null` (or default) at runtime, with no
+test failure. This is exactly how the
+`SlockAgentsApi.AgentActivityWireDto(val id: String)` drift (D1 of #50) was
+introduced — the mock used `[{"id":"a1",...}]` instead of the upstream
+`[{timestamp, entry: {kind, activity, detail}}]`.
+
+When adding DTOs:
+
+- If the field shape is verified, write a regression test that uses the
+  canonical upstream payload (either copy-pasted from
+  `third_party/slock-source/packages/server/...` or loaded from a JSON fixture
+  that was round-trip-verified).
+- If a real upstream fixture is not available, mark the DTO as "pending
+  contract verification" in the test name and the source comment, and follow
+  up before the task goes to In Review.
+- Negative tests (`xxxRejectsGuessedWrappersAndAliases`) are still useful and
+  should be retained.
+
+### "Edit main" vs "push main" — distinct operations
+
+- **Edit main** = creating new commits directly on the `main` branch. The
+  rule is: do not do this. Every fix, refactor, or feature must come from a
+  worktree branch off `main` (e.g. `fix/api-task50-d1-d2`,
+  `chore/agents-md-workflow-discipline`).
+- **Push main** = `git push origin main` to publish commits that already exist
+  on local `main` to the remote. This is just a sync; it does not add new
+  content, and is not a workflow violation. The previous rule "main ahead of
+  origin/main is a stop sign" referred to commits *being created* on main,
+  not to publishing accumulated work.
+
+When pushing main, the canonical flow is: edit in a worktree branch, push the
+branch, fast-forward `main` to that branch tip (`git checkout main && git merge
+--ff-only <branch>` or `git push origin main` if `main` is already pointing
+where the branch is), then push. Do not push a divergent / non-fast-forward
+`main` to origin; if divergence is needed, open a PR instead.
+
 ## Kuikly References And Skills
 
 - Workspace-level Kuikly guidance lives under `.agents/`:
