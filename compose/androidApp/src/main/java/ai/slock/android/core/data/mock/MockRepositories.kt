@@ -373,9 +373,6 @@ class MockConversationRepository(
     override suspend fun followThread(parentMessageId: MessageId): DataResult<ThreadActionResult> =
         threadAction(ChannelId("thread-${parentMessageId.value}"), parentMessageId = parentMessageId, replyCount = 1)
 
-    override suspend fun followThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
-        threadAction(threadChannelId)
-
     override suspend fun unfollowThread(threadChannelId: ChannelId): DataResult<ThreadActionResult> =
         threadAction(threadChannelId)
 

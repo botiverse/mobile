@@ -1,10 +1,12 @@
 package ai.slock.compose.data.realtime
 
+import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 
 class RealtimeEventMapperTest {
     @Test
@@ -114,5 +116,57 @@ class RealtimeEventMapperTest {
         assertEquals("👍", reaction?.emoji)
         assertEquals(2, reaction?.count)
         assertEquals(listOf("u2"), reaction?.reactorIds)
+    }
+
+    @Test
+    fun messageNewRejectsEnvelopePayload() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageNew,
+                """
+                {
+                  "message": {
+                    "id": "msg-1",
+                    "channelId": "ch-1",
+                    "senderType": "user",
+                    "senderId": "u1",
+                    "content": "hello"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        assertNull(event)
+    }
+
+    @Test
+    fun directMessageNewOnlyMapsChannelCreatedPayload() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.DirectMessageNew,
+                """{"channelId":"dm-1"}"""
+            )
+
+        val created = assertIs<DirectMessageCreated>(event)
+        assertEquals("dm-1", created.channelId.value)
+    }
+
+    @Test
+    fun directMessageNewRejectsMessagePayload() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.DirectMessageNew,
+                """
+                {
+                  "id": "msg-1",
+                  "channelId": "dm-1",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "content": "hello"
+                }
+                """.trimIndent()
+            )
+
+        assertNull(event)
     }
 }

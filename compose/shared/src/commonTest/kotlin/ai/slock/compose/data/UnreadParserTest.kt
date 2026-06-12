@@ -5,6 +5,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class UnreadParserTest {
     @Test
@@ -25,6 +26,17 @@ class UnreadParserTest {
         assertEquals(10, snapshot.server.unreadCount)
         assertEquals(7, snapshot.unreadCounts[ChannelId("channel-1")])
         assertEquals(3, snapshot.unreadCounts[ChannelId("dm-1")])
+    }
+
+    @Test
+    fun rejectsWrappedChannelUnreadCounts() {
+        val snapshot =
+            parseChannelUnreadSnapshot(
+                bodyText = """{"channels":{"channel-1":7}}""",
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock")
+            )
+
+        assertNull(snapshot)
     }
 
     @Test

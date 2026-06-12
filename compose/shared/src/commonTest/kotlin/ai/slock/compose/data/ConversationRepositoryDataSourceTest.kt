@@ -101,6 +101,85 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun getChannelThreadsRejectsFollowedThreadWrapperResponse() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET channels/channel-1/threads" to """{"threads":[]}""")
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getChannelThreads(ChannelId("channel-1"), limit = 25)
+
+        assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", result.error.code)
+    }
+
+    @Test
+    fun getChannelThreadsRejectsNonRecordWrapperResponse() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET channels/channel-1/threads" to """{"items":[]}""")
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getChannelThreads(ChannelId("channel-1"), limit = 25)
+
+        assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", result.error.code)
+    }
+
+    @Test
+    fun getFollowedThreadsParsesWrappedResponse() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET channels/threads/followed" to
+                            """
+                            {
+                              "threads": [
+                                {
+                                  "threadChannelId": "thread-1",
+                                  "parentMessageId": "parent-1",
+                                  "replyCount": 3,
+                                  "lastActivityAt": "2026-05-22T10:05:00.000Z",
+                                  "unreadCount": 1
+                                }
+                              ],
+                              "totalCount": 1,
+                              "hasMore": false,
+                              "nextOffset": null
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getFollowedThreads(ServerId("server-1"), limit = 25)
+
+        val snapshot = assertIs<DataResult.Content<ThreadListSnapshot>>(result).data
+        val thread = snapshot.threads.single()
+        assertEquals("thread:thread-1", thread.key)
+        assertEquals("parent-1", thread.parentMessageId?.value)
+        assertEquals(3, thread.replyCount)
+        assertEquals(1, snapshot.totalCount)
+    }
+
+    @Test
+    fun getFollowedThreadsRejectsMissingThreadsWrapper() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses = mapOf("GET channels/threads/followed" to """{}""")
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getFollowedThreads(ServerId("server-1"), limit = 25)
+
+        assertIs<DataResult.Error>(result)
+        assertEquals("network_parse_failed", result.error.code)
+    }
+
+    @Test
     fun sendMessageAndThreadActionsUseSharedDtoBodies() = runBlocking {
         val network =
             FakeConversationNetworkClient(

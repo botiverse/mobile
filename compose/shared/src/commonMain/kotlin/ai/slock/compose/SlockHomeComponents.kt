@@ -533,7 +533,8 @@ fun SlockStructuralHomeShell(
                                     avatarLabel = dm.avatarLabel,
                                     avatarUrl = dm.avatarUrl,
                                     avatarWireValue = dm.avatarWireValue,
-                                    presence = homeDmStatusPresence(if (dm.kind == "human") null else dm.presence),
+                                    presence = homeDmStatusPresence(dm.presence),
+                                    showPresence = dm.kind != "human",
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -1146,7 +1147,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1187,7 +1188,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ) {
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
                 if (avatarLabel != null) {
-                    ChannelAvatar(avatarWireValue, avatarLabel, presence)
+                    ChannelAvatar(avatarWireValue, avatarLabel, presence, showPresence)
                 } else if (symbol == "#") {
                     SlockLucideIcon(
                         "hash",
@@ -1223,9 +1224,9 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: SlockPresence? = null) {
+private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: SlockPresence? = null, showPresence: Boolean = true) {
     SlockAvatarWithStatus(
-        statusColor = presence?.homeRowColor,
+        statusColor = if (showPresence) presence?.homeRowColor else null,
         avatarSize = ChannelAvatarSize,
         statusSize = 8.dp
     ) {

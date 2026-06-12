@@ -169,10 +169,8 @@ class RealtimeEventMapper {
     }
 
     private fun decodeDirectMessageNew(element: JsonObject): RealtimeEvent? {
-        decodeMessageWire(element)?.toDomain()
-            ?.let { return MessageNew(it) }
+        if ("id" in element || "senderId" in element || "senderType" in element || "content" in element) return null
         val channelId = (element["channelId"] as? JsonPrimitive)?.contentOrNull
-            ?: (element["id"] as? JsonPrimitive)?.contentOrNull
             ?: return null
         return DirectMessageCreated(ChannelId(channelId))
     }
@@ -224,7 +222,6 @@ class RealtimeEventMapper {
 
     private fun decodeMessageWire(element: JsonObject): MessageWireDto? =
         decodeOrNull(MessageWireDto.serializer(), element)
-            ?: decodeOrNull(MessageEnvelopeDto.serializer(), element)?.message
 
     private fun <T> decodeOrNull(
         serializer: kotlinx.serialization.KSerializer<T>,
@@ -267,11 +264,6 @@ private fun Any?.toJsonElement(): JsonElement? = when (this) {
 
 // ── Wire DTOs ────────────────────────────────────────────────────────────────
 // Field names match the canonical server emit shapes. See class-level docstring.
-
-@Serializable
-private data class MessageEnvelopeDto(
-    val message: MessageWireDto,
-)
 
 @Serializable
 private data class MessageWireDto(

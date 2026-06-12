@@ -92,48 +92,54 @@ data class SharedThreadListItems(
 )
 
 /**
- * Parses both `GET /api/channels/threads/followed` and
- * `GET /api/channels/:id/threads` responses. Followed threads wrap an array
- * under `threads`; channel threads are a parentMessageId-keyed record of
- * summary objects. Each entry is forced to the thread variant; entries
- * without a usable thread id are dropped.
+ * Strict parser for `GET /api/channels/threads/followed`.
+ *
+ * The endpoint wraps followed thread rows under `threads`. Do not add channel
+ * thread record/map fallback here; `GET /api/channels/:id/threads` has its own
+ * endpoint parser below.
  */
-fun parseSharedThreadListItems(bodyText: String): SharedThreadListItems? = runCatching {
-    when (val root = inboxJson.parseToJsonElement(bodyText)) {
-        is JsonObject ->
-            if ("threads" in root) {
-                val decoded = inboxJson.decodeFromJsonElement(WireThreadListResponse.serializer(), root)
-                val items = decoded.threads
-                    .map { it.copy(kind = "thread") }
-                    .mapNotNull { it.toThreadDomain() }
-                    .distinctBy { it.key }
-                SharedThreadListItems(
-                    items = items,
-                    totalCount = decoded.totalCount ?: items.size,
-                    hasMore = decoded.hasMore,
-                    nextOffset = decoded.nextOffset,
-                )
-            } else {
-                val items = root.entries
-                    .asSequence()
-                    .mapNotNull { (parentMessageId, value) ->
-                        val record = value as? JsonObject ?: return@mapNotNull null
-                        inboxJson.decodeFromJsonElement(WireInboxItem.serializer(), record)
-                            .copy(kind = "thread", parentMessageId = parentMessageId)
-                    }
-                    .mapNotNull { it.toThreadDomain() }
-                    .distinctBy { it.key }
-                    .toList()
-                SharedThreadListItems(
-                    items = items,
-                    totalCount = items.size,
-                    hasMore = false,
-                    nextOffset = null,
-                )
-            }
+fun parseFollowedThreadListResponse(bodyText: String): SharedThreadListItems? = runCatching {
+    val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
+    if ("threads" !in root) return@runCatching null
+    val decoded = inboxJson.decodeFromJsonElement(WireThreadListResponse.serializer(), root)
+    val items = decoded.threads
+        .map { it.copy(kind = "thread") }
+        .mapNotNull { it.toThreadDomain() }
+        .distinctBy { it.key }
+    SharedThreadListItems(
+        items = items,
+        totalCount = decoded.totalCount ?: items.size,
+        hasMore = decoded.hasMore,
+        nextOffset = decoded.nextOffset,
+    )
+}.getOrNull()
 
-        else -> null
-    }
+/**
+ * Strict parser for `GET /api/channels/:id/threads`.
+ *
+ * The endpoint returns a `parentMessageId -> summary` record. Do not add
+ * followed-thread `{threads:[...]}` fallback here; that is a different route.
+ */
+fun parseChannelThreadSummaryRecord(bodyText: String): SharedThreadListItems? = runCatching {
+    val root = inboxJson.parseToJsonElement(bodyText) as? JsonObject ?: return@runCatching null
+    if ("threads" in root) return@runCatching null
+    if (root.values.any { it !is JsonObject }) return@runCatching null
+    val items = root.entries
+        .asSequence()
+        .mapNotNull { (parentMessageId, value) ->
+            val record = value as JsonObject
+            inboxJson.decodeFromJsonElement(WireInboxItem.serializer(), record)
+                .copy(kind = "thread", parentMessageId = parentMessageId)
+        }
+        .mapNotNull { it.toThreadDomain() }
+        .distinctBy { it.key }
+        .toList()
+    SharedThreadListItems(
+        items = items,
+        totalCount = items.size,
+        hasMore = false,
+        nextOffset = null,
+    )
 }.getOrNull()
 
 data class SharedInboxSnapshot(

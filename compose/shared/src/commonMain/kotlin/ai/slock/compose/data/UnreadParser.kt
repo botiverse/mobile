@@ -26,11 +26,6 @@ private val unreadJson = Json {
 }
 
 @Serializable
-private data class WireChannelUnreadCounts(
-    val channels: Map<String, Int> = emptyMap(),
-)
-
-@Serializable
 private data class WireReadReceipt(
     val channelId: String? = null,
     val seq: Long? = null,
@@ -41,19 +36,16 @@ private data class WireReadReceipt(
 )
 
 /**
- * Parse `/api/unread/counts`. Returns null on contract mismatch so the caller
+ * Parse `/api/channels/unread`. Returns null on contract mismatch so the caller
  * can collapse to `DataResult.Error`.
  */
 fun parseChannelUnreadSnapshot(
     bodyText: String,
     server: ServerSummary,
 ): ChannelUnreadSnapshot? = runCatching {
-    val unreadCounts =
-        runCatching {
-            unreadJson.decodeFromString(MapSerializer(String.serializer(), Int.serializer()), bodyText)
-        }.getOrElse {
-            unreadJson.decodeFromString(WireChannelUnreadCounts.serializer(), bodyText).channels
-        }.mapKeys { (key, _) -> ChannelId(key) }
+    val unreadCounts = unreadJson
+        .decodeFromString(MapSerializer(String.serializer(), Int.serializer()), bodyText)
+        .mapKeys { (key, _) -> ChannelId(key) }
     ChannelUnreadSnapshot(
         server = server.copy(unreadCount = unreadCounts.values.sum()),
         unreadCounts = unreadCounts,

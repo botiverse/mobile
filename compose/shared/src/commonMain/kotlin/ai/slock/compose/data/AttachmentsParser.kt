@@ -22,8 +22,6 @@ import kotlinx.serialization.json.Json
  *                      thumbnailUrl?, rasterPreviewUrl?}`
  *  WireChannelFileDto ::= WireAttachmentDto & `{createdAt?, messageId?,
  *                      source?: {type?, parentMessageId?, parentMessageShortId?}}`
- *  (Some channel-file responses embed the attachment under an `attachment`
- *  object — both shapes are accepted via [WireChannelFileDto.toChannelFileItem].)
  */
 
 private val attachmentsJson = Json {
@@ -77,7 +75,6 @@ private data class WireChannelFileDto(
     val messageId: String? = null,
     val uploader: WireChannelFileUploaderDto? = null,
     val source: WireChannelFileSourceDto? = null,
-    val attachment: WireAttachmentDto? = null,
 )
 
 @Serializable
@@ -151,9 +148,9 @@ private fun WireAttachmentDto.toDomain(index: Int): Attachment =
     )
 
 private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
-    val attachmentWire = attachment ?: id?.let {
+    val attachmentWire =
         WireAttachmentDto(
-            id = it,
+            id = id ?: return null,
             filename = filename,
             mimeType = mimeType,
             sizeBytes = sizeBytes,
@@ -161,7 +158,6 @@ private fun WireChannelFileDto.toChannelFileItem(index: Int): ChannelFileItem? {
             height = height,
             thumbnailUrl = thumbnailUrl,
         )
-    } ?: return null
     return ChannelFileItem(
         attachment = attachmentWire.toDomain(index),
         createdAt = createdAt,

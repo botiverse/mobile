@@ -231,7 +231,7 @@ class RealConversationRepository(
             block = { networkClient.channelThreads(DataRequestPriority.Visible, channelId, limit) },
             emptyWhen = { it.threads.isEmpty() },
             source = "channel_threads",
-            mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+            mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
         )
     }
 
@@ -245,7 +245,7 @@ class RealConversationRepository(
             block = { networkClient.followedThreads(DataRequestPriority.Visible, limit) },
             emptyWhen = { it.threads.isEmpty() },
             source = "followed_threads",
-            mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+            mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
         )
     }
 
@@ -408,7 +408,7 @@ class RealConversationRepository(
                     block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
                     emptyWhen = { false },
                     source = "${source}_thread_summaries",
-                    mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+                    mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
                 )
             }
         val followedSummariesDeferred =
@@ -419,7 +419,7 @@ class RealConversationRepository(
                         block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
                         emptyWhen = { false },
                         source = "${source}_followed_summaries",
-                        mapper = { bodyText -> parseThreadListSnapshotFromBody(bodyText, context) }
+                        mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
                     )
                 }
             } else {
@@ -516,13 +516,29 @@ private fun StoredAuthSession.toNetworkServerContext(serverId: ServerId): Networ
     return NetworkServerContext(session = this, server = server)
 }
 
-private fun parseThreadListSnapshotFromBody(
+private fun parseFollowedThreadListSnapshotFromBody(
     bodyText: String,
     context: NetworkServerContext
 ): ThreadListSnapshot {
     val parsed =
-        parseSharedThreadListItems(bodyText)
+        parseFollowedThreadListResponse(bodyText)
             ?: throw IllegalStateException("Thread list response missing threads")
+    return ThreadListSnapshot(
+        server = context.server,
+        threads = parsed.items,
+        totalCount = parsed.totalCount,
+        hasMore = parsed.hasMore,
+        nextOffset = parsed.nextOffset
+    )
+}
+
+private fun parseChannelThreadListSnapshotFromBody(
+    bodyText: String,
+    context: NetworkServerContext
+): ThreadListSnapshot {
+    val parsed =
+        parseChannelThreadSummaryRecord(bodyText)
+            ?: throw IllegalStateException("Channel thread summary response missing record")
     return ThreadListSnapshot(
         server = context.server,
         threads = parsed.items,
