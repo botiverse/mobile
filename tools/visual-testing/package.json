@@ -1,10 +1,13 @@
 {
-  "name": "@slock-compose/visual-testing",
+  "name": "@slock/visual-testing",
   "version": "0.1.0",
-  "private": true,
+  "description": "Slock cross-provider visual testing CLI and shared case manifest.",
   "type": "module",
   "exports": {
-    "./cli": "./src/cli.mjs"
+    "./cli": "./src/cli.mjs",
+    "./sharedCases": "./shared/sharedCases.json",
+    "./sharedTokens": "./shared/sharedTokens.json",
+    "./tokenAuditColorClassifications": "./shared/tokenAuditColorClassifications.json"
   },
   "bin": {
     "slock-visual": "./src/cli.mjs",
@@ -20,8 +23,13 @@
     "publish": "node src/cli.mjs publish-gh-pages"
   },
   "files": [
-    "src"
+    "README.md",
+    "src",
+    "shared"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },

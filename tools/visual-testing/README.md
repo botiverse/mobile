@@ -62,6 +62,50 @@ node tools/visual-testing/src/cli.mjs publish-gh-pages --baseline react --curren
 
 The Android repo keeps `scripts/slock-visual-testing.mjs` as a compatibility shim.
 
+## Package Boundary
+
+The package is intentionally small and portable. A packed or published
+`@slock/visual-testing` artifact contains:
+
+- the CLI entry points `slock-visual` and `slock-visual-testing`
+- `src/` diff, report, site, and publish implementation
+- `shared/` canonical case manifest, shared tokens, and token-audit
+  classifications
+- this README
+
+It does not bundle provider applications, app fixtures, checked-out React
+source, Android build outputs, Harmony build outputs, generated screenshots, or
+generated reports. Those stay in the calling repository.
+
+When installed as a package, run the CLI from the Android/KMP checkout root, or
+set `SLOCK_VISUAL_REPO_ROOT` explicitly:
+
+```bash
+npx -p @slock/visual-testing slock-visual validate --manifest shared
+SLOCK_VISUAL_REPO_ROOT=~/AndroidStudioProjects/Slock \
+  npx -p @slock/visual-testing slock-visual report --baseline react --current android
+```
+
+Path ownership stays split:
+
+- package root: bundled `src/` and `shared/`
+- repo root: `artifacts/visual-testing`, `visual-testing-results`, and
+  `artifacts/visual-testing-site`
+- React source root: `third_party/slock-source` by default, overridable only via
+  `--react-repo-dir`, `SLOCK_REACT_REPO_DIR`, or
+  `SLOCK_VISUAL_REACT_REPO_ROOT`
+
+Before publishing or handing off a tarball, verify the package shape:
+
+```bash
+cd tools/visual-testing
+npm pack --dry-run
+```
+
+The dry run must include `shared/sharedCases.json`,
+`shared/sharedTokens.json`, and
+`shared/tokenAuditColorClassifications.json`.
+
 ## Token Audit
 
 `tokens.palette` is useful only when it is backed by a machine gate. Run:

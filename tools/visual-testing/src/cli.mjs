@@ -408,8 +408,14 @@ function normalizeProviderMatrixEntry(value) {
   };
 }
 
+function resolveManifestPath(manifestFlag) {
+  if (!manifestFlag) return defaultManifestPath;
+  if (manifestFlag === "shared" || manifestFlag === "package") return sharedCasesPath;
+  return path.resolve(manifestFlag);
+}
+
 function loadManifest(flags, { createIfMissing = true } = {}) {
-  const manifestPath = path.resolve(flags.manifest || defaultManifestPath);
+  const manifestPath = resolveManifestPath(flags.manifest);
   if (!fs.existsSync(manifestPath) && createIfMissing) {
     scanReact();
   }
@@ -2047,7 +2053,7 @@ function tokenAudit(flags) {
 function usage() {
   console.log(`Usage:
   slock-visual scan [--react-repo-dir third_party/slock-source]
-  slock-visual validate [--manifest artifacts/visual-testing/visual-testing-cases.json]
+  slock-visual validate [--manifest artifacts/visual-testing/visual-testing-cases.json|shared]
   slock-visual token-audit [--react-repo-dir third_party/slock-source] [--android-repo-dir ~/AndroidStudioProjects/Slock] [--allow-token-drift] [--strict-usage]
   slock-visual capture --providers react
   slock-visual capture --providers android [--case case.id] --command './capture-provider.sh'
