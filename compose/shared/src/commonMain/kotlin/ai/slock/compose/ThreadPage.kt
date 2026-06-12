@@ -4950,7 +4950,8 @@ private fun ThreadMessageAvatar(
             SlockAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
-                avatarSize = 40.dp
+                avatarSize = 40.dp,
+                borderWidth = SlockStroke.Default
             )
         }
     }
@@ -4978,7 +4979,8 @@ private fun ThreadMessageStaticAvatar(
             SlockAvatar(
                 avatarWireValue = avatarSource,
                 label = avatarLabel,
-                avatarSize = 40.dp
+                avatarSize = 40.dp,
+                borderWidth = SlockStroke.Default
             )
         }
     }

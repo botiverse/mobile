@@ -1235,18 +1235,24 @@ private fun ChannelAvatar(avatarWireValue: String?, label: String, presence: Slo
 }
 
 @Composable
-internal fun SlockAvatar(avatarWireValue: String?, label: String, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
+internal fun SlockAvatar(
+    avatarWireValue: String?,
+    label: String,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = ChannelAvatarSize,
+    borderWidth: Dp = SlockStroke.Thin
+) {
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toPixelAvatarSpec() }
     when {
-        pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize)
-        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+        pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
+        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(borderWidth, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = avatarWireValue,
                 modifier = Modifier.fillMaxSize()
             )
         }
-        else -> DefaultUserAvatar(modifier, avatarSize)
+        else -> DefaultUserAvatar(modifier, avatarSize, borderWidth)
     }
 }
 
@@ -1271,8 +1277,12 @@ private fun SlockAvatarHttpImage(source: String, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun DefaultUserAvatar(modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
-    Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(SlockStroke.Thin, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+private fun DefaultUserAvatar(
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = ChannelAvatarSize,
+    borderWidth: Dp = SlockStroke.Thin
+) {
+    Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(borderWidth, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
         DefaultUserAvatarIcon(avatarSize)
     }
 }
@@ -1286,8 +1296,13 @@ private val SlockPresence.homeRowColor: Color
     get() = when (this) { SlockPresence.Online -> SlockColor.AccentLime; SlockPresence.Offline -> SlockColor.EmptyStateGray; SlockPresence.Unknown -> SlockColor.BrandYellow }
 
 @Composable
-private fun PixelAvatar(spec: PixelAvatarSpec, modifier: Modifier = Modifier, avatarSize: Dp = ChannelAvatarSize) {
-    Canvas(modifier = modifier.size(avatarSize).border(SlockStroke.Thin, SlockColor.BorderBlack)) {
+private fun PixelAvatar(
+    spec: PixelAvatarSpec,
+    modifier: Modifier = Modifier,
+    avatarSize: Dp = ChannelAvatarSize,
+    borderWidth: Dp = SlockStroke.Thin
+) {
+    Canvas(modifier = modifier.size(avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
         val cellSize = size.width / PixelAvatarGridSize
         drawRect(spec.background)
         spec.grid.forEachIndexed { rowIndex, row ->
