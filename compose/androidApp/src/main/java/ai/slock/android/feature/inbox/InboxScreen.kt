@@ -1045,7 +1045,7 @@ private fun InboxLoadingBody(overlay: Boolean) {
 private val InboxScreenCopy.placeholderContent: InboxContent
     get() =
         InboxContent(
-            server = ServerSummary(ServerId("state"), "Slock Android"),
+            server = ServerSummary(ServerId("state"), "Raft Android"),
             items = emptyList(),
             totalCount = 0,
             totalUnreadCount = 0

@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">Slock</string>
-    <string name="auth_logo">SLOCK</string>
+    <string name="app_name">Raft</string>
+    <string name="auth_logo">RAFT</string>
     <string name="auth_tagline">人类与 AI Agent 协作的地方</string>
     <string name="auth_sign_in">登录</string>
     <string name="auth_signing_in">登录中</string>
@@ -13,7 +13,7 @@
     <string name="auth_create_one">创建一个</string>
     <string name="auth_optional">（可选）</string>
     <string name="auth_reset_title">重置密码</string>
-    <string name="auth_reset_description">输入与你的 Slock 账号关联的邮箱。我们会发送一封可在此设备上打开的安全重置链接。</string>
+    <string name="auth_reset_description">输入与你的 Raft 账号关联的邮箱。我们会发送一封可在此设备上打开的安全重置链接。</string>
     <string name="auth_reset_invalid_email_error">请输入有效邮箱后再请求重置链接。</string>
     <string name="auth_reset_send_link">发送重置链接</string>
     <string name="auth_reset_sending_link">发送中</string>
@@ -21,10 +21,10 @@
     <string name="auth_reset_success_title">重置链接已发送</string>
     <string name="auth_reset_success_detail">请查看 %1$s 获取后续步骤。链接会很快过期，如果重复请求，请使用最新邮件。</string>
     <string name="auth_create_title">创建账号</string>
-    <string name="auth_create_description">为人类与 AI 协作创建一个 Slock 工作区身份。</string>
+    <string name="auth_create_description">为人类与 AI 协作创建一个 Raft 工作区身份。</string>
     <string name="auth_name_label">名称</string>
     <string name="auth_name_placeholder">字母、数字、连字符、下划线</string>
-    <string name="auth_email_placeholder">you@slock.ai</string>
+    <string name="auth_email_placeholder">you@raft.build</string>
     <string name="auth_password_placeholder_min">至少 8 个字符</string>
     <string name="auth_create_name_required_error">名称不能为空。</string>
     <string name="auth_create_invalid_email_error">请输入有效邮箱。</string>
@@ -75,7 +75,7 @@
     <string name="settings_server_delete_confirmation_mismatch">确认内容与服务器名称不一致。</string>
     <string name="settings_billing_title">套餐与账单</string>
     <string name="settings_billing_trial_active">免费试用中</string>
-    <string name="settings_billing_trial_detail">你的工作区可以继续试用 Slock 的核心协作能力。</string>
+    <string name="settings_billing_trial_detail">你的工作区可以继续试用 Raft 的核心协作能力。</string>
     <string name="settings_billing_current_plan">当前套餐</string>
     <string name="settings_billing_usage">用量</string>
     <string name="settings_billing_current_plan_button">当前套餐</string>
@@ -96,7 +96,7 @@
     <string name="settings_about_title">关于</string>
     <string name="settings_about_home_subtitle">应用信息与运行状态</string>
     <string name="settings_about_subtitle">应用信息与运行状态</string>
-    <string name="settings_about_logo">SLOCK</string>
+    <string name="settings_about_logo">RAFT</string>
     <string name="settings_about_app_section">应用</string>
     <string name="settings_about_status_section">状态</string>
     <string name="settings_about_diagnostics_section">诊断</string>
@@ -124,8 +124,8 @@
     <string name="settings_about_copy_logs">复制日志</string>
     <string name="settings_about_share_logs">分享日志</string>
     <string name="settings_about_clear_logs">清空日志</string>
-    <string name="settings_about_logs_clip_label">Slock 诊断</string>
-    <string name="settings_about_share_subject">Slock 诊断</string>
+    <string name="settings_about_logs_clip_label">Raft 诊断</string>
+    <string name="settings_about_share_subject">Raft 诊断</string>
     <string name="settings_unavailable_detail">此设置接口尚未在 Android 接入。</string>
     <string name="settings_notifications_on">通知已开启</string>
     <string name="settings_notifications_off">通知已关闭</string>
@@ -212,7 +212,7 @@
     <string name="settings_mobile_status_disabled">已关闭</string>
     <string name="settings_mobile_status_permission_required">需要权限</string>
     <string name="settings_mobile_push_enabled_detail">Android 通知权限已开启。发送测试推送会显示一条本地通知。</string>
-    <string name="settings_mobile_push_disabled_detail">开启权限后，Slock 可在后台接收通知。</string>
+    <string name="settings_mobile_push_disabled_detail">开启权限后，Raft 可在后台接收通知。</string>
     <string name="settings_mobile_enable_notifications">开启通知</string>
     <string name="settings_mobile_disable_notifications">关闭通知</string>
     <string name="settings_mobile_send_test">发送测试推送</string>
@@ -231,12 +231,12 @@
     <string name="settings_mobile_mute_status_not_muted">未静音</string>
     <string name="settings_mobile_mute_server">静音服务器</string>
     <string name="settings_mobile_unmute_server">取消静音服务器</string>
-    <string name="settings_notification_test_title">Slock 通知测试</string>
+    <string name="settings_notification_test_title">Raft 通知测试</string>
     <string name="settings_notification_test_text">移动端设置可以显示本地 Android 通知。</string>
     <string name="settings_notification_channel_name">设置测试通知</string>
     <string name="settings_notification_channel_description">来自移动端设置的本地测试通知。</string>
     <string name="inbox_notification_channel_name">Activity 通知</string>
-    <string name="inbox_notification_channel_description">来自 Slock 的未读 Activity 更新。</string>
+    <string name="inbox_notification_channel_description">来自 Raft 的未读 Activity 更新。</string>
     <string name="inbox_notification_title">%1$s 有新消息</string>
     <string name="bottom_tab_home">首页</string>
     <string name="bottom_tab_tasks">任务</string>
@@ -246,7 +246,7 @@
     <string name="home_server_empty">暂无服务器</string>
     <string name="home_server_error">服务器不可用</string>
     <string name="home_server_auth_required">需要登录</string>
-    <string name="home_server_fallback">Slock</string>
+    <string name="home_server_fallback">Raft</string>
     <string name="server_gate_choose_title">选择 Server</string>
     <string name="server_gate_create_title">创建 Server</string>
     <string name="server_gate_signed_in_as">当前登录：%1$s</string>
@@ -264,13 +264,13 @@
     <string name="server_gate_cancel">Cancel</string>
     <string name="server_gate_create">Create Server</string>
     <string name="server_gate_error">操作失败：%1$s</string>
-    <string name="home_default_title">Slock Android</string>
+    <string name="home_default_title">Raft Android</string>
     <string name="home_no_channels_title">暂无频道</string>
     <string name="home_no_channels_detail">示例状态中的频道会显示在这里。</string>
     <string name="home_create_server_title">创建服务器</string>
     <string name="home_create_server_primary">创建服务器</string>
     <string name="home_create_server_cancel">取消</string>
-    <string name="home_create_server_detail">为当前账号创建服务器。创建成功后，Slock 会自动切换过去。</string>
+    <string name="home_create_server_detail">为当前账号创建服务器。创建成功后，Raft 会自动切换过去。</string>
     <string name="home_create_server_name_label">服务器名称</string>
     <string name="home_create_server_name_placeholder">产品团队</string>
     <string name="home_create_server_slug_label">Slug</string>
@@ -279,7 +279,7 @@
     <string name="home_create_channel_title">创建频道</string>
     <string name="home_create_channel_primary">创建频道</string>
     <string name="home_create_channel_cancel">取消</string>
-    <string name="home_create_channel_detail">在当前服务器中创建频道。创建成功后，Slock 会自动打开它。</string>
+    <string name="home_create_channel_detail">在当前服务器中创建频道。创建成功后，Raft 会自动打开它。</string>
     <string name="home_create_channel_name_label">频道名称</string>
     <string name="home_create_channel_name_placeholder">android-launch</string>
     <string name="home_create_channel_description_label">描述</string>

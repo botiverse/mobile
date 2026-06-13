@@ -14,6 +14,14 @@ class SlockThreadWebLinkTargetTest {
     }
 
     @Test
+    fun parsesRaftChannelLink() {
+        val target = "https://app.raft.build/channel/channel-123?msg=message-456".toSlockThreadWebLinkTarget()
+
+        assertEquals("channel-123", target?.channelId)
+        assertEquals("message-456", target?.messageId)
+    }
+
+    @Test
     fun parsesSlockChannelLinkWithoutMessage() {
         val target = "http://app.slock.ai/channel/channel-123".toSlockThreadWebLinkTarget()
 

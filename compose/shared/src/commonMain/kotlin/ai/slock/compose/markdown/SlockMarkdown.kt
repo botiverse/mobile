@@ -118,7 +118,7 @@ object SlockMarkdownPreviewSamples {
         SlockMarkdownPreviewSample(
             title = "Image",
             description = "Remote markdown images should render through the platform image pipeline.",
-            body = "![Slock preview](https://picsum.photos/seed/slock-markdown/480/240)"
+            body = "![Raft preview](https://picsum.photos/seed/raft-markdown/480/240)"
         )
 
     val all = listOf(inlineTags, markdownBlocks, codeFence, image)

@@ -48,7 +48,7 @@ object SlockCrashReporter {
     ): String =
         buildString {
             val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            appendLine("Slock crash log")
+            appendLine("Raft crash log")
             appendLine("Crash at: ${Date()}")
             appendLine("Package: ${context.packageName}")
             appendLine("Version name: ${packageInfo.versionName.orEmpty()}")
@@ -84,7 +84,7 @@ object SlockCrashReporter {
         buildError: Throwable
     ): String =
         buildString {
-            appendLine("Slock crash log")
+            appendLine("Raft crash log")
             appendLine("Crash at: ${Date()}")
             appendLine("Thread: ${thread.name}")
             appendLine("Exception: ${throwable.javaClass.name}")
@@ -121,6 +121,6 @@ object SlockCrashReporter {
 
     private fun copyCrashLogToClipboard(context: Context, crashLog: String) {
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Slock crash log", crashLog))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Raft crash log", crashLog))
     }
 }

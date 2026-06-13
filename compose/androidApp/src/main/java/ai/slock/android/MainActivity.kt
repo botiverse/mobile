@@ -84,5 +84,5 @@ class MainActivity : ComponentActivity() {
 
 private fun Uri.isSlockSocialAuthCallback(): Boolean =
     scheme == "https" &&
-        host == "app.slock.ai" &&
+        host in setOf("app.slock.ai", "app.raft.build") &&
         getQueryParameter("auth_callback") == "social"

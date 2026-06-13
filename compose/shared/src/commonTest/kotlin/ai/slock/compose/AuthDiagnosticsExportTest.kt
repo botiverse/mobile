@@ -14,7 +14,7 @@ class AuthDiagnosticsExportTest {
             buildAuthDiagnosticsExportText(
                 about =
                     SharedSettingsAboutSnapshot(
-                        appName = "Slock",
+                        appName = "Raft",
                         versionLabel = "1.2.3",
                         buildLabel = "42",
                         sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
@@ -45,7 +45,7 @@ class AuthDiagnosticsExportTest {
                 errorMessage = "probe error: settings_network_probe_exception"
             )
 
-        assertContains(text, "Slock auth diagnostics")
+        assertContains(text, "Raft auth diagnostics")
         assertContains(text, "Platform: HarmonyOS")
         assertContains(text, "Source: auth-bootstrap-diagnostics/e36bc138+")
         assertContains(text, "Base URL: https://api.slock.ai/api/")

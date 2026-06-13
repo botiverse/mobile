@@ -191,7 +191,7 @@ data class SlockHomeShellLabels(
 @Serializable
 internal data class SlockHomePayload(
     val instanceId: String = "",
-    val currentServerName: String = "Slock Android",
+    val currentServerName: String = "Raft Android",
     val currentServerId: String = "",
     val servers: List<SlockServerSwitcherItem> = emptyList(),
     val channels: List<SlockHomeConversationItem> = emptyList(),
@@ -290,7 +290,7 @@ private fun SlockHomePageContent() {
 private fun HomeTitlebarVisualScreen() {
     Box(modifier = Modifier.width(342.dp).height(110.dp).background(SlockColor.SurfaceWhite).padding(top = 48.dp)) {
         HomeTitlebar(
-            serverName = "Slock Design",
+            serverName = "Raft Design",
             serverUnreadCount = 24,
             notifications = visualHomeNotifications(),
             topSafeArea = 0.dp,
@@ -344,7 +344,7 @@ private fun rememberHomePayload(payload: String, instanceId: String): SlockHomeP
 @Composable
 fun SlockStructuralHomeShell(
     modifier: Modifier = Modifier,
-    currentServerName: String = "Slock Android",
+    currentServerName: String = "Raft Android",
     currentServerId: String = "slock-android",
     servers: List<SlockServerSwitcherItem> = emptyList(),
     channels: List<SlockHomeConversationItem> = emptyList(),
@@ -683,7 +683,7 @@ private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
     }
 }
 
-private const val SlockRefreshLetters = "SLOCK"
+private const val SlockRefreshLetters = "RAFT"
 
 @Composable
 private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifier) {

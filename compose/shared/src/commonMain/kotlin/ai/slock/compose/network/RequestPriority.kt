@@ -153,7 +153,7 @@ class SlockRequestScheduler(
             withTimeout(requestTimeoutMillis) { block() }
         } catch (timeout: TimeoutCancellationException) {
             throw SlockRequestTimeoutException(
-                "Slock request timed out after ${requestTimeoutMillis}ms " +
+                "Raft request timed out after ${requestTimeoutMillis}ms " +
                     "priority=$priority key=${key.orEmpty()} reason=${reason.orEmpty()}"
             )
         }

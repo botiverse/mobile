@@ -45,6 +45,9 @@
                 <data
                     android:host="app.slock.ai"
                     android:scheme="https" />
+                <data
+                    android:host="app.raft.build"
+                    android:scheme="https" />
             </intent-filter>
         </activity>
     </application>

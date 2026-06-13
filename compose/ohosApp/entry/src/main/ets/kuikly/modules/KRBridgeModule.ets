@@ -543,7 +543,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const notificationsEnabled = await notificationManager.isNotificationEnabled().catch((_error: BusinessError) => false);
     return {
       "status": "ok",
-      "appName": "Slock",
+      "appName": "Raft",
       "versionLabel": bundleInfo.versionName,
       "buildLabel": `${bundleInfo.versionCode}`,
       "sourceLabel": KRBridgeModule.AUTH_DIAGNOSTICS_SOURCE_MARKER,
@@ -678,7 +678,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         content: {
           notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
           normal: {
-            title: "Slock",
+            title: "Raft",
             text: "System notifications are enabled for this device."
           }
         }
@@ -699,7 +699,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
       const key = this.stringRecordValue(records, "notificationKey", `${records["serverId"] ?? ""}:${records["threadId"] ?? ""}:${records["messageId"] ?? ""}`);
       const notificationId = this.stableNotificationId(key);
-      const title = this.stringRecordValue(records, "title", "Slock");
+      const title = this.stringRecordValue(records, "title", "Raft");
       const text = this.stringRecordValue(records, "body", "You have a new unread message.");
       const category = this.stringRecordValue(records, "category", "general_unread");
       const request: notificationManager.NotificationRequest = {

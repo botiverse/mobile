@@ -147,7 +147,7 @@ internal fun ComposeRouteImpl() {
         Button({
             jumpPage(localPager, SLOCK_APP_SHELL_PAGE)
         }) {
-            Text("Slock鸿蒙壳子")
+            Text("Raft 鸿蒙壳子")
         }
 
         Button({

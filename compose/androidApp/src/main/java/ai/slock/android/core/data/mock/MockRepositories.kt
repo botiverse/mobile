@@ -656,7 +656,7 @@ class MockMemberRepository(
                 workspaces = listOf(
                     SettingsComputerWorkspaceSnapshot(
                         id = "slock-android",
-                        name = "Slock",
+                        name = "Raft",
                         path = "/Users/artin/AndroidStudioProjects/Slock",
                         statusLabel = "Active",
                         lastActiveLabel = "2026-05-13T19:30:00Z"
@@ -871,7 +871,7 @@ class MockMemberRepository(
                 kind = SlockWorkspaceFileKind.Markdown,
                 preview = SlockWorkspaceFilePreview.Text(
                     path = "README.md",
-                    content = "# Slock\n\nMock workspace preview.",
+                    content = "# Raft\n\nMock workspace preview.",
                     markdown = true
                 )
             ),

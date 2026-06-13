@@ -443,7 +443,7 @@ private fun SlockModalNoPermissionPreview() {
             primaryAction = SlockModalAction("Save", {}, enabled = false),
             content = {
                 SlockModalTextField(
-                    value = "Slock Android",
+                    value = "Raft Android",
                     onValueChange = {},
                     label = "Workspace name",
                     placeholder = "Workspace",

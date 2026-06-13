@@ -435,7 +435,7 @@ private fun AuthDiagnosticsScreen() {
             item {
                 AuthDiagnosticsPanel("Environment") {
                     val about = state.about
-                    AuthDiagnosticsValue("App", about?.appName.orEmpty().ifBlank { "Slock" })
+                    AuthDiagnosticsValue("App", about?.appName.orEmpty().ifBlank { "Raft" })
                     AuthDiagnosticsValue("Version", about?.versionLabel.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Build", about?.buildLabel.orEmpty().ifBlank { "Unknown" })
                     AuthDiagnosticsValue("Source", about?.sourceLabel.orEmpty().ifBlank { "Unknown" })
@@ -538,10 +538,10 @@ internal fun buildAuthDiagnosticsExportText(
 ): String =
     redactAuthDiagnosticsText(
         buildString {
-            appendLine("Slock auth diagnostics")
+            appendLine("Raft auth diagnostics")
             appendLine()
             appendLine("Environment")
-            appendDiagnosticsLine("App", about?.appName ?: "Slock")
+            appendDiagnosticsLine("App", about?.appName ?: "Raft")
             appendDiagnosticsLine("Version", about?.versionLabel)
             appendDiagnosticsLine("Build", about?.buildLabel)
             appendDiagnosticsLine("Source", about?.sourceLabel)
@@ -936,7 +936,7 @@ private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.B
 @Composable
 private fun LoginContentPreview() {
     LoginContent(
-        email = "artin@slock.ai",
+        email = "artin@raft.build",
         password = "password",
         submitting = false,
         errorMessage = null,
@@ -952,7 +952,7 @@ private fun LoginContentPreview() {
 private fun RegisterStatesPreview() {
     RegisterContent(
         name = "Very Long Name With 中文 Mixed",
-        email = "new@slock.ai",
+        email = "new@raft.build",
         password = "password",
         submitting = false,
         errorMessage = null,
@@ -967,7 +967,7 @@ private fun RegisterStatesPreview() {
 @Composable
 private fun ForgotPasswordSuccessPreview() {
     ForgotPasswordContent(
-        email = "very.long.email.address+team@slock.ai",
+        email = "very.long.email.address+team@raft.build",
         sending = false,
         sent = true,
         errorMessage = null,

@@ -57,7 +57,7 @@ internal data class KuiklySettingsBillingPayload(
 @Serializable
 internal data class KuiklySettingsBillingLabels(
     val trialActive: String = "Free Trial Active",
-    val trialDetail: String = "Your workspace can keep testing Slock with all core collaboration features enabled.",
+    val trialDetail: String = "Your workspace can keep testing Raft with all core collaboration features enabled.",
     val currentPlan: String = "CURRENT PLAN",
     val usage: String = "USAGE",
     val currentPlanButton: String = "Current Plan",

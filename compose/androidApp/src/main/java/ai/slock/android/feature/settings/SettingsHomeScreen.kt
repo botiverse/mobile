@@ -65,7 +65,7 @@ fun SettingsHomeScreen(
     items: List<SettingsHomeItem>,
     modifier: Modifier = Modifier,
     title: String = "Settings",
-    subtitle: String = "Slock Android",
+    subtitle: String = "Raft Android",
     showSelection: Boolean = true,
     bottomContentPadding: Dp = 0.dp,
     onItemClick: (String) -> Unit = {}
@@ -228,7 +228,7 @@ private fun SettingsHomePreview() {
         SettingsHomeScreen(
             items = settingsHomeSampleItems,
             title = "Settings",
-            subtitle = "Slock Android"
+            subtitle = "Raft Android"
         )
     }
 }

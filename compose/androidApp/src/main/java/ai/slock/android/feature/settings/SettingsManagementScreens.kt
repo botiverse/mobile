@@ -1560,7 +1560,7 @@ private val settingsComputersPreview =
 
 private val settingsServerPreview =
         SettingsServerSnapshot(
-                profile = SettingsServerProfileSnapshot("Slock Android", "slock-android"),
+                profile = SettingsServerProfileSnapshot("Raft Android", "raft-android"),
                 sections =
                         listOf(
                                 SettingsServerSectionSnapshot(
@@ -1590,7 +1590,7 @@ private val settingsMobilePreview =
                                 available = true,
                                 statusLabel = "Disabled",
                                 detail =
-                                        "Notifications can arrive while Slock is in the background after wiring."
+                                        "Notifications can arrive while Raft is in the background after wiring."
                         ),
                 muteServer =
                         SettingsMobileToggleSnapshot(

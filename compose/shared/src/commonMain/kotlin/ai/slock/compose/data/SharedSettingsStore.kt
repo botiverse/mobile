@@ -82,7 +82,7 @@ data class SharedSettingsStorageRow(
 )
 
 data class SharedSettingsAboutSnapshot(
-    val appName: String = "Slock",
+    val appName: String = "Raft",
     val versionLabel: String = "",
     val buildLabel: String = "",
     val sourceLabel: String = "",
@@ -1393,7 +1393,7 @@ private fun SystemNotificationActionResult.mobileDetail(action: String): String 
             }
         SystemNotificationActionStatus.Requested -> "System notification permission dialog was opened. Recheck after responding."
         SystemNotificationActionStatus.PermissionDenied -> "Notification permission is denied or still disabled."
-        SystemNotificationActionStatus.NotificationsDisabled -> "System notifications are disabled for Slock."
+        SystemNotificationActionStatus.NotificationsDisabled -> "System notifications are disabled for Raft."
         SystemNotificationActionStatus.ChannelBlocked -> "The notification channel is blocked in system settings."
         SystemNotificationActionStatus.Unsupported -> "This notification action is not supported on this platform."
         SystemNotificationActionStatus.Error -> code.ifBlank { "Notification action failed." }

@@ -82,7 +82,7 @@ data class StoredAuthUser(
         get() =
             displayName?.takeIf { it.isNotBlank() }
                 ?: name?.takeIf { it.isNotBlank() }
-                ?: email.substringBefore("@").ifBlank { "Slock user" }
+                ?: email.substringBefore("@").ifBlank { "Raft user" }
 
     fun toMemberProfile(): MemberProfile =
         MemberProfile(

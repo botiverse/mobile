@@ -54,7 +54,7 @@ internal class BridgeSettingsPlatformCapabilities(
         }
         return DataResult.Content(
             SharedSettingsAboutSnapshot(
-                appName = response.optString("appName").ifBlank { "Slock" },
+                appName = response.optString("appName").ifBlank { "Raft" },
                 versionLabel = response.optString("versionLabel"),
                 buildLabel = response.optString("buildLabel"),
                 sourceLabel = response.optString("sourceLabel"),

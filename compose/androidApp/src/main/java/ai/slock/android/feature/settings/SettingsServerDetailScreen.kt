@@ -388,7 +388,7 @@ private fun ServerAdminRow(admin: SettingsServerAdminCandidate) {
 }
 
 private val serverProfileSample = SettingsServerProfileState(
-    name = "Slock Android",
+    name = "Raft Android",
     slug = "slock-android",
     dirty = true
 )

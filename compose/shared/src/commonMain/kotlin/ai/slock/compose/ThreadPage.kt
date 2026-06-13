@@ -2085,7 +2085,7 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     val withoutScheme = trimmed.substring(schemeEnd + 3)
     val pathStart = withoutScheme.indexOf('/')
     val host = if (pathStart >= 0) withoutScheme.substring(0, pathStart) else withoutScheme
-    if (host.substringBefore(':').lowercase() != "app.slock.ai") return null
+    if (host.substringBefore(':').lowercase() !in setOf("app.slock.ai", "app.raft.build")) return null
     val pathAndQuery = if (pathStart >= 0) withoutScheme.substring(pathStart) else ""
     val path = pathAndQuery.substringBefore('?')
     val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")

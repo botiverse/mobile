@@ -2032,7 +2032,7 @@ private fun SettingsAppShellContent(
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
-                    onOpenSlock = { settingsCapabilities.openUrl("https://app.slock.ai") },
+                    onOpenSlock = { settingsCapabilities.openUrl("https://app.raft.build") },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsDestinationDiagnostics ->
@@ -3430,7 +3430,7 @@ private val profilerActionKeys =
 
 private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAboutSnapshot =
     SharedSettingsAboutSnapshot(
-        appName = "Slock",
+        appName = "Raft",
         versionLabel = "Loading",
         signedInUserLabel = session?.user?.bestDisplayName ?: "Unknown",
         selectedServerLabel = session?.currentServerSummary()?.name ?: "None",
@@ -3444,7 +3444,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
         instanceId = "shared-shell-settings-about",
         title = "About",
         heroIconName = "bug",
-        heroLabel = appName.ifBlank { "Slock" },
+        heroLabel = appName.ifBlank { "Raft" },
         detail = "Version, diagnostics, feedback",
         sections =
             listOf(
@@ -3452,7 +3452,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     title = "Application",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", "sparkles", "Application", appName.ifBlank { "Slock" }, status = "Shared shell"),
+                            KuiklySharedSettingsRow("appName", "sparkles", "Application", appName.ifBlank { "Raft" }, status = "Shared shell"),
                             KuiklySharedSettingsRow("version", "badge-info", "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
                             KuiklySharedSettingsRow("package", "package", "Package", packageName.ifBlank { "Unknown" }, status = "Read only"),
                             KuiklySharedSettingsRow("device", "smartphone", "Device", deviceLabel.ifBlank { "Unknown" }, status = platformLabel.ifBlank { "Platform" })
@@ -3473,7 +3473,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                         listOf(
                             KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics tools", "Open sanitized runtime logs and shared diagnostics.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
-                            KuiklySharedSettingsRow("openSlock", "external-link", "Open Slock", "Open app.slock.ai in the system browser.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("openSlock", "external-link", "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("feedback", "message-square-plus", "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true)
                         )
                 )
@@ -3482,7 +3482,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
 
 private fun SharedSettingsAboutSnapshot.buildSummary(): String =
     buildString {
-        append(appName.ifBlank { "Slock" })
+        append(appName.ifBlank { "Raft" })
         versionLabel.takeIf { it.isNotBlank() }?.let { append(" $it") }
         buildLabel.takeIf { it.isNotBlank() }?.let { append(" ($it)") }
         packageName.takeIf { it.isNotBlank() }?.let { append(" ").append(it) }
@@ -4017,7 +4017,7 @@ private fun AppShellServerGateContent(
     }
 
     AuthScaffold {
-        AuthLogoBadge("SLOCK")
+        AuthLogoBadge("RAFT")
         Text(
             text =
                 when (mode) {
@@ -4215,7 +4215,7 @@ private fun AppShellAuthErrorContent(
     onOpenDiagnostics: () -> Unit
 ) {
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
-        AuthLogoBadge("SLOCK")
+        AuthLogoBadge("RAFT")
         Text(
             text = "Session error",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
@@ -7136,7 +7136,7 @@ private fun AppShellRestoreSplashContent() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterHorizontally
     ) {
-        AppShellRestoreLogoBadge("SLOCK")
+        AppShellRestoreLogoBadge("RAFT")
         Spacer(Modifier.height(restoreSpacing))
         Text(
             text = "WHERE HUMANS AND AI AGENTS COLLABORATE",
@@ -7368,7 +7368,7 @@ private fun SettingsPageVisualContent() {
 
 private val homeSearchVisualServer = ServerSummary(
     id = ServerId("srv_design"),
-    name = "Slock Design",
+    name = "Raft Design",
     slug = "slock-design",
     role = "owner",
     plan = "pro",
@@ -7400,7 +7400,7 @@ private val homeSearchVisualSession = StoredAuthSession(
         listOf(
             StoredAuthServer(
                 id = "srv_design",
-                name = "Slock Design",
+                name = "Raft Design",
                 slug = "slock-design",
                 role = "owner",
                 plan = "pro"

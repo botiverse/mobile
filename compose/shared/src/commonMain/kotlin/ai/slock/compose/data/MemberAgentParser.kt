@@ -329,7 +329,7 @@ private fun WireActivityLogEntry.toDomain(index: Int): AgentActivityEntry? =
             trajectoryEntry(
                 index = index,
                 type = "slock_action",
-                title = entry.title?.takeIf { it.isNotBlank() } ?: "Slock action",
+                title = entry.title?.takeIf { it.isNotBlank() } ?: "Raft action",
                 body = entry.text ?: entry.message,
                 expandable = true,
                 refTextEnabled = true

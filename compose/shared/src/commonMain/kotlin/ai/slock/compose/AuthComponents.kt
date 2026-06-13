@@ -150,7 +150,7 @@ internal fun AuthBrandBlock(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.Start
     ) {
-        AuthLogoBadge("SLOCK")
+        AuthLogoBadge("RAFT")
         Text(
             text = "WHERE HUMANS AND AI AGENTS\nCOLLABORATE",
             style = SlockType.SectionLabel.copy(
@@ -554,6 +554,6 @@ private fun AuthComponentPreview() {
         AuthTextField(value = "not-an-email", onValueChange = {}, label = "Email", required = true, isError = true, errorText = "Enter a valid email.")
         AuthActionButton(text = "Sign in", onClick = {}, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
-        AuthSuccessNotice("Reset link sent", "Check artin@slock.ai for your secure link.")
+        AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")
     }
 }

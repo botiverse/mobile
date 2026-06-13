@@ -86,7 +86,7 @@ import ai.slock.compose.model.toMemberProfile
 object MockSeedData {
     val server = ServerSummary(
         id = ServerId("server-slock-android"),
-        name = "Slock Android",
+        name = "Raft Android",
         description = "Multi-agent Android workspace",
         unreadCount = 12,
         permissions = ServerPermissions(
@@ -366,7 +366,7 @@ object MockSeedData {
             userId = artin.id.value,
             displayName = artin.displayName,
             handle = artin.handle,
-            email = "artin@slock.ai",
+            email = "artin@raft.build",
             avatarLabel = artin.avatarLabel,
             verified = true,
             roleLabel = "Owner"
@@ -374,7 +374,7 @@ object MockSeedData {
         connectedAccounts = listOf(
             ConnectedAccountSnapshot(
                 provider = "Google",
-                identifier = "artin@slock.ai",
+                identifier = "artin@raft.build",
                 status = ConnectedAccountStatus.Connected
             ),
             ConnectedAccountSnapshot(
@@ -404,7 +404,7 @@ object MockSeedData {
         workspaces = listOf(
             SettingsComputerWorkspaceSnapshot(
                 id = "workspace-slock",
-                name = "Slock",
+                name = "Raft",
                 path = "~/AndroidStudioProjects/Slock",
                 statusLabel = "active",
                 lastActiveLabel = "Active now"
@@ -489,8 +489,8 @@ object MockSeedData {
         admins = listOf(
             SettingsServerAdminSnapshot(
                 id = "admin-1",
-                name = "Slock Admin",
-                detail = "admin@slock.ai",
+                name = "Raft Admin",
+                detail = "admin@raft.build",
                 role = "Admin"
             )
         ),
@@ -542,7 +542,7 @@ object MockSeedData {
             enabled = false,
             available = true,
             statusLabel = "Disabled",
-            detail = "Notifications can arrive while Slock is in the background. This Android build can preview the local state before the push API is connected."
+            detail = "Notifications can arrive while Raft is in the background. This Android build can preview the local state before the push API is connected."
         ),
         muteServer = SettingsMobileToggleSnapshot(
             enabled = false,

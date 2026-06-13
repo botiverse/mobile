@@ -544,7 +544,7 @@ private val accountProfileSample =
         SettingsAccountProfile(
                 displayName = "Artin",
                 handle = "@artin",
-                email = "artin@slock.ai",
+                email = "artin@raft.build",
                 avatarLabel = "AR",
                 verified = true,
                 roleLabel = "Workspace owner"
@@ -554,7 +554,7 @@ private val connectedAccountSamples =
         listOf(
                 SettingsConnectedAccount(
                         provider = "Google",
-                        identifier = "artin@slock.ai",
+                        identifier = "artin@raft.build",
                         status = SettingsConnectedAccountStatus.Connected
                 ),
                 SettingsConnectedAccount(

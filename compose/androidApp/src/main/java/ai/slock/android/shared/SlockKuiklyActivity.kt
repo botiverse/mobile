@@ -1323,7 +1323,7 @@ internal class SlockKuiklyBridgeModule(
         val content = JSONObject(params ?: "{}").optString("content")
         if (content.isBlank()) return
         val clipboard = appContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Slock", content))
+        clipboard.setPrimaryClip(ClipData.newPlainText("Raft", content))
     }
 
     private fun settingsCapability(params: String?, callback: KuiklyRenderCallback?) {
@@ -1337,13 +1337,13 @@ internal class SlockKuiklyBridgeModule(
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "probeNetwork" -> probeSettingsNetwork()
                         "copyDiagnostics" -> {
-                            copyText("Slock diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
+                            copyText("Raft diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_logs")
                             mapOf("status" to "ok")
                         }
                         "shareDiagnostics" -> {
                             shareText(
-                                    subject = "Slock diagnostics",
+                                    subject = "Raft diagnostics",
                                     text = SanitizedDiagnosticsLogBuffer.exportText()
                             )
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_share_logs")
@@ -1721,7 +1721,7 @@ internal class SlockKuiklyBridgeModule(
                         ?: session?.servers?.firstOrNull()
         return mapOf(
                 "status" to "ok",
-                "appName" to "Slock",
+                "appName" to "Raft",
                 "versionLabel" to (packageInfo.versionName ?: "unknown"),
                 "buildLabel" to packageInfo.versionCodeCompat(),
                 "sourceLabel" to AUTH_DIAGNOSTICS_SOURCE_MARKER,
@@ -1801,7 +1801,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun buildFeedbackText(diagnosticsFileName: String): String =
             buildString {
-                appendLine("## Slock feedback")
+                appendLine("## Raft feedback")
                 appendLine()
                 appendLine("<!-- Describe what happened here. -->")
                 appendLine()
@@ -1813,7 +1813,7 @@ internal class SlockKuiklyBridgeModule(
     private fun shareFeedbackWithDiagnosticsFile() {
         val diagnosticsFile = writeDiagnosticsFeedbackFile()
         shareTextWithAttachment(
-                subject = "Slock feedback",
+                subject = "Raft feedback",
                 text = buildFeedbackText(diagnosticsFile.name),
                 attachment = diagnosticsFile,
                 attachmentMimeType = "text/plain"

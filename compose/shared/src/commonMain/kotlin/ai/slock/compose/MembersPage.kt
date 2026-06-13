@@ -2439,7 +2439,7 @@ internal fun buildMembersAgentDiagnostics(
 ): String {
     val summary = detail?.summary
     return listOf(
-        "Slock agent diagnostics",
+        "Raft agent diagnostics",
         "agentId=${member.id.value}",
         "displayName=${member.displayName}",
         "handle=${member.detailHandle}",

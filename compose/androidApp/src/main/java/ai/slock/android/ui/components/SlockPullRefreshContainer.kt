@@ -95,7 +95,7 @@ private fun SlockPullRefreshIndicator(
         contentAlignment = Alignment.Center
     ) {
         SlockLogoBadge(
-            text = "SLOCK",
+            text = "RAFT",
             variant = SlockLogoBadgeVariant.Compact,
             modifier = Modifier
                 .offset(y = -(SlockSpacing.Xs * bounce))

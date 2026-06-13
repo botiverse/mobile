@@ -59,7 +59,7 @@ import ai.slock.android.feature.tasks.TasksUiState
 object SlockStateSamples {
     private val server = ServerSummary(
         id = ServerId("sample-server"),
-        name = "Slock Android",
+        name = "Raft Android",
         unreadCount = 7
     )
 

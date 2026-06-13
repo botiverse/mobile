@@ -100,13 +100,13 @@ internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
     profile = KuiklySettingsAccountProfile(
         displayName = "Artin",
         handle = "@artin",
-        email = "artin@slock.ai",
+        email = "artin@raft.build",
         avatarLabel = "AR",
         verified = true,
         roleLabel = "Workspace owner"
     ),
     connectedAccounts = listOf(
-        KuiklySettingsConnectedAccount("Google", "artin@slock.ai", "connected"),
+        KuiklySettingsConnectedAccount("Google", "artin@raft.build", "connected"),
         KuiklySettingsConnectedAccount("GitHub", "github.com/artin", "connected"),
         KuiklySettingsConnectedAccount("Email password", "Password last changed 3 days ago", "notConnected")
     )

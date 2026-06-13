@@ -48,7 +48,7 @@ class SharedAuthDataSource(
                             )
                             return SharedAuthResult.Failure(
                                 SharedAuthErrorCode.Network,
-                                "Could not reach Slock. Check your connection and try again."
+                                "Could not reach Raft. Check your connection and try again."
                             )
                         }
             ) {
@@ -513,7 +513,7 @@ private fun loginStageFailure(stage: String, detail: String? = null): SharedAuth
     SharedAuthResult.Failure(
         SharedAuthErrorCode.Unknown,
         buildString {
-            append("Sign in succeeded, but Slock could not finish setup at ")
+            append("Sign in succeeded, but Raft could not finish setup at ")
             append(stage)
             append(". Try again.")
             if (!detail.isNullOrBlank()) {
@@ -732,7 +732,7 @@ private fun AuthApiResult.Failure.toSharedAuthFailure(): SharedAuthResult.Failur
         code in 500..599 ->
             SharedAuthResult.Failure(
                 SharedAuthErrorCode.Server,
-                message ?: "Slock is unavailable. Try again soon."
+                message ?: "Raft is unavailable. Try again soon."
             )
         else ->
             SharedAuthResult.Failure(

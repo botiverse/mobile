@@ -702,7 +702,7 @@ class RealSettingsRepository(
                     enabled = false,
                     available = true,
                     statusLabel = "Disabled",
-                    detail = "Notifications can arrive while Slock is in the background. This Android build can preview the local state before the push API is connected."
+                    detail = "Notifications can arrive while Raft is in the background. This Android build can preview the local state before the push API is connected."
                 ),
                 muteServer = SettingsMobileToggleSnapshot(
                     enabled = (serverMute as? DataResult.Content)?.data ?: false,

@@ -61,7 +61,7 @@ private fun ReverseLazyColumnDemoScreen() {
             color = SlockColor.TextBlack
         )
         Text(
-            text = "这是接到 Slock KMP render demo 里的上游 Kuikly reverseLayout 验收页。初始会从视觉底部开始显示，手势仍然是正常上下滑动。",
+            text = "这是接到 Raft KMP render demo 里的上游 Kuikly reverseLayout 验收页。初始会从视觉底部开始显示，手势仍然是正常上下滑动。",
             style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
             color = SlockColor.TextMutedGray
         )

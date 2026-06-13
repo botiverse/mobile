@@ -145,8 +145,8 @@ fun buildSystemUnreadNotificationRequest(
                     ?.trim()
                     ?.takeIf { it.isNotBlank() }
                     ?.let { name -> if (name.startsWith("#")) name else "#$name" }
-                    ?: "Slock"
-            SystemUnreadNotificationCategory.GeneralUnread -> "Slock"
+                    ?: "Raft"
+            SystemUnreadNotificationCategory.GeneralUnread -> "Raft"
         }
     val body =
         when (category) {

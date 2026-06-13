@@ -739,7 +739,7 @@ private fun MembersError(
 @Composable
 private fun MembersStateHeader(onBack: () -> Unit) {
     val emptyContent = MembersContent(
-        server = ServerSummary(ServerId("members-state"), "Slock Android"),
+        server = ServerSummary(ServerId("members-state"), "Raft Android"),
         members = emptyList()
     )
     MembersHeader(content = emptyContent)
@@ -2166,7 +2166,7 @@ private fun String.memberComputerLabelOrNull(): String? =
 private val membersPageSample = MembersUiState(
     loadState = ScreenLoadState.Content(
         MembersContent(
-            server = ServerSummary(ServerId("members-sample"), "Slock Android"),
+            server = ServerSummary(ServerId("members-sample"), "Raft Android"),
             members = listOf(
                 MemberProfile(
                     id = MemberId("cindy"),
@@ -2215,9 +2215,9 @@ private val membersPageSample = MembersUiState(
                 MemberProfile(
                     id = MemberId("api"),
                     displayName = "API-Integration-Developer",
-                    handle = "负责 Slock Android 的数据与接口层开发",
+                    handle = "负责 Raft Android 的数据与接口层开发",
                     kind = MemberKind.Agent,
-                    description = "负责 Slock Android 的...",
+                    description = "负责 Raft Android 的...",
                     roleDescription = "agent",
                     avatarUrl = "random:api-integration-developer",
                     avatarLabel = "AI",
@@ -2226,9 +2226,9 @@ private val membersPageSample = MembersUiState(
                 MemberProfile(
                     id = MemberId("integrator"),
                     displayName = "Android-App-Integrator",
-                    handle = "负责 Slock Android 的真实 app 集成层",
+                    handle = "负责 Raft Android 的真实 app 集成层",
                     kind = MemberKind.Agent,
-                    description = "负责 Slock Android 的真...",
+                    description = "负责 Raft Android 的真...",
                     roleDescription = "agent",
                     avatarUrl = "pixel:robot",
                     avatarLabel = "AP",

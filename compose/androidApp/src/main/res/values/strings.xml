@@ -1,6 +1,6 @@
 <resources>
-    <string name="app_name">Slock</string>
-    <string name="auth_logo">SLOCK</string>
+    <string name="app_name">Raft</string>
+    <string name="auth_logo">RAFT</string>
     <string name="auth_tagline">WHERE HUMANS AND AI AGENTS COLLABORATE</string>
     <string name="auth_sign_in">Sign in</string>
     <string name="auth_signing_in">Signing in</string>
@@ -13,7 +13,7 @@
     <string name="auth_create_one">Create one</string>
     <string name="auth_optional">(optional)</string>
     <string name="auth_reset_title">Reset password</string>
-    <string name="auth_reset_description">Enter the email linked to your Slock account. We will send a secure reset link you can open on this device.</string>
+    <string name="auth_reset_description">Enter the email linked to your Raft account. We will send a secure reset link you can open on this device.</string>
     <string name="auth_reset_invalid_email_error">Enter a valid email address before requesting a reset link.</string>
     <string name="auth_reset_send_link">Send reset link</string>
     <string name="auth_reset_sending_link">Sending link</string>
@@ -21,10 +21,10 @@
     <string name="auth_reset_success_title">Reset link sent</string>
     <string name="auth_reset_success_detail">Check %1$s for next steps. The link expires soon, so use the newest email if you request another.</string>
     <string name="auth_create_title">Create account</string>
-    <string name="auth_create_description">Set up a Slock workspace identity for human and AI collaboration.</string>
+    <string name="auth_create_description">Set up a Raft workspace identity for human and AI collaboration.</string>
     <string name="auth_name_label">Name</string>
     <string name="auth_name_placeholder">Letters, numbers, hyphens, underscores</string>
-    <string name="auth_email_placeholder">you@slock.ai</string>
+    <string name="auth_email_placeholder">you@raft.build</string>
     <string name="auth_password_placeholder_min">Min 8 characters</string>
     <string name="auth_create_name_required_error">Name is required.</string>
     <string name="auth_create_invalid_email_error">Use a valid email address.</string>
@@ -75,7 +75,7 @@
     <string name="settings_server_delete_confirmation_mismatch">Confirmation does not match the server name.</string>
     <string name="settings_billing_title">Plan &amp; Billing</string>
     <string name="settings_billing_trial_active">Free Trial Active</string>
-    <string name="settings_billing_trial_detail">Your workspace can keep testing Slock with all core collaboration features enabled.</string>
+    <string name="settings_billing_trial_detail">Your workspace can keep testing Raft with all core collaboration features enabled.</string>
     <string name="settings_billing_current_plan">CURRENT PLAN</string>
     <string name="settings_billing_usage">USAGE</string>
     <string name="settings_billing_current_plan_button">Current Plan</string>
@@ -114,7 +114,7 @@
     <string name="settings_about_subtitle">App info and runtime status</string>
     <string name="settings_router_title">RouterPage</string>
     <string name="settings_router_subtitle">Open the shared Kuikly router and page previews</string>
-    <string name="settings_about_logo">SLOCK</string>
+    <string name="settings_about_logo">RAFT</string>
     <string name="settings_about_app_section">App</string>
     <string name="settings_about_status_section">Status</string>
     <string name="settings_about_diagnostics_section">Diagnostics</string>
@@ -143,8 +143,8 @@
     <string name="settings_about_share_logs">Share logs</string>
     <string name="settings_about_send_feedback">Send feedback</string>
     <string name="settings_about_clear_logs">Clear logs</string>
-    <string name="settings_about_logs_clip_label">Slock diagnostics</string>
-    <string name="settings_about_share_subject">Slock diagnostics</string>
+    <string name="settings_about_logs_clip_label">Raft diagnostics</string>
+    <string name="settings_about_share_subject">Raft diagnostics</string>
     <string name="settings_unavailable_detail">This Settings contract is not wired on Android yet.</string>
     <string name="settings_notifications_on">Notifications on</string>
     <string name="settings_notifications_off">Notifications off</string>
@@ -251,7 +251,7 @@
     <string name="settings_mobile_status_disabled">Disabled</string>
     <string name="settings_mobile_status_permission_required">Permission required</string>
     <string name="settings_mobile_push_enabled_detail">Android notification permission is enabled. Send Test Push will show a local test notification.</string>
-    <string name="settings_mobile_push_disabled_detail">Notifications can arrive while Slock is in the background after permission is enabled.</string>
+    <string name="settings_mobile_push_disabled_detail">Notifications can arrive while Raft is in the background after permission is enabled.</string>
     <string name="settings_mobile_enable_notifications">Enable Notifications</string>
     <string name="settings_mobile_disable_notifications">Disable Notifications</string>
     <string name="settings_mobile_send_test">Send Test Push</string>
@@ -270,13 +270,13 @@
     <string name="settings_mobile_mute_status_not_muted">Not muted</string>
     <string name="settings_mobile_mute_server">Mute Server</string>
     <string name="settings_mobile_unmute_server">Unmute Server</string>
-    <string name="settings_notification_test_title">Slock notification test</string>
+    <string name="settings_notification_test_title">Raft notification test</string>
     <string name="settings_notification_test_text">Mobile Settings can show local Android notifications.</string>
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
     <string name="notification_unread_default_text">You have a new unread message.</string>
     <string name="notification_unread_general_channel_name">Unread messages</string>
-    <string name="notification_unread_general_channel_description">General unread Slock message notifications.</string>
+    <string name="notification_unread_general_channel_description">General unread Raft message notifications.</string>
     <string name="notification_unread_channel_channel_name">Channel unread messages</string>
     <string name="notification_unread_channel_channel_description">Unread messages from channels and threads.</string>
     <string name="notification_unread_dm_channel_name">Direct messages</string>
@@ -284,7 +284,7 @@
     <string name="notification_unread_mention_channel_name">Mentions</string>
     <string name="notification_unread_mention_channel_description">Unread notifications for messages that mention you.</string>
     <string name="inbox_notification_channel_name">Activity notifications</string>
-    <string name="inbox_notification_channel_description">Unread activity updates from Slock.</string>
+    <string name="inbox_notification_channel_description">Unread activity updates from Raft.</string>
     <string name="inbox_notification_title">New message in %1$s</string>
     <string name="bottom_tab_home">Home</string>
     <string name="bottom_tab_tasks">Tasks</string>
@@ -294,7 +294,7 @@
     <string name="home_server_empty">No servers</string>
     <string name="home_server_error">Server unavailable</string>
     <string name="home_server_auth_required">Sign in required</string>
-    <string name="home_server_fallback">Slock</string>
+    <string name="home_server_fallback">Raft</string>
     <string name="server_gate_choose_title">Choose Server</string>
     <string name="server_gate_create_title">Create Server</string>
     <string name="server_gate_signed_in_as">Signed in as %1$s</string>
@@ -312,13 +312,13 @@
     <string name="server_gate_cancel">Cancel</string>
     <string name="server_gate_create">Create Server</string>
     <string name="server_gate_error">Could not complete action: %1$s</string>
-    <string name="home_default_title">Slock Android</string>
+    <string name="home_default_title">Raft Android</string>
     <string name="home_no_channels_title">No channels</string>
     <string name="home_no_channels_detail">Channels from sample state will appear here.</string>
     <string name="home_create_server_title">Create server</string>
     <string name="home_create_server_primary">Create server</string>
     <string name="home_create_server_cancel">Cancel</string>
-    <string name="home_create_server_detail">Create a server for this account. After creation, Slock will switch to it automatically.</string>
+    <string name="home_create_server_detail">Create a server for this account. After creation, Raft will switch to it automatically.</string>
     <string name="home_create_server_name_label">Server name</string>
     <string name="home_create_server_name_placeholder">Product team</string>
     <string name="home_create_server_slug_label">Slug</string>
@@ -327,7 +327,7 @@
     <string name="home_create_channel_title">Create channel</string>
     <string name="home_create_channel_primary">Create channel</string>
     <string name="home_create_channel_cancel">Cancel</string>
-    <string name="home_create_channel_detail">Create a channel in the current server. After creation, Slock will open it automatically.</string>
+    <string name="home_create_channel_detail">Create a channel in the current server. After creation, Raft will open it automatically.</string>
     <string name="home_create_channel_name_label">Channel name</string>
     <string name="home_create_channel_name_placeholder">android-launch</string>
     <string name="home_create_channel_description_label">Description</string>
