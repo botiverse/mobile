@@ -86,7 +86,11 @@ internal data class KuiklySettingsComputerItem(
     val online: Boolean = false,
     val hostname: String? = null,
     val platform: String? = null,
-    val lastSeenLabel: String? = null
+    val lastSeenLabel: String? = null,
+    val runtimes: List<String> = emptyList(),
+    val createdAt: String? = null,
+    val apiKeyPrefix: String? = null,
+    val statusVersion: Long = 0L
 )
 
 @Serializable
@@ -210,6 +214,13 @@ internal fun SettingsComputerDetailContent(
         item { SettingsDetailRow("Platform", payload.computer.platform ?: "Unknown") }
         item { SettingsDetailRow("Hostname", payload.computer.hostname ?: payload.computer.name) }
         item { SettingsDetailRow("Last seen", payload.computer.lastSeenLabel ?: "Unknown") }
+        item { SettingsDetailRow("Created", payload.computer.createdAt ?: "Unknown") }
+        if (payload.computer.runtimes.isNotEmpty()) {
+            item { SettingsDetailRow("Detected runtimes", payload.computer.runtimes.joinToString(", ")) }
+        }
+        if (!payload.computer.apiKeyPrefix.isNullOrBlank()) {
+            item { SettingsDetailRow("API key prefix", payload.computer.apiKeyPrefix) }
+        }
         item { SettingsSectionTitle("WORKSPACES") }
         payload.workspacesErrorCode?.let { error ->
             item { SettingsInlineError("Unable to load workspaces", error, payload.workspacesRetryable) { onEvent("retryWorkspaces", null) } }
@@ -337,11 +348,22 @@ private fun SettingsInlineError(title: String, errorCode: String, retryable: Boo
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
-        Text("Error: $errorCode", style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(settingsComputerErrorCopy(errorCode), style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
         if (retryable) {
             SettingsPrimaryButton("Retry", onRetry)
         }
     }
+}
+
+private fun settingsComputerErrorCopy(code: String): String = when (code) {
+    "machine_offline" -> "This computer is offline. The daemon is not connected to the server, so workspaces and agents can't be loaded right now."
+    "machine_offline_replay" -> "This computer is being served by a different server replica. Try again in a moment."
+    "computer_has_agents" -> "This computer still has agents assigned. Remove all agents before deleting the computer."
+    "computer_bad_request" -> "The request was rejected by the server. Check the name / value and try again."
+    "server_forbidden" -> "You don't have permission to manage this computer."
+    "auth_required" -> "Your session expired. Sign in again to continue."
+    "server_unavailable" -> "The server is temporarily unavailable. Try again in a moment."
+    else -> "Error: $code"
 }
 
 @Composable

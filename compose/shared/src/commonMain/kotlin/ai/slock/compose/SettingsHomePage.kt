@@ -2675,7 +2675,11 @@ private fun SettingsComputerSnapshot.toComputerItem(): KuiklySettingsComputerIte
         online = online,
         hostname = hostname,
         platform = platform,
-        lastSeenLabel = lastSeenLabel
+        lastSeenLabel = lastSeenLabel,
+        runtimes = runtimes,
+        createdAt = createdAt,
+        apiKeyPrefix = apiKeyPrefix,
+        statusVersion = statusVersion
     )
 
 private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(): KuiklySettingsWorkspaceItem =

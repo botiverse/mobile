@@ -1454,7 +1454,12 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         online = status == ComputerStatus.Online,
         hostname = hostname,
         platform = os,
-        lastSeenLabel = null
+        lastSeenLabel = lastHeartbeat,
+        runtimes = runtimes,
+        createdAt = createdAt,
+        lastHeartbeat = lastHeartbeat,
+        apiKeyPrefix = apiKeyPrefix,
+        statusVersion = statusVersion
     )
 
 private fun ComputerWorkspaceSummary.toSettingsWorkspaceSnapshot(): SettingsComputerWorkspaceSnapshot =

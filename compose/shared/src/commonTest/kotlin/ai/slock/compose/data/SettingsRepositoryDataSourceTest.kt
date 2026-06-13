@@ -424,7 +424,7 @@ class SettingsRepositoryDataSourceTest {
         val network =
             FakeSettingsNetworkClient(
                 machinesJson = """
-                    {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","lastHeartbeat":"2026-05-07T01:00:00Z"}]}
+                    {"machines":[{"id":"machine-1","name":"MacBook","hostname":"mac.local","os":"macOS","daemonVersion":"1.4.2","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"lastHeartbeat":"2026-05-07T01:00:00Z","createdAt":"2026-04-01T00:00:00Z"}]}
                 """.trimIndent(),
                 membersJson = """
                     [
@@ -450,6 +450,13 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("machine-1", network.workspacesMachineId)
         assertEquals("MacBook", detail.computer.name)
         assertEquals("macOS", detail.computer.platform)
+        // #74: server read-model fields must propagate to SettingsComputerSnapshot
+        // so the React-aligned detail page can render Detected runtimes / Created / etc.
+        assertEquals(7L, detail.computer.statusVersion)
+        assertEquals("sk_machine_abc", detail.computer.apiKeyPrefix)
+        assertEquals(listOf("claude", "codex"), detail.computer.runtimes)
+        assertEquals("2026-04-01T00:00:00Z", detail.computer.createdAt)
+        assertEquals("2026-05-07T01:00:00Z", detail.computer.lastHeartbeat)
         assertEquals(1, detail.workspaces.size)
         assertEquals("Slock", detail.workspaces.first().name)
         assertEquals(1, detail.agents.size)

@@ -458,7 +458,12 @@ data class SettingsComputerSnapshot(
     val online: Boolean,
     val hostname: String? = null,
     val platform: String? = null,
-    val lastSeenLabel: String? = null
+    val lastSeenLabel: String? = null,
+    val runtimes: List<String> = emptyList(),
+    val createdAt: String? = null,
+    val lastHeartbeat: String? = null,
+    val apiKeyPrefix: String? = null,
+    val statusVersion: Long = 0L
 )
 
 data class SettingsComputerDetailSnapshot(
