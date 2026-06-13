@@ -444,7 +444,7 @@ private val planSamples = listOf(
     SettingsPlanCardState(
         name = "Hobby",
         price = "$0 / month",
-        features = listOf("Core chat and task workflows", "Up to 20 members", "Local Android preview support"),
+        features = listOf("Core chat and task workflows", "Up to 20 members", "Mobile app access"),
         current = true
     ),
     SettingsPlanCardState(

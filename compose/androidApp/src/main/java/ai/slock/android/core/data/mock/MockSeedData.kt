@@ -520,7 +520,7 @@ object MockSeedData {
             SettingsBillingPlanSnapshot(
                 name = "Hobby",
                 price = "$0 / month",
-                features = listOf("Core chat and task workflows", "Up to 20 members", "Local Android preview support"),
+                features = listOf("Core chat and task workflows", "Up to 20 members", "Mobile app access"),
                 current = true
             ),
             SettingsBillingPlanSnapshot(
@@ -542,7 +542,7 @@ object MockSeedData {
             enabled = false,
             available = true,
             statusLabel = "Disabled",
-            detail = "Notifications can arrive while Raft is in the background. This Android build can preview the local state before the push API is connected."
+            detail = "Notifications can arrive while Raft is in the background. Use a test notification to verify this device."
         ),
         muteServer = SettingsMobileToggleSnapshot(
             enabled = false,

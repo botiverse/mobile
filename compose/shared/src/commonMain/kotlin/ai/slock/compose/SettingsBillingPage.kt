@@ -63,7 +63,7 @@ internal data class KuiklySettingsBillingLabels(
     val currentPlanButton: String = "Current Plan",
     val choosePlan: String = "Choose Plan",
     val comingSoon: String = "Coming Soon",
-    val loading: String = "Loading billing sample",
+    val loading: String = "Loading billing",
     val error: String = "Could not load plans",
     val noPermission: String = "Billing requires owner permission."
 )
@@ -115,7 +115,7 @@ private val settingsBillingSmokePayload =
                         listOf(
                             "Core chat and task workflows",
                             "Up to 20 members",
-                            "Local Android preview support"
+                            "Mobile app access"
                         ),
                     current = true
                 ),

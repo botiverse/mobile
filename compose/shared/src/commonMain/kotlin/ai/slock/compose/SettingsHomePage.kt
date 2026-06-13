@@ -2053,7 +2053,7 @@ private fun SettingsAppShellContent(
             else ->
                 SettingsSharedPlaceholder(
                     title = "Settings",
-                    detail = "This Settings section is not available in shared shell yet.",
+                    detail = "This Settings section is not available on mobile yet.",
                     iconName = "settings",
                     bottomContentPadding = bottomContentPadding
                 )
@@ -2796,7 +2796,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
             is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.code}"
             is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.code}"
             is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
-            is ScreenLoadState.Content -> "Shared workspace settings are backed by typed repository snapshots."
+            is ScreenLoadState.Content -> "Manage this workspace's profile, members, invites, and permissions."
         }
     val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
     return KuiklySharedSettingsPayload(
@@ -2816,7 +2816,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                                 SERVER_ACTION_PROFILE_SAVE,
                                 "save",
                                 "Save workspace profile",
-                                "React sends PATCH /servers/:id when the profile form changes; this shared row verifies the typed mutation boundary.",
+                                "Save changes to the workspace name and profile.",
                                 status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (snapshot?.profile?.canSave == true) "Ready" else "Read only"),
                                 enabled = snapshot?.profile?.canSave == true && actionState?.inProgress != true
                             ),
@@ -2863,7 +2863,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
 ): List<KuiklySharedSettingsRow> {
     val admins = this.orEmpty()
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", "shield", "Admins", "No admins returned by the typed settings snapshot."))
+        return listOf(section.toPlaceholderRow("admins", "shield", "Admins", "No workspace admins are available."))
     }
     return admins.flatMap { admin ->
         val nextRole = if (admin.role?.lowercase() == "admin") "member" else "admin"
@@ -2880,7 +2880,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
                 key = SERVER_ACTION_MEMBER_ROLE,
                 iconName = "shield-check",
                 title = "Change ${admin.name}'s role",
-                detail = "Toggle role through PATCH /servers/:id/members/:memberId.",
+                detail = "Switch this member between admin and member access.",
                 value = "${admin.id}:$nextRole",
                 status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Set ${nextRole.replaceFirstChar { it.uppercase() }}", admin.id),
                 enabled = actionState?.inProgress != true
@@ -2889,7 +2889,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
                 key = SERVER_ACTION_MEMBER_REMOVE,
                 iconName = "user-minus",
                 title = "Remove ${admin.name}",
-                detail = "Confirmed server member removal uses the typed DELETE member boundary.",
+                detail = "Remove this member from the workspace after confirmation.",
                 value = admin.id,
                 status = actionState.serverStatusFor(SERVER_ACTION_MEMBER_REMOVE, "Remove", admin.id),
                 enabled = actionState?.inProgress != true
@@ -2905,7 +2905,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
         return listOf(
-            section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites returned by the typed settings snapshot.")
+            section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites are available.")
         )
     }
     return invites.flatMap { invite ->
@@ -2941,12 +2941,12 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
             key = SERVER_ACTION_JOIN_LINK_CREATE,
             iconName = "plus",
             title = "Create join link",
-            detail = "Create a default multi-use join link through POST /servers/:id/join-links.",
+            detail = "Create a reusable invite link for this workspace.",
             status = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, "Create"),
             enabled = actionState?.inProgress != true
         )
     if (links.isEmpty()) {
-        return listOf(section.toPlaceholderRow("joinLinks", "link-2", "Join links", "No join links returned by the typed settings snapshot."), createRow)
+        return listOf(section.toPlaceholderRow("joinLinks", "link-2", "Join links", "No join links are available."), createRow)
     }
     return links.flatMap { link ->
         listOf(
@@ -2986,7 +2986,7 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_TOGGLE, onboarding.statusLabel),
                 enabled = actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("onboarding", "bot", "Onboarding Agent", "No onboarding settings returned by the typed settings snapshot.")
+        } ?: section.toPlaceholderRow("onboarding", "bot", "Onboarding Agent", "No onboarding settings are available.")
     )
 
 private fun SettingsServerTranslationSnapshot?.toTranslationRows(
@@ -3004,7 +3004,7 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
                 status = actionState.serverStatusFor(SERVER_ACTION_TRANSLATION_TOGGLE, translation.statusLabel),
                 enabled = translation.translationAvailable && translation.canManageTranslation && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("translation", "languages", "Translation", "No translation settings returned by the typed settings snapshot.")
+        } ?: section.toPlaceholderRow("translation", "languages", "Translation", "No translation settings are available.")
     )
 
 private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
@@ -3018,12 +3018,12 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
                 key = SERVER_ACTION_SIDEBAR_ORDER,
                 iconName = "list-tree",
                 title = "Channel sidebar sort",
-                detail = "React persists sidebar order through PATCH /servers/:id/sidebar-order.",
+                detail = "Choose how channels are ordered in the sidebar.",
                 value = nextMode,
                 status = actionState.serverStatusFor(SERVER_ACTION_SIDEBAR_ORDER, order.channelSortMode.ifBlank { "manual" }),
                 enabled = actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("sidebarOrder", "list-tree", "Sidebar Order", "No sidebar order settings returned by the typed settings snapshot.")
+        } ?: section.toPlaceholderRow("sidebarOrder", "list-tree", "Sidebar Order", "No sidebar order settings are available.")
     )
 
 private fun SettingsServerSnapshot?.toPlanAndDangerRows(
@@ -3037,7 +3037,7 @@ private fun SettingsServerSnapshot?.toPlanAndDangerRows(
             key = "billingSummary",
             iconName = "shield-check",
             title = "Plan",
-            detail = billingSection?.detail ?: "Current workspace billing and usage summary from typed settings snapshot.",
+            detail = billingSection?.detail ?: "Current workspace billing and usage summary.",
             status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
             enabled = false
         ),
@@ -3045,7 +3045,7 @@ private fun SettingsServerSnapshot?.toPlanAndDangerRows(
             key = SERVER_ACTION_LEAVE,
             iconName = "log-out",
             title = "Leave server",
-            detail = "Leave server through the typed repository boundary.",
+            detail = "Leave this workspace after confirmation.",
             status = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave"),
             enabled = actionState?.inProgress != true
         ),
@@ -3100,7 +3100,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
             if (refreshing) {
                 "Refreshing mobile settings..."
             } else {
-                "Notification controls and local preferences are backed by shared Settings MVI."
+                "Manage notifications and local preferences for this device."
             },
         sections =
             listOf(
@@ -3194,7 +3194,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
             if (refreshing) {
                 "Refreshing language and region settings..."
             } else {
-                "Language, timezone, and translation preferences are saved through shared Settings MVI."
+                "Manage language, timezone, and translation preferences."
             },
         sections =
             listOf(
@@ -3278,7 +3278,7 @@ private fun appShellLanguageRegionPlaceholderPayload(
             is ScreenLoadState.Error -> state.error.code
             is ScreenLoadState.NoPermission -> state.blocker.code
             is ScreenLoadState.Empty -> state.reason.name
-            else -> "Loading shared language and region settings."
+            else -> "Loading language and region settings."
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region-placeholder",
@@ -3323,7 +3323,7 @@ private fun appShellMobilePlaceholderPayload(
             is ScreenLoadState.Error -> state.error.code
             is ScreenLoadState.NoPermission -> state.blocker.code
             is ScreenLoadState.Empty -> state.reason.name
-            else -> "Loading shared mobile settings."
+            else -> "Loading mobile settings."
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile-placeholder",
@@ -3903,7 +3903,7 @@ private fun AppShellAuthGateContent(
                 email = "",
                 password = "",
                 submitting = false,
-                errorMessage = "Create account will move into the shared app shell next.",
+                errorMessage = "Create account is not available here yet.",
                 onNameChange = {},
                 onEmailChange = {},
                 onPasswordChange = {},
@@ -3916,7 +3916,7 @@ private fun AppShellAuthGateContent(
                 email = "",
                 sending = false,
                 sent = false,
-                errorMessage = "Password reset will move into the shared app shell next.",
+                errorMessage = "Password reset is not available here yet.",
                 onEmailChange = {},
                 onSubmit = {},
                 onBackToSignIn = { mode = "login" },
@@ -5820,7 +5820,7 @@ private fun SharedHomePanelStatus(
         loading ->
             SharedHomePanelMessage(
                 title = loadingText,
-                detail = "This page is using the shared KMP repository.",
+                detail = "Loading the latest results.",
                 tone = SlockColor.BrandYellow
             )
         noPermissionCode != null ->

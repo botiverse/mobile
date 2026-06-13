@@ -148,7 +148,7 @@ fun MembersPageShell(
         when (val loadState = state.loadState) {
             ScreenLoadState.Loading -> MembersFeedback(
                 title = "Loading...",
-                detail = "Preparing local sample state.",
+                detail = "Preparing members.",
                 onBack = onBack,
                 loading = true
             )
