@@ -26,6 +26,25 @@
 - `.git/` 历史记录
 - `artifacts/` 已打好的包
 
+### 从 React/CLI 迁移可复用的经验
+
+React / CLI 这轮迁移不是一次性把所有 `Slock` 文本清零，而是按外部兼容边界拆阶段：
+
+1. **先改用户可见品牌，再改工程内部身份**
+   React 先做 visible brand copy（页面标题、manifest、PWA、按钮文案、分享图可见品牌），组件名、部分文件名和 legacy 路由可以滞后。客户端也应先处理 `strings.xml`、启动页、通知、分享/诊断导出、About 等用户可见输出，再处理包名、类名、文件名。
+
+2. **旧入口保留 alias / shim / fallback**
+   CLI 包名迁移时，旧 `@slock-ai/cli` 继续发布为 delegation shim，旧 `slock` bin 继续可用，内部再转到新 `@botiverse/raft`。客户端对应的是：旧 `app.slock.ai` deep link、旧本地 session / prefs、旧通知 channel / cache key 等不能直接删除，需要有兼容窗口或迁移逻辑。
+
+3. **新名字作为 canonical，旧名字只做兼容读取**
+   CLI 侧 `RAFT_PROFILE` 是 canonical，`SLOCK_PROFILE` 是 deprecation alias；两者冲突时显式报错。客户端也应明确：新输出使用 Raft / `raft.build`，旧输入仅作为 fallback；如果旧/新本地状态同时存在，要定义优先级或迁移规则。
+
+4. **不要追求 grep 清零，要做残留分类**
+   React/CLI 仍合理保留 legacy package、旧 bin、协议字段、历史 release note。客户端也会有必须保留的旧名：wire contract、旧 deep link host、DB migration 历史名、SharedPreferences fallback key、历史日志/诊断字段。最终检查应输出“必须改 / 必须保留 / 暂时兼容 / 历史保留”表，而不是要求所有 `slock` 字符串消失。
+
+5. **给迁移边界加守卫测试**
+   React/CLI 的 shim 有测试确保旧包名、旧 bin、依赖关系和 rename notice 不破坏 delegation。客户端应增加类似测试：旧链接可打开、新链接可打开、老 session 不丢、新安装显示 Raft、分享/通知/诊断新输出不再出现 Slock。
+
 ### 向后兼容策略
 
 **服务端已有 301 重定向**：`slock.ai` → `raft.build`，所有 API 请求会自动跟随 301。
@@ -36,11 +55,13 @@
 1. **Deep Link（AndroidManifest.xml）**：旧域名 `app.slock.ai` 的链接可能被用户保存/分享过。**建议保留两个 host 的 intent-filter 至少一个大版本周期**
 2. **ThreadPage.kt Web Link 匹配**：行 2088 的 host 判断需要同时认两个域名 `setOf("app.slock.ai", "app.raft.build").contains(host)`
 3. **Email 域名**：用户真实邮箱如果是 `@slock.ai`，需要确认邮件发送是否仍走旧域名。测试/mock 数据可以直接改成 `@raft.build`
+4. **本地状态**：旧 SharedPreferences / SQLDelight / cache / notification channel key 如果带 `slock`，要么保持不动，要么读旧写新迁移，不能让老用户升级后丢登录态或本地缓存。
+5. **应用身份**：`applicationId` 不是普通代码包名。若从 `ai.slock.android` 改到 `build.raft.android`，商店和设备会把它当作新 app，需要单独产品/发布决策。
 
-**不需要兼容的**：
-- 包名、文件名、类名：纯内部，改完重新编译即可
-- SharedPreferences：内部存储，做数据迁移
-- XML 资源名、strings.xml 文案：编译时解析，运行时无影响
+**可以延后、但不影响旧用户兼容的**：
+- Kotlin package / import / class / file name：工程内部身份，建议放到可见品牌和兼容迁移之后。
+- XML 资源名：编译时解析，运行时无影响，但要避免和旧持久化 key 混淆。
+- 测试文件名 / 文档文件名：可随内部清理阶段处理。
 
 ---
 
@@ -409,42 +430,48 @@ compose/androidApp/src/main/java/build/raft/android/
 
 ## 7. 执行顺序建议
 
-### Phase 1 — 域名 & API（P0 功能性，1 个 PR）
-1. `SlockApiEndpoints.kt` — API base URL
-2. `ThreadPage.kt` — web link host
-3. `AndroidManifest.xml` — deep link host
-4. `strings.xml` EN/ZH — `slock.ai` → `raft.build`
+### Phase 1 — 用户可见品牌 & 新输出（P0，1 个小 PR）
+1. `strings.xml` EN/ZH：app name、登录/设置/通知/诊断/分享等用户可见 "Slock" → "Raft"。
+2. `SlockApiEndpoints.kt`：新安装和新请求默认走 `api.raft.build`。
+3. 启动页 / icon / About / diagnostics export / share subject / notification 文案输出 Raft。
+4. mock / preview / visual case 中的示例邮箱改为 `@raft.build`，但真实用户邮箱和历史数据不批量重写。
 
-### Phase 2 — UI 文案（P0 用户可见，1 个 PR）
-5. `strings.xml` 所有 "Slock" → "Raft"
-6. 代码中硬编码 "Slock" UI 字符串
-7. mock/preview 数据
+### Phase 2 — 兼容迁移（P0，单独 PR）
+5. `ThreadPage.kt` 和 `AndroidManifest.xml` 同时识别 `app.slock.ai` 与 `app.raft.build`。
+6. SharedPreferences / SQLDelight / cache / notification channel key：明确保留旧 key、读旧写新迁移，或维持旧文件名不变。
+7. `applicationId` 单独决策：默认不跟随 Kotlin namespace 改名；若要改，先补商店/老 app 升级方案。
+8. 加兼容测试：旧 link、新 link、老 session、老 cache、升级后通知 channel 都不丢。
 
-### Phase 3 — 包名 + 文件名 + 标识符 + 资源（P1 工程改动，1 个大 PR）
-8. 包名 `ai.slock` → `build.raft`（批量替换 + 目录移动）
-9. 文件名重命名（130+ 文件）
-10. 类名/变量名/常量名更新
-11. XML 资源名更新
-12. Gradle/Manifest/SQLDelight 配置更新
-13. SharedPreferences 常量更新
-14. OHOS 鸿蒙端同步
+### Phase 3 — 工程内部 rename（P1，可多 PR）
+9. Kotlin package `ai.slock` → `build.raft`，目录移动与 imports 同步。
+10. 文件名 / 类名 / 常量名更新。
+11. XML 资源名更新。
+12. SQLDelight package / 生成代码引用同步。
+13. OHOS ETS 组件/模块同步。
 
-### Phase 4 — 验证
-15. `./gradlew :app:assembleDebug`
-16. `./gradlew :app:testDebugUnitTest`
-17. 全局搜索 `grep -ri 'slock' --include='*.kt' --include='*.xml' --include='*.json' --include='*.toml' --include='*.gradle*' --include='*.properties' --include='*.md'` 确认无遗漏（排除 third_party/、build/、.gradle/、.git/、artifacts/）
+> 这一阶段可以很大，但不应该和 Phase 1/2 的功能兼容变化混在一起。React/CLI 的经验是：visible brand、legacy entrypoint、internal package identity 分开走，便于回滚和验证。
+
+### Phase 4 — 残留分类验证
+14. `./gradlew :app:assembleDebug`
+15. `./gradlew :app:testDebugUnitTest`
+16. 全局搜索 `slock` / `Slock` / `slock.ai`，输出残留分类表：
+    - **必须改**：新 UI、新分享/通知/诊断输出、新默认 endpoint。
+    - **必须保留**：旧 deep link host、旧 prefs/cache fallback、历史 DB migration、server wire contract。
+    - **暂时保留**：内部类名/文件名/脚本名，等待 Phase 3。
+    - **历史保留**：历史日志、release note、旧测试 fixture 兼容断言。
 
 ### Phase 5 — 上游同步（如果需要）
-18. 如果 `third_party/slock-source` 上游也改名了，更新 submodule remote URL
-19. 如果没改，保持不动
+17. 如果 `third_party/slock-source` 上游也改名了，只更新引用/remote/测试 fixture；不要直接改 `third_party/slock-source`。
+18. 如果上游没改，保持不动，客户端通过兼容层处理旧 contract。
 
 ---
 
 ## ⚠️ 关键风险提醒
 
-1. **包名改动 326+ 文件**必须一个大 PR 一次性完成，不能部分改
+1. **包名改动 326+ 文件**可以作为工程内部 rename 集中处理，但不应和 visible brand / 兼容迁移混在同一个 PR
 2. **SQLDelight** `.sq` 文件改路径后所有生成代码类名变，DAO 引用要同步
-3. **SharedPreferences** `slock_auth_session.xml` 改名后老用户登录状态可能丢失，建议做迁移
+3. **SharedPreferences** `slock_auth_session.xml` 改名后老用户登录状态可能丢失，建议保留旧文件名或做读旧写新迁移
 4. **OHOS 鸿蒙端**有独立的工程结构，需要单独处理
-5. **applicationId** 从 `ai.slock.android` 改成 `build.raft.android` 后，Google Play / AppGallery 上的应用会被视为新应用（除非做 applicationId migration）
+5. **applicationId** 从 `ai.slock.android` 改成 `build.raft.android` 后，Google Play / AppGallery 上的应用会被视为新应用；这不是 namespace refactor，必须单独产品/发布决策
 6. **deep link** `app.slock.ai` 改成 `app.raft.build` 后需要确保新域名已配置
+7. **grep 清零风险**：协议字段、旧 deep link、历史 migration、legacy fallback 不应为了清零而改坏；最终必须用白名单/残留分类表收口
