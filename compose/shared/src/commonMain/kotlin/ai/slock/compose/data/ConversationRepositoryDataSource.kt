@@ -790,11 +790,28 @@ private suspend fun <T> executeConversation(
 
 private fun <T> HomeNetworkResponse.toConversationDataError(): DataResult<T> =
     when (code) {
+        0 -> DataResult.Error(ScreenError(code = errorBodyText.toConversationTransportErrorCode(), retryable = true))
         401 -> authRequired()
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
+
+private fun String?.toConversationTransportErrorCode(): String {
+    val text = orEmpty().lowercase()
+    return when {
+        "unable to resolve host" in text ||
+            "unknown host" in text ||
+            "could not resolve host" in text ||
+            "no address associated with hostname" in text ||
+            "nodename nor servname" in text -> "network_dns_failed"
+        "timeout" in text || "timed out" in text -> "network_timeout"
+        "failed to connect" in text ||
+            "connection refused" in text ||
+            "connection reset" in text -> "network_connect_failed"
+        else -> "network_unavailable"
+    }
+}
 
 private fun <T> authRequired(): DataResult<T> =
     DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))

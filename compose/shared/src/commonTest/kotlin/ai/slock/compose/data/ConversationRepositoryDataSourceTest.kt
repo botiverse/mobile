@@ -129,6 +129,24 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun getThreadMapsDnsTransportFailureToReadableError() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                failures =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """Unable to resolve host "api.raft.build": No address associated with hostname"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getThread(ThreadId("channel-1"))
+
+        val error = assertIs<DataResult.Error>(result)
+        assertEquals("network_dns_failed", error.error.code)
+    }
+
+    @Test
     fun getFollowedThreadsParsesWrappedResponse() = runBlocking {
         val network =
             FakeConversationNetworkClient(
@@ -297,6 +315,7 @@ class ConversationRepositoryDataSourceTest {
 
     private class FakeConversationNetworkClient(
         private val responses: Map<String, String> = emptyMap(),
+        private val failures: Map<String, String> = emptyMap(),
         private val uploadBody: String = """{"attachments":[]}"""
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedConversationRequest>()
@@ -314,6 +333,9 @@ class ConversationRepositoryDataSourceTest {
             val normalized = path.trim('/')
             requests += RecordedConversationRequest(priority, method, normalized, query)
             bodyText?.let { bodies += it }
+            failures["$method $normalized"]?.let { message ->
+                return HomeNetworkResponse(code = 0, bodyText = null, errorBodyText = message)
+            }
             return HomeNetworkResponse(code = 200, bodyText = responses["$method $normalized"] ?: """{"threads":[]}""")
         }
 
