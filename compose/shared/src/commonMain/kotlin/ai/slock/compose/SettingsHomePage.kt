@@ -1052,21 +1052,22 @@ private fun SlockAppShellContent() {
         openThreadPayload(returnPayload, pushCurrent = false)
     }
 
-    fun appShellThreadPayload(conversation: ConversationSummary): KuiklyThreadScreenPayload =
+    fun appShellThreadPayload(conversation: ConversationSummary, anchorMessageId: String? = null): KuiklyThreadScreenPayload =
         buildAppShellThreadPayload(
             conversation = conversation,
             timeContext = threadTimeContext,
-            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+            anchorMessageId = anchorMessageId
         )
 
-    fun openHomeConversation(conversation: ConversationSummary, source: String) {
+    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null) {
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
-                "kind=${conversation.kind.name} source=$source"
+                "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
         )
         selectedHomeDestination = null
         selectedHomeConversationId = conversation.threadId.value
-        activeThreadPayload = appShellThreadPayload(conversation)
+        activeThreadPayload = appShellThreadPayload(conversation, anchorMessageId)
         threadBackStack = emptyList()
         navController.navigate(AppShellRouteThread)
     }
@@ -1585,7 +1586,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeDestination = null
                                     },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_search")
+                                        openHomeConversation(item.toConversationSummary(), "home_search", item.lastMessageId?.value)
                                     },
                                     onOpenEntity = { entity ->
                                         selectedHomeDestination = null
@@ -1613,7 +1614,7 @@ private fun SlockAppShellContent() {
                                     onIntent = homeSearchSavedViewModel::dispatch,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_saved")
+                                        openHomeConversation(item.toConversationSummary(), "home_saved", item.lastMessageId?.value)
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     timeContext = threadTimeContext,
@@ -6876,13 +6877,15 @@ private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange)
 internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
-    alignOwnMessagesRight: Boolean = false
+    alignOwnMessagesRight: Boolean = false,
+    anchorMessageId: String? = null
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val streamChannelId = conversation.threadStreamChannelId()
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val anchoredParentMessageId = anchorMessageId ?: parentMessageId
     val canSend = conversation.joined && conversation.permissions.canSend
     val composer =
         buildThreadSurfaceComposerPayload(
@@ -6909,7 +6912,7 @@ internal fun buildAppShellThreadPayload(
         sourceThreadId = conversation.threadId.value,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
-        parentMessageId = parentMessageId,
+        parentMessageId = anchoredParentMessageId,
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = !isReplyThread,
