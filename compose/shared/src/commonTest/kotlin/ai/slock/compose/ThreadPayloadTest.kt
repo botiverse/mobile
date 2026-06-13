@@ -13,6 +13,7 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
@@ -754,6 +755,18 @@ class ThreadPayloadTest {
         assertEquals(true, message.isOwn)
         assertEquals("2026-05-19T16:00:00Z", message.timestampLabel)
         assertEquals("00:00", payload.formatTimestampLabel(message.timestampLabel))
+    }
+
+    @Test
+    fun formatsMessageTimestampWithPayloadTimeFormatPreference() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 5, 20),
+                timeFormat = "12h"
+            )
+
+        assertEquals("12:00 AM", payload.formatTimestampLabel("2026-05-19T16:00:00Z"))
     }
 
     @Test

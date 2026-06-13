@@ -5,6 +5,15 @@ private const val MillisPerMinute = 60_000L
 private const val MillisPerHour = 3_600_000L
 private const val MillisPerDay = 86_400_000L
 
+const val SlockTimeFormat12Hour = "12h"
+const val SlockTimeFormat24Hour = "24h"
+
+fun normalizeSlockTimeFormatPreference(value: String?): String =
+    when (value?.trim()?.lowercase()) {
+        SlockTimeFormat12Hour -> SlockTimeFormat12Hour
+        else -> SlockTimeFormat24Hour
+    }
+
 fun parseSlockTimestampEpochMillisOrNull(
     value: String?,
     localOffsetMinutes: Int = 0
@@ -36,19 +45,21 @@ fun parseSlockTimestampEpochMillisOrNull(
 fun formatSlockTimestampLabel(
     value: String?,
     localOffsetMinutes: Int,
-    todayEpochDay: Long
+    todayEpochDay: Long,
+    timeFormat: String = SlockTimeFormat24Hour
 ): String {
     val trimmed = value?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
     val epochMillis =
         parseSlockTimestampEpochMillisOrNull(trimmed, localOffsetMinutes) ?: return trimmed
-    return formatSlockTimestampEpochMillis(epochMillis, localOffsetMinutes, todayEpochDay)
+    return formatSlockTimestampEpochMillis(epochMillis, localOffsetMinutes, todayEpochDay, timeFormat)
 }
 
 fun formatSlockTimestampEpochMillis(
     epochMillis: Long,
     localOffsetMinutes: Int,
-    todayEpochDay: Long
+    todayEpochDay: Long,
+    timeFormat: String = SlockTimeFormat24Hour
 ): String {
     val localMillis = epochMillis + localOffsetMinutes * MillisPerMinute
     val localEpochDay = floorDiv(localMillis, MillisPerDay)
@@ -57,7 +68,7 @@ fun formatSlockTimestampEpochMillis(
     val today = civilDateFromEpochDay(todayEpochDay)
     val hour = (millisOfDay / MillisPerHour).toInt()
     val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
-    val time = "${hour.twoDigits()}:${minute.twoDigits()}"
+    val time = formatSlockClock(hour, minute, null, timeFormat)
     return when {
         localEpochDay == todayEpochDay -> time
         date.year == today.year -> "${date.month.twoDigits()}-${date.day.twoDigits()} $time"
@@ -67,25 +78,27 @@ fun formatSlockTimestampEpochMillis(
 
 fun formatSlockTimestampClockWithSeconds(
     value: String?,
-    localOffsetMinutes: Int
+    localOffsetMinutes: Int,
+    timeFormat: String = SlockTimeFormat24Hour
 ): String {
     val trimmed = value?.trim().orEmpty()
     if (trimmed.isEmpty()) return ""
     val epochMillis =
         parseSlockTimestampEpochMillisOrNull(trimmed, localOffsetMinutes) ?: return trimmed
-    return formatSlockTimestampClockWithSeconds(epochMillis, localOffsetMinutes)
+    return formatSlockTimestampClockWithSeconds(epochMillis, localOffsetMinutes, timeFormat)
 }
 
 fun formatSlockTimestampClockWithSeconds(
     epochMillis: Long,
-    localOffsetMinutes: Int
+    localOffsetMinutes: Int,
+    timeFormat: String = SlockTimeFormat24Hour
 ): String {
     val localMillis = epochMillis + localOffsetMinutes * MillisPerMinute
     val millisOfDay = floorMod(localMillis, MillisPerDay)
     val hour = (millisOfDay / MillisPerHour).toInt()
     val minute = ((millisOfDay % MillisPerHour) / MillisPerMinute).toInt()
     val second = ((millisOfDay % MillisPerMinute) / MillisPerSecond).toInt()
-    return "${hour.twoDigits()}:${minute.twoDigits()}:${second.twoDigits()}"
+    return formatSlockClock(hour, minute, second, timeFormat)
 }
 
 fun slockEpochDayForDate(year: Int, month: Int, day: Int): Long =
@@ -141,6 +154,36 @@ private fun String.toOffsetMinutesOrNull(): Int? {
         }
     if (hours !in 0..23 || minutes !in 0..59) return null
     return sign * (hours * 60 + minutes)
+}
+
+private fun formatSlockClock(
+    hour: Int,
+    minute: Int,
+    second: Int?,
+    timeFormat: String
+): String {
+    if (normalizeSlockTimeFormatPreference(timeFormat) != SlockTimeFormat12Hour) {
+        return buildString {
+            append(hour.twoDigits())
+            append(':')
+            append(minute.twoDigits())
+            if (second != null) {
+                append(':')
+                append(second.twoDigits())
+            }
+        }
+    }
+    val displayHour = (hour % 12).let { if (it == 0) 12 else it }
+    return buildString {
+        append(displayHour.twoDigits())
+        append(':')
+        append(minute.twoDigits())
+        if (second != null) {
+            append(':')
+            append(second.twoDigits())
+        }
+        append(if (hour < 12) " AM" else " PM")
+    }
 }
 
 private fun isValidDateTime(

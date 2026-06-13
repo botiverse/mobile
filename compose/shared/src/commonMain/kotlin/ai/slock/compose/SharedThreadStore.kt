@@ -1710,6 +1710,7 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         alignOwnMessagesRight = base.alignOwnMessagesRight,
         localOffsetMinutes = base.localOffsetMinutes,
         todayEpochDay = base.todayEpochDay ?: todayEpochDay,
+        timeFormat = base.timeFormat,
         canSend = base.canSend,
         joined = base.joined,
         membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
@@ -1859,7 +1860,7 @@ private fun ai.slock.compose.data.ChannelFileItem.filesSourceLabel(): String =
 
 private fun KuiklyThreadScreenPayload.formatFilesTimestampLabel(value: String): String =
     todayEpochDay?.let { today ->
-        formatSlockTimestampLabel(value, localOffsetMinutes, today)
+        formatSlockTimestampLabel(value, localOffsetMinutes, today, timeFormat)
     } ?: value
 
 private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =

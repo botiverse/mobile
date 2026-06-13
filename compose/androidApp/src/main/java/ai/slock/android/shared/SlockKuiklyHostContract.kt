@@ -1,6 +1,7 @@
 package ai.slock.android.shared
 
 import ai.slock.compose.model.slockEpochDayForDate
+import ai.slock.compose.model.SlockTimeFormat24Hour
 import java.time.LocalDate
 import java.time.ZoneId
 import org.json.JSONObject
@@ -85,5 +86,8 @@ private fun MutableMap<String, Any>.putHostTimeContextIfAbsent() {
     }
     if (!containsKey("nowEpochMillis")) {
         put("nowEpochMillis", java.time.Instant.now().toEpochMilli())
+    }
+    if (!containsKey("timeFormat")) {
+        put("timeFormat", SlockTimeFormat24Hour)
     }
 }

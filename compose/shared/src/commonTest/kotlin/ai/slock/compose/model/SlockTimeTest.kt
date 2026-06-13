@@ -19,6 +19,24 @@ class SlockTimeTest {
     }
 
     @Test
+    fun formatsTodayWithPreferredTwelveHourClock() {
+        val today = slockEpochDayForDate(2026, 5, 9)
+
+        assertEquals(
+            "10:00 PM",
+            formatSlockTimestampLabel("2026-05-09T22:00:00+08:00", 480, today, SlockTimeFormat12Hour)
+        )
+        assertEquals(
+            "12:05 AM",
+            formatSlockTimestampLabel("2026-05-09T00:05:00+08:00", 480, today, SlockTimeFormat12Hour)
+        )
+        assertEquals(
+            "12:05 PM",
+            formatSlockTimestampLabel("2026-05-09T12:05:00+08:00", 480, today, SlockTimeFormat12Hour)
+        )
+    }
+
+    @Test
     fun handlesServerMicrosecondUtcHourOffset() {
         val today = slockEpochDayForDate(2026, 5, 10)
 
@@ -39,6 +57,10 @@ class SlockTimeTest {
             formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", 480)
         )
         assertEquals("13:55:27", formatSlockTimestampClockWithSeconds("1781099727466", 0))
+        assertEquals(
+            "01:55:27 PM",
+            formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", 0, SlockTimeFormat12Hour)
+        )
     }
 
     @Test
@@ -47,6 +69,10 @@ class SlockTimeTest {
 
         assertEquals("22:00", formatSlockTimestampLabel("2026-05-10T22:00:00+08:00", 480, today))
         assertEquals("05-09 22:00", formatSlockTimestampLabel("2026-05-09T22:00:00+08:00", 480, today))
+        assertEquals(
+            "05-09 10:00 PM",
+            formatSlockTimestampLabel("2026-05-09T22:00:00+08:00", 480, today, SlockTimeFormat12Hour)
+        )
         assertEquals(
             "2025-12-31 23:58",
             formatSlockTimestampLabel("2025-12-31T23:58:00+08:00", 480, today)

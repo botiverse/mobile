@@ -191,6 +191,8 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.normalizeSlockTimeFormatPreference
+import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.slockEpochMillisUtcIso
 import ai.slock.compose.model.slockStartOfDayUtcIso
 import ai.slock.compose.model.threadIdentity
@@ -830,7 +832,7 @@ private fun SlockAppShellContent() {
             )
         }
     val homeState by homeViewModel.state.collectAsState()
-    val threadTimeContext = remember(pager.pageData.params.toString()) {
+    val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
     val homeSearchSavedViewModel: SharedHomeSearchSavedViewModel =
@@ -840,7 +842,7 @@ private fun SlockAppShellContent() {
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
-                timeRangeBoundsProvider = { range -> pager.pageData.params.threadTimeContext().toSearchIsoBounds(range) }
+                timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) }
             )
         }
     val homeSearchSavedState by homeSearchSavedViewModel.state.collectAsState()
@@ -857,6 +859,14 @@ private fun SlockAppShellContent() {
             SharedSettingsViewModel(settingsDataSource)
         }
     val settingsState by settingsViewModel.state.collectAsState()
+    val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
+    val loadedSettingsTimeFormat =
+        (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
+    val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
+    val threadTimeContext =
+        remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
+            hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
+        }
     val navController = rememberNavController()
     val shellScope = rememberSlockAppShellScope()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
@@ -975,8 +985,6 @@ private fun SlockAppShellContent() {
         }
         is SharedAuthGateState.Ready -> Unit
     }
-    val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
-
     DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
         val accessToken = readySession?.accessToken
@@ -1088,6 +1096,7 @@ private fun SlockAppShellContent() {
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: 0,
             todayEpochDay = threadTimeContext?.todayEpochDay,
+            timeFormat = threadTimeContext?.timeFormat ?: SlockTimeFormat24Hour,
             emptyTitle = "Opening channel",
             emptyDetail = "Locating the original message."
         )
@@ -1610,6 +1619,7 @@ private fun SlockAppShellContent() {
                                         }
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    timeContext = threadTimeContext,
                                     shellScope = shellScope
                                 )
                             } else if (selectedHomeDestination == HomeDestinationSaved) {
@@ -5117,6 +5127,7 @@ private fun SharedHomeSearchPanel(
     onOpenItem: (InboxItem) -> Unit,
     onOpenEntity: (SearchEntityResult) -> Unit,
     bottomContentPadding: Dp,
+    timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier.fillMaxSize()
 ) {
@@ -5219,6 +5230,7 @@ private fun SharedHomeSearchPanel(
                         item(key = group.item.key) {
                             SharedHomeSearchMessageResultRow(
                                 item = group.item,
+                                timeContext = timeContext,
                                 onOpen = { onOpenItem(group.item) }
                             )
                         }
@@ -5227,6 +5239,7 @@ private fun SharedHomeSearchPanel(
                         item(key = group.key) {
                             SharedHomeThreadResultGroup(
                                 group = group,
+                                timeContext = timeContext,
                                 onOpenItem = onOpenItem
                             )
                         }
@@ -6140,6 +6153,7 @@ private fun SharedHomeEntityTypeBadge(type: SearchEntityType) {
 @Composable
 private fun SharedHomeThreadResultGroup(
     group: HomeSearchResultGroup.Thread,
+    timeContext: AppShellThreadTimeContext? = null,
     onOpenItem: (InboxItem) -> Unit
 ) {
     val firstItem = group.items.firstOrNull()
@@ -6196,7 +6210,7 @@ private fun SharedHomeThreadResultGroup(
                     Spacer(Modifier.weight(1f))
                     if (!latestTime.isNullOrBlank()) {
                         Text(
-                            text = latestTime,
+                            text = latestTime.formatSavedTimestamp(timeContext),
                             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
                             color = SlockColor.TextMutedGray,
                             maxLines = 1
@@ -6221,6 +6235,7 @@ private fun SharedHomeThreadResultGroup(
             SharedHomeSearchMessageResultRow(
                 item = firstItem,
                 nested = true,
+                timeContext = timeContext,
                 onOpen = { onOpenItem(firstItem) }
             )
         }
@@ -6231,6 +6246,7 @@ private fun SharedHomeThreadResultGroup(
 private fun SharedHomeSearchMessageResultRow(
     item: InboxItem,
     nested: Boolean = false,
+    timeContext: AppShellThreadTimeContext? = null,
     onOpen: () -> Unit
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
@@ -6285,7 +6301,7 @@ private fun SharedHomeSearchMessageResultRow(
                 Spacer(Modifier.weight(1f))
             }
             Text(
-                text = time ?: "",
+                text = time?.formatSavedTimestamp(timeContext).orEmpty(),
                 style = SlockType.Caption.copy(fontSize = if (compactMeta) 9.sp else 10.sp, lineHeight = if (compactMeta) 11.sp else 12.sp, letterSpacing = 0.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1
@@ -6847,20 +6863,25 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
 internal data class AppShellThreadTimeContext(
     val localOffsetMinutes: Int,
     val todayEpochDay: Long,
-    val nowEpochMillis: Long? = null
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour
 ) {
     fun formatTimestampLabel(value: String): String =
-        formatSlockTimestampLabel(value, localOffsetMinutes, todayEpochDay)
+        formatSlockTimestampLabel(value, localOffsetMinutes, todayEpochDay, timeFormat)
 }
 
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
     timeContext?.formatTimestampLabel(this) ?: this
 
+private fun AppShellThreadTimeContext?.withTimeFormat(timeFormat: String?): AppShellThreadTimeContext? =
+    this?.copy(timeFormat = normalizeSlockTimeFormatPreference(timeFormat ?: this.timeFormat))
+
 private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
     val today = optString("todayEpochDay").toLongOrNull() ?: return null
     val now = optString("nowEpochMillis").toLongOrNull()
-    return AppShellThreadTimeContext(offset, today, now)
+    val timeFormat = normalizeSlockTimeFormatPreference(optString("timeFormat").takeIf { it.isNotBlank() })
+    return AppShellThreadTimeContext(offset, today, now, timeFormat)
 }
 
 private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange): SearchIsoBounds {
@@ -6928,6 +6949,7 @@ internal fun buildAppShellThreadPayload(
         membersCount = conversation.memberCount ?: 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
         showMembersAction = !isReplyThread,
         showSettingsAction = !isReplyThread,
         settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActions(),
@@ -7072,6 +7094,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         originStatus = if (parentMessage != null) "loaded" else "idle",
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
         showMembersAction = false,
         showSettingsAction = false,
         emptyTitle = "Opening task",

@@ -56,6 +56,7 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -226,6 +227,7 @@ internal data class KuiklyThreadScreenPayload(
     val alignOwnMessagesRight: Boolean = false,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour,
     val messages: List<KuiklyThreadMessageItem> = emptyList(),
     val originMessage: KuiklyThreadMessageItem? = null,
     val originPreview: String? = null,
@@ -3489,7 +3491,7 @@ private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
 
 internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
     todayEpochDay?.let { today ->
-        formatSlockTimestampLabel(value, localOffsetMinutes, today)
+        formatSlockTimestampLabel(value, localOffsetMinutes, today, timeFormat)
     } ?: value
 
 private data class ThreadVisibleMessageAnchor(

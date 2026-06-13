@@ -230,6 +230,29 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun socialCompleteStoresCurrentUserPreferredTimeFormat() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        val api =
+            FakeAuthApi(
+                currentUserResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(
+                                200,
+                                """{"id":"user-1","email":"user@slock.ai","displayName":"Artin","preferredTimeFormat":"12h"}"""
+                            )
+                        )
+                    )
+            )
+        val source = SharedAuthDataSource(transport = api, sessionStore = store)
+
+        val result = source.completeSocialLogin("google", "social-code")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("12h", store.readSession()?.user?.preferredTimeFormat)
+    }
+
+    @Test
     fun googleIdTokenCompleteWritesStoredSessionAndFetchesServers() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val api = FakeAuthApi()

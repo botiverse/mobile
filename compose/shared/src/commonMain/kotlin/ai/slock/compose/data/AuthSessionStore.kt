@@ -76,7 +76,9 @@ data class StoredAuthUser(
     val description: String? = null,
     val avatarUrl: String? = null,
     val gravatarHash: String? = null,
-    val emailVerified: Boolean? = null
+    val emailVerified: Boolean? = null,
+    val preferredTimeFormat: String? = null,
+    val timeFormat: String? = null
 ) {
     val bestDisplayName: String
         get() =
