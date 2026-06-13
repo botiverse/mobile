@@ -6885,7 +6885,6 @@ internal fun buildAppShellThreadPayload(
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
-    val anchoredParentMessageId = anchorMessageId ?: parentMessageId
     val canSend = conversation.joined && conversation.permissions.canSend
     val composer =
         buildThreadSurfaceComposerPayload(
@@ -6912,7 +6911,8 @@ internal fun buildAppShellThreadPayload(
         sourceThreadId = conversation.threadId.value,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
-        parentMessageId = anchoredParentMessageId,
+        parentMessageId = parentMessageId,
+        originParentMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = !isReplyThread,

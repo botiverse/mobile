@@ -8,12 +8,15 @@ pluginManagement {
 
     fun runChecked(workingDir: File, vararg command: String) {
         println("prepare OHOS dependency: ${command.joinToString(" ")}")
-        val result =
+        val builder =
             ProcessBuilder(*command)
                 .directory(workingDir)
                 .inheritIO()
-                .start()
-                .waitFor()
+        if (command.firstOrNull() == "git") {
+            builder.environment()["GIT_CONFIG_GLOBAL"] =
+                System.getenv("SLOCK_GIT_CONFIG_GLOBAL") ?: "/dev/null"
+        }
+        val result = builder.start().waitFor()
         check(result == 0) {
             "OHOS dependency preparation failed (${command.joinToString(" ")}), exit code $result"
         }
@@ -109,6 +112,8 @@ pluginManagement {
     }
 
     if (needsMokoResources) {
+        ensureSubmodule("third_party/moko-graphics")
+        ensureSubmodule("third_party/moko-resources")
         runChecked(
             slockRoot,
             "./scripts/prepare_moko_resources_ohos_kba.sh"

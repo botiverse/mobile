@@ -5,8 +5,9 @@ set -euo pipefail
 # Public CPF moko-resources 0.26.0-0.3.0 is compiled with Kotlin/Native
 # 2.2.21-0.3.0 (KLIB ABI 2.2.0), while Slock currently uses
 # 2.0.21-KBA-010 (KLIB ABI 1.8.0). This script pins the OHOS forks,
-# applies the minimal KBA compatibility patches, and publishes only the
-# core resources artifacts needed by the shared module.
+# applies the minimal KBA compatibility patches from vendored third_party
+# sources, and publishes only the core resources artifacts needed by the
+# shared module.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -15,18 +16,15 @@ KBA_KOTLIN_VERSION="2.0.21-KBA-010"
 MOKO_GRAPHICS_VERSION="0.10.1-KBA-010"
 MOKO_RESOURCES_VERSION="0.26.0-KBA-010"
 
-GRAPHICS_REPO_URL="${SLOCK_MOKO_GRAPHICS_REPO_URL:-https://github.com/icerockdev/moko-graphics.git}"
-GRAPHICS_REF="${SLOCK_MOKO_GRAPHICS_REF:-master}"
 GRAPHICS_COMMIT="${SLOCK_MOKO_GRAPHICS_COMMIT:-c0e7ef83a243d17772a89be732ef64fb3463ed82}"
-RESOURCES_REPO_URL="${SLOCK_MOKO_RESOURCES_REPO_URL:-https://gitcode.com/CPF-KMP-CMP/moko-resources.git}"
-RESOURCES_BRANCH="${SLOCK_MOKO_RESOURCES_BRANCH:-main-0.26.0-OH}"
 RESOURCES_COMMIT="${SLOCK_MOKO_RESOURCES_COMMIT:-df9c1a8dc2c6c9c53fc3d608b6e987079995b534}"
 
 THIRD_PARTY_ROOT="${SLOCK_THIRD_PARTY_WORKDIR:-${REPO_ROOT}/third_party/.workdirs}"
+GRAPHICS_SOURCE_DIR="${SLOCK_MOKO_GRAPHICS_SOURCE_DIR:-${REPO_ROOT}/third_party/moko-graphics}"
+RESOURCES_SOURCE_DIR="${SLOCK_MOKO_RESOURCES_SOURCE_DIR:-${REPO_ROOT}/third_party/moko-resources}"
 GRAPHICS_WORKDIR="${SLOCK_MOKO_GRAPHICS_WORKDIR:-${THIRD_PARTY_ROOT}/moko-graphics-kba}"
 RESOURCES_WORKDIR="${SLOCK_MOKO_RESOURCES_WORKDIR:-${THIRD_PARTY_ROOT}/moko-resources-kba}"
 MAVEN_LOCAL="${SLOCK_MAVEN_LOCAL:-${HOME}/.m2/repository}"
-GIT_CONFIG_GLOBAL_FOR_CLONE="${SLOCK_GIT_CONFIG_GLOBAL:-/dev/null}"
 
 force=0
 if [[ "${1:-}" == "--force" ]]; then
@@ -84,21 +82,35 @@ EOF
   fi
 }
 
-checkout_repo() {
-  local url="$1"
+prepare_workdir_from_vendor() {
+  local source_dir="$1"
   local workdir="$2"
-  local ref="$3"
-  local commit="$4"
+  local expected_commit="$3"
 
-  mkdir -p "$(dirname "${workdir}")"
-  if [[ ! -d "${workdir}/.git" ]]; then
-    GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL_FOR_CLONE}" git clone "${url}" "${workdir}"
+  if ! git -C "${source_dir}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    cat >&2 <<EOF
+Missing vendored moko source: ${source_dir}
+Run git submodule update --init ${source_dir#"${REPO_ROOT}/"} first.
+EOF
+    exit 4
   fi
 
-  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL_FOR_CLONE}" git -C "${workdir}" fetch origin "${ref}" --tags
-  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL_FOR_CLONE}" git -C "${workdir}" checkout "${commit}"
-  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL_FOR_CLONE}" git -C "${workdir}" reset --hard "${commit}"
-  GIT_CONFIG_GLOBAL="${GIT_CONFIG_GLOBAL_FOR_CLONE}" git -C "${workdir}" clean -fdx
+  local actual_commit
+  actual_commit="$(git -C "${source_dir}" rev-parse HEAD)"
+  if [[ "${actual_commit}" != "${expected_commit}" ]]; then
+    cat >&2 <<EOF
+Vendored moko source is at ${actual_commit}, expected ${expected_commit}: ${source_dir}
+Run git submodule update --init ${source_dir#"${REPO_ROOT}/"} to restore the pinned source.
+EOF
+    exit 4
+  fi
+
+  rm -rf "${workdir}"
+  mkdir -p "$(dirname "${workdir}")"
+  git clone --no-hardlinks "${source_dir}" "${workdir}"
+  git -C "${workdir}" checkout "${expected_commit}"
+  git -C "${workdir}" reset --hard "${expected_commit}"
+  git -C "${workdir}" clean -fdx
 }
 
 patch_graphics() {
@@ -571,7 +583,7 @@ fi
 
 copy_cached_kotlin_stdlib_to_maven_local
 
-checkout_repo "${GRAPHICS_REPO_URL}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_REF}" "${GRAPHICS_COMMIT}"
+prepare_workdir_from_vendor "${GRAPHICS_SOURCE_DIR}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_COMMIT}"
 patch_graphics
 "${GRAPHICS_WORKDIR}/gradlew" \
   --no-daemon \
@@ -580,7 +592,7 @@ patch_graphics
   :graphics:publishKotlinMultiplatformPublicationToMavenLocal \
   :graphics:publishOhosArm64PublicationToMavenLocal
 
-checkout_repo "${RESOURCES_REPO_URL}" "${RESOURCES_WORKDIR}" "${RESOURCES_BRANCH}" "${RESOURCES_COMMIT}"
+prepare_workdir_from_vendor "${RESOURCES_SOURCE_DIR}" "${RESOURCES_WORKDIR}" "${RESOURCES_COMMIT}"
 patch_resources
 "${RESOURCES_WORKDIR}/gradlew" \
   --no-daemon \
