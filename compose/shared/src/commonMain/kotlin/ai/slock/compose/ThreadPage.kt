@@ -2715,9 +2715,9 @@ private fun ThreadPageContent(
                         modifier = Modifier.fillMaxWidth()
                             .padding(
                                 start = SlockSpacing.Sm,
-                                top = SlockSpacing.Sm,
+                                top = 12.dp,
                                 end = SlockSpacing.Sm,
-                                bottom = SlockSpacing.Sm + composerKeyboardInsetDp.dp
+                                bottom = 12.dp + composerKeyboardInsetDp.dp
                             )
                     ) {
                         ThreadComposerContent(
@@ -2728,7 +2728,9 @@ private fun ThreadPageContent(
                                 if (nextInset != composerKeyboardInsetDp) {
                                     composerKeyboardInsetDp = nextInset
                                 }
-                            }
+                            },
+                            contentPaddingTop = 0.dp,
+                            contentPaddingBottom = 0.dp
                         )
                     }
                 }

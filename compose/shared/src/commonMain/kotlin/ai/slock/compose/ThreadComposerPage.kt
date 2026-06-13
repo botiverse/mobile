@@ -38,6 +38,7 @@ import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
@@ -50,6 +51,9 @@ import kotlinx.serialization.json.Json
 
 private const val THREAD_COMPOSER_VISUAL_PAGE = "compose_thread_composer_visual"
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
+private val ThreadComposerStandaloneTopPadding = 10.dp
+private val ThreadComposerStandaloneBottomPadding = 8.dp
+private val ThreadComposerTextFieldMinHeight = 20.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
 
 // Connected visual-test entry only. Product Thread renders ThreadComposerContent inside ThreadPage.
@@ -368,7 +372,9 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
 internal fun ThreadComposerContent(
     payload: KuiklyThreadComposerPayload,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
-    onKeyboardHeightChange: (Float) -> Unit = {}
+    onKeyboardHeightChange: (Float) -> Unit = {},
+    contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
+    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
 ) {
     ThreadComposerContent(
         surface =
@@ -377,7 +383,9 @@ internal fun ThreadComposerContent(
             ),
         state = payload.toThreadComposerUiState(),
         onEvent = onEvent,
-        onKeyboardHeightChange = onKeyboardHeightChange
+        onKeyboardHeightChange = onKeyboardHeightChange,
+        contentPaddingTop = contentPaddingTop,
+        contentPaddingBottom = contentPaddingBottom
     )
 }
 
@@ -386,7 +394,9 @@ internal fun ThreadComposerContent(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
-    onKeyboardHeightChange: (Float) -> Unit = {}
+    onKeyboardHeightChange: (Float) -> Unit = {},
+    contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
+    contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
 ) {
     var fieldValue by remember(state.instanceId) {
         mutableStateOf(state.seedText.toComposerFieldValueAtEnd())
@@ -467,7 +477,7 @@ internal fun ThreadComposerContent(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 10.dp, bottom = 8.dp),
+                .padding(top = contentPaddingTop, bottom = contentPaddingBottom),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             state.statusLabel?.takeIf { it.isNotBlank() }?.let { status ->
@@ -571,7 +581,7 @@ internal fun ThreadComposerContent(
                         ),
                         textStyle = SlockType.Input.copy(
                             color = if (composerEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                            fontSize = 13.sp,
+                            fontSize = 16.sp,
                             lineHeight = 20.sp
                         ),
                         keyboardHeightChange = { params ->
@@ -579,7 +589,8 @@ internal fun ThreadComposerContent(
                         },
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                        // React mobile uses a one-line textarea; keep the toolbar as the touch target.
+                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerTextFieldMinHeight)
                     )
                     if (state.hookLabels.isNotEmpty()) {
                         Text(
