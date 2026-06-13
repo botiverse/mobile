@@ -1060,7 +1060,7 @@ private fun SlockAppShellContent() {
             anchorMessageId = anchorMessageId
         )
 
-    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = false) {
+    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"

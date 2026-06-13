@@ -9,29 +9,41 @@ import fs from '@ohos.file.fs';
 export class SlockNetworkModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = 'HRSlockNetworkModule';
   private static readonly REQUEST = 'request';
+  private static readonly CANCEL = 'cancel';
+  private readonly activeRequests: Map<string, http.HttpRequest> = new Map();
+  private readonly canceledRequests: Set<string> = new Set();
 
   syncMode(): boolean {
     return false;
   }
 
-  call(method: string, params: KRAny, callback: KuiklyRenderCallback): KRAny {
+  call(method: string, params: KRAny, callback: KuiklyRenderCallback | null): KRAny {
     switch (method) {
       case SlockNetworkModule.REQUEST: {
         this.request(params, callback);
         break;
       }
+      case SlockNetworkModule.CANCEL: {
+        this.cancel(params);
+        break;
+      }
       default: {
-        callback({ 'code': -1, 'message': 'Method not implemented' });
+        callback?.({ 'code': -1, 'message': `Method not implemented: ${method}` });
         break;
       }
     }
     return null;
   }
 
-  private async request(params: KRAny, callback: KuiklyRenderCallback) {
+  private async request(params: KRAny, callback: KuiklyRenderCallback | null) {
     const client = http.createHttp();
+    const command = this.parseRecord(params);
+    const requestId = this.requestId(command);
+    if (requestId !== null) {
+      this.canceledRequests.delete(requestId);
+      this.activeRequests.set(requestId, client);
+    }
     try {
-      const command = this.parseRecord(params);
       const response = await client.request(command['url'] as string, {
         method: this.requestMethod(((command['method'] as string) ?? 'GET').toUpperCase()),
         header: this.stringRecord(command['headers']),
@@ -39,23 +51,55 @@ export class SlockNetworkModule extends KuiklyRenderBaseModule {
         connectTimeout: Number(command['timeoutMillis'] ?? 30000),
         readTimeout: Number(command['timeoutMillis'] ?? 30000)
       });
+      if (this.isCanceled(requestId)) {
+        return;
+      }
       const responseCode = Number(response.responseCode ?? 0);
       const body = this.httpResultToString(response.result);
-      callback({
+      callback?.({
         'code': responseCode,
         'bodyText': responseCode >= 200 && responseCode < 300 ? body : '',
         'errorBodyText': responseCode >= 200 && responseCode < 300 ? '' : body
       });
     } catch (error) {
+      if (this.isCanceled(requestId)) {
+        return;
+      }
       const businessError = error as BusinessError;
-      callback({
+      callback?.({
         'code': 0,
         'bodyText': '',
         'errorBodyText': businessError.message ?? `${error}`,
         'message': businessError.message ?? `${error}`
       });
     } finally {
+      if (requestId !== null) {
+        this.activeRequests.delete(requestId);
+        this.canceledRequests.delete(requestId);
+      }
+      this.destroyClient(client);
+    }
+  }
+
+  private cancel(params: KRAny) {
+    const command = this.parseRecord(params);
+    const requestId = this.requestId(command);
+    if (requestId === null) {
+      return;
+    }
+    this.canceledRequests.add(requestId);
+    const client = this.activeRequests.get(requestId);
+    if (client !== undefined) {
+      this.activeRequests.delete(requestId);
+      this.destroyClient(client);
+    }
+  }
+
+  private destroyClient(client: http.HttpRequest) {
+    try {
       client.destroy();
+    } catch (_error) {
+      // A cancellation may destroy the client before the request coroutine reaches finally.
     }
   }
 
@@ -205,5 +249,18 @@ export class SlockNetworkModule extends KuiklyRenderBaseModule {
       return JSON.parse(params) as Record<string, Object>;
     }
     return params as Record<string, Object>;
+  }
+
+  private requestId(command: Record<string, Object>): string | null {
+    const raw = command['requestId'];
+    if (raw === undefined || raw === null) {
+      return null;
+    }
+    const value = `${raw}`;
+    return value.length > 0 ? value : null;
+  }
+
+  private isCanceled(requestId: string | null): boolean {
+    return requestId !== null && this.canceledRequests.has(requestId);
   }
 }
