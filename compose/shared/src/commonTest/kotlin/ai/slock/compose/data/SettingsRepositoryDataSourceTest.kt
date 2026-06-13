@@ -480,11 +480,15 @@ class SettingsRepositoryDataSourceTest {
         val detail = result.data
         assertEquals("MacBook", detail.computer.name)
         assertTrue(detail.workspaces.isEmpty())
-        assertEquals("server_unavailable", detail.workspacesError?.code)
+        // 503 from server route means "machine offline" (fly-replay didn't kick in),
+        // see server/routes/servers.ts runtime-models handler — surfaces as
+        // structured "machine_offline" code so the Settings page can show retry copy
+        // for that specific case instead of generic server_unavailable.
+        assertEquals("machine_offline", detail.workspacesError?.code)
         assertEquals(true, detail.workspacesError?.retryable)
         assertEquals("server_forbidden", detail.agentsError?.code)
         assertEquals(false, detail.agentsError?.retryable)
-        assertTrue(logs.any { it.contains("section=workspaces result=error code=server_unavailable") })
+        assertTrue(logs.any { it.contains("section=workspaces result=error code=machine_offline") })
         assertTrue(logs.any { it.contains("section=agents result=noPermission code=server_forbidden") })
         assertTrue(logs.none { it.contains("Bearer") || it.contains("token", ignoreCase = true) })
     }

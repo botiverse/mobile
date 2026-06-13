@@ -128,7 +128,7 @@ internal class SlockComputersApiClient(
     suspend fun renameMachine(serverId: ServerId, machineId: String, name: String): DataResult<ComputerSummary> =
         transport.renameMachine(serverId, machineId, buildRenameComputerBody(name)).mapComputersBody(
             "computer_rename_contract_mismatch",
-            ComputerDto.serializer()
+            MachineRenameDto.serializer()
         ) { it.toSummary() }
 
     suspend fun deleteMachine(serverId: ServerId, machineId: String): DataResult<ComputerCommandResult> =
@@ -188,10 +188,15 @@ internal data class ComputerListSummary(
 internal data class ComputerSummary(
     val id: String,
     val name: String,
-    val status: String,
+    val status: ComputerStatus,
+    val statusVersion: Long,
+    val apiKeyPrefix: String?,
+    val runtimes: List<String>,
     val daemonVersion: String?,
     val hostname: String?,
-    val os: String?
+    val os: String?,
+    val lastHeartbeat: String?,
+    val createdAt: String?
 )
 
 internal data class ComputerRegistrationSummary(val machine: ComputerSummary, val apiKeyPrefix: String)
@@ -243,6 +248,10 @@ private fun <T> HomeNetworkResponse.toComputersDataError(): DataResult<T> =
     when (code) {
         401 -> DataResult.NoPermission(PermissionBlocker(code = "auth_required", requiredCapability = "auth_session"))
         403 -> DataResult.NoPermission(PermissionBlocker(code = "server_forbidden", requiredCapability = "server_access"))
+        307 -> DataResult.Error(ScreenError(code = "machine_offline_replay", retryable = true))
+        400 -> DataResult.Error(ScreenError(code = "computer_bad_request", retryable = false))
+        409 -> DataResult.Error(ScreenError(code = "computer_has_agents", retryable = false))
+        503 -> DataResult.Error(ScreenError(code = "machine_offline", retryable = true))
         in 500..599 -> DataResult.Error(ScreenError(code = "server_unavailable", retryable = true))
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
@@ -263,20 +272,83 @@ private data class ComputerDto(
     val id: String,
     val name: String,
     val status: String,
+    val statusVersion: Long = 0L,
+    val apiKeyPrefix: String? = null,
+    val runtimes: List<String> = emptyList(),
     val daemonVersion: String? = null,
     val hostname: String? = null,
-    val os: String? = null
+    val os: String? = null,
+    val lastHeartbeat: String? = null,
+    val createdAt: String? = null
 )
 
+/**
+ * Server returns the raw `machines` row for `PATCH /machines/:id` (it does NOT
+ * enrich the response with `status` / `statusVersion` / `runtimes` defaults).
+ * Use this DTO for rename so we don't mis-classify the missing status field
+ * as a contract mismatch. Other rename-derived fields (apiKeyPrefix /
+ * lastHeartbeat / createdAt) are kept optional for the same reason.
+ */
+@Serializable
+private data class MachineRenameDto(
+    val id: String,
+    val name: String,
+    val status: String? = null,
+    val statusVersion: Long? = null,
+    val apiKeyPrefix: String? = null,
+    val runtimes: List<String> = emptyList(),
+    val daemonVersion: String? = null,
+    val hostname: String? = null,
+    val os: String? = null,
+    val lastHeartbeat: String? = null,
+    val createdAt: String? = null
+)
+
+internal enum class ComputerStatus(val wire: String) {
+    Online("online"),
+    Offline("offline"),
+    Unknown("");
+
+    companion object {
+        fun fromWire(value: String?): ComputerStatus = when (value) {
+            "online" -> Online
+            "offline" -> Offline
+            else -> Unknown
+        }
+    }
+}
+
 private fun ComputerDto.toSummary(): ComputerSummary? {
-    if (id.isBlank() || name.isBlank() || status.isBlank()) return null
+    if (id.isBlank() || name.isBlank()) return null
     return ComputerSummary(
         id = id,
         name = name,
-        status = status,
+        status = ComputerStatus.fromWire(status),
+        statusVersion = statusVersion,
+        apiKeyPrefix = apiKeyPrefix,
+        runtimes = runtimes,
         daemonVersion = daemonVersion,
         hostname = hostname,
-        os = os
+        os = os,
+        lastHeartbeat = lastHeartbeat,
+        createdAt = createdAt
+    )
+}
+
+private fun MachineRenameDto.toSummary(): ComputerSummary? {
+    if (id.isBlank() || name.isBlank()) return null
+    return ComputerSummary(
+        id = id,
+        name = name,
+        status = ComputerStatus.fromWire(status),
+        statusVersion = statusVersion ?: 0L,
+        apiKeyPrefix = apiKeyPrefix,
+        runtimes = runtimes,
+        daemonVersion = daemonVersion,
+        hostname = hostname,
+        os = os,
+        lastHeartbeat = lastHeartbeat,
+        createdAt = createdAt
     )
 }
 

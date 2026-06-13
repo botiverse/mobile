@@ -13,7 +13,16 @@ class ComputersApiTest {
         val client = SlockComputersApiClient(transport)
         val serverId = ServerId("server-1")
 
-        assertEquals(1, assertIs<DataResult.Content<ComputerListSummary>>(client.machines(serverId)).data.machineCount)
+        val machines = assertIs<DataResult.Content<ComputerListSummary>>(client.machines(serverId)).data
+        assertEquals(1, machines.machineCount)
+        val firstMachine = machines.machines.single()
+        assertEquals(ComputerStatus.Online, firstMachine.status)
+        assertEquals(7L, firstMachine.statusVersion)
+        assertEquals("sk_machine_abc", firstMachine.apiKeyPrefix)
+        assertEquals(listOf("claude", "codex"), firstMachine.runtimes)
+        assertEquals("2026-06-14T02:00:00.000Z", firstMachine.lastHeartbeat)
+        assertEquals("2026-05-01T00:00:00.000Z", firstMachine.createdAt)
+
         assertEquals("machine-1", assertIs<DataResult.Content<ComputerRegistrationSummary>>(client.registerMachine(serverId, "Maria")).data.machine.id)
         assertEquals("Maria Laptop", assertIs<DataResult.Content<ComputerSummary>>(client.renameMachine(serverId, "machine-1", "Maria Laptop")).data.name)
         assertEquals(true, assertIs<DataResult.Content<ComputerCommandResult>>(client.deleteMachine(serverId, "machine-1")).data.ok)
@@ -35,6 +44,44 @@ class ComputersApiTest {
             ),
             transport.calls
         )
+    }
+
+    @Test
+    fun typedComputersApiAcceptsRawRowShapeForRename() = runBlocking {
+        // Server returns the raw machines DB row for PATCH (no status / statusVersion
+        // enrichment). The typed API must accept this shape, NOT flag it as contract
+        // mismatch, and still produce a ComputerSummary with name + id propagated.
+        val transport = RecordingComputersApi(
+            renameBody = """{"id":"machine-1","name":"Maria Laptop","apiKeyPrefix":"sk_machine_abc","hostname":"maria.local","createdAt":"2026-05-01T00:00:00.000Z"}"""
+        )
+        val client = SlockComputersApiClient(transport)
+        val serverId = ServerId("server-1")
+
+        val renamed = assertIs<DataResult.Content<ComputerSummary>>(client.renameMachine(serverId, "machine-1", "Maria Laptop")).data
+        assertEquals("machine-1", renamed.id)
+        assertEquals("Maria Laptop", renamed.name)
+        assertEquals("sk_machine_abc", renamed.apiKeyPrefix)
+        assertEquals(ComputerStatus.Unknown, renamed.status)
+        assertEquals(0L, renamed.statusVersion)
+    }
+
+    @Test
+    fun typedComputersApiMapsHttpErrorsToStructuredCodes() = runBlocking {
+        // 307 fly-replay, 400 bad request, 409 has-agents, 503 machine offline each
+        // produce a specific structured error code so the Settings page can show
+        // human-readable copy instead of "http_307".
+        val transport = RecordingComputersApi()
+        val client = SlockComputersApiClient(transport)
+        val serverId = ServerId("server-1")
+
+        transport.respond = { code -> HomeNetworkResponse(code = code, bodyText = """{"error":"x"}""") }
+        assertEquals("machine_offline_replay", assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error.code)
+        assertEquals(true, assertIs<DataResult.Error>(client.machineWorkspaces(serverId, "m")).error.retryable)
+        assertEquals("computer_bad_request", assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.code)
+        assertEquals(false, assertIs<DataResult.Error>(client.renameMachine(serverId, "m", "n")).error.retryable)
+        assertEquals("computer_has_agents", assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.code)
+        assertEquals(false, assertIs<DataResult.Error>(client.deleteMachine(serverId, "m")).error.retryable)
+        assertEquals("server_forbidden", assertIs<DataResult.NoPermission>(client.machines(serverId)).blocker.code)
     }
 
     @Test
@@ -64,52 +111,53 @@ class ComputersApiTest {
 
     private class RecordingComputersApi(
         private val machinesBody: String =
-            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin"}],"latestDaemonVersion":"0.53.0"}""",
+            """{"machines":[{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}],"latestDaemonVersion":"0.53.0"}""",
         private val registerBody: String =
-            """{"machine":{"id":"machine-1","name":"Maria","status":"offline","daemonVersion":null,"hostname":null,"os":null},"apiKey":"sk_machine_123456"}""",
+            """{"machine":{"id":"machine-1","name":"Maria","status":"offline","statusVersion":0,"apiKeyPrefix":"sk_machine_123456","runtimes":[],"daemonVersion":null,"hostname":null,"os":null,"lastHeartbeat":null,"createdAt":null},"apiKey":"sk_machine_123456"}""",
         private val renameBody: String =
-            """{"id":"machine-1","name":"Maria Laptop","status":"online","daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin"}""",
+            """{"id":"machine-1","name":"Maria Laptop","status":"online","statusVersion":7,"apiKeyPrefix":"sk_machine_abc","runtimes":["claude","codex"],"daemonVersion":"0.53.0","hostname":"maria.local","os":"darwin","lastHeartbeat":"2026-06-14T02:00:00.000Z","createdAt":"2026-05-01T00:00:00.000Z"}""",
         private val commandBody: String = """{"ok":true}""",
         private val rotateBody: String = """{"apiKey":"sk_machine_123456"}""",
         private val workspacesBody: String =
             """[{"directoryName":"agent-live","totalSizeBytes":2048,"lastModified":"2026-05-26T00:00:00.000Z","fileCount":12,"status":"active","agentName":"Noel","agentStatus":"active"},{"directoryName":"agent-old","totalSizeBytes":1,"lastModified":"2026-05-25T00:00:00.000Z","fileCount":1,"status":"orphan","agentName":null,"agentStatus":null}]""",
         private val runtimeModelsBody: String = """{"models":["sonnet","opus"],"default":"sonnet"}"""
     ) : SlockComputersApi {
+        var respond: ((Int) -> HomeNetworkResponse)? = null
         val calls = mutableListOf<String>()
 
         override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
             calls += "GET servers/${serverId.value}/machines"
-            return ok(machinesBody)
+            return respond?.invoke(403) ?: ok(machinesBody)
         }
 
         override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse {
             calls += "POST servers/${serverId.value}/machines body=$body"
-            return ok(registerBody)
+            return respond?.invoke(403) ?: ok(registerBody)
         }
 
         override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse {
             calls += "PATCH servers/${serverId.value}/machines/$machineId body=$body"
-            return ok(renameBody)
+            return respond?.invoke(400) ?: ok(renameBody)
         }
 
         override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse {
             calls += "DELETE servers/${serverId.value}/machines/$machineId"
-            return ok(commandBody)
+            return respond?.invoke(409) ?: ok(commandBody)
         }
 
         override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse {
             calls += "POST servers/${serverId.value}/machines/$machineId/rotate-key"
-            return ok(rotateBody)
+            return respond?.invoke(403) ?: ok(rotateBody)
         }
 
         override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse {
             calls += "GET servers/${serverId.value}/machines/$machineId/workspaces"
-            return ok(workspacesBody)
+            return respond?.invoke(307) ?: ok(workspacesBody)
         }
 
         override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse {
             calls += "GET servers/${serverId.value}/machines/$machineId/runtime-models/$runtime"
-            return ok(runtimeModelsBody)
+            return respond?.invoke(503) ?: ok(runtimeModelsBody)
         }
 
         override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse {

@@ -1451,7 +1451,7 @@ private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapsh
         id = id,
         name = name,
         daemonVersion = daemonVersion.orEmpty(),
-        online = status == "online",
+        online = status == ComputerStatus.Online,
         hostname = hostname,
         platform = os,
         lastSeenLabel = null
