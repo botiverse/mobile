@@ -1060,16 +1060,20 @@ private fun SlockAppShellContent() {
             anchorMessageId = anchorMessageId
         )
 
-    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null) {
+    fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = false) {
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
         )
-        selectedHomeDestination = null
         selectedHomeConversationId = conversation.threadId.value
-        activeThreadPayload = appShellThreadPayload(conversation, anchorMessageId)
-        threadBackStack = emptyList()
-        navController.navigate(AppShellRouteThread)
+        val payload = appShellThreadPayload(conversation, anchorMessageId)
+        if (pushCurrent) {
+            activeThreadPayload?.let { threadBackStack = threadBackStack + it }
+        }
+        activeThreadPayload = payload
+        if (navController.currentRoute != AppShellRouteThread) {
+            navController.navigate(AppShellRouteThread)
+        }
     }
 
     fun appShellParentMessageContextLoadingPayload(messageId: String): KuiklyThreadScreenPayload =
@@ -1586,7 +1590,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeDestination = null
                                     },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_search", item.lastMessageId?.value)
+                                        openHomeConversation(item.toConversationSummary(), "home_search", item.lastMessageId?.value, pushCurrent = true)
                                     },
                                     onOpenEntity = { entity ->
                                         selectedHomeDestination = null
@@ -1614,7 +1618,7 @@ private fun SlockAppShellContent() {
                                     onIntent = homeSearchSavedViewModel::dispatch,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_saved", item.lastMessageId?.value)
+                                        openHomeConversation(item.toConversationSummary(), "home_saved", item.lastMessageId?.value, pushCurrent = true)
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     timeContext = threadTimeContext,
