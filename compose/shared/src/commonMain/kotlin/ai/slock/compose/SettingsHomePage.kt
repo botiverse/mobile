@@ -190,6 +190,7 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
+import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.slockEpochMillisUtcIso
 import ai.slock.compose.model.slockStartOfDayUtcIso
 import ai.slock.compose.model.threadIdentity
@@ -1615,6 +1616,7 @@ private fun SlockAppShellContent() {
                                         openHomeConversation(item.toConversationSummary(), "home_saved")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    timeContext = threadTimeContext,
                                     shellScope = shellScope
                                 )
                             } else {
@@ -5462,6 +5464,7 @@ private fun SharedHomeSavedPanel(
     onOpenItem: (InboxItem) -> Unit,
     bottomContentPadding: Dp,
     includeTopSafeArea: Boolean = true,
+    timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope()
 ) {
     LaunchedEffect(Unit) {
@@ -5498,7 +5501,8 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedResultCard(
                 item = item,
                 onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
-                onOpen = { onOpenItem(item) }
+                onOpen = { onOpenItem(item) },
+                timeContext = timeContext
             )
         }
         if (state.hasMore) {
@@ -5893,7 +5897,8 @@ private fun SharedHomePanelMessage(
 private fun SharedHomeSavedResultCard(
     item: InboxItem,
     onUnsave: () -> Unit,
-    onOpen: () -> Unit
+    onOpen: () -> Unit,
+    timeContext: AppShellThreadTimeContext? = null
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
     val sender = item.latestActivitySenderName ?: item.lastMessageSenderName
@@ -5958,9 +5963,9 @@ private fun SharedHomeSavedResultCard(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                time?.let {
+                time?.let { t ->
                     Text(
-                        text = it,
+                        text = t.formatSavedTimestamp(timeContext),
                         style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,
@@ -6838,7 +6843,13 @@ internal data class AppShellThreadTimeContext(
     val localOffsetMinutes: Int,
     val todayEpochDay: Long,
     val nowEpochMillis: Long? = null
-)
+) {
+    fun formatTimestampLabel(value: String): String =
+        formatSlockTimestampLabel(value, localOffsetMinutes, todayEpochDay)
+}
+
+private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
+    timeContext?.formatTimestampLabel(this) ?: this
 
 private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
