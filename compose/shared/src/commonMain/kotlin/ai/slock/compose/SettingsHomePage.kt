@@ -1399,6 +1399,13 @@ private fun SlockAppShellContent() {
                         }
                     }
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
+                    // #79: forward machine-scope realtime events to the
+                    // settings store so the ComputerDetail page refreshes
+                    // status / daemonVersion / runtimes / lastHeartbeat
+                    // without a full app reload. The settings store
+                    // itself filters to RealtimeRefreshScope.Machines and
+                    // the active route.
+                    settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
                 }
             }
         pager.addPagerEventObserver(observer)

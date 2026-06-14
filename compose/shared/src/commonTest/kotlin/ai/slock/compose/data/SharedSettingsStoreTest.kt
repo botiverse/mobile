@@ -721,6 +721,177 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun realtimeMachineUpdateReloadsDetailWhenRouteMatchesMachineId() = runBlocking {
+        // #79: when a RealtimeRefreshRequired(Machines, machineId) event
+        // arrives and the user is currently on the ComputerDetail page for
+        // that exact machine, the store must reload the detail snapshot so
+        // status / daemonVersion / runtimes / lastHeartbeat reflect the new
+        // server state without a full app refresh.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first so the route is ComputerDetail / machine-42.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        // Clear the calls tracker so we can isolate the realtime-triggered reload.
+        repository.calls.clear()
+
+        // Fire a realtime machine:updated event for the open machine.
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ai.slock.compose.model.RealtimeRefreshRequired(
+                        scope = ai.slock.compose.model.RealtimeRefreshScope.Machines,
+                        reason = "machine:updated",
+                        serverId = ai.slock.compose.model.ServerId("server-1"),
+                        subjectId = "machine-42"
+                    )
+            )
+        )
+        // Realtime dispatch is fire-and-forget (scope.launch), so let the
+        // queued coroutine actually run.
+        yield()
+
+        // Repository must have reloaded the computer detail (no other calls
+        // — the realtime handler only refetches when the open machineId
+        // matches the event's machineId).
+        assertEquals(listOf("computerDetail:machine-42"), repository.calls)
+        // Detail state must remain Content (not flipped to Loading/Error).
+        assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMachineUpdateDoesNotReloadWhenOpenMachineIdDoesNotMatch() = runBlocking {
+        // #79: when the user is on a different computer's detail page, a
+        // machine:updated event for some other machine must not trigger a
+        // refresh — otherwise we'd pointlessly refetch the open detail.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open machine-42, then fire a machine:updated for machine-99 (different machine).
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        repository.calls.clear()
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ai.slock.compose.model.RealtimeRefreshRequired(
+                        scope = ai.slock.compose.model.RealtimeRefreshScope.Machines,
+                        reason = "machine:updated",
+                        serverId = ai.slock.compose.model.ServerId("server-1"),
+                        subjectId = "machine-99"
+                    )
+            )
+        )
+        yield()
+
+        assertEquals(emptyList(), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeMachineUpdateReloadsListWhenRouteIsComputers() = runBlocking {
+        // #79: when the user is on the Computers list page, a
+        // machine:updated event must reload the list so card status dots
+        // flip live. The list reload is independent of which machine the
+        // event is for (the list always shows the current snapshot).
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(computersResult = DataResult.Content(computersSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the Computers list route.
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+        repository.calls.clear()
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ai.slock.compose.model.RealtimeRefreshRequired(
+                        scope = ai.slock.compose.model.RealtimeRefreshScope.Machines,
+                        reason = "machine:updated",
+                        serverId = ai.slock.compose.model.ServerId("server-1"),
+                        subjectId = "machine-42"
+                    )
+            )
+        )
+        yield()
+
+        // List must have been reloaded.
+        assertTrue(repository.calls.contains("computers"))
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeEventWithNonMachineScopeIsIgnored() = runBlocking {
+        // #79: only RealtimeRefreshScope.Machines events are handled here.
+        // Other scopes (ServerMembers, Agents, etc.) are routed through
+        // SharedHomeStore and must not trigger settings refreshes.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        repository.calls.clear()
+
+        store.accept(
+            SharedSettingsIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    ai.slock.compose.model.RealtimeRefreshRequired(
+                        scope = ai.slock.compose.model.RealtimeRefreshScope.ServerMembers,
+                        reason = "server:member-updated",
+                        serverId = ai.slock.compose.model.ServerId("server-1")
+                    )
+            )
+        )
+        yield()
+
+        assertEquals(emptyList(), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun aboutAndDiagnosticsLoadThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()

@@ -1,5 +1,8 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -192,6 +195,18 @@ sealed interface SharedSettingsIntent {
     data class RenameComputer(val request: SettingsComputerRenameRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
+    /**
+     * #79: realtime event bridge for the Settings surface. Only used for
+     * `RealtimeRefreshScope.Machines` events today. Listens to the same
+     * `slockRealtimeEvent` flow that SharedHomeStore already drains from,
+     * but routes the relevant subset into settings state so the
+     * ComputerDetail page reflects machine:updated server events without a
+     * full app refresh.
+     */
+    data class ApplyRealtimeEvent(
+        val serverId: String,
+        val event: RealtimeEvent
+    ) : SharedSettingsIntent
     data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
     data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
     data class UpdateServerSidebarOrder(val request: SettingsServerSidebarOrderUpdateRequest) : SharedSettingsIntent
@@ -765,6 +780,7 @@ class SharedSettingsStore(
                     dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
                 }
             }
+            is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
             is SharedSettingsIntent.UpdateServerOnboarding -> {
                 runAction(SERVER_ACTION_ONBOARDING_TOGGLE) {
                     dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
@@ -957,6 +973,51 @@ class SharedSettingsStore(
         dataSource.loadComputerDetail(machineId).applyToState(SharedSettingsDestination.ComputerDetail) {
             copy(computerDetail = it)
         }
+    }
+
+    /**
+     * #79: realtime event bridge for the Settings surface. Only handles
+     * `RealtimeRefreshScope.Machines` events; other scopes are ignored here
+     * because SharedHomeStore already drains them for the home / members /
+     * agent detail surfaces. Behavior:
+     *
+     * - Active route is ComputerDetail and the event's subjectId matches the
+     *   open machineId: reload the detail snapshot so status / daemonVersion /
+     *   runtimes / lastHeartbeat reflect the latest server state.
+     * - Active route is Computers (list): reload the list so card status dots
+     *   flip live.
+     * - Any other route: ignored (no excessive refresh).
+     */
+    private fun applyRealtimeEvent(serverId: String, event: RealtimeEvent) {
+        if (event !is RealtimeRefreshRequired) return
+        if (event.scope != RealtimeRefreshScope.Machines) return
+        if (event.serverId?.value != null && event.serverId.value != serverId) return
+        val machineId = event.subjectId?.takeIf { it.isNotBlank() } ?: return
+        when (_state.value.route.destination) {
+            SharedSettingsDestination.ComputerDetail -> {
+                val openId = _state.value.route.itemId.orEmpty()
+                if (openId.isNotBlank() && openId == machineId) {
+                    scope.launch { loadComputerDetail(machineId) }
+                }
+            }
+            SharedSettingsDestination.Computers -> {
+                scope.launch { dataSource.loadComputers().applyToComputersListState() }
+            }
+            else -> Unit
+        }
+    }
+
+    private fun DataResult<SettingsComputersSnapshot>.applyToComputersListState() {
+        val next = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                computers =
+                    when (next) {
+                        is ScreenLoadState.Content -> next
+                        else -> _state.value.computers
+                    },
+                routeErrorCode = next.routeErrorCode()
+            )
     }
 
     private suspend fun loadStorage() {
@@ -1335,6 +1396,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RenameComputer,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
+            is SharedSettingsIntent.ApplyRealtimeEvent,
             SharedSettingsIntent.ConsumeEffect -> false
         }
 
