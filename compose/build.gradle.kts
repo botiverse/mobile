@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.jetbrains.compose) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.sqldelight) apply false
+    id("dev.icerock.mobile.multiplatform-resources").version("0.26.0-KBA-010").apply(false)
 }
 
 buildscript {

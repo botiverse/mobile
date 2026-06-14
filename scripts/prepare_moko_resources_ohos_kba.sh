@@ -6,8 +6,8 @@ set -euo pipefail
 # 2.2.21-0.3.0 (KLIB ABI 2.2.0), while Slock currently uses
 # 2.0.21-KBA-010 (KLIB ABI 1.8.0). This script pins the OHOS forks,
 # applies the minimal KBA compatibility patches from vendored third_party
-# sources, and publishes only the core resources artifacts needed by the
-# shared module.
+# sources, and publishes the core Android/OHOS resources artifacts needed by
+# the shared module.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -38,12 +38,15 @@ maven_file_exists() {
 
 graphics_artifacts_ready() {
     maven_file_exists "dev/icerock/moko/graphics/${MOKO_GRAPHICS_VERSION}/graphics-${MOKO_GRAPHICS_VERSION}.module" &&
-    maven_file_exists "dev/icerock/moko/graphics-ohosarm64/${MOKO_GRAPHICS_VERSION}/graphics-ohosarm64-${MOKO_GRAPHICS_VERSION}.klib"
+    maven_file_exists "dev/icerock/moko/graphics-ohosarm64/${MOKO_GRAPHICS_VERSION}/graphics-ohosarm64-${MOKO_GRAPHICS_VERSION}.klib" &&
+    maven_file_exists "dev/icerock/moko/graphics-android/${MOKO_GRAPHICS_VERSION}/graphics-android-${MOKO_GRAPHICS_VERSION}.aar" &&
+    maven_file_exists "dev/icerock/moko/graphics-android-debug/${MOKO_GRAPHICS_VERSION}/graphics-android-debug-${MOKO_GRAPHICS_VERSION}.aar"
 }
 
 resources_artifacts_ready() {
     maven_file_exists "dev/icerock/moko/resources/${MOKO_RESOURCES_VERSION}/resources-${MOKO_RESOURCES_VERSION}.module" &&
     maven_file_exists "dev/icerock/moko/resources-ohosarm64/${MOKO_RESOURCES_VERSION}/resources-ohosarm64-${MOKO_RESOURCES_VERSION}.klib" &&
+    maven_file_exists "dev/icerock/moko/resources-android/${MOKO_RESOURCES_VERSION}/resources-android-${MOKO_RESOURCES_VERSION}.aar" &&
     maven_file_exists "dev/icerock/moko/resources-generator/${MOKO_RESOURCES_VERSION}/resources-generator-${MOKO_RESOURCES_VERSION}.jar" &&
     maven_file_exists "dev/icerock/mobile/multiplatform-resources/dev.icerock.mobile.multiplatform-resources.gradle.plugin/${MOKO_RESOURCES_VERSION}/dev.icerock.mobile.multiplatform-resources.gradle.plugin-${MOKO_RESOURCES_VERSION}.pom"
 }
@@ -113,7 +116,14 @@ EOF
   fi
 
   chmod -R u+w "${workdir}" 2>/dev/null || true
-  rm -rf "${workdir}"
+  for cleanup_attempt in 1 2 3; do
+    rm -rf "${workdir}" 2>/dev/null || true
+    if [[ ! -e "${workdir}" ]]; then
+      break
+    fi
+    chmod -R u+w "${workdir}" 2>/dev/null || true
+    sleep "${cleanup_attempt}"
+  done
   if [[ -e "${workdir}" ]]; then
     echo "Failed to remove existing moko workdir: ${workdir}" >&2
     exit 4
@@ -231,7 +241,7 @@ PATCH_GRAPHICS
 }
 
 patch_resources() {
-  git -C "${RESOURCES_WORKDIR}" apply --whitespace=nowarn <<'PATCH_RESOURCES'
+  sed 's/^@BLANK_CONTEXT@$/ /' <<'PATCH_RESOURCES' | git -C "${RESOURCES_WORKDIR}" apply --whitespace=nowarn
 diff --git a/build.gradle.kts b/build.gradle.kts
 index 2798964..212a436 100644
 --- a/build.gradle.kts
@@ -453,12 +463,15 @@ index 5551847..3c454c1 100644
 
      return androidLibraryExtension.namespace
 diff --git a/resources/build.gradle.kts b/resources/build.gradle.kts
-index 44660c3..e9ba9b1 100644
+index 44660c3..fa80842 100644
 --- a/resources/build.gradle.kts
 +++ b/resources/build.gradle.kts
-@@ -5,12 +5,8 @@
+@@ -3,14 +3,11 @@
+  */
+@BLANK_CONTEXT@
  import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
-
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+@BLANK_CONTEXT@
  plugins {
 -    id("multiplatform-library-extended-convention")
 +    id("multiplatform-library-convention")
@@ -470,7 +483,7 @@ index 44660c3..e9ba9b1 100644
      id("detekt-convention")
      id("javadoc-stub-convention")
      id("publication-convention")
-@@ -24,13 +20,6 @@ kotlin {
+@@ -24,10 +21,9 @@ kotlin {
              includeDirs("$projectDir/src/nativeInterop/cinterop/cpp")
          }
      }
@@ -478,13 +491,13 @@ index 44660c3..e9ba9b1 100644
 -        compilations.getByName("main").cinterops.create("ohosUtils") {
 -            defFile(file("src/nativeInterop/cinterop/ohosUtilsOhosX64.def"))
 -            includeDirs("$projectDir/src/nativeInterop/cinterop/cpp")
--        }
--    }
--
-     sourceSets {
- //        commonJsMain.dependencies {
- //            implementation(libs.kotlinxCoroutines)
-@@ -61,7 +50,7 @@ dependencies {
++    androidTarget {
++        compilerOptions {
++            jvmTarget.set(JvmTarget.JVM_11)
+         }
+     }
+@BLANK_CONTEXT@
+@@ -61,7 +57,7 @@ dependencies {
 
      androidMainImplementation(libs.appCompatResources)
 
@@ -493,7 +506,7 @@ index 44660c3..e9ba9b1 100644
  }
 
  tasks.named("publishToMavenLocal") {
-@@ -76,20 +65,6 @@ tasks.named("publishToMavenLocal") {
+@@ -76,20 +72,6 @@ tasks.named("publishToMavenLocal") {
  //    dependsOn(pluginPublish)
  //}
 
@@ -514,7 +527,7 @@ index 44660c3..e9ba9b1 100644
  // cinterop 前需按目标架构产出 libresource_utils.a（arm64 真机 / x86_64 模拟器不可混用）
  //afterEvaluate {
  //    tasks.matching { it.name.startsWith("cinteropOhosUtils") }.configureEach {
-@@ -131,12 +106,6 @@ val buildCppLibraryOhosArm64 = registerOhosCppBuild(
+@@ -131,12 +113,6 @@ val buildCppLibraryOhosArm64 = registerOhosCppBuild(
      ohosArch = "arm64-v8a",
      buildRelDir = "build/arm64-v8a"
  )
@@ -589,7 +602,7 @@ PATCH_RESOURCES
 }
 
 if [[ "${force}" -eq 0 ]] && artifacts_ready; then
-  echo "moko-resources OHOS KBA artifacts already exist in ${MAVEN_LOCAL}."
+  echo "moko-resources Android/OHOS KBA artifacts already exist in ${MAVEN_LOCAL}."
   exit 0
 fi
 
@@ -608,7 +621,9 @@ if [[ "${force}" -eq 1 ]] || ! graphics_artifacts_ready; then
     -Dkotlin.incremental=false \
     -p "${GRAPHICS_WORKDIR}" \
     :graphics:publishKotlinMultiplatformPublicationToMavenLocal \
-    :graphics:publishOhosArm64PublicationToMavenLocal
+    :graphics:publishOhosArm64PublicationToMavenLocal \
+    :graphics:publishAndroidReleasePublicationToMavenLocal \
+    :graphics:publishAndroidDebugPublicationToMavenLocal
 else
   echo "moko-graphics KBA artifacts already exist in ${MAVEN_LOCAL}."
 fi
@@ -627,18 +642,19 @@ if [[ "${force}" -eq 1 ]] || ! resources_artifacts_ready; then
     -p "${RESOURCES_WORKDIR}" \
     :resources:publishKotlinMultiplatformPublicationToMavenLocal \
     :resources:publishOhosArm64PublicationToMavenLocal \
+    :resources:publishAndroidPublicationToMavenLocal \
     :resources-generator:publishToMavenLocal
 else
   echo "moko-resources KBA artifacts already exist in ${MAVEN_LOCAL}."
 fi
 
 if ! artifacts_ready; then
-  echo "moko-resources OHOS KBA artifact preparation finished but required MavenLocal artifacts are still missing." >&2
+  echo "moko-resources KBA artifact preparation finished but required MavenLocal artifacts are still missing." >&2
   exit 5
 fi
 
 cat <<EOF
-Prepared moko-resources OHOS KBA artifacts.
+Prepared moko-resources Android/OHOS KBA artifacts.
 Kotlin: ${KBA_KOTLIN_VERSION}
 graphics: ${MOKO_GRAPHICS_VERSION}
 resources: ${MOKO_RESOURCES_VERSION}

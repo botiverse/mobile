@@ -1,5 +1,3 @@
-import com.tencent.kuikly.gradle.config.KuiklyConfig
-
 plugins {
     kotlin("multiplatform")
 //    kotlin("native.cocoapods")
@@ -11,9 +9,14 @@ plugins {
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight")
+    id("dev.icerock.mobile.multiplatform-resources")
 }
 
 val KEY_PAGE_NAME = "pageName"
+
+multiplatformResources {
+    resourcesPackage.set("ai.slock.compose.resources")
+}
 
 kotlin {
     androidTarget {
@@ -21,20 +24,6 @@ kotlin {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
         }
         publishLibraryVariants("release")
-    }
-
-    js(IR) {
-        browser {
-            webpackTask {
-                mainOutputFileName = "nativevue2.js" // 最后输出的名字
-            }
-
-            commonWebpackConfig {
-                output?.library = null // 不导出全局对象，只导出必要的入口函数
-                devtool = "source-map" // 不使用默认的 eval 执行方式构建出 source-map，而是构建单独的 sourceMap 文件
-            }
-        }
-        binaries.executable() //将kotlin.js与kotlin代码打包成一份可直接运行的js文件
     }
 
 //    iosX64()
@@ -71,6 +60,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
+                implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
             }
         }
         val commonTest by getting {
@@ -149,7 +139,6 @@ dependencies {
 //        add("kspIosArm64", this)
 //        add("kspIosX64", this)
 //        add("kspIosSimulatorArm64", this)
-        add("kspJs", this)
     }
 }
 
@@ -178,15 +167,4 @@ fun getCommonCompilerArgs(): List<String> {
 
 fun getLinkerArgs(): List<String> {
     return listOf()
-}
-
-// Kuikly 插件配置
-configure<KuiklyConfig> {
-    // JS 产物配置
-    js {
-        // 构建产物名，与 KMM 插件 webpackTask#mainOutputFileName 一致
-        outputName("nativevue2")
-        // 可选：分包构建时的页面列表，如果为空则构建全部页面
-        // addSplitPage("route","home")
-    }
 }
