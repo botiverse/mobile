@@ -1,9 +1,6 @@
 package ai.slock.android.shared
 
-import ai.slock.compose.model.slockEpochDayForDate
-import ai.slock.compose.model.SlockTimeFormat24Hour
-import java.time.LocalDate
-import java.time.ZoneId
+import ai.slock.android.ui.time.androidSlockTimeContext
 import org.json.JSONObject
 
 internal object SlockKuiklyPages {
@@ -76,18 +73,17 @@ internal fun slockKuiklyPageIsOpaque(pageName: String): Boolean =
 private const val SLOCK_KUIKLY_APP_ID = 1
 
 private fun MutableMap<String, Any>.putHostTimeContextIfAbsent() {
+    val context = androidSlockTimeContext()
     if (!containsKey("localOffsetMinutes")) {
-        val zoneId = ZoneId.systemDefault()
-        put("localOffsetMinutes", zoneId.rules.getOffset(java.time.Instant.now()).totalSeconds / 60)
+        put("localOffsetMinutes", context.localOffsetMinutes)
     }
     if (!containsKey("todayEpochDay")) {
-        val today = LocalDate.now(ZoneId.systemDefault())
-        put("todayEpochDay", slockEpochDayForDate(today.year, today.monthValue, today.dayOfMonth))
+        context.todayEpochDay?.let { put("todayEpochDay", it) }
     }
     if (!containsKey("nowEpochMillis")) {
-        put("nowEpochMillis", java.time.Instant.now().toEpochMilli())
+        context.nowEpochMillis?.let { put("nowEpochMillis", it) }
     }
     if (!containsKey("timeFormat")) {
-        put("timeFormat", SlockTimeFormat24Hour)
+        put("timeFormat", context.timeFormat)
     }
 }

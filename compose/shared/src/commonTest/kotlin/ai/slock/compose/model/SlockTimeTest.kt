@@ -64,6 +64,30 @@ class SlockTimeTest {
     }
 
     @Test
+    fun formatsThroughSharedTimeContext() {
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                todayEpochDay = slockEpochDayForDate(2026, 5, 10),
+                nowEpochMillis = 1778335200000L,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        assertEquals(
+            "05-09 10:00 PM",
+            formatSlockTimestampLabel("2026-05-09T22:00:00+08:00", context)
+        )
+        assertEquals(
+            "09:55:27 PM",
+            formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", context)
+        )
+        assertEquals(
+            "raw value",
+            formatSlockTimestampLabel("raw value", context.copy(todayEpochDay = null))
+        )
+    }
+
+    @Test
     fun includesDateOutsideToday() {
         val today = slockEpochDayForDate(2026, 5, 10)
 

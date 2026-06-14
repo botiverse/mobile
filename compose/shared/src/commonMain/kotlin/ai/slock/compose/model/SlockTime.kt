@@ -8,11 +8,44 @@ private const val MillisPerDay = 86_400_000L
 const val SlockTimeFormat12Hour = "12h"
 const val SlockTimeFormat24Hour = "24h"
 
+data class SlockTimeContext(
+    val localOffsetMinutes: Int,
+    val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour
+) {
+    fun withTimeFormat(value: String?): SlockTimeContext =
+        copy(timeFormat = normalizeSlockTimeFormatPreference(value ?: timeFormat))
+
+    fun formatTimestampLabel(value: String?): String {
+        val trimmed = value?.trim().orEmpty()
+        if (trimmed.isEmpty()) return ""
+        val today = todayEpochDay ?: return trimmed
+        return formatSlockTimestampLabel(trimmed, localOffsetMinutes, today, timeFormat)
+    }
+
+    fun formatTimestampClockWithSeconds(value: String?): String =
+        formatSlockTimestampClockWithSeconds(value, localOffsetMinutes, timeFormat)
+}
+
 fun normalizeSlockTimeFormatPreference(value: String?): String =
     when (value?.trim()?.lowercase()) {
         SlockTimeFormat12Hour -> SlockTimeFormat12Hour
         else -> SlockTimeFormat24Hour
     }
+
+fun formatSlockTimestampLabel(
+    value: String?,
+    context: SlockTimeContext?
+): String =
+    context?.formatTimestampLabel(value) ?: value?.trim().orEmpty()
+
+fun formatSlockTimestampClockWithSeconds(
+    value: String?,
+    context: SlockTimeContext?
+): String =
+    context?.formatTimestampClockWithSeconds(value)
+        ?: formatSlockTimestampClockWithSeconds(value, localOffsetMinutes = 0)
 
 fun parseSlockTimestampEpochMillisOrNull(
     value: String?,

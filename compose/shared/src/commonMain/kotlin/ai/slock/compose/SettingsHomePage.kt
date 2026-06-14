@@ -190,9 +190,8 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
-import ai.slock.compose.model.formatSlockTimestampLabel
-import ai.slock.compose.model.normalizeSlockTimeFormatPreference
 import ai.slock.compose.model.SlockTimeFormat24Hour
+import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.slockEpochMillisUtcIso
 import ai.slock.compose.model.slockStartOfDayUtcIso
 import ai.slock.compose.model.threadIdentity
@@ -1096,6 +1095,7 @@ private fun SlockAppShellContent() {
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             localOffsetMinutes = threadTimeContext?.localOffsetMinutes ?: 0,
             todayEpochDay = threadTimeContext?.todayEpochDay,
+            nowEpochMillis = threadTimeContext?.nowEpochMillis,
             timeFormat = threadTimeContext?.timeFormat ?: SlockTimeFormat24Hour,
             emptyTitle = "Opening channel",
             emptyDetail = "Locating the original message."
@@ -1548,7 +1548,8 @@ private fun SlockAppShellContent() {
                                 authStore = authStore,
                                 memberRepository = memberRepository,
                                 settingsCapabilities = settingsCapabilities,
-                                agentDetailRefreshKey = membersAgentDetailRefreshKey
+                                agentDetailRefreshKey = membersAgentDetailRefreshKey,
+                                timeContext = threadTimeContext
                             )
                         else -> {
                             PerformanceSceneEffect(bridge, "kuikly_home")
@@ -4254,7 +4255,8 @@ private fun SharedMembersScreen(
     authStore: SlockAuthSessionStore,
     memberRepository: MemberRepository,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    agentDetailRefreshKey: Int
+    agentDetailRefreshKey: Int,
+    timeContext: AppShellTimeContext?
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
@@ -4311,7 +4313,11 @@ private fun SharedMembersScreen(
                 payload = KuiklyMembersPayload(
                     instanceId = current.server.id.value,
                     title = "Members",
-                    members = current.members
+                    members = current.members,
+                    localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+                    todayEpochDay = timeContext?.todayEpochDay,
+                    nowEpochMillis = timeContext?.nowEpochMillis,
+                    timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
                 ),
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
@@ -6864,38 +6870,31 @@ private fun Presence?.toSharedPresence(): SlockPresence? =
         null -> null
     }
 
-internal data class AppShellThreadTimeContext(
-    val localOffsetMinutes: Int,
-    val todayEpochDay: Long,
-    val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour
-) {
-    fun formatTimestampLabel(value: String): String =
-        formatSlockTimestampLabel(value, localOffsetMinutes, todayEpochDay, timeFormat)
-}
+internal typealias AppShellTimeContext = SlockTimeContext
+internal typealias AppShellThreadTimeContext = SlockTimeContext
 
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
     timeContext?.formatTimestampLabel(this) ?: this
 
-private fun AppShellThreadTimeContext?.withTimeFormat(timeFormat: String?): AppShellThreadTimeContext? =
-    this?.copy(timeFormat = normalizeSlockTimeFormatPreference(timeFormat ?: this.timeFormat))
+private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
+    this?.withTimeFormat(timeFormat)
 
 private fun com.tencent.kuikly.core.nvi.serialization.json.JSONObject.threadTimeContext(): AppShellThreadTimeContext? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
-    val today = optString("todayEpochDay").toLongOrNull() ?: return null
+    val today = optString("todayEpochDay").toLongOrNull()
     val now = optString("nowEpochMillis").toLongOrNull()
-    val timeFormat = normalizeSlockTimeFormatPreference(optString("timeFormat").takeIf { it.isNotBlank() })
-    return AppShellThreadTimeContext(offset, today, now, timeFormat)
+    return AppShellTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
 }
 
 private fun AppShellThreadTimeContext?.toSearchIsoBounds(range: SearchTimeRange): SearchIsoBounds {
     val context = this ?: return SearchIsoBounds()
+    val today = context.todayEpochDay ?: return SearchIsoBounds()
     val afterDay =
         when (range) {
             SearchTimeRange.Any -> null
-            SearchTimeRange.Today -> context.todayEpochDay
-            SearchTimeRange.Last7Days -> context.todayEpochDay - 6L
-            SearchTimeRange.Last30Days -> context.todayEpochDay - 29L
+            SearchTimeRange.Today -> today
+            SearchTimeRange.Last7Days -> today - 6L
+            SearchTimeRange.Last30Days -> today - 29L
         }
     return SearchIsoBounds(
         afterIso = afterDay?.let { slockStartOfDayUtcIso(it, context.localOffsetMinutes) },
@@ -6953,6 +6952,7 @@ internal fun buildAppShellThreadPayload(
         membersCount = conversation.memberCount ?: 0,
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
+        nowEpochMillis = timeContext?.nowEpochMillis,
         timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
         showMembersAction = !isReplyThread,
         showSettingsAction = !isReplyThread,
@@ -7098,6 +7098,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         originStatus = if (parentMessage != null) "loaded" else "idle",
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
+        nowEpochMillis = timeContext?.nowEpochMillis,
         timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
         showMembersAction = false,
         showSettingsAction = false,

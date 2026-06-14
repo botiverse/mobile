@@ -57,6 +57,7 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.SlockTimeFormat24Hour
+import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -227,6 +228,7 @@ internal data class KuiklyThreadScreenPayload(
     val alignOwnMessagesRight: Boolean = false,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
     val timeFormat: String = SlockTimeFormat24Hour,
     val messages: List<KuiklyThreadMessageItem> = emptyList(),
     val originMessage: KuiklyThreadMessageItem? = null,
@@ -3489,10 +3491,16 @@ private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     }
 }
 
+internal fun KuiklyThreadScreenPayload.toSlockTimeContext(): SlockTimeContext =
+    SlockTimeContext(
+        localOffsetMinutes = localOffsetMinutes,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat
+    )
+
 internal fun KuiklyThreadScreenPayload.formatTimestampLabel(value: String): String =
-    todayEpochDay?.let { today ->
-        formatSlockTimestampLabel(value, localOffsetMinutes, today, timeFormat)
-    } ?: value
+    formatSlockTimestampLabel(value, toSlockTimeContext())
 
 private data class ThreadVisibleMessageAnchor(
     val messageId: String,

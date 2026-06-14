@@ -24,6 +24,8 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
+import ai.slock.compose.model.SlockTimeContext
+import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampClockWithSeconds
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
@@ -229,7 +231,11 @@ data class KuiklyMembersPayload(
     val instanceId: String = "",
     val title: String = "Members",
     val labels: KuiklyMembersLabels = KuiklyMembersLabels(),
-    val members: List<MemberProfile> = emptyList()
+    val members: List<MemberProfile> = emptyList(),
+    val localOffsetMinutes: Int = 0,
+    val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour
 )
 
 @Serializable
@@ -338,6 +344,10 @@ private fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     return KuiklyMembersPayload(
         instanceId = payload.optString("instanceId"),
         title = payload.optString("title").ifBlank { "Members" },
+        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
+        nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
+        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
         labels = KuiklyMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
             humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },
@@ -418,6 +428,7 @@ internal fun MembersRouteContent(
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
+    val timeContext = payload.toSlockTimeContext()
     var agentDetailState by remember(selectedMember?.id?.value) {
         mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
     }
@@ -463,7 +474,8 @@ internal fun MembersRouteContent(
             agentWorkspaceFileLoader = agentWorkspaceFileLoader,
             onCopyAgentDiagnostics = onCopyAgentDiagnostics,
             onReportAgentIssue = onReportAgentIssue,
-            onUnavailableAction = onUnavailableAction
+            onUnavailableAction = onUnavailableAction,
+            timeContext = timeContext
         )
     } else {
         MembersListContent(
@@ -611,7 +623,8 @@ private fun MembersDetailContent(
     agentWorkspaceFileLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceFilePreviewSnapshot>)?,
     onCopyAgentDiagnostics: (String) -> Unit,
     onReportAgentIssue: (suspend (String) -> Boolean)?,
-    onUnavailableAction: (String) -> Unit
+    onUnavailableAction: (String) -> Unit,
+    timeContext: SlockTimeContext
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -921,6 +934,7 @@ private fun MembersDetailContent(
                                 detail = detail,
                                 diagnosticActionState = diagnosticActionState,
                                 onCopyDiagnostics = { copyDiagnostics() },
+                                timeContext = timeContext,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                     }
@@ -2026,6 +2040,7 @@ private fun MembersAgentActivityTab(
     detail: AgentDetailSnapshot?,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
+    timeContext: SlockTimeContext,
     modifier: Modifier = Modifier
 ) {
     MembersDetailSection(title = "ACTIVITY", modifier = modifier) {
@@ -2087,7 +2102,7 @@ private fun MembersAgentActivityTab(
                 beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                    MembersAgentActivityRow(rows[index])
+                    MembersAgentActivityRow(rows[index], timeContext)
                 }
             }
         }
@@ -2095,7 +2110,10 @@ private fun MembersAgentActivityTab(
 }
 
 @Composable
-private fun MembersAgentActivityRow(activity: AgentActivityEntry) {
+private fun MembersAgentActivityRow(
+    activity: AgentActivityEntry,
+    timeContext: SlockTimeContext
+) {
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
     val body = activity.activityPrimaryDetail().orEmpty()
@@ -2115,7 +2133,7 @@ private fun MembersAgentActivityRow(activity: AgentActivityEntry) {
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
         Text(
-            text = activity.timestamp.membersActivityDisplayTime(),
+            text = activity.timestamp.membersActivityDisplayTime(timeContext),
             style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
             color = SlockColor.TextMutedGray,
             maxLines = 1,
@@ -2561,8 +2579,16 @@ private fun Long?.membersWorkspaceSizeLabel(): String? {
 private fun String?.membersActivitySortKey(): Long =
     parseSlockTimestampEpochMillisOrNull(this) ?: Long.MIN_VALUE
 
-private fun String?.membersActivityDisplayTime(): String =
-    formatSlockTimestampClockWithSeconds(this, localOffsetMinutes = 0)
+private fun KuiklyMembersPayload.toSlockTimeContext(): SlockTimeContext =
+    SlockTimeContext(
+        localOffsetMinutes = localOffsetMinutes,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat
+    )
+
+private fun String?.membersActivityDisplayTime(timeContext: SlockTimeContext): String =
+    formatSlockTimestampClockWithSeconds(this, timeContext)
         .takeIf { it.isNotBlank() }
         ?: "No time"
 
