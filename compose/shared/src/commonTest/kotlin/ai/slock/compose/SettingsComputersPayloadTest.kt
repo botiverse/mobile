@@ -46,6 +46,40 @@ class SettingsComputersPayloadTest {
     }
 
     @Test
+    fun computerDetailCanManageMachinesFlagRoundTrips() {
+        // #78: thread canManageMachines through the page payload so the
+        // ComputerDetail page knows whether to render the rename / delete
+        // / rotate-key actions. Defaults to false (matches the existing
+        // canAddComputer hardcode in SettingsParser) so a non-admin viewer
+        // doesn't see the actions. The server still enforces 403 on the
+        // actual API endpoints, so a permissive client cannot bypass.
+        val withPermission =
+            KuiklySettingsComputerDetailPayload(
+                instanceId = "computer-detail",
+                canManageMachines = true
+            )
+        val withoutPermission =
+            KuiklySettingsComputerDetailPayload(
+                instanceId = "computer-detail",
+                canManageMachines = false
+            )
+
+        val withDecoded =
+            json.decodeFromString(
+                KuiklySettingsComputerDetailPayload.serializer(),
+                json.encodeToString(withPermission)
+            )
+        val withoutDecoded =
+            json.decodeFromString(
+                KuiklySettingsComputerDetailPayload.serializer(),
+                json.encodeToString(withoutPermission)
+            )
+
+        assertEquals(true, withDecoded.canManageMachines)
+        assertEquals(false, withoutDecoded.canManageMachines)
+    }
+
+    @Test
     fun computerItemSurfacesRuntimeAndCreatedFields() {
         // The new upstream read-model fields (statusVersion / apiKeyPrefix /
         // runtimes / lastHeartbeat / createdAt) must round-trip through the

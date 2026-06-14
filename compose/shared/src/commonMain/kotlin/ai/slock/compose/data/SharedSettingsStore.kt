@@ -189,6 +189,9 @@ sealed interface SharedSettingsIntent {
     data class RevokeServerInvite(val inviteId: String) : SharedSettingsIntent
     data class CreateServerJoinLink(val request: SettingsServerJoinLinkCreateRequest = SettingsServerJoinLinkCreateRequest()) : SharedSettingsIntent
     data class RevokeServerJoinLink(val linkId: String) : SharedSettingsIntent
+    data class RenameComputer(val request: SettingsComputerRenameRequest) : SharedSettingsIntent
+    data class DeleteComputer(val machineId: String) : SharedSettingsIntent
+    data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
     data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
     data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
     data class UpdateServerSidebarOrder(val request: SettingsServerSidebarOrderUpdateRequest) : SharedSettingsIntent
@@ -286,6 +289,15 @@ class SharedSettingsDataSource(
 
     suspend fun loadComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> =
         settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
+        settingsRepository?.renameComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
+        settingsRepository?.deleteComputer(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
+        settingsRepository?.rotateComputerKey(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -738,6 +750,21 @@ class SharedSettingsStore(
                     dataSource.revokeServerJoinLink(intent.linkId).applyServerActionResult(SERVER_ACTION_JOIN_LINK_REVOKE, intent.linkId)
                 }
             }
+            is SharedSettingsIntent.RenameComputer -> {
+                runAction(COMPUTER_ACTION_RENAME, intent.request.machineId) {
+                    dataSource.renameComputer(intent.request).applyComputerSnapshotActionResult(COMPUTER_ACTION_RENAME, intent.request.machineId)
+                }
+            }
+            is SharedSettingsIntent.DeleteComputer -> {
+                runAction(COMPUTER_ACTION_DELETE, intent.machineId) {
+                    dataSource.deleteComputer(intent.machineId).applyComputerDeleteActionResult(COMPUTER_ACTION_DELETE, intent.machineId)
+                }
+            }
+            is SharedSettingsIntent.RotateComputerKey -> {
+                runAction(COMPUTER_ACTION_ROTATE_KEY, intent.machineId) {
+                    dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
+                }
+            }
             is SharedSettingsIntent.UpdateServerOnboarding -> {
                 runAction(SERVER_ACTION_ONBOARDING_TOGGLE) {
                     dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
@@ -1117,6 +1144,95 @@ class SharedSettingsStore(
         }
     }
 
+    /**
+     * After a successful computer snapshot-affecting action (rename, rotate-key),
+     * reload the computer detail snapshot so the page reflects the new server state
+     * without a full app refresh. The new snapshot replaces [computerDetail] when
+     * it is content; otherwise the existing computerDetail state is kept so a
+     * partial reload failure doesn't wipe the user's view of the machine.
+     */
+    private suspend fun DataResult<SettingsComputerSnapshot>.applyComputerSnapshotActionResult(
+        action: String,
+        machineId: String
+    ) {
+        when (this) {
+            is DataResult.Content ->
+                dataSource.loadComputerDetail(machineId).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyComputerDetailActionResult(action, machineId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyComputerDetailActionResult(action, machineId)
+        }
+    }
+
+    /**
+     * After a successful computer delete action, clear the page route + reload the
+     * list so the deleted machine disappears from the list, and surface the
+     * typed error code (e.g. `computer_has_agents` for 409) on failure without
+     * dropping the existing detail view.
+     */
+    private suspend fun DataResult<SettingsComputerActionResult>.applyComputerDeleteActionResult(
+        action: String,
+        machineId: String
+    ) {
+        when (this) {
+            is DataResult.Content ->
+                _state.value =
+                    _state.value.copy(
+                        computerDetail = ScreenLoadState.Loading,
+                        route = SharedSettingsRoute(SharedSettingsDestination.Computers),
+                        actionState = SharedSettingsActionState(action, itemId = machineId, inProgress = false)
+                    ).also { dataSource.loadComputers() }
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyComputerDetailActionResult(action, machineId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyComputerDetailActionResult(action, machineId)
+        }
+    }
+
+    private suspend fun DataResult<SettingsComputerKeyRotationResult>.applyComputerRotateKeyActionResult(
+        action: String,
+        machineId: String
+    ) {
+        when (this) {
+            is DataResult.Content ->
+                dataSource.loadComputerDetail(machineId).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Empty ->
+                DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
+            is DataResult.Error ->
+                DataResult.Error(error).applyComputerDetailActionResult(action, machineId)
+            is DataResult.NoPermission ->
+                DataResult.NoPermission(blocker).applyComputerDetailActionResult(action, machineId)
+        }
+    }
+
+    private fun DataResult<SettingsComputerDetailSnapshot>.applyComputerDetailActionResult(
+        action: String,
+        machineId: String
+    ) {
+        val next = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                computerDetail =
+                    when (next) {
+                        is ScreenLoadState.Content -> next
+                        else -> _state.value.computerDetail
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        itemId = machineId,
+                        inProgress = false,
+                        errorCode = next.routeErrorCode()
+                    ),
+                routeErrorCode = next.routeErrorCode()
+            )
+    }
+
     private fun DataResult<SharedSettingsDiagnosticsSnapshot>.applyDiagnosticsActionResult(action: String) {
         val nextDiagnostics = toScreenLoadState()
         _state.value =
@@ -1216,6 +1332,9 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.RefreshRecompositionProfilerReport,
             SharedSettingsIntent.ExportRecompositionProfilerReport,
             SharedSettingsIntent.SendFeedback,
+            is SharedSettingsIntent.RenameComputer,
+            is SharedSettingsIntent.DeleteComputer,
+            is SharedSettingsIntent.RotateComputerKey,
             SharedSettingsIntent.ConsumeEffect -> false
         }
 
@@ -1276,6 +1395,9 @@ internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
 internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionServerTranslation"
+internal const val COMPUTER_ACTION_RENAME = "renameComputer"
+internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
+internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"
 internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAutoTranslation"
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
 internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"

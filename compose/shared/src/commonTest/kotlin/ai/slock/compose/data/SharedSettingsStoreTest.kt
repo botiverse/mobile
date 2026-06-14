@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SharedSettingsStoreTest {
     @Test
@@ -546,6 +547,180 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun renameComputerIntentCallsRepositoryAndReloadsDetail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val renamed =
+            SettingsComputerSnapshot(
+                id = "machine-42",
+                name = "MacBook Pro 2",
+                daemonVersion = "0.51.1",
+                online = true
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                renameComputerResult = DataResult.Content(renamed)
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first so the route is the detail page, then
+        // rename. The rename helper should call renameComputer + reload
+        // the detail snapshot, leaving the route on ComputerDetail.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest("machine-42", "MacBook Pro 2")))
+
+        // Repository called: initial OpenComputer (loads detail), then
+        // renameComputer, then a second computerDetail reload. The fake's
+        // computerDetailResult still returns the original snapshot, so we
+        // assert on the call sequence + action state only — the
+        // post-reload snapshot's name is a function of the fake fixture,
+        // not the action itself.
+        assertEquals(
+            listOf(
+                "computerDetail:machine-42",
+                "renameComputer:machine-42:MacBook Pro 2",
+                "computerDetail:machine-42"
+            ),
+            repository.calls
+        )
+        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
+        assertEquals("renameComputer", actionState.action)
+        assertEquals("machine-42", actionState.itemId)
+        assertEquals(false, actionState.inProgress)
+        assertNull(actionState.errorCode)
+        // Detail reload happened (still Content) and route is still ComputerDetail.
+        assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail)
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
+        scope.cancel()
+    }
+
+    @Test
+    fun deleteComputerIntentClearsRouteAndSurfacesErrorCodeOnFailure() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                deleteComputerResult =
+                    DataResult.Error(ScreenError(code = "computer_has_agents", retryable = false))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first so the route is the detail page, then
+        // attempt a delete that fails with 409 (computer_has_agents). The
+        // page must stay on the detail route so the user can read the error.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.DeleteComputer("machine-42"))
+
+        // Repository was called twice — once for the initial OpenComputer
+        // (loads the detail) and once for the failed DeleteComputer.
+        assertEquals(listOf("computerDetail:machine-42", "deleteComputer:machine-42"), repository.calls)
+        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
+        assertEquals("deleteComputer", actionState.action)
+        assertEquals("machine-42", actionState.itemId)
+        assertEquals(false, actionState.inProgress)
+        assertEquals("computer_has_agents", actionState.errorCode)
+        // Route is still the detail page so the user can react to the error.
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
+        scope.cancel()
+    }
+
+    @Test
+    fun deleteComputerIntentOnSuccessPopsToComputersListAndReloadsIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                computersResult = DataResult.Content(computersSnapshot("machine-99")),
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                deleteComputerResult = DataResult.Content(SettingsComputerActionResult(success = true, machineId = "machine-42", action = "delete"))
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first so the route is the detail page, then
+        // perform a successful delete. The page should pop back to the
+        // Computers list and reload it.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.DeleteComputer("machine-42"))
+
+        // Repository called for the initial detail load, then the delete,
+        // then a computers list reload. Route should fall back to Computers.
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.Computers), store.state.value.route)
+        assertEquals(false, store.state.value.actionState?.inProgress ?: true)
+        // First call is the detail load, then the delete, then the list reload.
+        assertTrue(repository.calls.contains("computerDetail:machine-42"))
+        assertTrue(repository.calls.contains("deleteComputer:machine-42"))
+        assertTrue(repository.calls.contains("computers"))
+        scope.cancel()
+    }
+
+    @Test
+    fun rotateComputerKeyIntentCallsRepositoryAndReloadsDetailWithNewPrefix() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val rotated =
+            SettingsComputerKeyRotationResult(
+                machineId = "machine-42",
+                apiKeyPrefix = "sk_machine_xyz"
+            )
+        val repository =
+            FakeSettingsRepository(
+                computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")),
+                rotateComputerKeyResult = DataResult.Content(rotated)
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        // Open the detail page first, then rotate the key. The rotate-key
+        // helper should call rotateComputerKey + reload the detail snapshot.
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+        store.accept(SharedSettingsIntent.RotateComputerKey("machine-42"))
+
+        assertEquals(
+            listOf(
+                "computerDetail:machine-42",
+                "rotateComputerKey:machine-42",
+                "computerDetail:machine-42"
+            ),
+            repository.calls
+        )
+        val actionState = assertIs<SharedSettingsActionState>(store.state.value.actionState)
+        assertEquals("rotateComputerKey", actionState.action)
+        assertEquals("machine-42", actionState.itemId)
+        assertEquals(false, actionState.inProgress)
+        assertNull(actionState.errorCode)
+        scope.cancel()
+    }
+
+    @Test
     fun aboutAndDiagnosticsLoadThroughPlatformCapabilities() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -726,7 +901,10 @@ class SharedSettingsStoreTest {
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var languageRegionResult: DataResult<SettingsLanguageRegionSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
-        var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var renameComputerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var deleteComputerResult: DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var rotateComputerKeyResult: DataResult<SettingsComputerKeyRotationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
     ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
         var updateProfileBlock: BlockingCall? = null
@@ -770,14 +948,20 @@ class SharedSettingsStoreTest {
         override suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
             DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-        override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> {
+            calls += "renameComputer:${request.machineId}:${request.name}"
+            return renameComputerResult
+        }
 
-        override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun deleteComputer(machineId: String): DataResult<SettingsComputerActionResult> {
+            calls += "deleteComputer:$machineId"
+            return deleteComputerResult
+        }
 
-        override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
-            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        override suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> {
+            calls += "rotateComputerKey:$machineId"
+            return rotateComputerKeyResult
+        }
 
         override suspend fun getComputerRuntimeModels(
             machineId: String,

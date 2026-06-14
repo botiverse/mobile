@@ -472,7 +472,16 @@ data class SettingsComputerDetailSnapshot(
     val agents: List<SettingsComputerAgentSnapshot>,
     val sections: List<SettingsServerSectionSnapshot>,
     val workspacesError: SettingsSectionErrorSnapshot? = null,
-    val agentsError: SettingsSectionErrorSnapshot? = null
+    val agentsError: SettingsSectionErrorSnapshot? = null,
+    /**
+     * #78: server-side `manageMachines` capability. Defaults to false to mirror
+     * the existing [SettingsComputersSnapshot.canAddComputer] hardcode — actual
+     * member-role permission detection is a follow-up. When false, the
+     * ComputerDetail page hides rename / delete / rotate-key actions; the
+     * server still enforces 403 on the API endpoints so unauthorized users
+     * can't bypass a permissive client.
+     */
+    val canManageMachines: Boolean = false
 )
 
 data class SettingsSectionErrorSnapshot(

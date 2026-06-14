@@ -73,6 +73,7 @@ internal data class KuiklySettingsComputerDetailPayload(
     val workspaces: List<KuiklySettingsWorkspaceItem> = emptyList(),
     val agents: List<KuiklySettingsAgentItem> = emptyList(),
     val canOpenAgents: Boolean = false,
+    val canManageMachines: Boolean = false,
     val workspacesErrorCode: String? = null,
     val workspacesRetryable: Boolean = false,
     val agentsErrorCode: String? = null,
@@ -203,6 +204,7 @@ internal fun SettingsComputersContent(
 @Composable
 internal fun SettingsComputerDetailContent(
     payload: KuiklySettingsComputerDetailPayload,
+    actionState: KuiklySettingsComputerActionState? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onEvent: (String, String?) -> Unit
 ) {
@@ -250,7 +252,111 @@ internal fun SettingsComputerDetailContent(
                 )
             }
         }
+        if (payload.canManageMachines) {
+            item { SettingsSectionTitle("ACTIONS") }
+            item {
+                // #78: rename / delete / rotate-key UI surface.
+                // Each button dispatches via onEvent(...) which the host
+                // translates to SharedSettingsIntent.RenameComputer /
+                // .DeleteComputer / .RotateComputerKey. The actionState
+                // disables buttons + swaps the label while the request is
+                // in flight. Errors surface via the existing
+                // settingsComputerErrorCopy mapping (see #74 commit
+                // cf01a0a4) for codes like computer_has_agents / 409.
+                val computerId = payload.computer.id
+                val renameBusy = actionState?.action == "renameComputer" && actionState.inProgress && actionState.itemId == computerId
+                val deleteBusy = actionState?.action == "deleteComputer" && actionState.inProgress && actionState.itemId == computerId
+                val rotateBusy = actionState?.action == "rotateComputerKey" && actionState.inProgress && actionState.itemId == computerId
+                val anyBusy = renameBusy || deleteBusy || rotateBusy
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsActionRow(
+                        title = "Rename computer",
+                        description = "Change this computer's display name.",
+                        actionLabel = if (renameBusy) "Renaming..." else "Rename",
+                        enabled = !anyBusy,
+                        onClick = { onEvent("renameComputer", computerId) }
+                    )
+                    SettingsActionRow(
+                        title = "Rotate API key",
+                        description = "Generate a new key for the daemon to reconnect. The old key stops working immediately.",
+                        actionLabel = if (rotateBusy) "Rotating..." else "Rotate key",
+                        enabled = !anyBusy,
+                        onClick = { onEvent("rotateComputerKey", computerId) }
+                    )
+                    SettingsActionRow(
+                        title = "Delete computer",
+                        description = "Permanently remove this computer. All agents must be deleted first.",
+                        actionLabel = if (deleteBusy) "Deleting..." else "Delete",
+                        enabled = !anyBusy,
+                        destructive = true,
+                        onClick = { onEvent("deleteComputer", computerId) }
+                    )
+                    actionState?.errorCode?.takeIf { it.isNotBlank() && actionState.itemId == computerId }?.let { code ->
+                        SettingsInlineError(
+                            title = settingsComputerErrorTitle(code),
+                            errorCode = code,
+                            retryable = false
+                        ) { onEvent("retryComputerAction", actionState.action) }
+                    }
+                }
+            }
+        }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Serializable
+internal data class KuiklySettingsComputerActionState(
+    val action: String = "",
+    val itemId: String? = null,
+    val inProgress: Boolean = false,
+    val errorCode: String? = null
+)
+
+private fun settingsComputerErrorTitle(code: String): String = when (code) {
+    "computer_has_agents" -> "Cannot delete computer"
+    "computer_bad_request" -> "Computer request rejected"
+    "computer_offline_replay" -> "Computer offline"
+    "machine_offline_replay" -> "Computer offline"
+    "machine_offline" -> "Computer offline"
+    "server_forbidden" -> "Permission denied"
+    "auth_required" -> "Session expired"
+    else -> "Action failed"
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    description: String,
+    actionLabel: String,
+    enabled: Boolean,
+    destructive: Boolean = false,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+        Text(
+            description,
+            style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        SlockBrutalActionButton(
+            label = actionLabel,
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = if (destructive) SlockColor.AccentRed else SlockColor.BrandYellow,
+            minWidth = 0.dp,
+            minHeight = 40.dp,
+            shadowOffset = 2.dp,
+            enabled = enabled
+        )
     }
 }
 

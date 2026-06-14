@@ -31,6 +31,8 @@ import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import ai.slock.compose.data.MyMessageAlignmentPreference
+import ai.slock.compose.data.SettingsComputerRenameRequest
+import ai.slock.compose.data.SharedSettingsActionState
 import ai.slock.compose.data.NetworkSlockAnnouncementsRemindersApi
 import ai.slock.compose.data.NetworkSlockTasksApi
 import ai.slock.compose.data.SERVER_ACTION_INVITE_CREATE
@@ -1856,12 +1858,38 @@ private fun SettingsAppShellContent(
                 }
             SettingsDestinationComputerDetail ->
                 SettingsComputerDetailContent(
-                    settingsState.computerDetail.toComputerDetailPayload(selectedComputerId),
+                    payload = settingsState.computerDetail.toComputerDetailPayload(selectedComputerId),
+                    actionState = settingsState.actionState?.toComputerActionState(),
                     bottomContentPadding = bottomContentPadding
                 ) { action, itemId ->
                     when (action) {
                         "retryWorkspaces", "retryAgents" ->
                             selectedComputerId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.OpenComputer(it)) }
+                        "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
+                            onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = "")))
+                        }
+                        "deleteComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
+                            onSettingsIntent(SharedSettingsIntent.DeleteComputer(machineId))
+                        }
+                        "rotateComputerKey" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
+                            onSettingsIntent(SharedSettingsIntent.RotateComputerKey(machineId))
+                        }
+                        "retryComputerAction" -> {
+                            val lastAction = settingsState.actionState?.action
+                            val lastItemId = settingsState.actionState?.itemId
+                            when (lastAction) {
+                                "renameComputer" -> lastItemId?.let { id ->
+                                    onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = id, name = "")))
+                                }
+                                "deleteComputer" -> lastItemId?.let { id ->
+                                    onSettingsIntent(SharedSettingsIntent.DeleteComputer(id))
+                                }
+                                "rotateComputerKey" -> lastItemId?.let { id ->
+                                    onSettingsIntent(SharedSettingsIntent.RotateComputerKey(id))
+                                }
+                                else -> Unit
+                            }
+                        }
                         "openAgent" -> onSettingsAction(action, itemId)
                         else -> onSettingsAction(action, itemId)
                     }
@@ -2681,6 +2709,14 @@ private fun SettingsComputerSnapshot.toComputerItem(): KuiklySettingsComputerIte
         createdAt = createdAt,
         apiKeyPrefix = apiKeyPrefix,
         statusVersion = statusVersion
+    )
+
+private fun SharedSettingsActionState.toComputerActionState(): KuiklySettingsComputerActionState =
+    KuiklySettingsComputerActionState(
+        action = action,
+        itemId = itemId,
+        inProgress = inProgress,
+        errorCode = errorCode
     )
 
 private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(): KuiklySettingsWorkspaceItem =
