@@ -84,4 +84,56 @@ class SettingsComputersPayloadTest {
         assertEquals(7L, c.statusVersion)
         assertEquals("2026-06-14T02:00:00.000Z", c.lastSeenLabel)
     }
+
+    @Test
+    fun computersListPayloadRoundTripsDaemonVersionForOnlineAndOfflineMachines() {
+        // #77: list card only renders name + status + daemon version line,
+        // matching React MobileComputersPanel.tsx + Sidebar.tsx:1248-1290. The
+        // payload must carry daemonVersion on the per-item level so the page
+        // can fall back to "daemon offline" when it is blank, without
+        // pulling in fields the React list doesn't show (createdAt /
+        // runtimes / lastHeartbeat / hostname / os live on the detail
+        // payload, see #74 commit cf01a0a4).
+        val payload =
+            KuiklySettingsComputersPayload(
+                instanceId = "computers-list",
+                latestDaemonVersion = "0.53.0",
+                computers =
+                    listOf(
+                        KuiklySettingsComputerItem(
+                            id = "machine-1",
+                            name = "Maria Laptop",
+                            daemonVersion = "0.53.0",
+                            online = true
+                        ),
+                        KuiklySettingsComputerItem(
+                            id = "machine-2",
+                            name = "Build host",
+                            daemonVersion = "",
+                            online = false
+                        )
+                    )
+            )
+
+        val decoded =
+            json.decodeFromString(
+                KuiklySettingsComputersPayload.serializer(),
+                json.encodeToString(payload)
+            )
+
+        assertEquals(2, decoded.computers.size)
+        val (online, offline) = decoded.computers
+        assertEquals("0.53.0", online.daemonVersion)
+        assertEquals(true, online.online)
+        assertEquals("", offline.daemonVersion)
+        assertEquals(false, offline.online)
+        // List payload should NOT carry detail-only fields even if the data
+        // class definition permits them — we deliberately keep the list
+        // contract minimal so the page can't accidentally fall through to a
+        // detail-style render.
+        assertEquals(null, online.hostname)
+        assertEquals(null, online.platform)
+        assertEquals(null, online.createdAt)
+        assertEquals(null, online.apiKeyPrefix)
+    }
 }

@@ -25,6 +25,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -255,6 +256,14 @@ internal fun SettingsComputerDetailContent(
 
 @Composable
 private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() -> Unit)?) {
+    // #77: align the Settings Computers list card with React's
+    // `MobileComputersPanel.tsx` (107 行) and `Sidebar.tsx` line 1248-1290 list
+    // pattern — each card shows name + status dot + daemon version line.
+    // host/platform/createdAt/lastHeartbeat/runtimes are intentionally NOT
+    // rendered here; they live on the ComputerDetail page (see #74 commit
+    // `cf01a0a4`) and `MachineDetailPanel.tsx` Info / Detected Runtimes
+    // sections. This matches the user's "align to React" + "do not fabricate
+    // server-side fields" guard rails.
     Row(
         modifier = Modifier.fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
@@ -270,16 +279,19 @@ private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() 
                 Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 OnlineDot(item.online)
             }
+            val daemonVersion = item.daemonVersion.takeIf { it.isNotBlank() }
             Text(
-                listOf(item.daemonVersion, item.platform.orEmpty()).filter { it.isNotBlank() }.joinToString("  "),
-                style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
+                text = if (daemonVersion != null) "daemon v$daemonVersion" else "daemon offline",
+                style = SlockType.Input.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
+                    fontStyle = if (daemonVersion != null) null else FontStyle.Italic
+                ),
+                color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            item.hostname?.takeIf { it.isNotBlank() }?.let {
-                Text(it, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
         }
     }
 }
