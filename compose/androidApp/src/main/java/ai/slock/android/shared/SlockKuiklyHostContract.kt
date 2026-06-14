@@ -1,6 +1,5 @@
 package ai.slock.android.shared
 
-import ai.slock.android.ui.time.androidSlockTimeContext
 import org.json.JSONObject
 
 internal object SlockKuiklyPages {
@@ -44,7 +43,6 @@ internal class SlockKuiklyPageData private constructor(
     fun toKuiklyMap(): MutableMap<String, Any> =
             json.toMap().toMutableMap().apply {
                 put("appId", SLOCK_KUIKLY_APP_ID)
-                putHostTimeContextIfAbsent()
             }
 
     private fun put(key: String, value: Any): SlockKuiklyPageData =
@@ -71,19 +69,3 @@ internal fun slockKuiklyPageIsOpaque(pageName: String): Boolean =
                 pageName == SlockKuiklyPages.APP_SHELL
 
 private const val SLOCK_KUIKLY_APP_ID = 1
-
-private fun MutableMap<String, Any>.putHostTimeContextIfAbsent() {
-    val context = androidSlockTimeContext()
-    if (!containsKey("localOffsetMinutes")) {
-        put("localOffsetMinutes", context.localOffsetMinutes)
-    }
-    if (!containsKey("todayEpochDay")) {
-        context.todayEpochDay?.let { put("todayEpochDay", it) }
-    }
-    if (!containsKey("nowEpochMillis")) {
-        context.nowEpochMillis?.let { put("nowEpochMillis", it) }
-    }
-    if (!containsKey("timeFormat")) {
-        put("timeFormat", context.timeFormat)
-    }
-}

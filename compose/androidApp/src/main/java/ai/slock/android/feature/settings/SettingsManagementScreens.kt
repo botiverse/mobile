@@ -24,12 +24,12 @@ import ai.slock.android.core.model.MemberId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.MemberProfile
 import ai.slock.android.core.model.Presence
-import ai.slock.android.feature.members.MemberFlatRow
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.components.SlockEmptyState
 import ai.slock.android.ui.icons.LucideIcons
 import ai.slock.android.ui.components.SlockKeySurface
+import ai.slock.android.ui.components.SlockMemberAvatar
 import ai.slock.android.ui.components.SlockSegmentOption
 import ai.slock.android.ui.components.SlockTextField
 import ai.slock.android.ui.theme.SlockColor
@@ -426,7 +426,7 @@ private fun WorkspaceCard(workspace: SettingsComputerWorkspaceSnapshot) {
 
 @Composable
 private fun AgentCard(agent: SettingsComputerAgentSnapshot) {
-    MemberFlatRow(
+    SettingsMemberFlatRow(
             member = agent.memberProfile ?: agent.toMemberProfile(),
             modifier =
                     Modifier.fillMaxWidth()
@@ -434,6 +434,51 @@ private fun AgentCard(agent: SettingsComputerAgentSnapshot) {
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
                             .padding(horizontal = SlockSpacing.Md)
     )
+}
+
+@Composable
+private fun SettingsMemberFlatRow(
+        member: MemberProfile,
+        modifier: Modifier = Modifier,
+        onClick: () -> Unit = {}
+) {
+    Row(
+            modifier =
+                    modifier.fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clickable(role = Role.Button, onClick = onClick)
+                            .padding(vertical = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        SlockMemberAvatar(
+                member = member,
+                size = 34.dp,
+                fontSize = SlockType.Body.fontSize
+        )
+        Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                    text = member.displayName,
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(0.5f, fill = false)
+            )
+            Text(
+                    text = member.settingsInlineDescription,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+            )
+        }
+    }
 }
 
 @Composable
@@ -483,6 +528,17 @@ private fun String?.toSettingsAgentStatus(): AgentStatus =
             "offline", "disconnected" -> AgentStatus.Offline
             else -> AgentStatus.Online
         }
+
+private val MemberProfile.settingsInlineDescription: String
+    get() =
+            listOfNotNull(
+                            handle.takeIf { it.isNotBlank() },
+                            description?.takeIf { it.isNotBlank() },
+                            roleDescription?.takeIf { it.isNotBlank() }
+                    )
+                    .distinct()
+                    .joinToString(" / ")
+                    .ifBlank { kind.name.lowercase() }
 
 private fun String?.toSettingsAgentPresence(): Presence =
         when (toSettingsAgentStatus()) {
