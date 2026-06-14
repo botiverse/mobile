@@ -36,13 +36,20 @@ maven_file_exists() {
   [[ -f "${MAVEN_LOCAL}/${path}" ]]
 }
 
-artifacts_ready() {
-  maven_file_exists "dev/icerock/moko/graphics/${MOKO_GRAPHICS_VERSION}/graphics-${MOKO_GRAPHICS_VERSION}.module" &&
-    maven_file_exists "dev/icerock/moko/graphics-ohosarm64/${MOKO_GRAPHICS_VERSION}/graphics-ohosarm64-${MOKO_GRAPHICS_VERSION}.klib" &&
+graphics_artifacts_ready() {
+    maven_file_exists "dev/icerock/moko/graphics/${MOKO_GRAPHICS_VERSION}/graphics-${MOKO_GRAPHICS_VERSION}.module" &&
+    maven_file_exists "dev/icerock/moko/graphics-ohosarm64/${MOKO_GRAPHICS_VERSION}/graphics-ohosarm64-${MOKO_GRAPHICS_VERSION}.klib"
+}
+
+resources_artifacts_ready() {
     maven_file_exists "dev/icerock/moko/resources/${MOKO_RESOURCES_VERSION}/resources-${MOKO_RESOURCES_VERSION}.module" &&
     maven_file_exists "dev/icerock/moko/resources-ohosarm64/${MOKO_RESOURCES_VERSION}/resources-ohosarm64-${MOKO_RESOURCES_VERSION}.klib" &&
     maven_file_exists "dev/icerock/moko/resources-generator/${MOKO_RESOURCES_VERSION}/resources-generator-${MOKO_RESOURCES_VERSION}.jar" &&
     maven_file_exists "dev/icerock/mobile/multiplatform-resources/dev.icerock.mobile.multiplatform-resources.gradle.plugin/${MOKO_RESOURCES_VERSION}/dev.icerock.mobile.multiplatform-resources.gradle.plugin-${MOKO_RESOURCES_VERSION}.pom"
+}
+
+artifacts_ready() {
+    graphics_artifacts_ready && resources_artifacts_ready
 }
 
 copy_cached_kotlin_stdlib_to_maven_local() {
@@ -105,7 +112,12 @@ EOF
     exit 4
   fi
 
+  chmod -R u+w "${workdir}" 2>/dev/null || true
   rm -rf "${workdir}"
+  if [[ -e "${workdir}" ]]; then
+    echo "Failed to remove existing moko workdir: ${workdir}" >&2
+    exit 4
+  fi
   mkdir -p "$(dirname "${workdir}")"
   git clone --no-hardlinks "${source_dir}" "${workdir}"
   git -C "${workdir}" checkout "${expected_commit}"
@@ -583,24 +595,42 @@ fi
 
 copy_cached_kotlin_stdlib_to_maven_local
 
-prepare_workdir_from_vendor "${GRAPHICS_SOURCE_DIR}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_COMMIT}"
-patch_graphics
-"${GRAPHICS_WORKDIR}/gradlew" \
-  --no-daemon \
-  --console=plain \
-  -p "${GRAPHICS_WORKDIR}" \
-  :graphics:publishKotlinMultiplatformPublicationToMavenLocal \
-  :graphics:publishOhosArm64PublicationToMavenLocal
+if [[ "${force}" -eq 1 ]] || ! graphics_artifacts_ready; then
+  prepare_workdir_from_vendor "${GRAPHICS_SOURCE_DIR}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_COMMIT}"
+  patch_graphics
+  "${GRAPHICS_WORKDIR}/gradlew" \
+    --no-daemon \
+    --no-build-cache \
+    --no-parallel \
+    --console=plain \
+    -Dorg.gradle.workers.max=1 \
+    -Dkotlin.compiler.execution.strategy=in-process \
+    -Dkotlin.incremental=false \
+    -p "${GRAPHICS_WORKDIR}" \
+    :graphics:publishKotlinMultiplatformPublicationToMavenLocal \
+    :graphics:publishOhosArm64PublicationToMavenLocal
+else
+  echo "moko-graphics KBA artifacts already exist in ${MAVEN_LOCAL}."
+fi
 
-prepare_workdir_from_vendor "${RESOURCES_SOURCE_DIR}" "${RESOURCES_WORKDIR}" "${RESOURCES_COMMIT}"
-patch_resources
-"${RESOURCES_WORKDIR}/gradlew" \
-  --no-daemon \
-  --console=plain \
-  -p "${RESOURCES_WORKDIR}" \
-  :resources:publishKotlinMultiplatformPublicationToMavenLocal \
-  :resources:publishOhosArm64PublicationToMavenLocal \
-  :resources-generator:publishToMavenLocal
+if [[ "${force}" -eq 1 ]] || ! resources_artifacts_ready; then
+  prepare_workdir_from_vendor "${RESOURCES_SOURCE_DIR}" "${RESOURCES_WORKDIR}" "${RESOURCES_COMMIT}"
+  patch_resources
+  "${RESOURCES_WORKDIR}/gradlew" \
+    --no-daemon \
+    --no-build-cache \
+    --no-parallel \
+    --console=plain \
+    -Dorg.gradle.workers.max=1 \
+    -Dkotlin.compiler.execution.strategy=in-process \
+    -Dkotlin.incremental=false \
+    -p "${RESOURCES_WORKDIR}" \
+    :resources:publishKotlinMultiplatformPublicationToMavenLocal \
+    :resources:publishOhosArm64PublicationToMavenLocal \
+    :resources-generator:publishToMavenLocal
+else
+  echo "moko-resources KBA artifacts already exist in ${MAVEN_LOCAL}."
+fi
 
 if ! artifacts_ready; then
   echo "moko-resources OHOS KBA artifact preparation finished but required MavenLocal artifacts are still missing." >&2
