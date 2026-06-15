@@ -3857,7 +3857,6 @@ private fun ThreadMessageCard(
                                 Modifier
                                     .threadMessageContentWidth(messageMaxWidthFraction)
                                     .background(Color.Transparent),
-                            onClick2 = onShowActions,
                             pressFeedback = false
                         ) {
                             Row(
@@ -3904,7 +3903,6 @@ private fun ThreadMessageCard(
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .background(Color.Transparent),
-                                onClick2 = onShowActions,
                                 pressFeedback = false
                             ) {
                                 SlockMarkdownBody(
