@@ -626,6 +626,7 @@ class ThreadPayloadTest {
                                                     type = "agent:create",
                                                     name = "Pi-Frontend-Chrome插件专家",
                                                     description = "负责 Chrome 插件前端工程与视觉对齐。",
+                                                    suggestedComputer = "machine-2",
                                                     draftHint = "请创建这个专家 agent"
                                                 )
                                         )
@@ -641,6 +642,7 @@ class ThreadPayloadTest {
         assertEquals("prepared", card?.state)
         assertEquals("Pi-Frontend-Chrome插件专家", card?.name)
         assertEquals("负责 Chrome 插件前端工程与视觉对齐。", card?.description)
+        assertEquals("machine-2", card?.suggestedComputer)
         assertEquals("请创建这个专家 agent", card?.draftHint)
     }
 

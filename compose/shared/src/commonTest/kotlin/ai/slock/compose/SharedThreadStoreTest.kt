@@ -406,7 +406,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun agentCreateActionCardUsesTypedApiAndMarksExecuted() = runBlocking {
+    fun agentCreateActionCardRequiresDialogInsteadOfDirectCommit() = runBlocking {
         val agentsApi = RecordingAgentsApi()
         val actionCardsApi = RecordingActionCardsApi()
         val dataSource =
@@ -421,15 +421,45 @@ class SharedThreadStoreTest {
                 type = "agent:create",
                 name = "@Noel",
                 description = "Helps with release review.",
+                suggestedComputer = "machine-2",
                 draftHint = "Use the release machine."
             )
 
         val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+
+        assertTrue(result is DataResult.Error)
+        assertEquals("action_card_agent_create_dialog_required", result.error.code)
+        assertTrue(agentsApi.createBodies.isEmpty())
+        assertTrue(actionCardsApi.calls.isEmpty())
+    }
+
+    @Test
+    fun agentCreateActionCardDialogSubmitUsesTypedApiAndMarksExecuted() = runBlocking {
+        val agentsApi = RecordingAgentsApi()
+        val actionCardsApi = RecordingActionCardsApi()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                agentsApiClient = SlockAgentsApiClient(agentsApi),
+                actionCardsApiClient = SlockIntegrationsActionsPushApiClient(actionCardsApi)
+            )
+        val card =
+            ThreadActionCard(
+                type = "agent:create",
+                name = "@Noel",
+                description = "Helps with release review.",
+                requiredComputer = "machine-2",
+                draftHint = "Use the release machine."
+            )
+
+        val result = dataSource.commitAgentCreateActionCard("m-card", card)
         val executedCard = (result as DataResult.Content).data
 
         assertEquals(1, agentsApi.createBodies.size)
         assertTrue(agentsApi.createBodies.single().contains(""""name":"Noel""""))
         assertTrue(agentsApi.createBodies.single().contains(""""description":"Helps with release review.""""))
+        assertTrue(agentsApi.createBodies.single().contains(""""machineId":"machine-2""""))
         assertFalse(agentsApi.createBodies.single().contains("@Noel"))
         assertEquals("executed", executedCard.state)
         assertEquals("agent", executedCard.resultKind)
@@ -458,7 +488,7 @@ class SharedThreadStoreTest {
             )
         val card = ThreadActionCard(type = "agent:create", name = "Noel")
 
-        val result = dataSource.commitThreadActionCard(basePayload(), "m-card", card)
+        val result = dataSource.commitAgentCreateActionCard("m-card", card)
 
         assertEquals(1, agentsApi.createBodies.size)
         assertEquals(1, actionCardsApi.calls.size)

@@ -24,6 +24,8 @@ internal data class ThreadActionCard(
     val description: String? = null,
     val visibility: String? = null,
     val channel: String? = null,
+    val suggestedComputer: String? = null,
+    val requiredComputer: String? = null,
     val humans: List<String> = emptyList(),
     val agents: List<String> = emptyList(),
     val initialHumans: List<String> = emptyList(),
@@ -59,6 +61,8 @@ internal data class WireActionCardAction(
     val description: String? = null,
     val visibility: String? = null,
     val channel: String? = null,
+    val suggestedComputer: String? = null,
+    val requiredComputer: String? = null,
     val humans: List<String> = emptyList(),
     val agents: List<String> = emptyList(),
     val initialHumans: List<String> = emptyList(),
@@ -89,6 +93,8 @@ internal fun WireActionCardMetadata?.toThreadActionCard(): ThreadActionCard? {
         description = action.description?.takeIf { it.isNotBlank() },
         visibility = action.visibility?.takeIf { it.isNotBlank() },
         channel = action.channel?.takeIf { it.isNotBlank() },
+        suggestedComputer = action.suggestedComputer?.takeIf { it.isNotBlank() },
+        requiredComputer = action.requiredComputer?.takeIf { it.isNotBlank() },
         humans = action.humans,
         agents = action.agents,
         initialHumans = action.initialHumans,
@@ -114,6 +120,8 @@ internal fun ThreadActionCard.toMessageMetadata(): Map<String, String> =
         putString("description", description)
         putString("visibility", visibility)
         putString("channel", channel)
+        putString("suggestedComputer", suggestedComputer)
+        putString("requiredComputer", requiredComputer)
         putList("humans", humans)
         putList("agents", agents)
         putList("initialHumans", initialHumans)
@@ -139,6 +147,8 @@ internal fun actionCardFromMessageMetadata(metadata: Map<String, String>): Threa
         description = metadata["${ActionCardMetadataPrefix}description"]?.takeIf { it.isNotBlank() },
         visibility = metadata["${ActionCardMetadataPrefix}visibility"]?.takeIf { it.isNotBlank() },
         channel = metadata["${ActionCardMetadataPrefix}channel"]?.takeIf { it.isNotBlank() },
+        suggestedComputer = metadata["${ActionCardMetadataPrefix}suggestedComputer"]?.takeIf { it.isNotBlank() },
+        requiredComputer = metadata["${ActionCardMetadataPrefix}requiredComputer"]?.takeIf { it.isNotBlank() },
         humans = metadata.decodeList("humans"),
         agents = metadata.decodeList("agents"),
         initialHumans = metadata.decodeList("initialHumans"),

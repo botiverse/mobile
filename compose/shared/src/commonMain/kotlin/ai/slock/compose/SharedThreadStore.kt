@@ -172,7 +172,7 @@ internal class SharedThreadDataSource(
     ): DataResult<ThreadActionCard> {
         return when {
             card.type.equals("agent:create", ignoreCase = true) ->
-                commitAgentCreateActionCardInternal(messageId, card)
+                DataResult.Error(ScreenError(code = "action_card_agent_create_dialog_required", retryable = false))
             card.type.equals("channel:create", ignoreCase = true) ->
                 commitChannelCreateActionCard(messageId, card)
             card.type.equals("channel:add_member", ignoreCase = true) ->
@@ -204,7 +204,9 @@ internal class SharedThreadDataSource(
                     buildCreateAgentBody(
                         CreateAgentBody(
                             name = agentName.removePrefix("@"),
-                            description = card.description?.takeIf { it.isNotBlank() }
+                            description = card.description?.takeIf { it.isNotBlank() },
+                            machineId = card.requiredComputer?.takeIf { it.isNotBlank() }
+                                ?: card.suggestedComputer?.takeIf { it.isNotBlank() }
                         )
                     )
                 )

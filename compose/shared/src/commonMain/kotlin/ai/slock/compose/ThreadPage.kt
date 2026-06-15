@@ -344,6 +344,13 @@ private data class ThreadImagePreviewState(
     val current: KuiklyThreadAttachmentItem? get() = images.getOrNull(currentIndex)
 }
 
+private data class ThreadCreateAgentActionDialogState(
+    val messageId: String,
+    val card: ThreadActionCard,
+    val submitting: Boolean = false,
+    val errorCode: String? = null
+)
+
 private data class ThreadImageAttachmentGroup(
     val images: List<KuiklyThreadAttachmentItem>,
     val currentIndex: Int
@@ -994,6 +1001,7 @@ internal fun SharedThreadRouteContent(
     var removedAttachmentIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var attachmentOpenStates by remember(initialPayload.instanceId) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
@@ -1031,6 +1039,7 @@ internal fun SharedThreadRouteContent(
         composerFailureLabel = null
         removedAttachmentIds = emptySet()
         pendingActionCardIds = emptySet()
+        createAgentDialogState = null
         attachmentOpenStates = emptyMap()
         uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
@@ -1502,6 +1511,16 @@ internal fun SharedThreadRouteContent(
                     }
                     if (!actionCard.isSupportedCommitAction()) {
                         bridge.toast("Action is not supported yet")
+                        return@ThreadPageContent
+                    }
+                    if (actionCard.type.equals("agent:create", ignoreCase = true)) {
+                        createAgentDialogState =
+                            ThreadCreateAgentActionDialogState(
+                                messageId = itemId,
+                                card = actionCard,
+                                submitting = false,
+                                errorCode = null
+                            )
                         return@ThreadPageContent
                     }
                     pendingActionCardIds = pendingActionCardIds + itemId
@@ -2039,6 +2058,82 @@ internal fun SharedThreadRouteContent(
                     openAttachmentExternally(attachment)
                 },
                 onSelectIndex = ::selectImagePreviewIndex
+            )
+        }
+        createAgentDialogState?.let { dialogState ->
+            SharedCreateAgentDialog(
+                submitting = dialogState.submitting,
+                errorMessage = dialogState.errorCode?.let(::threadCreateAgentDialogErrorCopy),
+                initialName = dialogState.card.name.removePrefix("@"),
+                initialDescription = dialogState.card.description.orEmpty(),
+                draftHint = dialogState.card.draftHint,
+                suggestedComputer = dialogState.card.suggestedComputer,
+                requiredComputer = dialogState.card.requiredComputer,
+                onDismiss = {
+                    if (!dialogState.submitting) {
+                        createAgentDialogState = null
+                    }
+                },
+                onSubmit = { request ->
+                    if (dialogState.submitting) {
+                        return@SharedCreateAgentDialog
+                    }
+                    val normalizedName = request.name.trim().removePrefix("@")
+                    if (normalizedName.isBlank()) {
+                        createAgentDialogState = dialogState.copy(errorCode = "agent_name_required")
+                        return@SharedCreateAgentDialog
+                    }
+                    val submitCard =
+                        dialogState.card.copy(
+                            name = normalizedName,
+                            description = request.description,
+                            suggestedComputer =
+                                if (dialogState.card.requiredComputer.isNullOrBlank()) {
+                                    request.machineId
+                                } else {
+                                    dialogState.card.suggestedComputer
+                                }
+                        )
+                    val submittingState =
+                        dialogState.copy(
+                            card = submitCard,
+                            submitting = true,
+                            errorCode = null
+                        )
+                    createAgentDialogState = submittingState
+                    pendingActionCardIds = pendingActionCardIds + dialogState.messageId
+                    coroutineScope.launch {
+                        try {
+                            when (val result = dataSource.commitAgentCreateActionCard(dialogState.messageId, submitCard)) {
+                                is DataResult.Content -> {
+                                    threadViewModel.dispatch(
+                                        SharedThreadIntent.ApplyActionCard(dialogState.messageId, result.data)
+                                    )
+                                    createAgentDialogState = null
+                                    bridge.toast(submitCard.actionCardSuccessToast())
+                                }
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    createAgentDialogState =
+                                        submittingState.copy(
+                                            submitting = false,
+                                            errorCode = result.threadActionErrorCode("agent_create_failed")
+                                        )
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    createAgentDialogState =
+                                        submittingState.copy(
+                                            submitting = false,
+                                            errorCode = result.blocker.code
+                                        )
+                                }
+                            }
+                        } finally {
+                            pendingActionCardIds = pendingActionCardIds - dialogState.messageId
+                        }
+                    }
+                }
             )
         }
     }
@@ -4125,6 +4220,13 @@ private fun ThreadActionCard.actionCardTitle(): String =
 private fun ThreadActionCard.actionCardDetails(): String =
     buildList {
         description?.takeIf { it.isNotBlank() }?.let { add("Description: $it") }
+        if (type.equals("agent:create", ignoreCase = true)) {
+            requiredComputer?.takeIf { it.isNotBlank() }?.let { add("Required computer: $it") }
+            if (requiredComputer.isNullOrBlank()) {
+                suggestedComputer?.takeIf { it.isNotBlank() }?.let { add("Suggested computer: $it") }
+            }
+            if (description.isNullOrBlank()) add("No description prefilled.")
+        }
         if (initialHumans.isNotEmpty()) add("Humans: ${initialHumans.joinToString(", ")}")
         if (initialAgents.isNotEmpty()) add("Agents: ${initialAgents.joinToString(", ")}")
         if (humans.isNotEmpty()) add("Humans: ${humans.joinToString(", ")}")
@@ -4147,6 +4249,18 @@ private fun ThreadActionCard.actionCardCommittedLabel(): String =
             if (isNotBlank()) append(" -> ") else append("Result: ")
             append(result)
         }
+    }
+
+private fun threadCreateAgentDialogErrorCopy(code: String): String =
+    when (code) {
+        "agent_name_required",
+        "action_card_agent_name_missing" -> "Agent name is required."
+        "action_card_agents_api_missing" -> "Create Agent is not available on this build."
+        "action_card_actions_api_missing" -> "Action card completion is not available on this build."
+        "action_card_mark_executed_empty",
+        "action_mark_executed_contract_mismatch" -> "Agent was created, but the action card could not be marked done. Try refreshing this thread."
+        "agent_create_empty" -> "Agent was not created."
+        else -> "Unable to create agent: $code"
     }
 
 @Composable
