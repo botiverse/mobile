@@ -176,7 +176,7 @@
           "id": "draft-send-enabled",
           "name": "Draft Send Enabled",
           "props": {
-            "draft": "Review the Android composer crop before release.",
+            "draft": "Review the Android composer crop",
             "showAsTaskToggle": true,
             "enabled": true
           }
@@ -189,6 +189,53 @@
       },
       "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
       "androidCaseHint": "compose_thread_composer_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "thread.composer.as-task-selected",
+      "title": "Thread Composer As Task Selected",
+      "surface": "thread",
+      "fixture": "fixtures/thread.composer.as-task-selected.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "draft-as-task-selected",
+          "name": "Draft As Task Selected",
+          "props": {
+            "draft": "Review the Android composer crop before release.",
+            "showAsTaskToggle": true,
+            "asTask": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='thread.composer.states']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "label:has-text('As Task')"
+          },
+          {
+            "type": "wait",
+            "ms": 120
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_as_task_selected",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -1018,6 +1065,45 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerStates",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "thread.composer.as-task-selected",
+      "title": "Thread Composer As Task Selected",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput with As Task checked vs Android connected visual-only rendering of ThreadComposerContent seeded with seedAsTask=true. This is a focused diff for the selected As Task toggle.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "thread.composer.states route plus As Task click interaction"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerAsTaskSelected",
           "source": "kmp-shared"
         },
         {

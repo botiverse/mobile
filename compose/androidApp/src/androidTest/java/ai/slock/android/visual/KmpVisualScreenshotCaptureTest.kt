@@ -63,6 +63,25 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerAsTaskSelected() {
+        captureKmpComponentCase(
+            caseId = "thread.composer.as-task-selected",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-as-task")
+                    .put(
+                        "payload",
+                        threadComposerPayload(
+                            asTask = true,
+                            seedText = "Review the Android composer crop"
+                        ).toString()
+                    ),
+            crop = THREAD_COMPOSER_COMPONENT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRow() {
         captureKmpComponentCase(
             caseId = "thread.message.row",
@@ -408,11 +427,14 @@ class KmpVisualScreenshotCaptureTest {
             .put("slug", slug)
             .put("unreadCount", unreadCount)
 
-    private fun threadComposerPayload(): JSONObject =
+    private fun threadComposerPayload(
+        asTask: Boolean = false,
+        seedText: String = "Review the Android composer crop before release."
+    ): JSONObject =
         JSONObject()
             .put("instanceId", "visual-thread-composer")
-            .put("seedText", "Review the Android composer crop before release.")
-            .put("seedAsTask", false)
+            .put("seedText", seedText)
+            .put("seedAsTask", asTask)
             .put("syncNonce", 1)
             .put("focusRequestNonce", 0)
             .put("placeholder", "Message design")
@@ -740,6 +762,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 620
+            )
+        private val THREAD_COMPOSER_COMPONENT_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 100
             )
 
         @BeforeClass

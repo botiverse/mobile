@@ -54,6 +54,8 @@ private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
+private val ThreadComposerVisualComponentWidth = 342.dp
+private val ThreadComposerVisualComponentMinHeight = 100.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
 
 // Connected visual-test entry only. Product Thread renders ThreadComposerContent inside ThreadPage.
@@ -246,11 +248,18 @@ private fun ThreadComposerScreen() {
             "thread_composer_render instanceId=${payload.instanceId} syncNonce=${payload.syncNonce} attachments=${payload.pendingAttachments.size} mode=${payload.composerMode}"
         )
     }
-    ThreadComposerContent(payload = payload, onEvent = { action, _, _, attachmentId ->
-        bridge.log(
-            "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
-        )
-    })
+    Box(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        contentAlignment = Alignment.TopCenter
+    ) {
+        Box(modifier = Modifier.width(ThreadComposerVisualComponentWidth).heightIn(min = ThreadComposerVisualComponentMinHeight)) {
+            ThreadComposerContent(payload = payload, onEvent = { action, _, _, attachmentId ->
+                bridge.log(
+                    "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
+                )
+            })
+        }
+    }
 }
 
 @Composable
@@ -797,12 +806,12 @@ private fun ComposerAsTaskToggle(
     ) {
         Box(
             modifier = Modifier.size(14.dp)
-                .background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .background(if (checked) SlockColor.TextBlack else SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                Text("✓", style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp), color = SlockColor.TextBlack)
+                SlockLucidePathIcon("check", modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
             }
         }
         val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
