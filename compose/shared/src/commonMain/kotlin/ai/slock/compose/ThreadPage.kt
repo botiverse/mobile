@@ -855,7 +855,7 @@ private fun ThreadMessageVisualCard(
     timestampLabel: String = message.timestampLabel,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md
+    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     Column(
         modifier =
@@ -869,7 +869,7 @@ private fun ThreadMessageVisualCard(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Xs),
+                    .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -3811,7 +3811,7 @@ private fun ThreadMessageCard(
     onCommitActionCard: (String) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md
+    outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val actionCard = message.threadActionCard()
     val horizontalArrangement =
@@ -3826,7 +3826,7 @@ private fun ThreadMessageCard(
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
-                    .padding(SlockSpacing.Xs),
+                    .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Row(
@@ -3847,7 +3847,6 @@ private fun ThreadMessageCard(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(end = if (showSaveAction) 30.dp else 0.dp)
                                 .threadMessageLongPressActions(message.id, onShowActions),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         horizontalAlignment = contentAlignment
@@ -3856,6 +3855,7 @@ private fun ThreadMessageCard(
                             modifier =
                                 Modifier
                                     .threadMessageContentWidth(messageMaxWidthFraction)
+                                    .padding(end = if (showSaveAction) 30.dp else 0.dp)
                                     .background(Color.Transparent),
                             pressFeedback = false
                         ) {
