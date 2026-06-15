@@ -609,10 +609,8 @@ internal fun snapshotToBadgeCount(
  *
  * The `expect` lives in commonMain; the `actual`s are in
  * `androidMain` (uses `System.currentTimeMillis` from the JVM
- * runtime) and `ohosArm64Main` (uses `kotlin.time.Clock.System` via
- * local `@OptIn(ExperimentalTime::class)` — the `Clock` symbol IS
- * available on the K/N OHOS stdlib, it's just not available in
- * commonMain because the `commonMain` stdlib doesn't ship it).
+ * runtime) and `ohosArm64Main` (uses platform-specific
+ * `kotlin.system.getTimeMillis`).
  *
  * `kotlin.system.getTimeMillis()` was the simpler alternative
  * explored first; it does NOT work because
