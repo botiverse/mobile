@@ -1354,6 +1354,9 @@ internal class SlockKuiklyBridgeModule(
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_logs_cleared")
                             mapOf("status" to "ok")
                         }
+                        "prepareDiagnosticsFeedback" -> {
+                            prepareDiagnosticsFeedbackDraft()
+                        }
                         "sendFeedback" -> {
                             shareFeedbackWithDiagnosticsFile()
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_send_feedback")
@@ -1817,6 +1820,20 @@ internal class SlockKuiklyBridgeModule(
                 text = buildFeedbackText(diagnosticsFile.name),
                 attachment = diagnosticsFile,
                 attachmentMimeType = "text/plain"
+        )
+    }
+
+    private fun prepareDiagnosticsFeedbackDraft(): Map<String, Any> {
+        val diagnosticsFile = writeDiagnosticsFeedbackFile()
+        val bytes = diagnosticsFile.readBytes()
+        SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
+        return mapOf(
+                "status" to "ok",
+                "message" to buildFeedbackText(diagnosticsFile.name),
+                "fileName" to diagnosticsFile.name,
+                "mimeType" to "text/plain",
+                "sizeBytes" to bytes.size.toLong(),
+                "bodyBase64" to Base64.encodeToString(bytes, Base64.NO_WRAP)
         )
     }
 

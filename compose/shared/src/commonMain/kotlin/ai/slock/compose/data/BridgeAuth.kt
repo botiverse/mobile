@@ -6,6 +6,8 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 private const val SESSION_KEY = "auth_session"
 
@@ -13,6 +15,14 @@ private val bridgeAuthJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
 }
+
+class SettingsDiagnosticsFeedbackDraft(
+    val message: String,
+    val fileName: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val bytes: ByteArray
+)
 
 internal class BridgeSettingsPlatformCapabilities(
     private val bridge: BridgeModule
@@ -107,6 +117,10 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun sendFeedback(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
 
+    suspend fun prepareDiagnosticsFeedback(): SettingsDiagnosticsFeedbackDraft? =
+        bridge.settingsCapability(JSONObject().put("action", "prepareDiagnosticsFeedback"))
+            ?.toDiagnosticsFeedbackDraft()
+
     suspend fun requestNotificationPermission(): SystemNotificationActionResult =
         systemNotificationAction("requestNotificationPermission")
 
@@ -178,6 +192,22 @@ internal class BridgeSettingsPlatformCapabilities(
                 }
             }
         return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun JSONObject.toDiagnosticsFeedbackDraft(): SettingsDiagnosticsFeedbackDraft? {
+        if (optString("status") != "ok") return null
+        val fileName = optString("fileName").ifBlank { "slock-feedback.txt" }
+        val mimeType = optString("mimeType").ifBlank { "text/plain" }
+        val bodyBase64 = optString("bodyBase64").takeIf { it.isNotBlank() } ?: return null
+        val bytes = runCatching { Base64.decode(bodyBase64) }.getOrNull() ?: return null
+        return SettingsDiagnosticsFeedbackDraft(
+            message = optString("message").ifBlank { "## Raft feedback\n\n<!-- Describe what happened here. -->" },
+            fileName = fileName,
+            mimeType = mimeType,
+            sizeBytes = optLong("sizeBytes", bytes.size.toLong()).takeIf { it > 0L } ?: bytes.size.toLong(),
+            bytes = bytes
+        )
     }
 
     private suspend fun systemNotificationAction(action: String): SystemNotificationActionResult {
