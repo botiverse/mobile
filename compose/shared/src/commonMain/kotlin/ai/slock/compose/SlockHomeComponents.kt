@@ -526,7 +526,7 @@ fun SlockStructuralHomeShell(
                                     val channel = displayedJointChannels[index]
                                     ChannelRow(
                                         name = channel.name,
-                                        symbol = "link",
+                                        symbol = "git-branch",
                                         joined = channel.joined,
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
@@ -1224,6 +1224,12 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 } else if (symbol == "#") {
                     SlockLucideIcon(
                         "hash",
+                        Modifier.size(ChannelSymbolIconSize),
+                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
+                    )
+                } else if (symbol == "git-branch") {
+                    SlockLucideIcon(
+                        "git-branch",
                         Modifier.size(ChannelSymbolIconSize),
                         color = if (joined) SlockColor.TextBlackArgb else "#75000000"
                     )
