@@ -2360,6 +2360,105 @@ object LucideIcons {
                 }.build()
     }
 
+    val UserMinus: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideUserMinus",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 21.0f)
+                        verticalLineToRelative(dy = -2.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = -4.0f)
+                        horizontalLineTo(x = 6.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = 4.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 7.0f)
+                        moveToRelative(dx = -4.0f, dy = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 8.0f, dy1 = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -8.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 11.0f)
+                        lineTo(x = 16.0f, y = 11.0f)
+                    }
+                }.build()
+    }
+
+    val UserPlus: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideUserPlus",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 21.0f)
+                        verticalLineToRelative(dy = -2.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = -4.0f)
+                        horizontalLineTo(x = 6.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = 4.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 7.0f)
+                        moveToRelative(dx = -4.0f, dy = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 8.0f, dy1 = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -8.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 19.0f, y = 8.0f)
+                        lineTo(x = 19.0f, y = 14.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 11.0f)
+                        lineTo(x = 16.0f, y = 11.0f)
+                    }
+                }.build()
+    }
+
     val Users: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideUsers",
@@ -2444,7 +2543,7 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "lock", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "users", "x")
+    val Names: List<String> = listOf("activity", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "lock", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "user-minus", "user-plus", "users", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
@@ -2504,6 +2603,8 @@ object LucideIcons {
             "triangle-alert" -> TriangleAlert
             "trash" -> Trash
             "user" -> User
+            "user-minus" -> UserMinus
+            "user-plus" -> UserPlus
             "users" -> Users
             "x" -> X
             else -> null
@@ -2521,5 +2622,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, Lock, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, Users, X)
+    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, Lock, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, UserMinus, UserPlus, Users, X)
 }

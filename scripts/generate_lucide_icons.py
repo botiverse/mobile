@@ -97,6 +97,8 @@ LUCIDE_ICONS = [
     "triangle-alert",
     "trash",
     "user",
+    "user-minus",
+    "user-plus",
     "users",
     "x",
 ]
@@ -114,7 +116,8 @@ BRAND_SVGS = {
     ),
     "slock-lockup": os.path.join(
         REPO_ROOT,
-        "app",
+        "compose",
+        "androidApp",
         "src",
         "main",
         "assets",

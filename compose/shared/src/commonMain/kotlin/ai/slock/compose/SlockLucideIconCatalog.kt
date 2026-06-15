@@ -59,6 +59,8 @@ internal object SlockLucideIcons {
         "triangle-alert",
         "trash",
         "user",
+        "user-minus",
+        "user-plus",
         "users",
         "x"
     )

@@ -2363,7 +2363,7 @@ private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon("image", modifier = Modifier.size(34.dp), color = "#FF000000")
+        SlockLucidePathIcon("image", modifier = Modifier.size(34.dp), color = "#FF000000")
         Text(
             text = title,
             style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
@@ -2448,7 +2448,7 @@ private fun ThreadImagePreviewInlineNavButton(
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        SlockLucideIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+        SlockLucidePathIcon(icon, modifier = Modifier.size(16.dp), color = "#FF000000")
     }
 }
 
@@ -2482,7 +2482,7 @@ private fun ThreadImagePreviewThumbnail(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                SlockLucideIcon("image", modifier = Modifier.size(20.dp), color = "#FF000000")
+                SlockLucidePathIcon("image", modifier = Modifier.size(20.dp), color = "#FF000000")
             }
         }
     }
@@ -2946,7 +2946,7 @@ private fun ThreadPageTabs(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
                 ) {
-                    SlockLucideIcon(tab.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+                    SlockLucidePathIcon(tab.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
                     Text(
                         text = tab.label.uppercase(),
                         style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
@@ -3680,7 +3680,7 @@ private fun ThreadBackToBottomButton(
         shadowOffset = 4.dp,
         textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
         trailingContent = {
-            SlockLucideIcon(
+            SlockLucidePathIcon(
                 "chevron-down",
                 modifier = Modifier.size(14.dp),
                 color = "#FF000000"
@@ -3772,7 +3772,7 @@ private fun ThreadHistoryStatusRow(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(
+        SlockLucidePathIcon(
             iconName,
             modifier = Modifier.size(14.dp),
             color = "#FF6B7280"
@@ -3975,10 +3975,11 @@ private fun ThreadMessageBookmarkButton(
         onClick = onClick,
         pressFeedback = false
     ) {
-        SlockLucideIcon(
+        SlockLucidePathIcon(
             name = "bookmark",
             modifier = Modifier.size(13.dp),
-            color = if (saved) "#FFF8A16F" else "#66000000"
+            color = if (saved) "#FFF8A16F" else "#66000000",
+            fill = if (saved) "#FFF8A16F" else null
         )
     }
 }
@@ -4070,7 +4071,7 @@ private fun ThreadActionCardDoneBadge() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        SlockLucideIcon("check", modifier = Modifier.size(10.dp), color = "#FF000000")
+        SlockLucidePathIcon("check", modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
             text = "Done",
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
@@ -4843,7 +4844,7 @@ private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SlockLucideIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucidePathIcon(action.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
             Text(
                 text = action.label,
                 style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -5927,7 +5928,7 @@ private fun ThreadDeleteChannelWarning(channelName: String) {
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SlockLucideIcon(
+        SlockLucidePathIcon(
             name = "triangle-alert",
             modifier = Modifier.size(26.dp),
             color = "#FF000000"

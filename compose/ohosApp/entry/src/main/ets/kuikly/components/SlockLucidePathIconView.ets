@@ -4,12 +4,17 @@ import { SlockLucidePathEntry, slockLucidePathEntries } from '../generated/Slock
 
 const kName = 'name';
 const kColor = 'color';
+const kFill = 'fill';
+const kStrokeWidth = 'strokeWidth';
 
 @Observed
 export class SlockLucidePathIconView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockLucidePathIconView';
   iconName: string = '';
   iconColor: ResourceColor = '#000000';
+  iconFill: ResourceColor = '#00000000';
+  iconFillEnabled: boolean = false;
+  iconStrokeWidth: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -28,6 +33,13 @@ export class SlockLucidePathIconView extends KuiklyRenderBaseView {
       case kColor:
         this.iconColor = normalizeColor(propValue as string);
         return true;
+      case kFill:
+        this.iconFillEnabled = hasColorValue(propValue as string);
+        this.iconFill = this.iconFillEnabled ? normalizeColor(propValue as string) : '#00000000';
+        return true;
+      case kStrokeWidth:
+        this.iconStrokeWidth = normalizeStrokeWidth(propValue);
+        return true;
       default:
         return super.setProp(propKey, propValue);
     }
@@ -39,6 +51,10 @@ export class SlockLucidePathIconView extends KuiklyRenderBaseView {
 
   entries(): SlockLucidePathEntry[] {
     return slockLucidePathEntries(this.iconName);
+  }
+
+  strokeWidth(entry: SlockLucidePathEntry): number {
+    return this.iconStrokeWidth > 0 ? this.iconStrokeWidth : entry.strokeWidth;
   }
 }
 
@@ -56,9 +72,9 @@ export struct SlockLucidePathIcon {
         })
           .width(`${entry.viewportWidth}px`)
           .height(`${entry.viewportHeight}px`)
-          .fill(pathPaint(this.renderView.iconColor, entry.fillOpacity))
+          .fill(pathFillPaint(this.renderView.iconColor, this.renderView.iconFill, this.renderView.iconFillEnabled, entry.fillOpacity))
           .stroke(pathPaint(this.renderView.iconColor, entry.strokeOpacity))
-          .strokeWidth(entry.strokeOpacity > 0 ? `${entry.strokeWidth}px` : 0)
+          .strokeWidth(entry.strokeOpacity > 0 ? `${this.renderView.strokeWidth(entry)}px` : 0)
           .strokeLineCap(entry.strokeLineCap)
           .strokeLineJoin(entry.strokeLineJoin)
           .scale({ x: vp2px(1), y: vp2px(1) })
@@ -91,8 +107,30 @@ function normalizeColor(value: string): ResourceColor {
   return value;
 }
 
+function hasColorValue(value: string): boolean {
+  return value !== null && value !== undefined && value.length > 0;
+}
+
+function normalizeStrokeWidth(value: KRAny | KuiklyRenderCallback): number {
+  if (typeof value === 'number') {
+    return value > 0 ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
 function pathPaint(color: ResourceColor, opacity: number): ResourceColor {
   return opacity > 0 ? color : '#00000000';
+}
+
+function pathFillPaint(strokeColor: ResourceColor, fillColor: ResourceColor, fillEnabled: boolean, opacity: number): ResourceColor {
+  if (fillEnabled) {
+    return fillColor;
+  }
+  return pathPaint(strokeColor, opacity);
 }
 
 @Builder

@@ -2,7 +2,7 @@ package ai.slock.compose.components
 
 import ai.slock.compose.Button as SlockAnchorButton
 import ai.slock.compose.SlockColor
-import ai.slock.compose.SlockLucideIcon
+import ai.slock.compose.SlockLucidePathIcon
 import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
@@ -37,7 +37,6 @@ import com.tencent.kuikly.compose.material3.Button
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.text.TextStyle
@@ -98,7 +97,7 @@ internal fun SlockAnchoredMetaChip(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             iconName?.takeIf { it.isNotBlank() }?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
+                SlockLucidePathIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
             }
             Text(
                 text = label,
@@ -255,7 +254,7 @@ internal fun SlockBrutalActionSheetRow(
                         .border(SlockStroke.Default, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(model.icon, modifier = Modifier.size(17.dp))
+                SlockLucidePathIcon(model.icon, modifier = Modifier.size(17.dp))
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -350,7 +349,7 @@ internal fun SlockModalTextFieldComponent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 if (leadingIcon != null) {
-                    SlockLucideIcon(leadingIcon, modifier = Modifier.size(14.dp), color = "#66000000")
+                    SlockLucidePathIcon(leadingIcon, modifier = Modifier.size(14.dp), color = "#66000000")
                 }
                 TextField(
                     modifier = Modifier.weight(1f).height((fieldHeight.value - 8f).dp),
@@ -474,7 +473,7 @@ internal fun SlockBrutalSearchField(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(leadingIcon, color = "#FF000000", modifier = Modifier.size(14.dp))
+            SlockLucidePathIcon(leadingIcon, color = "#FF000000", modifier = Modifier.size(14.dp))
             TextField(
                 value = value,
                 onValueChange = { if (enabled) onValueChange(it) },
@@ -504,7 +503,7 @@ private fun SlockBrutalActionButtonInnerContent(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (leadingIcon != null) {
-            SlockLucideIcon(leadingIcon, modifier = Modifier.size(12.dp), color = "#FF000000")
+            SlockLucidePathIcon(leadingIcon, modifier = Modifier.size(12.dp), color = "#FF000000")
         }
         Text(
             text = label,
@@ -540,21 +539,10 @@ internal fun SlockBrutalActionButton(
         Box(
             modifier =
                 Modifier
+                    .matchParentSize()
                     .offset(x = shadowOffset, y = shadowOffset)
-                    .widthIn(min = minWidth)
-                    .heightIn(min = minHeight)
                     .background(SlockColor.ShadowBlack)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockBrutalActionButtonInnerContent(
-                label = label,
-                leadingIcon = leadingIcon,
-                textStyle = textStyle,
-                enabled = enabled,
-                trailingContent = trailingContent?.let { content -> { Box(modifier = Modifier.alpha(0f)) { content() } } }
-            )
-        }
+        )
         Box(
             modifier =
                 Modifier
@@ -647,7 +635,7 @@ internal fun SlockToolbarChip(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             iconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
+                SlockLucidePathIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
             }
             Text(
                 text = if (uppercase) label.uppercase() else label,
@@ -670,7 +658,7 @@ internal fun SlockToolbarChip(
                 )
             }
             trailingIconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                SlockLucidePathIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
             }
         }
     }
@@ -758,7 +746,7 @@ internal fun SlockBrutalIconButton(
                     .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size((size.value * 0.5f).dp))
+            SlockLucidePathIcon(iconName, color = resolvedIconColor, modifier = Modifier.size((size.value * 0.5f).dp))
         }
     }
 }

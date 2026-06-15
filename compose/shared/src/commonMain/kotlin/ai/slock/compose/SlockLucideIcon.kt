@@ -41,6 +41,16 @@ internal class SlockLucideIconAttr : Attr() {
         "color" with value
         return this
     }
+
+    fun fill(value: String): SlockLucideIconAttr {
+        "fill" with value
+        return this
+    }
+
+    fun strokeWidth(value: Float): SlockLucideIconAttr {
+        "strokeWidth" with value
+        return this
+    }
 }
 
 @Composable
@@ -71,7 +81,9 @@ internal fun SlockLucideIcon(
 internal fun SlockLucidePathIcon(
     name: String,
     modifier: Modifier = Modifier,
-    color: String = SlockColor.TextBlackArgb
+    color: String = SlockColor.TextBlackArgb,
+    fill: String? = null,
+    strokeWidth: Float? = null
 ) {
     MakeKuiklyComposeNode<SlockLucidePathIconView>(
         factory = { SlockLucidePathIconView() },
@@ -80,12 +92,16 @@ internal fun SlockLucidePathIcon(
             getViewAttr().run {
                 name(name)
                 color(color)
+                fill(fill ?: "")
+                strokeWidth(strokeWidth ?: 0f)
             }
         },
         viewUpdate = { view ->
             view.getViewAttr().run {
                 name(name)
                 color(color)
+                fill(fill ?: "")
+                strokeWidth(strokeWidth ?: 0f)
             }
         }
     )
