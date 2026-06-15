@@ -198,12 +198,13 @@ fun parseSharedChannelDeleteResult(bodyText: String, channelId: ChannelId): Chan
         if (decoded.ok) ChannelDeleteResult(channelId = channelId, deleted = true) else null
     }.getOrNull()
 
-private fun HomeChannelWireDto.toConversation(): ConversationSummary =
-    ConversationSummary(
+private fun HomeChannelWireDto.toConversation(): ConversationSummary {
+    val isJoint = jointChannelId?.isNotBlank() == true || jointRole?.isNotBlank() == true
+    return ConversationSummary(
         threadId = ThreadId(id),
         channelId = ChannelId(id),
         channelType = type.takeIf { it.isNotBlank() },
-        kind = ConversationKind.Channel,
+        kind = if (isJoint) ConversationKind.Joint else ConversationKind.Channel,
         name = name,
         subtitle = description?.takeIf { it.isNotBlank() },
         joined = joined,
@@ -221,6 +222,7 @@ private fun HomeChannelWireDto.toConversation(): ConversationSummary =
             canCreateTask = joined
         )
     )
+}
 
 private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> Unit): ConversationSummary {
     val displayName =

@@ -34,6 +34,7 @@ data class ServerPermissions(
 @Serializable
 enum class ConversationKind {
     Channel,
+    Joint,
     Thread,
     DirectMessage,
     Inbox,

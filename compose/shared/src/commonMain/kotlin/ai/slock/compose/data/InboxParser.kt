@@ -221,7 +221,8 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
 
 private fun String.toConversationKind(): ConversationKind? = when (this) {
     "dm" -> ConversationKind.DirectMessage
-    "channel", "private", "joint" -> ConversationKind.Channel
+    "joint" -> ConversationKind.Joint
+    "channel", "private" -> ConversationKind.Channel
     else -> null
 }
 

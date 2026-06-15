@@ -397,8 +397,9 @@ internal class SqlDelightComposeLocalDataStore(
     private fun ConversationSummary.toChannelType(): String =
         channelType?.takeIf { it.isNotBlank() } ?: when (kind) {
             ConversationKind.Thread -> "thread"
-            ConversationKind.DirectMessage -> "dm"
+            ConversationKind.Joint -> "joint"
             ConversationKind.Channel -> "channel"
+            ConversationKind.DirectMessage -> "dm"
             ConversationKind.Inbox,
             ConversationKind.System -> "channel"
         }
@@ -406,6 +407,7 @@ internal class SqlDelightComposeLocalDataStore(
     private fun String.toConversationKind(): ConversationKind =
         when (lowercase()) {
             "thread" -> ConversationKind.Thread
+            "joint" -> ConversationKind.Joint
             "dm" -> ConversationKind.DirectMessage
             else -> ConversationKind.Channel
         }

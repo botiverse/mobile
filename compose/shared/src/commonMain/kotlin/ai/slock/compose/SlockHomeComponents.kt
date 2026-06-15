@@ -407,11 +407,13 @@ fun SlockStructuralHomeShell(
         }
     }
     val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
-    val displayedChannels = remember(channels, channelSortModeState) { channels.sortedForSidebar(channelSortModeState) { it.name } }
+    val displayedChannels = remember(channels, channelSortModeState) { channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
+    val displayedJointChannels = remember(channels, channelSortModeState) { channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
     val displayedDirectMessages = remember(directMessages, directMessageSortMode) { directMessages.sortedForSidebar(directMessageSortMode) { it.name } }
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
+            jointCount = displayedJointChannels.size,
             directMessagesCount = displayedDirectMessages.size,
             channelsExpanded = channelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
@@ -506,6 +508,33 @@ fun SlockStructuralHomeShell(
                                     interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                 )
+                            }
+                        }
+                        if (displayedJointChannels.isNotEmpty()) {
+                            item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                            item {
+                                SlockCollapsibleSectionHeader(
+                                    label = "Joint Channels",
+                                    count = displayedJointChannels.size,
+                                    expanded = channelsExpanded,
+                                    onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                )
+                            }
+                            if (channelsExpanded) {
+                                items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
+                                    val channel = displayedJointChannels[index]
+                                    ChannelRow(
+                                        name = channel.name,
+                                        symbol = "link",
+                                        joined = channel.joined,
+                                        hasDraft = channel.hasDraft,
+                                        badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
+                                        modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                        interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
+                                    )
+                                }
                             }
                         }
                         item {
@@ -606,6 +635,7 @@ private fun homeListBeyondBoundsItemCount(itemCount: Int): Int =
 
 internal fun homeLazyItemCount(
     channelsCount: Int,
+    jointCount: Int,
     directMessagesCount: Int,
     channelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
@@ -620,9 +650,11 @@ internal fun homeLazyItemCount(
             1 + // channels header
             1 + // direct messages header
             1 // bottom spacer
+    val jointSectionItems = if (jointCount > 0) 2 else 0 // spacer + header
     return fixedItems +
         (if (contentRefreshEnabled) 1 else 0) +
-        (if (channelsExpanded) channelsCount else 0) +
+        jointSectionItems +
+        (if (channelsExpanded) channelsCount + jointCount else 0) +
         (if (directMessagesExpanded) directMessagesCount else 0)
 }
 
