@@ -880,6 +880,14 @@ private fun SlockAppShellContent() {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
+    val latestHomeState by rememberUpdatedState(homeState)
+    val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
+    val latestActiveThreadPayload by rememberUpdatedState(activeThreadPayload)
+    val latestReadySession by rememberUpdatedState(readySession)
+    val homePresenceRealtimeEnabled = activeThreadPayload == null
+    LaunchedEffect(homePresenceRealtimeEnabled) {
+        homeViewModel.dispatch(SharedHomeIntent.SetHomePresenceRealtimeEnabled(homePresenceRealtimeEnabled))
+    }
     val loadedSettingsTimeFormat =
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
     val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
@@ -1462,33 +1470,38 @@ private fun SlockAppShellContent() {
             }
         }
     }
+    val latestRealtimeAuthRefreshHandler by rememberUpdatedState<(JSONObject) -> Unit>(
+        { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
+    )
+    val latestResetAppShellSessionState by rememberUpdatedState<(Boolean) -> Unit>(
+        { clearReturnThread -> resetAppShellSessionState(clearReturnThread = clearReturnThread) }
+    )
 
     DisposableEffect(
         pager,
         homeViewModel,
         realtimeEventMapper,
-        notificationPreferenceSnapshot,
-        homeState,
-        activeThreadPayload?.sourceThreadId,
-        readySession?.user?.id
+        settingsViewModel
     ) {
         val observer =
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
                     if (pagerEvent != AppShellRealtimeEvent) return
                     if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
-                        handleRealtimeAuthRefreshRequest(eventData)
+                        latestRealtimeAuthRefreshHandler(eventData)
                         return
                     }
                     val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
                     val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
+                    val activeSession = latestReadySession
+                    val activeThread = latestActiveThreadPayload
                     if (
                         event is ServerMembershipRemoved &&
-                        event.serverId.value == readySession?.currentServerId
+                        event.serverId.value == activeSession?.currentServerId
                     ) {
                         bridge.log("shared_realtime_server_membership_removed serverId=${event.serverId.value}")
                         bridge.realtimeDisconnect("server_membership_removed")
-                        resetAppShellSessionState(clearReturnThread = true)
+                        latestResetAppShellSessionState(true)
                         appShellCoroutineScope.launch {
                             authStore.updateSelectedServer(serverId = null, serverSlug = null)
                             authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
@@ -1497,11 +1510,11 @@ private fun SlockAppShellContent() {
                     }
                     if (
                         event is ServerDeleted &&
-                        event.serverId.value == readySession?.currentServerId
+                        event.serverId.value == activeSession?.currentServerId
                     ) {
                         bridge.log("shared_realtime_server_deleted serverId=${event.serverId.value}")
                         bridge.realtimeDisconnect("server_deleted")
-                        resetAppShellSessionState(clearReturnThread = true)
+                        latestResetAppShellSessionState(true)
                         appShellCoroutineScope.launch {
                             authStore.updateSelectedServer(serverId = null, serverSlug = null)
                             authGateViewModel.dispatch(SharedAuthGateIntent.Restore)
@@ -1522,29 +1535,32 @@ private fun SlockAppShellContent() {
                         bridge.log("shared_realtime_server_plan_updated serverId=${event.serverId.value} plan=${event.plan}")
                         membersAgentDetailRefreshKey += 1
                     }
-                    if (
-                        event is MemberPresenceUpdated && event.kind == MemberKind.Agent ||
-                        event is AgentCreated ||
-                        event is RealtimeRefreshRequired &&
-                            (
-                                event.scope == RealtimeRefreshScope.ServerMembers ||
-                                    event.scope == RealtimeRefreshScope.Agents ||
-                                    event.scope == RealtimeRefreshScope.Machines
+                    val shouldRefreshMemberDetail =
+                        when (event) {
+                            is MemberPresenceUpdated -> event.kind == MemberKind.Agent && activeThread == null
+                            is AgentCreated -> true
+                            is RealtimeRefreshRequired ->
+                                (
+                                    event.scope == RealtimeRefreshScope.ServerMembers ||
+                                        event.scope == RealtimeRefreshScope.Agents ||
+                                        event.scope == RealtimeRefreshScope.Machines
                                 )
-                    ) {
+                            else -> false
+                        }
+                    if (shouldRefreshMemberDetail) {
                         membersAgentDetailRefreshKey += 1
                     }
-                    if (event is MessageNew && notificationPreferenceSnapshot.enabled) {
-                        val conversation = homeState.systemNotificationConversation(event.message)
+                    if (event is MessageNew && latestNotificationPreferenceSnapshot.enabled) {
+                        val conversation = latestHomeState.systemNotificationConversation(event.message)
                         val request =
                             buildSystemUnreadNotificationRequest(
                                 serverId = serverId,
                                 message = event.message,
-                                currentMemberId = readySession?.user?.id,
-                                isVisibleThread = event.message.isVisibleInThread(activeThreadPayload),
+                                currentMemberId = activeSession?.user?.id,
+                                isVisibleThread = event.message.isVisibleInThread(activeThread),
                                 conversationName = conversation?.name,
                                 conversationKind = conversation?.kind,
-                                currentMemberHandle = readySession?.user?.email
+                                currentMemberHandle = activeSession?.user?.email
                             )
                         if (request != null) {
                             appShellCoroutineScope.launch {

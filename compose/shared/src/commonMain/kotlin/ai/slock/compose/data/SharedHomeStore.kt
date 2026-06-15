@@ -42,6 +42,7 @@ class SharedHomeStore(
     private var presenceFlushJob: Job? = null
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
+    private var homePresenceRealtimeEnabled = true
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -101,6 +102,8 @@ class SharedHomeStore(
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
+            is SharedHomeIntent.SetHomePresenceRealtimeEnabled ->
+                setHomePresenceRealtimeEnabled(intent.enabled)
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
@@ -461,6 +464,9 @@ class SharedHomeStore(
         }
         pendingPresenceServerId = serverId
         pendingPresenceEvents[event.memberId] = event
+        if (!homePresenceRealtimeEnabled) {
+            return
+        }
         if (presenceFlushJob?.isActive == true) return
         presenceFlushJob =
             scope.launch {
@@ -471,7 +477,18 @@ class SharedHomeStore(
             }
     }
 
+    private suspend fun setHomePresenceRealtimeEnabled(enabled: Boolean) {
+        if (homePresenceRealtimeEnabled == enabled) return
+        homePresenceRealtimeEnabled = enabled
+        if (enabled && pendingPresenceEvents.isNotEmpty()) {
+            presenceFlushJob?.cancel()
+            presenceFlushJob = null
+            flushPresenceEvents()
+        }
+    }
+
     private suspend fun flushPresenceEvents() {
+        if (!homePresenceRealtimeEnabled) return
         val serverId = pendingPresenceServerId ?: return
         val events = pendingPresenceEvents.values.toList()
         pendingPresenceEvents.clear()
@@ -642,6 +659,7 @@ sealed interface SharedHomeIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
+    data class SetHomePresenceRealtimeEnabled(val enabled: Boolean) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
 }
@@ -657,6 +675,7 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.SetHomePresenceRealtimeEnabled,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated -> false
         }

@@ -536,6 +536,66 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun threadActiveQueuesPresenceUntilHomeRealtimeIsEnabled() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline),
+                        directMessage("dm-2", "Agent Two", "agent-2", Presence.Offline)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            presenceFlushDelayMillis = 0L
+        )
+        store.accept(SharedHomeIntent.Start)
+        logs.clear()
+        val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+
+        store.accept(SharedHomeIntent.SetHomePresenceRealtimeEnabled(false))
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+
+        val whileThreadActive = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        assertTrue(before === whileThreadActive)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
+        assertEquals(emptyList(), logs)
+
+        store.accept(SharedHomeIntent.SetHomePresenceRealtimeEnabled(true))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        assertTrue(before !== after)
+        assertTrue(before[0] !== after[0])
+        assertTrue(before[1] === after[1])
+        assertEquals(Presence.Active, after[0].presence)
+        assertEquals(Presence.Active, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
+        assertEquals(1, logs.count { it.startsWith("write_home_realtime source=presence_batch") })
+        scope.cancel()
+    }
+
+    @Test
     fun selectConversationTracksSelectedRowAndClearsTopAction() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(
