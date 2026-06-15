@@ -112,7 +112,29 @@ class TasksDataSourceTest {
         assertEquals("tasks_delete_contract_mismatch", error.error.code)
     }
 
+    @Test
+    fun typedTasksApiMapsJointChannelUnsupportedAsCapabilityBlocker() = runBlocking {
+        val client =
+            SlockTasksApiClient(
+                RecordingTasksApi(
+                    listResponse =
+                        HomeNetworkResponse(
+                            code = 409,
+                            bodyText = null,
+                            errorBodyText = """{"error":"joint_channel_tasks_unsupported"}"""
+                        )
+                )
+            )
+
+        val result = client.channelTasks(ChannelId("joint-1"), DataRequestPriority.Visible)
+
+        val blocker = assertIs<DataResult.NoPermission>(result).blocker
+        assertEquals("joint_channel_tasks_unsupported", blocker.code)
+        assertEquals("channel_tasks", blocker.requiredCapability)
+    }
+
     private class RecordingTasksApi(
+        private val listResponse: HomeNetworkResponse? = null,
         private val listBody: String =
             """{"tasks":[{"id":"task-1","channelId":"channel-1","taskNumber":1,"title":"Task #1: canonical","status":"todo","createdByType":"user","createdById":"user-1"}]}""",
         private val actionBody: String =
@@ -125,12 +147,12 @@ class TasksDataSourceTest {
 
         override suspend fun serverTasks(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             calls += "GET tasks/server server=${serverId.value}"
-            return ok(listBody)
+            return listResponse ?: ok(listBody)
         }
 
         override suspend fun channelTasks(channelId: ChannelId, priority: DataRequestPriority): HomeNetworkResponse {
             calls += "GET tasks/channel/${channelId.value}"
-            return ok(listBody)
+            return listResponse ?: ok(listBody)
         }
 
         override suspend fun taskByNumber(

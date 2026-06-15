@@ -330,6 +330,7 @@ internal fun HomeNetworkResponse.toTasksResult(
     filter: TaskFilter = TaskFilter(),
     source: String = "tasks"
 ): DataResult<TaskSnapshot> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
@@ -350,6 +351,7 @@ internal fun HomeNetworkResponse.toTasksResult(
 }
 
 internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_action"): DataResult<TaskActionResult> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
@@ -366,6 +368,7 @@ internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_acti
 }
 
 internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
+    unsupportedChannelTasksBlocker()?.let { return DataResult.NoPermission(it) }
     if (code == 401 || code == 403) {
         return DataResult.NoPermission(PermissionBlocker(code = "tasks_$code"))
     }
@@ -380,6 +383,16 @@ internal fun HomeNetworkResponse.toTaskDeleteResult(): DataResult<Unit> {
     } else {
         DataResult.Error(ScreenError(code = "tasks_delete_contract_mismatch", retryable = false))
     }
+}
+
+private fun HomeNetworkResponse.unsupportedChannelTasksBlocker(): PermissionBlocker? {
+    if (code != 409) return null
+    val body = errorBodyText ?: bodyText
+    if (body?.contains("joint_channel_tasks_unsupported", ignoreCase = true) != true) return null
+    return PermissionBlocker(
+        code = "joint_channel_tasks_unsupported",
+        requiredCapability = "channel_tasks"
+    )
 }
 
 private fun TaskSnapshot.filteredBy(filter: TaskFilter): TaskSnapshot {

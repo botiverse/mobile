@@ -7304,13 +7304,16 @@ internal fun buildAppShellThreadPayload(
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val canSend = conversation.joined && conversation.permissions.canSend
+    val supportsChannelTasks =
+        conversation.permissions.canCreateTask &&
+            !conversation.channelType.equals("joint", ignoreCase = true)
     val composer =
         buildThreadSurfaceComposerPayload(
             surfaceKind = surfaceKind,
             displayName = conversation.name,
             fallbackId = conversation.threadId.value,
             enabled = canSend,
-            showAsTaskToggle = true,
+            showAsTaskToggle = supportsChannelTasks,
             mentionChannelId = parentChannelId,
             parentMessageId = parentMessageId,
             streamChannelId = streamChannelId
@@ -7346,6 +7349,8 @@ internal fun buildAppShellThreadPayload(
         timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
         showMembersAction = !isReplyThread,
         showSettingsAction = !isReplyThread,
+        showTaskOpenActions = supportsChannelTasks,
+        showTaskStatusActions = supportsChannelTasks,
         settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActions(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",

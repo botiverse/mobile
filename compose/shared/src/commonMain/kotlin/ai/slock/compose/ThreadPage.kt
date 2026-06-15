@@ -473,12 +473,16 @@ internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummar
     }.toMap()
 }
 
+internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
+    composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
+
 internal fun shouldStartThreadTasksJoin(
     payload: KuiklyThreadScreenPayload,
     startedThreadId: String?,
     taskChannelId: ChannelId
 ): Boolean =
     payload.status == "content" &&
+        payload.supportsChannelTasks() &&
         startedThreadId != taskChannelId.value &&
         !payload.sourceThreadId.isNullOrBlank()
 
@@ -2599,6 +2603,18 @@ private fun ThreadPageContent(
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
+    val availableTabs =
+        remember(payload.showTaskOpenActions, payload.showTaskStatusActions, payload.composer.showAsTaskToggle) {
+            KuiklyThreadTab.entries.filter { tab ->
+                tab != KuiklyThreadTab.Tasks || payload.supportsChannelTasks()
+            }
+        }
+    LaunchedEffect(availableTabs, selectedTab) {
+        if (selectedTab !in availableTabs) {
+            selectedTab = KuiklyThreadTab.Chat
+            onThreadEvent("selectTab", null, null, KuiklyThreadTab.Chat.wireValue)
+        }
+    }
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
@@ -2660,6 +2676,7 @@ private fun ThreadPageContent(
             if (payload.showModeTabs) {
                 ThreadPageTabs(
                     selectedTab = selectedTab,
+                    tabs = availableTabs,
                     onSelect = { tab ->
                         selectedTab = tab
                         onThreadEvent("selectTab", null, null, tab.wireValue)
@@ -2913,11 +2930,12 @@ private fun ThreadHeaderAction(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadPageTabs(
     selectedTab: KuiklyThreadTab,
+    tabs: List<KuiklyThreadTab> = KuiklyThreadTab.entries,
     onSelect: (KuiklyThreadTab) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth().height(ThreadTabHeight).background(SlockColor.SurfaceWhite)) {
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            KuiklyThreadTab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 val selected = selectedTab == tab
                 Row(
                     modifier = Modifier.width(ThreadTabWidth)

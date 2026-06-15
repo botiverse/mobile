@@ -269,6 +269,32 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sharedShellJointChannelRouteDisablesTaskSurfaces() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("joint-1"),
+                    channelId = ChannelId("joint-1"),
+                    channelType = "joint",
+                    kind = ConversationKind.Channel,
+                    name = "partner",
+                    subtitle = "Joint channel",
+                    joined = true,
+                    memberCount = 3,
+                    permissions = ConversationPermissions(canSend = true, canCreateTask = true)
+                )
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(false, payload.showTaskOpenActions)
+        assertEquals(false, payload.showTaskStatusActions)
+        assertEquals(false, payload.composer.showAsTaskToggle)
+        assertEquals(false, payload.resolveThreadComposer().showAsTaskToggle)
+        assertEquals(false, payload.supportsChannelTasks())
+        assertEquals(false, shouldStartThreadTasksJoin(payload.copy(status = "content"), null, ChannelId("joint-1")))
+    }
+
+    @Test
     fun sharedShellDirectMessageRouteKeepsDmSurfaceForComposerProps() {
         val payload =
             buildAppShellThreadPayload(
