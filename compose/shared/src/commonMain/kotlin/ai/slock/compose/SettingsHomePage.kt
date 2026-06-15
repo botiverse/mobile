@@ -301,6 +301,7 @@ private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
+private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationRouter = "router"
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
@@ -823,6 +824,7 @@ private fun SlockAppShellContent() {
     var createChannelMembersLoading by remember { mutableStateOf(false) }
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
+    var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
@@ -907,6 +909,7 @@ private fun SlockAppShellContent() {
         activeThreadPayload = null
         threadBackStack = emptyList()
         pendingDiagnosticsFeedback = null
+        pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
         if (clearReturnThread) {
             pendingAuthReturnThreadPayload = null
         }
@@ -1157,7 +1160,9 @@ private fun SlockAppShellContent() {
                         )
                         return@launch
                     }
+                    selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
                     pendingDiagnosticsFeedback = null
+                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                     openThreadPayload(
                         basePayload.withDiagnosticsFeedbackDraft(
                             draft = draft,
@@ -1256,7 +1261,9 @@ private fun SlockAppShellContent() {
             return true
         }
         if (pendingDiagnosticsFeedback != null) {
+            selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
             pendingDiagnosticsFeedback = null
+            pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
             return true
         }
         if (homeState.serverSwitcherExpanded) {
@@ -1638,6 +1645,8 @@ private fun SlockAppShellContent() {
                     if (it != "settings") {
                         selectedSettingsDestination = SettingsDestinationHome
                         selectedSettingsComputerId = null
+                        pendingDiagnosticsFeedback = null
+                        pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                     }
                 }
             ) {
@@ -1676,11 +1685,37 @@ private fun SlockAppShellContent() {
                                     bridge.settingsEvent("shared-shell-settings", action, itemId)
                                 },
                                 onDiagnosticsFeedbackPrepared = { draft ->
+                                    pendingDiagnosticsFeedbackReturnDestination =
+                                        selectedSettingsDestination
+                                            .takeIf { it != SettingsDestinationDiagnosticsFeedbackChannel }
+                                            ?: SettingsDestinationDiagnostics
                                     pendingDiagnosticsFeedback = draft
+                                    selectedSettingsDestination = SettingsDestinationDiagnosticsFeedbackChannel
                                     if (homeState.content !is SharedHomeContentState.Content) {
                                         homeViewModel.dispatch(SharedHomeIntent.Start)
                                     }
-                                    bridge.toast("Choose a channel")
+                                    bridge.toast("请选择 channel")
+                                },
+                                diagnosticsFeedbackDraft = pendingDiagnosticsFeedback,
+                                diagnosticsFeedbackHomeState = homeState,
+                                onDiagnosticsFeedbackBack = {
+                                    selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
+                                    pendingDiagnosticsFeedback = null
+                                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
+                                },
+                                onDiagnosticsFeedbackRefresh = {
+                                    homeViewModel.dispatch(SharedHomeIntent.Refresh)
+                                },
+                                onDiagnosticsFeedbackChannelSelected = { conversation ->
+                                    pendingDiagnosticsFeedback?.let { draft ->
+                                        openDiagnosticsFeedbackChannel(
+                                            draft = draft,
+                                            conversation = conversation,
+                                            source = "diagnostics_channel_page",
+                                            pushCurrent = true
+                                        )
+                                        homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
+                                    }
                                 },
                                 bottomContentPadding = shellScope.bottomTabBarContentInset,
                                 onLogout = {
@@ -1808,23 +1843,6 @@ private fun SlockAppShellContent() {
                     }
             }
             Box(modifier = Modifier.fillMaxSize()) {
-                pendingDiagnosticsFeedback?.let { draft ->
-                    SharedDiagnosticsFeedbackChannelDialog(
-                        state = homeState,
-                        onDismiss = { pendingDiagnosticsFeedback = null },
-                        onRefresh = { homeViewModel.dispatch(SharedHomeIntent.Refresh) },
-                        onSelectChannel = { conversation ->
-                            pendingDiagnosticsFeedback = null
-                            openDiagnosticsFeedbackChannel(
-                                draft = draft,
-                                conversation = conversation,
-                                source = "diagnostics_channel_picker",
-                                pushCurrent = true
-                            )
-                            homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
-                        }
-                    )
-                }
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
                         submitting = createChannelSubmitting,
@@ -1864,6 +1882,11 @@ private fun SettingsAppShellContent(
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
+    diagnosticsFeedbackDraft: SettingsDiagnosticsFeedbackDraft?,
+    diagnosticsFeedbackHomeState: SharedHomeState,
+    onDiagnosticsFeedbackBack: () -> Unit,
+    onDiagnosticsFeedbackRefresh: () -> Unit,
+    onDiagnosticsFeedbackChannelSelected: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp,
     onLogout: () -> Unit
 ) {
@@ -1995,7 +2018,9 @@ private fun SettingsAppShellContent(
         subtitle = settingsDestinationSubtitle(selectedDestination),
         iconName = settingsDestinationIcon(selectedDestination),
         onBack = {
-            if (selectedDestination == SettingsDestinationComputerDetail) {
+            if (selectedDestination == SettingsDestinationDiagnosticsFeedbackChannel) {
+                onDiagnosticsFeedbackBack()
+            } else if (selectedDestination == SettingsDestinationComputerDetail) {
                 onDestinationChange(SettingsDestinationComputers)
             } else {
                 onDestinationChange(SettingsDestinationHome)
@@ -2280,6 +2305,22 @@ private fun SettingsAppShellContent(
                     onExportProfilerReport = { onSettingsIntent(SharedSettingsIntent.ExportRecompositionProfilerReport) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
+            SettingsDestinationDiagnosticsFeedbackChannel ->
+                if (diagnosticsFeedbackDraft == null) {
+                    SettingsSharedPlaceholder(
+                        title = "请选择 channel",
+                        detail = "Diagnostics feedback is no longer pending.",
+                        iconName = "hash",
+                        bottomContentPadding = bottomContentPadding
+                    )
+                } else {
+                    SharedDiagnosticsFeedbackChannelPage(
+                        state = diagnosticsFeedbackHomeState,
+                        bottomContentPadding = bottomContentPadding,
+                        onRefresh = onDiagnosticsFeedbackRefresh,
+                        onSelectChannel = onDiagnosticsFeedbackChannelSelected
+                    )
+                }
             else ->
                 SettingsSharedPlaceholder(
                     title = "Settings",
@@ -4020,6 +4061,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
         SettingsDestinationDiagnostics -> "Diagnostics"
+        SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
         else -> "Settings"
     }
 
@@ -4035,6 +4077,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
+        SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
         else -> ""
     }
 
@@ -4050,6 +4093,7 @@ private fun settingsDestinationIcon(destination: String): String =
         SettingsDestinationStorage -> "archive"
         SettingsDestinationAbout -> "bug"
         SettingsDestinationDiagnostics -> "clipboard-list"
+        SettingsDestinationDiagnosticsFeedbackChannel -> "hash"
         else -> "settings"
     }
 
@@ -4979,25 +5023,40 @@ private fun SharedHomeScreen(
 }
 
 @Composable
-private fun SharedDiagnosticsFeedbackChannelDialog(
+private fun SharedDiagnosticsFeedbackChannelPage(
     state: SharedHomeState,
-    onDismiss: () -> Unit,
+    bottomContentPadding: Dp,
     onRefresh: () -> Unit,
     onSelectChannel: (ConversationSummary) -> Unit
 ) {
     val channels = state.diagnosticsFeedbackChannelChoices()
     val isLoading = state.content is SharedHomeContentState.Loading
-    SlockUnifiedDialog(
-        title = "请选择 channel",
-        onDismiss = onDismiss,
-        maxWidth = 440.dp,
-        contentSpacing = 14.dp
+    Column(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .padding(bottom = bottomContentPadding),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+            SlockBrutalActionButton(
+                label = "Refresh",
+                backgroundColor = SlockColor.BrandYellow,
+                onClick = onRefresh
+            )
+        }
         when {
             isLoading -> {
                 Box(
@@ -5044,7 +5103,7 @@ private fun SharedDiagnosticsFeedbackChannelDialog(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 360.dp),
+                            .weight(1f),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     channels.forEach { channel ->
@@ -5057,23 +5116,6 @@ private fun SharedDiagnosticsFeedbackChannelDialog(
                     }
                 }
             }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Spacer(Modifier.weight(1f))
-            SlockBrutalActionButton(
-                label = "Cancel",
-                backgroundColor = SlockColor.SurfaceWhite,
-                onClick = onDismiss
-            )
-            SlockBrutalActionButton(
-                label = "Refresh",
-                backgroundColor = SlockColor.BrandYellow,
-                onClick = onRefresh
-            )
         }
     }
 }
