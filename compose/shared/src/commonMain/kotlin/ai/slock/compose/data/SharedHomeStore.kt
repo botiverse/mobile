@@ -582,15 +582,32 @@ internal fun snapshotToBadgeCount(
     )
 
 /**
- * #81: default wall-clock source. KMP doesn't have a shared
- * `System.currentTimeMillis` directly, so we route through the host's
- * clock via KMP `kotlin.time.Clock.System.now().toEpochMilliseconds()`
- * (available since Kotlin 1.9) where supported. For unit tests, inject a
- * fixed clock via [SharedHomeStore]'s `nowMillis` constructor param.
+ * #83: KMP-friendly wall-clock source.
+ *
+ * `kotlin.time.Clock.System` (used in the first cut of #81) is not
+ * available on the OHOS K/N target we ship (`2.0.21-KBA-010`).
+ * Instead of pulling `kotlinx-datetime` as a new dep, we use a tiny
+ * `expect/actual` so each platform can use its own JVM/host
+ * `currentTimeMillis`.
+ *
+ * The `expect` lives in commonMain; the `actual`s are in
+ * `androidMain` (uses `System.currentTimeMillis` from the JVM
+ * runtime) and `ohosArm64Main` (uses `kotlin.time.Clock.System` via
+ * local `@OptIn(ExperimentalTime::class)` — the `Clock` symbol IS
+ * available on the K/N OHOS stdlib, it's just not available in
+ * commonMain because the `commonMain` stdlib doesn't ship it).
+ *
+ * `kotlin.system.getTimeMillis()` was the simpler alternative
+ * explored first; it does NOT work because
+ * `kotlin-stdlib-2.0.21-KBA-010` doesn't ship a commonMain
+ * implementation (only platform-specific ones), so commonMain
+ * can't resolve it. Hence the explicit `expect/actual`.
+ *
+ * For unit tests, callers inject a fixed clock via
+ * [SharedHomeStore]'s `nowMillis` constructor param; the `expect` /
+ * `actual` pair is only consulted when no test clock is provided.
  */
-@OptIn(kotlin.time.ExperimentalTime::class)
-private fun defaultNowMillis(): Long =
-    kotlin.time.Clock.System.now().toEpochMilliseconds()
+internal expect fun defaultNowMillis(): Long
 
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
