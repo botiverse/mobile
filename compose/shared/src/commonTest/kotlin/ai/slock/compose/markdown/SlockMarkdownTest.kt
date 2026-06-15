@@ -2,10 +2,12 @@ package ai.slock.compose.markdown
 
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import org.intellij.markdown.MarkdownElementTypes
@@ -115,6 +117,37 @@ class SlockMarkdownTest {
 
         assertEquals(SlockType.Body.fontFamily, inlineCodeStyle.fontFamily)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
+    }
+
+    @Test
+    fun markdownTypographyKeepsSlockFontsForOhosRichText() {
+        val typography = slockMarkdownTypography(SlockType.Body)
+
+        assertEquals(SlockType.Body.fontFamily, typography.text.fontFamily)
+        assertEquals(SlockType.Body.fontFamily, typography.paragraph.fontFamily)
+        assertEquals(SlockType.Body.fontFamily, typography.textLink.style?.fontFamily)
+        assertEquals(SlockType.Caption.fontFamily, typography.code.fontFamily)
+        assertFalse(typography.code.fontFamily == FontFamily.Monospace)
+    }
+
+    @Test
+    fun markdownStrongSpansReceiveWeightSpecificSlockFont() {
+        val annotated =
+            AnnotatedString(
+                "normal bold",
+                spanStyles =
+                    listOf(
+                        AnnotatedString.Range(
+                            SpanStyle(fontWeight = FontWeight.Bold),
+                            start = 7,
+                            end = 11
+                        )
+                    )
+            ).withSlockMarkdownSpanFonts(SlockType.Body)
+
+        val strongFontSpan = annotated.spanStyles.last { it.start == 7 && it.end == 11 }
+
+        assertEquals(SlockType.ButtonBold.fontFamily, strongFontSpan.item.fontFamily)
     }
 
     @Test

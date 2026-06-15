@@ -4,6 +4,8 @@ import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
+import ai.slock.compose.slockFontFamilyForWeight
+import ai.slock.compose.withResolvedSlockFontFamily
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -21,23 +23,28 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.Placeholder
+import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
+import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
+import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
 import com.tencent.kuiklybase.markdown.compose.Markdown
+import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownTypography
 import com.tencent.kuiklybase.markdown.model.MarkdownAnnotator
+import com.tencent.kuiklybase.markdown.model.TextProvider
 import com.tencent.kuiklybase.markdown.model.markdownAnnotator
 import com.tencent.kuiklybase.markdown.model.markdownAnnotatorConfig
 import com.tencent.kuiklybase.markdown.model.markdownPadding
@@ -480,6 +487,110 @@ fun slockMarkdownAnnotator(
     )
 }
 
+private object SlockMarkdownTextProvider : TextProvider {
+    @Composable
+    override fun Text(
+        text: String,
+        modifier: Modifier,
+        color: Color,
+        fontSize: TextUnit,
+        fontStyle: FontStyle?,
+        fontWeight: FontWeight?,
+        fontFamily: com.tencent.kuikly.compose.ui.text.font.FontFamily?,
+        letterSpacing: TextUnit,
+        textDecoration: TextDecoration?,
+        textAlign: TextAlign?,
+        lineHeight: TextUnit,
+        overflow: TextOverflow,
+        softWrap: Boolean,
+        maxLines: Int,
+        minLines: Int,
+        onTextLayout: ((TextLayoutResult) -> Unit)?,
+        style: TextStyle
+    ) {
+        val resolvedStyle = style.withResolvedSlockFontFamily()
+        Text(
+            text = text,
+            modifier = modifier,
+            color = color,
+            fontSize = fontSize,
+            fontStyle = fontStyle,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily ?: resolvedStyle.fontFamily,
+            letterSpacing = letterSpacing,
+            textDecoration = textDecoration,
+            textAlign = textAlign,
+            lineHeight = lineHeight,
+            overflow = overflow,
+            softWrap = softWrap,
+            maxLines = maxLines,
+            minLines = minLines,
+            onTextLayout = onTextLayout,
+            style = resolvedStyle
+        )
+    }
+
+    @Composable
+    override fun RichText(
+        text: AnnotatedString,
+        modifier: Modifier,
+        color: Color,
+        fontSize: TextUnit,
+        fontStyle: FontStyle?,
+        fontWeight: FontWeight?,
+        fontFamily: com.tencent.kuikly.compose.ui.text.font.FontFamily?,
+        letterSpacing: TextUnit,
+        textDecoration: TextDecoration?,
+        textAlign: TextAlign?,
+        lineHeight: TextUnit,
+        overflow: TextOverflow,
+        softWrap: Boolean,
+        maxLines: Int,
+        minLines: Int,
+        inlineContent: Map<String, InlineTextContent>,
+        onTextLayout: (TextLayoutResult) -> Unit,
+        style: TextStyle
+    ) {
+        val resolvedStyle = style.withResolvedSlockFontFamily()
+        Text(
+            text = text.withSlockMarkdownSpanFonts(resolvedStyle),
+            modifier = modifier,
+            color = color,
+            fontSize = fontSize,
+            fontStyle = fontStyle,
+            fontWeight = fontWeight,
+            fontFamily = fontFamily ?: resolvedStyle.fontFamily,
+            letterSpacing = letterSpacing,
+            textDecoration = textDecoration,
+            textAlign = textAlign,
+            lineHeight = lineHeight,
+            overflow = overflow,
+            softWrap = softWrap,
+            maxLines = maxLines,
+            minLines = minLines,
+            inlineContent = inlineContent,
+            onTextLayout = onTextLayout,
+            style = resolvedStyle
+        )
+    }
+}
+
+internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
+    if (spanStyles.isEmpty()) return this
+
+    val resolvedBase = baseStyle.withResolvedSlockFontFamily()
+    val builder = AnnotatedString.Builder(length)
+    builder.append(this)
+    spanStyles.forEach { range ->
+        val weight = range.item.fontWeight ?: resolvedBase.fontWeight
+        val family = range.item.fontFamily ?: slockFontFamilyForWeight(weight)
+        if (range.item.fontFamily == null && family != resolvedBase.fontFamily) {
+            builder.addStyle(SpanStyle(fontFamily = family), range.start, range.end)
+        }
+    }
+    return builder.toAnnotatedString()
+}
+
 @Composable
 fun SlockMarkdownBody(
     body: String,
@@ -492,6 +603,7 @@ fun SlockMarkdownBody(
 ) {
     val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
     CompositionLocalProvider(
+        LocalTextProvider provides SlockMarkdownTextProvider,
         LocalUriHandler provides
             object : UriHandler {
                 override suspend fun openUri(uri: String) {
@@ -540,16 +652,14 @@ private fun slockMarkdownColors() =
         tableStroke = SlockColor.BorderBlack
     )
 
-@Composable
-private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography {
+    val resolvedBase = base.withResolvedSlockFontFamily()
     val codeBlock =
         SlockType.Caption.copy(
-            fontFamily = FontFamily.Monospace,
-            fontWeight = FontWeight.Normal,
             fontSize = 14.sp,
             lineHeight = 20.sp
         )
-    val inlineCode = slockMarkdownInlineCodeTextStyle(base)
+    val inlineCode = slockMarkdownInlineCodeTextStyle(resolvedBase)
     return DefaultMarkdownTypography(
         h1 = SlockType.PageTitle.copy(fontSize = 22.sp, lineHeight = 28.sp),
         h2 = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 24.sp),
@@ -557,30 +667,23 @@ private fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography 
         h4 = SlockType.Button,
         h5 = SlockType.Button,
         h6 = SlockType.Button,
-        text = base,
+        text = resolvedBase,
         code = codeBlock,
         inlineCode = inlineCode,
-        quote = base.copy(color = SlockColor.TextMutedGray),
-        paragraph = base,
-        ordered = base,
-        bullet = base,
-        list = base,
-        link = base.copy(color = SlockMarkdownLinkBlue),
-        textLink = TextLinkStyles(style = SpanStyle(color = SlockMarkdownLinkBlue)),
-        table = base
+        quote = resolvedBase.copy(color = SlockColor.TextMutedGray),
+        paragraph = resolvedBase,
+        ordered = resolvedBase,
+        bullet = resolvedBase,
+        list = resolvedBase,
+        link = resolvedBase.copy(color = SlockMarkdownLinkBlue),
+        textLink = TextLinkStyles(style = resolvedBase.toSpanStyle().copy(color = SlockMarkdownLinkBlue)),
+        table = resolvedBase
     )
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
 private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
 private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
-
-private val SlockMarkdownMentionSpanStyle =
-    SpanStyle(
-        color = SlockColor.TextBlack,
-        fontWeight = FontWeight.SemiBold,
-        textDecoration = TextDecoration.Underline
-    )
 
 internal fun slockMarkdownInlineTagWidthSp(
     label: String,
@@ -640,11 +743,13 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
         Text(
             label,
             modifier = Modifier.fillMaxWidth(),
-            style = SlockType.Caption.copy(
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp,
-                lineHeight = 21.sp
-            ),
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.SemiBold)
+                    .copy(
+                        fontSize = 14.sp,
+                        lineHeight = 21.sp
+                    ),
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
             maxLines = 1,
@@ -657,13 +762,15 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
 private fun SlockMarkdownMentionText(label: String) {
     Text(
         text = label,
-        style = SlockType.Body.copy(
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            color = SlockColor.TextBlack,
-            fontWeight = FontWeight.SemiBold,
-            textDecoration = TextDecoration.Underline
-        ),
+        style =
+            SlockType.Body
+                .withSlockFontWeight(FontWeight.SemiBold)
+                .copy(
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    color = SlockColor.TextBlack,
+                    textDecoration = TextDecoration.Underline
+                ),
         color = SlockColor.TextBlack,
         maxLines = 1,
         overflow = TextOverflow.Clip
