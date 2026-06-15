@@ -45,7 +45,22 @@ data class HomeSnapshot(
     val currentMember: MemberProfile,
     val channels: List<ConversationSummary>,
     val directMessages: List<ConversationSummary>,
-    val unreadTotal: Int
+    val unreadTotal: Int,
+    /**
+     * #81: explicit source provenance for [unreadTotal]. Matches
+     * `HomeParser.kt:97-103` derivation:
+     * - `SERVER_UNREAD_SUMMARY` when `payload.serverUnreadSummary` had a
+     *   non-null entry for the active server.
+     * - `CHANNEL_DM_FALLBACK` when the server summary was missing for the
+     *   active server and the count was derived from the channel + DM
+     *   unread sum.
+     * - `UNKNOWN` only for synthetic / preview snapshots that bypass the
+     *   parser.
+     *
+     * Default is `UNKNOWN` so existing call sites that don't set it (test
+     * fixtures, preview builders) keep compiling.
+     */
+    val unreadSource: AppBadgeSource = AppBadgeSource.UNKNOWN
 )
 
 data class ServerListSnapshot(

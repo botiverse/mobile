@@ -232,6 +232,31 @@ internal class BridgeModule : Module() {
         callNativeMethod("settingsEvent", methodArgs, null)
     }
 
+    /**
+     * #81: host bridge for the selected-server app badge. Called from
+     * [ai.slock.compose.data.SharedHomeStore] whenever
+     * [ai.slock.compose.data.AppBadgeCount] changes. The host platform
+     * (Android / OHOS / iOS / desktop) decides how to render the badge
+     * (launcher icon, app icon, tray, etc.) from `count`.
+     *
+     * [source] is passed for diagnostics / logging only. Per the
+     * boundary rule from Cindy (2026-06-15 12:59), the host platform
+     * MUST NOT branch on [source] (`SERVER_UNREAD_SUMMARY` /
+     * `CHANNEL_DM_FALLBACK` / `DISABLED` / `UNKNOWN`) to decide which UI
+     * to show. The platform only displays [count].
+     *
+     * For [count] = 0 the host MAY keep the previous badge visible
+     * (Android / iOS launcher icon convention) or clear it. The choice
+     * is platform-specific.
+     */
+    fun appBadge(count: Int, source: String, isStale: Boolean) {
+        val methodArgs = JSONObject()
+        methodArgs.put("count", count)
+        methodArgs.put("source", source)
+        methodArgs.put("isStale", isStale)
+        callNativeMethod("appBadge", methodArgs, null)
+    }
+
     suspend fun authRequest(command: JSONObject): JSONObject? =
         suspendCoroutine { continuation ->
             callNativeMethod(AUTH_REQUEST, command) {

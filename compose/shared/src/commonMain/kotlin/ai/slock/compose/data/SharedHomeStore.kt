@@ -24,7 +24,15 @@ class SharedHomeStore(
     private val dataSource: SharedHomeDataSource,
     private val scope: CoroutineScope,
     private val diagnosticsLogger: (String) -> Unit = {},
-    private val presenceFlushDelayMillis: Long = 250L
+    private val presenceFlushDelayMillis: Long = 250L,
+    /**
+     * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
+     * tests can pin a deterministic clock; production passes a
+     * `System.currentTimeMillis` adapter. Use [Long] (not [kotlin.time.Instant])
+     * to match the OHOS datetime klib stability rule we adopted in
+     * `d56ed07d`; UI layer formats via `SlockTime` if needed.
+     */
+    private val nowMillis: () -> Long = { defaultNowMillis() }
 ) {
     private val _state = MutableStateFlow(SharedHomeState())
     val state: StateFlow<SharedHomeState> = _state.asStateFlow()
@@ -110,7 +118,13 @@ class SharedHomeStore(
                         serverSwitcherExpanded = false,
                         serverSwitchState = nextSwitch,
                         selectedConversationId = null,
-                        selectedTopAction = null
+                        selectedTopAction = null,
+                        // #81: clear badge on server switch so the host
+                        // stops showing a stale count from the previous
+                        // server before the new server's first
+                        // /servers/unread-summary arrives. See
+                        // AppBadgeCount.DISABLED semantics.
+                        appBadgeCount = AppBadgeCount.DISABLED
                     )
                 )
                 load(nextSwitch, showRefreshAffordance = true)
@@ -172,14 +186,25 @@ class SharedHomeStore(
             val session = currentContent?.session
                 ?: authStore.readSession()
                 ?: return
+            // #81: realtime increment path — the `result.data.preserveStableRowsFrom`
+            // call above preserves the existing unreadSource field on the
+            // snapshot, so we can derive a fresh badge from it directly.
+            // lastUpdated advances, isStale clears.
+            val nextSnapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot)
+            val nextBadge = snapshotToBadgeCount(
+                snapshot = nextSnapshot,
+                selectedServerId = nextSnapshot.server.id,
+                isStale = false
+            )
             reduceState(
                 _state.value.copy(
                     content =
                         SharedHomeContentState.Content(
-                            snapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot),
+                            snapshot = nextSnapshot,
                             session = session,
                             contentRefreshing = currentContent?.contentRefreshing == true
-                        )
+                        ),
+                    appBadgeCount = nextBadge
                 )
             )
         }
@@ -220,7 +245,17 @@ class SharedHomeStore(
             val session = authStore.readSession()
             if (session == null) {
                 diagnosticsLogger("home_ui_error source=shared_home_load code=unauthenticated mapped=home_error_panel")
-                reduceState(_state.value.copy(content = SharedHomeContentState.Error("unauthenticated")))
+                reduceState(
+                    _state.value.copy(
+                        content = SharedHomeContentState.Error("unauthenticated"),
+                        // #81: clear badge on logout. The underlying
+                        // SharedHomeSnapshot.unreadTotal is preserved for
+                        // other surfaces (Home / Inbox), but the selected-
+                        // server badge projection must not show a count after
+                        // the user logs out.
+                        appBadgeCount = AppBadgeCount.DISABLED
+                    )
+                )
                 return
             }
             reduceState(
@@ -257,6 +292,26 @@ class SharedHomeStore(
                     val cachedServerId = cached.data.server.id
                     if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
                         val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
+                        // #81: cached hit also seeds the badge projection.
+                        // lastUpdated is 0L here because we don't know
+                        // exactly when the cache was written; isStale
+                        // stays false because the cache itself is a
+                        // successful previous fetch.
+                        val cachedBadge = snapshotToBadgeCount(
+                            snapshot = cached.data,
+                            selectedServerId = activeServer,
+                            isStale = false
+                        )
+                        // #81: dedup — if the projection is structurally
+                        // equal to the current one (modulo lastUpdated),
+                        // keep the previous state so the host doesn't
+                        // observe a no-op state emission.
+                        val effectiveCachedBadge =
+                            if (cachedBadge.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
+                                _state.value.appBadgeCount
+                            } else {
+                                cachedBadge
+                            }
                         reduceState(
                             _state.value.copy(
                                 content =
@@ -265,7 +320,8 @@ class SharedHomeStore(
                                         activeSession,
                                         contentRefreshing = showRefreshAffordance
                                     ),
-                                serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId)
+                                serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId),
+                                appBadgeCount = effectiveCachedBadge
                             )
                         )
                         launchNetworkRefresh(
@@ -357,6 +413,29 @@ class SharedHomeStore(
                     val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
                     content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
                 } ?: result
+            // #81: derive the badge projection from the fresh snapshot.
+            // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
+            //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
+            // - On Error / NoPermission (nextContent is not Content): keep
+            //   last value but flip isStale = true so a future UI layer can
+            //   hint staleness. lastUpdated MUST NOT advance.
+            val freshSnapshot = (result as? SharedHomeContentState.Content)?.snapshot
+            val nextBadge =
+                if (freshSnapshot != null) {
+                    val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)
+                    // #81: don't bump lastUpdated (and therefore the state
+                    // itself) when the projection is structurally the same
+                    // as the previous one. Avoids spurious state emissions
+                    // for refresh-on-no-change paths.
+                    if (next.copy(lastUpdated = 0L) == _state.value.appBadgeCount.copy(lastUpdated = 0L)) {
+                        _state.value.appBadgeCount
+                    } else {
+                        next
+                    }
+                } else {
+                    val previous = _state.value.appBadgeCount
+                    previous.copy(isStale = true)
+                }
             reduceState(
                 _state.value.copy(
                     content = nextContent,
@@ -365,7 +444,8 @@ class SharedHomeStore(
                             latestSwitch.complete(request.requestGeneration, resultServerId)
                         } else {
                             latestSwitch
-                        }
+                        },
+                    appBadgeCount = nextBadge
                 )
             )
             loadNotifications()
@@ -482,13 +562,52 @@ class SharedHomeViewModel(
     }
 }
 
+/**
+ * #81: derive an [AppBadgeCount] from a freshly loaded snapshot. Centralized
+ * so every code path (cached load, network load, realtime increment) goes
+ * through the same provenance + freshness rules. KDoc mirrors [AppBadgeCount].
+ */
+internal fun snapshotToBadgeCount(
+    snapshot: HomeSnapshot,
+    selectedServerId: ai.slock.compose.model.ServerId?,
+    isStale: Boolean = false,
+    nowMillis: () -> Long = { defaultNowMillis() }
+): AppBadgeCount =
+    AppBadgeCount(
+        count = snapshot.unreadTotal,
+        source = snapshot.unreadSource,
+        selectedServerId = selectedServerId,
+        lastUpdated = nowMillis(),
+        isStale = isStale
+    )
+
+/**
+ * #81: default wall-clock source. KMP doesn't have a shared
+ * `System.currentTimeMillis` directly, so we route through the host's
+ * clock via KMP `kotlin.time.Clock.System.now().toEpochMilliseconds()`
+ * (available since Kotlin 1.9) where supported. For unit tests, inject a
+ * fixed clock via [SharedHomeStore]'s `nowMillis` constructor param.
+ */
+@OptIn(kotlin.time.ExperimentalTime::class)
+private fun defaultNowMillis(): Long =
+    kotlin.time.Clock.System.now().toEpochMilliseconds()
+
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
     val serverSwitcherExpanded: Boolean = false,
     val selectedConversationId: String? = null,
     val selectedTopAction: SharedHomeTopAction? = null,
-    val notifications: List<SharedHomeNotification> = emptyList()
+    val notifications: List<SharedHomeNotification> = emptyList(),
+    /**
+     * #81: typed projection of the selected-server app badge. Derived from
+     * the snapshot's [SharedHomeSnapshot.unreadTotal] (which is
+     * `serverUnreadTotal ?: channelUnreadTotal` per `HomeParser.kt:102-103`),
+     * with explicit source provenance and refresh-failure semantics. Host
+     * receives this through `bridge.appBadge(count, source)` and MUST NOT
+     * branch on `source` to decide which UI to show.
+     */
+    val appBadgeCount: AppBadgeCount = AppBadgeCount.UNKNOWN
 )
 
 enum class SharedHomeTopAction {

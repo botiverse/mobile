@@ -837,6 +837,19 @@ private fun SlockAppShellContent() {
             )
         }
     val homeState by homeViewModel.state.collectAsState()
+    // #81: forward the typed selected-server badge projection to the host
+    // bridge. The host platform MUST use `count` for the system badge
+    // and `source` only for diagnostics / logging. See
+    // [ai.slock.compose.base.BridgeModule.appBadge] and
+    // [ai.slock.compose.data.AppBadgeCount] for the contract.
+    LaunchedEffect(homeState.appBadgeCount) {
+        val badge = homeState.appBadgeCount
+        bridge.appBadge(
+            count = badge.count,
+            source = badge.source.wire,
+            isStale = badge.isStale
+        )
+    }
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }
