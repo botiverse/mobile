@@ -3971,15 +3971,14 @@ private fun ThreadMessageBookmarkButton(
         modifier =
             modifier
                 .size(24.dp)
-                .background(if (saved) SlockColor.AccentOrange else Color.Transparent)
-                .border(SlockStroke.Thin, if (saved) SlockColor.BorderBlack else Color.Transparent),
+                .background(Color.Transparent),
         onClick = onClick,
         pressFeedback = false
     ) {
         SlockLucideIcon(
             name = "bookmark",
             modifier = Modifier.size(13.dp),
-            color = if (saved) "#FF000000" else "#66000000"
+            color = if (saved) "#FFF8A16F" else "#66000000"
         )
     }
 }
