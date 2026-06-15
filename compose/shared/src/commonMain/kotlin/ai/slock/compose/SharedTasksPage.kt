@@ -4,6 +4,7 @@ import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.components.SlockAnchoredToolbarChip
+import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.data.KeyValueTasksViewPreferenceRepository
 import ai.slock.compose.data.ScreenLoadState
@@ -588,60 +589,75 @@ private fun SharedTasksToolbar(
             Modifier
                 .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            SharedTasksSegmentedControl(
-                selectedMode = selectedMode,
-                onModeSelected = onModeSelected
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (showChannelFilter) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
+            ) {
+                SharedTasksSegmentedControl(
+                    selectedMode = selectedMode,
+                    onModeSelected = onModeSelected
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (showChannelFilter) {
+                    SlockAnchoredToolbarChip(
+                        label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
+                        iconName = "hash",
+                        active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
+                        enabled = channelOptions.isNotEmpty(),
+                        onClick = onChannelChipClick
+                    )
+                }
                 SlockAnchoredToolbarChip(
-                    label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
-                    iconName = "hash",
-                    active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
-                    enabled = channelOptions.isNotEmpty(),
-                    onClick = onChannelChipClick
+                    label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
+                    iconName = "user",
+                    active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
+                    enabled = assigneeOptions.isNotEmpty(),
+                    onClick = onAssigneeChipClick
                 )
-            }
-            SlockAnchoredToolbarChip(
-                label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
-                iconName = "user",
-                active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
-                enabled = assigneeOptions.isNotEmpty(),
-                onClick = onAssigneeChipClick
-            )
-            if (anyFilterActive) {
-                SlockToolbarChip(
-                    label = "Clear all",
-                    iconName = "x",
-                    active = false,
-                    onClick = onClearAll
-                )
-            }
-            if (showCreateButton) {
-                Spacer(Modifier.weight(1f))
-                SlockToolbarChip(
-                    label = "New Task",
-                    iconName = "plus",
-                    active = true,
-                    activeBackgroundColor = SlockColor.AccentPink,
-                    onClick = onCreateClick
-                )
+                if (anyFilterActive) {
+                    SlockToolbarChip(
+                        label = "Clear all",
+                        iconName = "x",
+                        active = false,
+                        onClick = onClearAll
+                    )
+                }
+                if (showCreateButton) {
+                    Spacer(Modifier.weight(1f))
+                    SlockBrutalActionButton(
+                        label = "NEW TASK",
+                        leadingIcon = "plus",
+                        backgroundColor = SlockColor.AccentPink,
+                        minWidth = 0.dp,
+                        minHeight = 30.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        onClick = onCreateClick
+                    )
+                }
             }
         }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(SlockStroke.Default)
+                    .background(SlockColor.BorderBlack)
+        )
     }
 }
 
