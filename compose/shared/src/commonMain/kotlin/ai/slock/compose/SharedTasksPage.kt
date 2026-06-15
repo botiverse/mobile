@@ -119,59 +119,84 @@ internal fun SharedTasksPanel(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        if (showHeader) {
-            SharedTasksHeader()
-        }
         when (val loadState = displayState) {
-            ScreenLoadState.Loading ->
+            ScreenLoadState.Loading -> {
+                if (showHeader) {
+                    SharedTasksHeader()
+                }
                 SharedTasksStateBody(
                     title = "Loading...",
                     detail = "",
                     loading = true
                 )
+            }
             is ScreenLoadState.Content ->
                 SharedTasksLoadedBody(
                     state = state,
                     content = loadState.data,
+                    showHeader = showHeader,
                     showChannelFilter = showChannelFilter,
                     createTasksChannelId = createTasksChannelId,
                     onOpenTask = onOpenTask,
                     onIntent = onIntent
                 )
-            is ScreenLoadState.Empty ->
+            is ScreenLoadState.Empty -> {
+                if (showHeader) {
+                    SharedTasksHeader()
+                }
                 SharedTasksStateBody(
                     title = "No tasks",
                     detail = loadState.reason.name
                 )
-            is ScreenLoadState.Error ->
+            }
+            is ScreenLoadState.Error -> {
+                if (showHeader) {
+                    SharedTasksHeader()
+                }
                 SharedTasksStateBody(
                     title = "Could not load tasks",
                     detail = loadState.error.code,
                     actionLabel = "Retry",
                     onAction = { onIntent(SharedTasksRouteIntent.Refresh) }
                 )
-            is ScreenLoadState.NoPermission ->
+            }
+            is ScreenLoadState.NoPermission -> {
+                if (showHeader) {
+                    SharedTasksHeader()
+                }
                 SharedTasksStateBody(
                     title = "Tasks unavailable",
                     detail = loadState.blocker.requiredCapability ?: loadState.blocker.code
                 )
+            }
         }
     }
 }
 
 @Composable
-private fun SharedTasksHeader() {
+private fun SharedTasksHeader(subtitle: String = "Channel tasks") {
     SlockTopPageHeader(
         title = "Tasks",
-        subtitle = "Channel tasks",
+        subtitle = subtitle,
         iconName = "square-check-big"
     )
+}
+
+internal fun tasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = totalTasks): String {
+    val safeTotal = totalTasks.coerceAtLeast(0)
+    val safeVisible = visibleTasks.coerceIn(0, safeTotal)
+    return if (safeVisible != safeTotal) {
+        "$safeVisible of $safeTotal channel tasks"
+    } else {
+        "$safeTotal channel tasks"
+    }
 }
 
 @Composable
 private fun SharedTasksLoadedBody(
     state: TasksUiState,
     content: TasksContent,
+    showHeader: Boolean,
     showChannelFilter: Boolean,
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
@@ -181,6 +206,7 @@ private fun SharedTasksLoadedBody(
         SharedTasksLoadedBodyContent(
             state = state,
             content = content,
+            showHeader = showHeader,
             showChannelFilter = showChannelFilter,
             createTasksChannelId = createTasksChannelId,
             onOpenTask = onOpenTask,
@@ -194,6 +220,7 @@ private fun SharedTasksLoadedBody(
 private fun SharedTasksLoadedBodyContent(
     state: TasksUiState,
     content: TasksContent,
+    showHeader: Boolean,
     showChannelFilter: Boolean,
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
@@ -293,135 +320,143 @@ private fun SharedTasksLoadedBodyContent(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            state.navigationErrorCode?.let { code ->
-                SharedTasksNotice("Action unavailable", code, modifier = Modifier.padding(SlockSpacing.Md))
-            }
-            state.statusUpdateErrorCode?.let { code ->
-                SharedTasksNotice("Could not update status", code, modifier = Modifier.padding(SlockSpacing.Md))
-            }
-            SharedTasksToolbar(
-                totalTasks = content.tasks.size,
-                visibleTasks = visibleContent.filteredTasks.size,
-                channelOptions = visibleContent.channelOptions,
-                selectedChannels = visibleContent.selectedChannelNames,
-                assigneeOptions = visibleContent.assigneeOptions,
-                selectedAssigneeIds = visibleContent.selectedAssigneeIds,
-                selectedMode = presentationState.selectedMode,
-                showChannelFilter = showChannelFilter,
-                openFilterId = presentationState.openFilterId,
-                showCreateButton = createTasksChannelId != null,
-                onModeSelected = { mode ->
-                    viewModeRepository.selectTasksViewModeSync(mode)
-                    presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
-                },
-                onChannelChipClick = { anchor ->
-                    channelAnchor = anchor
-                    presentationState =
-                        presentationState.reduce(
-                            TasksPresentationIntent.SetOpenFilter(
-                                if (presentationState.openFilterId == "channel") null else "channel"
-                            )
-                        )
-                },
-                onAssigneeChipClick = { anchor ->
-                    assigneeAnchor = anchor
-                    presentationState =
-                        presentationState.reduce(
-                            TasksPresentationIntent.SetOpenFilter(
-                                if (presentationState.openFilterId == "assignee") null else "assignee"
-                            )
-                        )
-                },
-                onClearAll = {
-                    presentationState = presentationState.reduce(TasksPresentationIntent.ClearAllFilters)
-                },
-                onCreateClick = { createDialogOpen = true }
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        if (showHeader) {
+            SharedTasksHeader(
+                subtitle =
+                    tasksHeaderSubtitle(
+                        totalTasks = content.tasks.size,
+                        visibleTasks = visibleContent.filteredTasks.size
+                    )
             )
-            when (presentationState.selectedMode) {
-                TasksViewMode.Board -> {
-                    // Horizontal board: each TaskStatus is a fixed-width column the user can
-                    // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
-                    LazyRow(
-                        modifier = Modifier.fillMaxSize(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-                        contentPadding = PaddingValues(SlockSpacing.Md)
-                    ) {
-                        items(boardColumns.size, key = { i -> "board-col-${boardColumns[i].status}" }) { index ->
-                            val column = boardColumns[index]
-                            SharedTasksBoardColumn(
-                                status = column.status,
-                                totalCount = column.totalCount,
-                                tasks = column.tasks,
-                                collapsed = column.status in collapsedStatuses,
-                                updatingTaskId = state.statusUpdatingTaskId,
-                                onToggleCollapsed = {
-                                    presentationState =
-                                        presentationState.reduce(
-                                            TasksPresentationIntent.ToggleStatusCollapsed(column.status)
-                                        )
-                                },
-                                onOpenTask = onOpenTask,
-                                onStatusBadgeClick = { task, anchor ->
-                                    statusMenuTask = task
-                                    statusMenuAnchor = anchor
-                                },
-                                onLongPressTask = { task, anchor ->
-                                    statusMenuTask = task
-                                    statusMenuAnchor = anchor
-                                }
+        }
+        Box(modifier = Modifier.weight(1f).background(SlockColor.SurfaceWhite)) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                state.navigationErrorCode?.let { code ->
+                    SharedTasksNotice("Action unavailable", code, modifier = Modifier.padding(SlockSpacing.Md))
+                }
+                state.statusUpdateErrorCode?.let { code ->
+                    SharedTasksNotice("Could not update status", code, modifier = Modifier.padding(SlockSpacing.Md))
+                }
+                SharedTasksToolbar(
+                    channelOptions = visibleContent.channelOptions,
+                    selectedChannels = visibleContent.selectedChannelNames,
+                    assigneeOptions = visibleContent.assigneeOptions,
+                    selectedAssigneeIds = visibleContent.selectedAssigneeIds,
+                    selectedMode = presentationState.selectedMode,
+                    showChannelFilter = showChannelFilter,
+                    openFilterId = presentationState.openFilterId,
+                    showCreateButton = createTasksChannelId != null,
+                    onModeSelected = { mode ->
+                        viewModeRepository.selectTasksViewModeSync(mode)
+                        presentationState = presentationState.reduce(TasksPresentationIntent.SelectMode(mode))
+                    },
+                    onChannelChipClick = { anchor ->
+                        channelAnchor = anchor
+                        presentationState =
+                            presentationState.reduce(
+                                TasksPresentationIntent.SetOpenFilter(
+                                    if (presentationState.openFilterId == "channel") null else "channel"
+                                )
                             )
+                    },
+                    onAssigneeChipClick = { anchor ->
+                        assigneeAnchor = anchor
+                        presentationState =
+                            presentationState.reduce(
+                                TasksPresentationIntent.SetOpenFilter(
+                                    if (presentationState.openFilterId == "assignee") null else "assignee"
+                                )
+                            )
+                    },
+                    onClearAll = {
+                        presentationState = presentationState.reduce(TasksPresentationIntent.ClearAllFilters)
+                    },
+                    onCreateClick = { createDialogOpen = true }
+                )
+                when (presentationState.selectedMode) {
+                    TasksViewMode.Board -> {
+                        // Horizontal board: each TaskStatus is a fixed-width column the user can
+                        // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
+                        LazyRow(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                            contentPadding = PaddingValues(SlockSpacing.Md)
+                        ) {
+                            items(boardColumns.size, key = { i -> "board-col-${boardColumns[i].status}" }) { index ->
+                                val column = boardColumns[index]
+                                SharedTasksBoardColumn(
+                                    status = column.status,
+                                    totalCount = column.totalCount,
+                                    tasks = column.tasks,
+                                    collapsed = column.status in collapsedStatuses,
+                                    updatingTaskId = state.statusUpdatingTaskId,
+                                    onToggleCollapsed = {
+                                        presentationState =
+                                            presentationState.reduce(
+                                                TasksPresentationIntent.ToggleStatusCollapsed(column.status)
+                                            )
+                                    },
+                                    onOpenTask = onOpenTask,
+                                    onStatusBadgeClick = { task, anchor ->
+                                        statusMenuTask = task
+                                        statusMenuAnchor = anchor
+                                    },
+                                    onLongPressTask = { task, anchor ->
+                                        statusMenuTask = task
+                                        statusMenuAnchor = anchor
+                                    }
+                                )
+                            }
                         }
                     }
-                }
-                TasksViewMode.List -> {
-                    if (visibleContent.filteredTasks.isEmpty()) {
-                        SharedTasksStateBody(
-                            title = "No matching tasks",
-                            detail = "Try clearing your filters."
-                        )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(SlockSpacing.Md),
-                            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-                        ) {
-                            items(listRows.size, key = { i -> listRows[i].key }) { index ->
-                                when (val row = listRows[index]) {
-                                    is SharedTasksListRow.Header ->
-                                        BoardSectionHeader(
-                                            status = row.status,
-                                            count = row.count,
-                                            collapsed = row.collapsed,
-                                            onClick = {
-                                                presentationState =
-                                                    presentationState.reduce(
-                                                        TasksPresentationIntent.ToggleStatusCollapsed(row.status)
-                                                    )
-                                            }
-                                        )
-                                    is SharedTasksListRow.Card ->
-                                        SharedTaskCard(
-                                            task = row.task,
-                                            updating = state.statusUpdatingTaskId == row.task.id.value,
-                                            onClick = { onOpenTask?.invoke(row.task) },
-                                            onStatusBadgeClick = { anchor ->
-                                                statusMenuTask = row.task
-                                                statusMenuAnchor = anchor
-                                            },
-                                            onLongPress = { anchor ->
-                                                statusMenuTask = row.task
-                                                statusMenuAnchor = anchor
-                                            }
-                                        )
+                    TasksViewMode.List -> {
+                        if (visibleContent.filteredTasks.isEmpty()) {
+                            SharedTasksStateBody(
+                                title = "No matching tasks",
+                                detail = "Try clearing your filters."
+                            )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(SlockSpacing.Md),
+                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                            ) {
+                                items(listRows.size, key = { i -> listRows[i].key }) { index ->
+                                    when (val row = listRows[index]) {
+                                        is SharedTasksListRow.Header ->
+                                            BoardSectionHeader(
+                                                status = row.status,
+                                                count = row.count,
+                                                collapsed = row.collapsed,
+                                                onClick = {
+                                                    presentationState =
+                                                        presentationState.reduce(
+                                                            TasksPresentationIntent.ToggleStatusCollapsed(row.status)
+                                                        )
+                                                }
+                                            )
+                                        is SharedTasksListRow.Card ->
+                                            SharedTaskCard(
+                                                task = row.task,
+                                                updating = state.statusUpdatingTaskId == row.task.id.value,
+                                                onClick = { onOpenTask?.invoke(row.task) },
+                                                onStatusBadgeClick = { anchor ->
+                                                    statusMenuTask = row.task
+                                                    statusMenuAnchor = anchor
+                                                },
+                                                onLongPress = { anchor ->
+                                                    statusMenuTask = row.task
+                                                    statusMenuAnchor = anchor
+                                                }
+                                            )
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
         // --- Overlays. Rendered in z-order: popovers, then status menu, then create dialog.
         // Each overlay short-circuits on null state so unmounting tears down the gesture
@@ -485,6 +520,7 @@ private fun SharedTasksLoadedBodyContent(
                 }
             )
         }
+        }
     }
 }
 
@@ -532,8 +568,6 @@ private sealed interface SharedTasksListRow {
 
 @Composable
 private fun SharedTasksToolbar(
-    totalTasks: Int,
-    visibleTasks: Int,
     channelOptions: List<String>,
     selectedChannels: Set<String>,
     assigneeOptions: List<MemberProfile>,
@@ -561,16 +595,8 @@ private fun SharedTasksToolbar(
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            horizontalArrangement = Arrangement.End
         ) {
-            Text(
-                text = "$visibleTasks${if (visibleTasks != totalTasks) " of $totalTasks" else ""} channel tasks",
-                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.5f),
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
             SharedTasksSegmentedControl(
                 selectedMode = selectedMode,
                 onModeSelected = onModeSelected
