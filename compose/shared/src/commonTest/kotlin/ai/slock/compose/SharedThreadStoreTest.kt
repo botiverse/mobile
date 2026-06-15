@@ -922,6 +922,76 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageNewUsesCachedHomeDirectMessageAvatar() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels = emptyList(),
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-agent-1"),
+                            channelId = ChannelId("dm-agent-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Product-UX-Designer",
+                            avatar = AvatarReference.fromWireValue("pixel:tree"),
+                            presenceMemberId = MemberId("agent-1")
+                        )
+                    ),
+                unreadTotal = 0
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author =
+                            MemberProfile(
+                                id = MemberId("agent-1"),
+                                displayName = "Product-UX-Designer",
+                                handle = "Product-UX-Designer",
+                                kind = MemberKind.Agent,
+                                presence = Presence.Offline
+                            ),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "realtime agent body"
+                    )
+                )
+            )
+        )
+
+        val message = store.state.value.payload.messages.single { it.id == "m2" }
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
+        val cachedAuthor =
+            localStore
+                .readThread(ThreadId("channel-1"))
+                ?.messages
+                ?.single { it.id == MessageId("m2") }
+                ?.author
+        assertEquals("pixel:tree", cachedAuthor?.avatar?.wireValue)
+        assertEquals(null, cachedAuthor?.gravatarHash)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =

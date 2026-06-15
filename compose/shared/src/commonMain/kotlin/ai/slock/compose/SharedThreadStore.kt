@@ -463,6 +463,11 @@ internal class SharedThreadDataSource(
         return payload.withSenderProfiles(session)
     }
 
+    suspend fun enrichCachedSenderProfiles(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val session = readSession() ?: return payload
+        return payload.withCachedSenderProfiles(session)
+    }
+
     suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val repository = memberRepository ?: return payload
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return payload
@@ -1406,12 +1411,18 @@ internal class SharedThreadStore(
         activeReplyParentMessageId: MessageId? = null
     ) {
         val existing = _state.value.payload
-        val merged =
+        val rawMerged =
             existing.applyRealtimeEvent(
                 event = event,
                 currentUserId = dataSource.readSession()?.user?.id,
                 activeReplyParentMessageId = activeReplyParentMessageId
-        )
+            )
+        val merged =
+            if (rawMerged === existing) {
+                rawMerged
+            } else {
+                dataSource.enrichCachedSenderProfiles(rawMerged)
+            }
         val stableMerged = merged.preserveStableTimelineFrom(existing)
         val emitted =
             reducePayloadPatch(cachePayload = true) { currentPayload ->
