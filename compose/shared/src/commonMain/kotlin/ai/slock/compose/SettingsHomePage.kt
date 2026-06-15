@@ -194,6 +194,7 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
+import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.slockEpochMillisUtcIso
@@ -1202,10 +1203,6 @@ private fun SlockAppShellContent() {
     }
 
     fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
-        pendingDiagnosticsFeedback?.let { draft ->
-            openDiagnosticsFeedbackChannel(draft, conversation, source, pushCurrent)
-            return
-        }
         bridge.log(
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
@@ -1243,6 +1240,10 @@ private fun SlockAppShellContent() {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
             createChannelError = null
+            return true
+        }
+        if (pendingDiagnosticsFeedback != null) {
+            pendingDiagnosticsFeedback = null
             return true
         }
         if (homeState.serverSwitcherExpanded) {
@@ -1663,12 +1664,10 @@ private fun SlockAppShellContent() {
                                 },
                                 onDiagnosticsFeedbackPrepared = { draft ->
                                     pendingDiagnosticsFeedback = draft
-                                    selectedTab = "home"
-                                    selectedHomeDestination = null
-                                    selectedHomeConversationId = null
-                                    activeThreadPayload = null
-                                    threadBackStack = emptyList()
-                                    bridge.toast("Choose a channel to attach diagnostics")
+                                    if (homeState.content !is SharedHomeContentState.Content) {
+                                        homeViewModel.dispatch(SharedHomeIntent.Start)
+                                    }
+                                    bridge.toast("Choose a channel")
                                 },
                                 bottomContentPadding = shellScope.bottomTabBarContentInset,
                                 onLogout = {
@@ -1796,6 +1795,23 @@ private fun SlockAppShellContent() {
                     }
             }
             Box(modifier = Modifier.fillMaxSize()) {
+                pendingDiagnosticsFeedback?.let { draft ->
+                    SharedDiagnosticsFeedbackChannelDialog(
+                        state = homeState,
+                        onDismiss = { pendingDiagnosticsFeedback = null },
+                        onRefresh = { homeViewModel.dispatch(SharedHomeIntent.Refresh) },
+                        onSelectChannel = { conversation ->
+                            pendingDiagnosticsFeedback = null
+                            openDiagnosticsFeedbackChannel(
+                                draft = draft,
+                                conversation = conversation,
+                                source = "diagnostics_channel_picker",
+                                pushCurrent = true
+                            )
+                            homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
+                        }
+                    )
+                }
                 if (createChannelDialogOpen) {
                     SharedCreateChannelDialog(
                         submitting = createChannelSubmitting,
@@ -4947,6 +4963,189 @@ private fun SharedHomeScreen(
             )
         }
     }
+}
+
+@Composable
+private fun SharedDiagnosticsFeedbackChannelDialog(
+    state: SharedHomeState,
+    onDismiss: () -> Unit,
+    onRefresh: () -> Unit,
+    onSelectChannel: (ConversationSummary) -> Unit
+) {
+    val channels = state.diagnosticsFeedbackChannelChoices()
+    val isLoading = state.content is SharedHomeContentState.Loading
+    SlockUnifiedDialog(
+        title = "请选择 channel",
+        onDismiss = onDismiss,
+        maxWidth = 440.dp,
+        contentSpacing = 14.dp
+    ) {
+        Text(
+            text = "最近用过的 channel 会排在前面。选中后会把诊断日志作为附件放进输入框。",
+            style = SlockType.Caption,
+            color = SlockColor.TextMutedGray
+        )
+        when {
+            isLoading -> {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Loading channels...",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            channels.isEmpty() -> {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "No sendable channels found.",
+                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        color = SlockColor.TextBlack
+                    )
+                    Text(
+                        text = "You need a joined channel with message and attachment permission.",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            else -> {
+                SlockBrutalSectionLabel(label = "最近使用")
+                LazyColumn(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 360.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    channels.forEach { channel ->
+                        item(key = channel.channelId?.value ?: channel.threadId.value) {
+                            DiagnosticsFeedbackChannelRow(
+                                channel = channel,
+                                onClick = { onSelectChannel(channel) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Spacer(Modifier.weight(1f))
+            SlockBrutalActionButton(
+                label = "Cancel",
+                backgroundColor = SlockColor.SurfaceWhite,
+                onClick = onDismiss
+            )
+            SlockBrutalActionButton(
+                label = "Refresh",
+                backgroundColor = SlockColor.BrandYellow,
+                onClick = onRefresh
+            )
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticsFeedbackChannelRow(
+    channel: ConversationSummary,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .clickable(onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(32.dp)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon("hash", color = "#FF000000", modifier = Modifier.size(15.dp))
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = channel.name.removePrefix("#"),
+                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = channel.diagnosticsFeedbackChannelMeta(),
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            SlockLucideIcon("chevron-right", color = "#FF111111", modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+private fun SharedHomeState.diagnosticsFeedbackChannelChoices(): List<ConversationSummary> {
+    val snapshot = (content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
+    return snapshot.channels
+        .asSequence()
+        .filter { channel ->
+            channel.kind == ConversationKind.Channel &&
+                !channel.archived &&
+                channel.joined &&
+                channel.permissions.canSend &&
+                channel.permissions.canAttach
+        }
+        .mapIndexed { index, channel -> index to channel }
+        .sortedWith(
+            compareByDescending<Pair<Int, ConversationSummary>> {
+                parseSlockTimestampEpochMillisOrNull(it.second.lastMessageAt) ?: Long.MIN_VALUE
+            }.thenBy { it.first }
+        )
+        .map { it.second }
+        .toList()
+}
+
+private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
+    val latest = lastMessageAt?.takeIf { it.isNotBlank() }
+    val unread = unreadCount.takeIf { it > 0 }?.let { "$it unread" }
+    val sender = lastMessageSenderName?.takeIf { it.isNotBlank() }
+    return listOfNotNull(latest, sender, unread)
+        .joinToString(" · ")
+        .ifBlank { "Channel" }
 }
 
 @Composable
