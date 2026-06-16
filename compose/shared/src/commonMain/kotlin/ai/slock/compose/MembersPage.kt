@@ -13,7 +13,12 @@ import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.SlockAgentsApiClient
+import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.SlockComputersApiClient
+import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -325,16 +330,97 @@ internal fun MembersPageContent() {
         }
     }
 
+    // Build the KMP dataSource directly (no bridge event round-trip).
+    // Mirrors ThreadPage's pattern: sharedStores gives us the auth store;
+    // pager.acquireModule<SlockNetworkModule>(...) gives us a network client.
+    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
+    val networkClient = remember {
+        KuiklySlockNetworkClient(
+            sessionStore = authStore,
+            networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
+                ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
+            ),
+            warningLogger = { message -> bridge.log("members_network $message") }
+        )
+    }
+    val dataSource = remember {
+        ai.slock.compose.data.SharedMembersDataSource(
+            agentsApiClient = ai.slock.compose.data.SlockAgentsApiClient(
+                ai.slock.compose.data.SlockAgentsNetworkApi(networkClient)
+            ),
+            computersApiClient = ai.slock.compose.data.SlockComputersApiClient(
+                ai.slock.compose.data.SlockComputersNetworkApi(networkClient)
+            ),
+            memberRepository = ai.slock.compose.data.RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("members_member_repository $message") }
+            )
+        )
+    }
+    var machines by remember { mutableStateOf<List<SharedCreateAgentMachineOption>>(emptyList()) }
+    var machinesLoading by remember { mutableStateOf(false) }
+    var currentAgentCount by remember { mutableStateOf(payload.members.count { it.kind == MemberKind.Agent }) }
+    var maxAgents by remember { mutableStateOf(-1) }
+    var localMembers by remember { mutableStateOf(payload.members) }
+    LaunchedEffect(payload) {
+        // Sync local members when the host pushes a fresh payload
+        localMembers = payload.members
+        currentAgentCount = payload.members.count { it.kind == MemberKind.Agent }
+    }
+    val serverId = remember { readCurrentServerId() ?: "default" }
+    val scope = rememberCoroutineScope()
+    val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
+        remember(dataSource) {
+            { submit ->
+                val result = dataSource.createAgent(submit)
+                if (result is DataResult.Content) {
+                    localMembers = localMembers + result.data
+                }
+                when (result) {
+                    is DataResult.Content -> DataResult.Content(Unit)
+                    is DataResult.Empty -> DataResult.Empty(result.reason)
+                    is DataResult.Error -> result
+                    is DataResult.NoPermission -> result
+                }
+            }
+        }
+    // Load machines lazily when the dialog opens; see MembersListContent state.
+    val loadMachines: () -> Unit = remember(dataSource) {
+        {
+            if (machines.isEmpty() && !machinesLoading) {
+                machinesLoading = true
+                scope.launch {
+                    val result = dataSource.loadMachines(serverId)
+                    machinesLoading = false
+                    if (result is DataResult.Content) {
+                        machines = result.data
+                    }
+                }
+            }
+        }
+    }
+
     MembersRouteContent(
-        payload = payload,
-        onAddHuman = { bridge.settingsEvent(payload.instanceId, "addHuman", null) },
+        payload = payload.copy(members = localMembers),
+        onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
         onOpenDirectMessage = { bridge.settingsEvent(payload.instanceId, "openMember", it.id.value) },
         onCopyMemberId = {
             bridge.copyToPasteboard(it.id.value)
             bridge.toast("Copied member id")
-        }
+        },
+        canCreateAgents = true,
+        createAgentSubmit = createAgentSubmit,
+        createAgentMachines = machines,
+        createAgentMachinesLoading = machinesLoading,
+        createAgentCurrentAgentCount = currentAgentCount,
+        createAgentMaxAgents = maxAgents,
+        createAgentLoadMachines = loadMachines
     )
 }
+
+private fun readCurrentServerId(): String? = null
 
 private fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     if (isBlank()) return KuiklyMembersPayload()
@@ -424,7 +510,24 @@ internal fun MembersRouteContent(
     onReportAgentIssue: (suspend (String) -> Boolean)? = null,
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
     canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
-    onUnavailableAction: (String) -> Unit = {}
+    onUnavailableAction: (String) -> Unit = {},
+    /**
+     * Optional create-agent flow. When non-null, the agents section "+" opens a
+     * SharedCreateAgentDialog and submit is forwarded to this host callback.
+     * The host is responsible for the actual API call and refreshing the
+     * members payload. Mirrors the existing onAgentLifecycleAction pattern.
+     */
+    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
+    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
+    createAgentMachinesLoading: Boolean = false,
+    createAgentCurrentAgentCount: Int = 0,
+    createAgentMaxAgents: Int = -1,
+    createAgentLoadMachines: () -> Unit = {},
+    /**
+     * Permission gate for showing the agents "+". Defaults to false (no create).
+     * When true, the agents "+" is rendered. When false, the "+" is hidden.
+     */
+    canCreateAgents: Boolean = false
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
@@ -481,7 +584,14 @@ internal fun MembersRouteContent(
         MembersListContent(
             payload = payload,
             onAddHuman = onAddHuman,
-            onOpenMember = { selectedMemberId = it.id.value }
+            onOpenMember = { selectedMemberId = it.id.value },
+            canCreateAgents = canCreateAgents,
+            createAgentSubmit = createAgentSubmit,
+            createAgentMachines = createAgentMachines,
+            createAgentMachinesLoading = createAgentMachinesLoading,
+            createAgentCurrentAgentCount = createAgentCurrentAgentCount,
+            createAgentMaxAgents = createAgentMaxAgents,
+            createAgentLoadMachines = createAgentLoadMachines
         )
     }
 }
@@ -490,7 +600,14 @@ internal fun MembersRouteContent(
 internal fun MembersListContent(
     payload: KuiklyMembersPayload,
     onAddHuman: () -> Unit,
-    onOpenMember: (MemberProfile) -> Unit
+    onOpenMember: (MemberProfile) -> Unit,
+    canCreateAgents: Boolean = false,
+    createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
+    createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
+    createAgentMachinesLoading: Boolean = false,
+    createAgentCurrentAgentCount: Int = 0,
+    createAgentMaxAgents: Int = -1,
+    createAgentLoadMachines: () -> Unit = {}
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -504,6 +621,9 @@ internal fun MembersListContent(
     val humans = groupedMembers[payload.labels.humans].orEmpty()
     var agentsExpanded by remember(payload.instanceId, agents.size) { mutableStateOf(true) }
     var humansExpanded by remember(payload.instanceId, humans.size) { mutableStateOf(true) }
+    var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
+    var createAgentSubmitting by remember { mutableStateOf(false) }
+    var createAgentError by remember { mutableStateOf<String?>(null) }
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -532,7 +652,16 @@ internal fun MembersListContent(
                     onExpandedChange = { agentsExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        SlockSectionHeaderIconAction("plus", "Add member", onAddHuman)
+                        if (canCreateAgents && createAgentSubmit != null) {
+                            SlockSectionHeaderIconAction(
+                                icon = "plus",
+                                contentDescription = "Create agent",
+                                onClick = {
+                                    activeCreateAgent = true
+                                    createAgentLoadMachines()
+                                }
+                            )
+                        }
                     }
                 )
             }
@@ -584,6 +713,47 @@ internal fun MembersListContent(
             }
             item { Spacer(Modifier.height(180.dp)) }
         }
+    }
+    val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
+    if (activeCreateAgent && submit != null) {
+        val scope = rememberCoroutineScope()
+        SharedCreateAgentDialog(
+            submitting = createAgentSubmitting,
+            errorMessage = createAgentError,
+            machines = createAgentMachines,
+            machinesLoading = createAgentMachinesLoading,
+            currentAgentCount = createAgentCurrentAgentCount,
+            maxAgents = createAgentMaxAgents,
+            onDismiss = {
+                if (!createAgentSubmitting) {
+                    activeCreateAgent = false
+                    createAgentError = null
+                }
+            },
+            onSubmit = { request ->
+                createAgentSubmitting = true
+                createAgentError = null
+                scope.launch {
+                    val result = submit(request)
+                    createAgentSubmitting = false
+                    when (result) {
+                        is DataResult.Content -> {
+                            activeCreateAgent = false
+                            createAgentError = null
+                        }
+                        is DataResult.Empty -> {
+                            createAgentError = "Empty response"
+                        }
+                        is DataResult.Error -> {
+                            createAgentError = "Failed to create agent: ${result.error.code}"
+                        }
+                        is DataResult.NoPermission -> {
+                            createAgentError = "You do not have permission to create agents."
+                        }
+                    }
+                }
+            }
+        )
     }
 }
 
