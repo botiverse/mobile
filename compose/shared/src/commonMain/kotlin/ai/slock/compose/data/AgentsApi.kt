@@ -507,7 +507,20 @@ internal data class CreateAgentBody(
     val machineId: String? = null,
     val envVars: Map<String, String>? = null,
     val avatarUrl: String? = null,
-    val onboarding: Boolean? = null
+    val onboarding: Boolean? = null,
+    /**
+     * Full RuntimeConfig object (mirrors `slock-ai/shared` `RuntimeConfig`).
+     * When provided, the server picks up `model` / `runtime` / `mode` / `provider` /
+     * `command` from this nested object instead of the legacy top-level fields above.
+     * The legacy fields are kept so the Thread action card path
+     * (which doesn't collect runtimeConfig yet) keeps working unchanged.
+     */
+    val runtimeConfig: ai.slock.compose.model.RuntimeConfig? = null,
+    /**
+     * Indicates this create call comes from the external-agent flow (no Computer).
+     * Mirrors React `CreateAgentDialog` `external` flag.
+     */
+    val external: Boolean? = null
 )
 
 @Serializable
