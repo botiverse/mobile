@@ -17,6 +17,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconStrokeWidth: number = 0;
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
+  renderRevision: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -51,8 +52,16 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     return null;
   }
 
+  didMoveToParentView(): void {
+    this.bumpRenderRevision();
+    this.updateArkUI();
+  }
+
   sizeDidChanged(width: number, height: number): void {
     super.sizeDidChanged(width, height);
+    if (this.iconRenderWidth !== width || this.iconRenderHeight !== height) {
+      this.bumpRenderRevision();
+    }
     this.iconRenderWidth = width;
     this.iconRenderHeight = height;
   }
@@ -72,6 +81,10 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
       return 1;
     }
     return vp2px(Math.min(width / entry.viewportWidth, height / entry.viewportHeight));
+  }
+
+  private bumpRenderRevision(): void {
+    this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
   }
 }
 
@@ -96,7 +109,7 @@ export struct SlockLucideIcon {
           .strokeLineJoin(entry.strokeLineJoin)
           .scale({ x: this.renderView.drawScale(entry), y: this.renderView.drawScale(entry) })
           .antiAlias(true)
-      }, (entry: SlockLucidePathEntry) => `${entry.commands}:${entry.strokeWidth}`)
+      }, (entry: SlockLucidePathEntry) => `${this.renderView.renderRevision}:${this.renderView.iconName}:${entry.commands}:${entry.strokeWidth}`)
     }
       .width('100%')
       .height('100%')
