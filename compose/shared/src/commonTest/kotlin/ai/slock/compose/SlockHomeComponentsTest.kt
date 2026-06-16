@@ -26,6 +26,7 @@ class SlockHomeComponentsTest {
             14,
             homeLazyItemCount(
                 channelsCount = 3,
+                jointCount = 0,
                 directMessagesCount = 2,
                 channelsExpanded = true,
                 directMessagesExpanded = true,
@@ -36,6 +37,7 @@ class SlockHomeComponentsTest {
             8,
             homeLazyItemCount(
                 channelsCount = 3,
+                jointCount = 0,
                 directMessagesCount = 2,
                 channelsExpanded = false,
                 directMessagesExpanded = false,
