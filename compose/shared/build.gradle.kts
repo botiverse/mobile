@@ -67,6 +67,7 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("io.ktor:ktor-client-mock:2.3.7")
+                implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
             }
         }
         val androidMain by getting {
