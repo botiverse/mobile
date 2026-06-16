@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -773,21 +774,24 @@ private fun ComposerSuggestionRow(
 private fun ComposerIconButton(
     icon: String,
     enabled: Boolean,
+    modifier: Modifier = Modifier,
     backgroundColor: Color = SlockColor.SurfaceWhite,
     disabledBackgroundColor: Color = SlockColor.EmptyStateGray,
     disabledAlpha: Float = 1f,
+    disabledIconColor: String = "#4D000000",
     onClick: () -> Unit
 ) {
     SlockBrutalIconButton(
         iconName = icon,
         onClick = onClick,
+        modifier = modifier,
         enabled = enabled,
         backgroundColor = backgroundColor,
         disabledBackgroundColor = disabledBackgroundColor,
         disabledAlpha = disabledAlpha,
         disabledBorderColor = SlockColor.BorderBlack,
         disabledShadowColor = SlockColor.ShadowBlack,
-        disabledIconColor = "#4D000000",
+        disabledIconColor = disabledIconColor,
         size = 28.dp,
         shadowOffset = 2.dp
     )
@@ -829,12 +833,15 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
+    val disabledOpacity = if (enabled) 1f else 0.3f
     ComposerIconButton(
         icon = "send",
         enabled = enabled,
+        modifier = Modifier.alpha(disabledOpacity),
         backgroundColor = SlockColor.AccentPink,
         disabledBackgroundColor = SlockColor.AccentPink,
-        disabledAlpha = 0.3f,
+        disabledAlpha = 1f,
+        disabledIconColor = "#FF000000",
         onClick = onClick
     )
 }
