@@ -346,7 +346,6 @@ fun Modifier.dragEnable(enable: Boolean): Modifier {
 internal fun Button(
     onClick: () -> Unit = {},
     onClick2: (Offset) -> Unit = {},
-    onLongPress: ((Offset) -> Unit)? = null,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     pressFeedback: Boolean = true,
@@ -357,7 +356,6 @@ internal fun Button(
     var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
-    val onLongPressUpdate = rememberUpdatedState(onLongPress)
     val enabledUpdate = rememberUpdatedState(enabled)
     val density = LocalDensity.current
     Box(
@@ -377,20 +375,11 @@ internal fun Button(
                             }
                         }
                     },
-                    onLongPress = { localOffset ->
-                        if (enabledUpdate.value) {
-                            val offset = with(density) {
-                                Offset(
-                                    (localOffset.x + rootPosition.x).toDp().value,
-                                    (localOffset.y + rootPosition.y).toDp().value
-                                )
-                            }
-                            onLongPressUpdate.value?.invoke(offset)
-                        }
-                    },
                     onTap = { offset ->
                         if (enabledUpdate.value) {
+                            // 获取点击的相对于 Box 的坐标
                             val clickedPositionInBox = offset
+                            // 转换为相对于根节点的位置
                             val clickedPositionInRoot = with(density) {
                                 Offset(
                                     (clickedPositionInBox.x + rootPosition.x).toDp().value,

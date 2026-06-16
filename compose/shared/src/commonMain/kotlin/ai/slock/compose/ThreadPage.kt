@@ -3941,7 +3941,8 @@ private fun ThreadMessageCard(
                     Column(
                         modifier =
                             Modifier
-                                .fillMaxWidth(),
+                                .fillMaxWidth()
+                                .threadMessageLongPressActions(message.id, onShowActions),
                         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                         horizontalAlignment = contentAlignment
                     ) {
@@ -3951,7 +3952,6 @@ private fun ThreadMessageCard(
                                     .threadMessageContentWidth(messageMaxWidthFraction)
                                     .padding(end = if (showSaveAction) 30.dp else 0.dp)
                                     .background(Color.Transparent),
-                            onLongPress = onShowActions,
                             pressFeedback = false
                         ) {
                             Row(
@@ -3998,7 +3998,6 @@ private fun ThreadMessageCard(
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .background(Color.Transparent),
-                                onLongPress = onShowActions,
                                 pressFeedback = false
                             ) {
                                 SlockMarkdownBody(
