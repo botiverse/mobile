@@ -1,15 +1,22 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
-import { fileUri } from '@kit.CoreFileKit';
 import { ComponentContent } from '@kit.ArkUI';
+import { SlockLucidePathEntry, slockLucidePathEntries } from '../generated/SlockLucidePathIcons';
 
 const kName = 'name';
 const kColor = 'color';
+const kFill = 'fill';
+const kStrokeWidth = 'strokeWidth';
 
 @Observed
 export class SlockLucideIconView extends KuiklyRenderBaseView {
   static readonly VIEW_NAME = 'SlockLucideIconView';
   iconName: string = '';
   iconColor: ResourceColor = '#000000';
+  iconFill: ResourceColor = '#00000000';
+  iconFillEnabled: boolean = false;
+  iconStrokeWidth: number = 0;
+  iconRenderWidth: number = 0;
+  iconRenderHeight: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -28,6 +35,13 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
       case kColor:
         this.iconColor = normalizeColor(propValue as string);
         return true;
+      case kFill:
+        this.iconFillEnabled = hasColorValue(propValue as string);
+        this.iconFill = this.iconFillEnabled ? normalizeColor(propValue as string) : '#00000000';
+        return true;
+      case kStrokeWidth:
+        this.iconStrokeWidth = normalizeStrokeWidth(propValue);
+        return true;
       default:
         return super.setProp(propKey, propValue);
     }
@@ -37,12 +51,27 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     return null;
   }
 
-  getIconResource(): ResourceStr | null {
-    if (this.iconName.length === 0) {
-      return null;
+  sizeDidChanged(width: number, height: number): void {
+    super.sizeDidChanged(width, height);
+    this.iconRenderWidth = width;
+    this.iconRenderHeight = height;
+  }
+
+  entries(): SlockLucidePathEntry[] {
+    return slockLucidePathEntries(this.iconName);
+  }
+
+  strokeWidth(entry: SlockLucidePathEntry): number {
+    return this.iconStrokeWidth > 0 ? this.iconStrokeWidth : entry.strokeWidth;
+  }
+
+  drawScale(entry: SlockLucidePathEntry): number {
+    const width = this.iconRenderWidth > 0 ? this.iconRenderWidth : this.getViewWidth();
+    const height = this.iconRenderHeight > 0 ? this.iconRenderHeight : this.getViewHeight();
+    if (width <= 0 || height <= 0 || entry.viewportWidth <= 0 || entry.viewportHeight <= 0) {
+      return 1;
     }
-    const path = getContext().resourceDir + '/lucide/' + this.iconName + '.svg';
-    return fileUri.getUriFromPath(path);
+    return vp2px(Math.min(width / entry.viewportWidth, height / entry.viewportHeight));
   }
 }
 
@@ -51,12 +80,26 @@ export struct SlockLucideIcon {
   @ObjectLink renderView: SlockLucideIconView;
 
   build() {
-    Image(this.renderView.getIconResource())
+    Stack({ alignContent: Alignment.Center }) {
+      ForEach(this.renderView.entries(), (entry: SlockLucidePathEntry) => {
+        Path({
+          width: `${entry.viewportWidth}px`,
+          height: `${entry.viewportHeight}px`,
+          commands: entry.commands,
+        })
+          .width(`${entry.viewportWidth}px`)
+          .height(`${entry.viewportHeight}px`)
+          .fill(pathFillPaint(entry, this.renderView.iconColor, this.renderView.iconFill, this.renderView.iconFillEnabled))
+          .stroke(pathStrokePaint(entry, this.renderView.iconColor))
+          .strokeWidth(entry.strokeOpacity > 0 ? `${this.renderView.strokeWidth(entry)}px` : 0)
+          .strokeLineCap(entry.strokeLineCap)
+          .strokeLineJoin(entry.strokeLineJoin)
+          .scale({ x: this.renderView.drawScale(entry), y: this.renderView.drawScale(entry) })
+          .antiAlias(true)
+      }, (entry: SlockLucidePathEntry) => `${entry.commands}:${entry.strokeWidth}`)
+    }
       .width('100%')
       .height('100%')
-      .objectFit(ImageFit.Contain)
-      .interpolation(ImageInterpolation.High)
-      .supportSvg2(true);
   }
 }
 
@@ -79,6 +122,48 @@ function normalizeColor(value: string): ResourceColor {
     return '#' + value.substring(3);
   }
   return value;
+}
+
+function hasColorValue(value: string): boolean {
+  return value !== null && value !== undefined && value.length > 0;
+}
+
+function normalizeStrokeWidth(value: KRAny | KuiklyRenderCallback): number {
+  if (typeof value === 'number') {
+    return value > 0 ? value : 0;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    return parsed > 0 ? parsed : 0;
+  }
+  return 0;
+}
+
+function resolvePathPaint(paint: string, currentColor: ResourceColor): ResourceColor {
+  if (paint === 'currentColor') {
+    return currentColor;
+  }
+  if (paint === null || paint === undefined || paint.length === 0 || paint === 'none' || paint === 'transparent') {
+    return '#00000000';
+  }
+  return normalizeColor(paint);
+}
+
+function pathStrokePaint(entry: SlockLucidePathEntry, currentColor: ResourceColor): ResourceColor {
+  if (entry.strokeOpacity <= 0) {
+    return '#00000000';
+  }
+  return resolvePathPaint(entry.strokePaint, currentColor);
+}
+
+function pathFillPaint(entry: SlockLucidePathEntry, currentColor: ResourceColor, fillColor: ResourceColor, fillEnabled: boolean): ResourceColor {
+  if (fillEnabled) {
+    return fillColor;
+  }
+  if (entry.fillOpacity <= 0) {
+    return '#00000000';
+  }
+  return resolvePathPaint(entry.fillPaint, currentColor);
 }
 
 @Builder

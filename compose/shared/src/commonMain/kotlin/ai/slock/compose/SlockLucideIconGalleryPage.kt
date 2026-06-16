@@ -53,7 +53,7 @@ private fun SlockLucideIconGalleryScreen() {
                     color = SlockColor.TextBlack
                 )
                 Text(
-                    text = "${names.size} icons · SVG left · PATH right",
+                    text = "${names.size} icons · generated OHOS paths",
                     style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
                     color = SlockColor.TextMutedGray
                 )
@@ -80,11 +80,8 @@ private fun IconCompareRow(name: String) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1.15f)
         )
-        IconGalleryTile(label = "SVG", modifier = Modifier.weight(1f)) {
+        IconGalleryTile(label = "ICON", modifier = Modifier.weight(1f)) {
             SlockLucideIcon(name = name, modifier = Modifier.fillMaxSize())
-        }
-        IconGalleryTile(label = "PATH", modifier = Modifier.weight(1f)) {
-            SlockLucidePathIcon(name = name, modifier = Modifier.fillMaxSize())
         }
     }
 }

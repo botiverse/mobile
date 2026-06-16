@@ -282,7 +282,7 @@ internal fun SlockModalFullWidthActionButton(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SlockLucidePathIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000")
+                SlockLucideIcon(icon, modifier = Modifier.size(13.dp), color = "#FF000000")
                 Text(
                     text = label,
                     style = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
@@ -397,7 +397,7 @@ internal fun SlockModalCompactMemberRow(
                     enabled = enabled
                 )
             }
-            trailingIcon != null -> SlockLucidePathIcon(trailingIcon, modifier = Modifier.size(15.dp), color = "#FF000000")
+            trailingIcon != null -> SlockLucideIcon(trailingIcon, modifier = Modifier.size(15.dp), color = "#FF000000")
             trailingText.isNotBlank() -> Text(text = trailingText, style = SlockType.Caption, color = SlockColor.TextMutedGray)
             else -> Spacer(modifier = Modifier.size(0.dp))
         }

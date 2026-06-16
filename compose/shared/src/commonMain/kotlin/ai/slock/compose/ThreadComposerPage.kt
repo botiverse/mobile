@@ -811,7 +811,7 @@ private fun ComposerAsTaskToggle(
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                SlockLucidePathIcon("check", modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
+                SlockLucideIcon("check", modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
             }
         }
         val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray

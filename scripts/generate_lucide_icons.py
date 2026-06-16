@@ -295,12 +295,15 @@ def strip_ns(tag):
     return tag.replace(f"{{{SVG_NS}}}", "")
 
 
-def resolve_color(value):
-    if not value or value in ("none", "transparent"):
+def resolve_paint(value):
+    if not value:
         return None
-    if value == "currentColor":
-        return "#000000"
-    return value
+    normalized = value.strip()
+    if normalized in ("none", "transparent"):
+        return None
+    if normalized == "currentColor":
+        return "currentColor"
+    return normalized
 
 
 def parse_svg(svg_text):
@@ -349,12 +352,12 @@ def parse_svg(svg_text):
 
         if path_data:
             entry = {"pathData": path_data}
-            fill_color = resolve_color(ctx["fill"])
-            stroke_color = resolve_color(ctx["stroke"])
-            if fill_color:
-                entry["fillColor"] = fill_color
-            if stroke_color:
-                entry["strokeColor"] = stroke_color
+            fill_paint = resolve_paint(ctx["fill"])
+            stroke_paint = resolve_paint(ctx["stroke"])
+            if fill_paint:
+                entry["fillPaint"] = fill_paint
+            if stroke_paint:
+                entry["strokePaint"] = stroke_paint
                 entry["strokeWidth"] = ctx["stroke-width"]
                 entry["strokeLineCap"] = ctx["stroke-linecap"]
                 entry["strokeLineJoin"] = ctx["stroke-linejoin"]
@@ -626,14 +629,18 @@ def normalize_path_data(path_data, viewport_width, viewport_height):
 
 
 def ohos_entry_expr(path, viewport_width, viewport_height):
-    has_fill = bool(path.get("fillColor"))
-    has_stroke = bool(path.get("strokeColor"))
+    fill_paint = path.get("fillPaint") or "none"
+    stroke_paint = path.get("strokePaint") or "none"
+    has_fill = fill_paint != "none"
+    has_stroke = stroke_paint != "none"
     commands, normalized_width, normalized_height = normalize_path_data(
         path["pathData"], viewport_width, viewport_height
     )
     return (
         "    {\n"
         f"      commands: '{ets_string(commands)}',\n"
+        f"      fillPaint: '{ets_string(fill_paint)}',\n"
+        f"      strokePaint: '{ets_string(stroke_paint)}',\n"
         f"      fillOpacity: {1 if has_fill else 0},\n"
         f"      strokeOpacity: {1 if has_stroke else 0},\n"
         f"      strokeWidth: {stroke_width(path) * (NORMALIZED_VIEWPORT / max(viewport_width, viewport_height)):g},\n"
@@ -649,8 +656,8 @@ def read_ohos_svg(icon_name, version, resfile_output):
     brand_path = BRAND_SVGS.get(icon_name)
     if brand_path:
         with open(brand_path, "r", encoding="utf-8") as file:
-            return normalize_ohos_svg(file.read().strip())
-    return normalize_ohos_svg(download_lucide_svg(icon_name, version, fallback_dir=resfile_output))
+            return file.read().strip()
+    return download_lucide_svg(icon_name, version, fallback_dir=resfile_output)
 
 
 def generate_ohos(icons, version, output, resfile_output):
@@ -660,7 +667,7 @@ def generate_ohos(icons, version, output, resfile_output):
     for icon in all_icons:
         svg_text = read_ohos_svg(icon, version, resfile_output)
         with open(os.path.join(resfile_output, f"{icon}.svg"), "w", encoding="utf-8") as file:
-            file.write(svg_text)
+            file.write(normalize_ohos_svg(svg_text))
         viewport_width, viewport_height = svg_viewbox(svg_text)
         paths = parse_svg(svg_for_path_parse(svg_text))
         entries = ",\n".join(ohos_entry_expr(path, viewport_width, viewport_height) for path in paths)
@@ -671,6 +678,8 @@ def generate_ohos(icons, version, output, resfile_output):
         "",
         "export interface SlockLucidePathEntry {",
         "  commands: string;",
+        "  fillPaint: string;",
+        "  strokePaint: string;",
         "  fillOpacity: number;",
         "  strokeOpacity: number;",
         "  strokeWidth: number;",

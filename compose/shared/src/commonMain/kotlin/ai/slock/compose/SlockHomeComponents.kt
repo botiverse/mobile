@@ -803,7 +803,7 @@ private fun SlockLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucidePathIcon("chevron-down", Modifier.size(18.dp), color = SlockColor.BrandYellowArgb)
+                SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = SlockColor.BrandYellowArgb)
             }
         }
     }
@@ -853,7 +853,7 @@ private fun SlockRotatedLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(4.dp))
-                SlockLucidePathIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
+                SlockLucideIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
