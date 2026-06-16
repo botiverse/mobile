@@ -182,4 +182,3 @@ Phase 4, validation:
 - attach generated `summary.md` to the task thread;
 - only move visual/perf regressions to Done after the report contains no large
   `unattributed` jank windows for the scenario being accepted.
-

@@ -126,4 +126,3 @@ echo "Kuikly performance artifacts: $OUT_DIR"
 if [[ -f "$OUT_DIR/summary.md" ]]; then
   echo "Summary: $OUT_DIR/summary.md"
 fi
-
