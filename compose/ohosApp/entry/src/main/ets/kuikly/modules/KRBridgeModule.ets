@@ -60,6 +60,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly OPEN_URL = "openUrl";
   static readonly OPEN_ATTACHMENT = "openAttachment";
   static readonly LOG = "log";
+  static readonly PERFORMANCE_MARKER = "performanceMarker";
   static readonly PERFORMANCE_SCENE = "performanceScene";
   static readonly KUIKLY_PERFORMANCE_SNAPSHOT = "kuiklyPerformanceSnapshot";
   static readonly REPORT_DT = "reportDT";
@@ -112,6 +113,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.LOG: {
         this.log(params);
+        break;
+      }
+      case KRBridgeModule.PERFORMANCE_MARKER: {
+        this.performanceMarker(params);
         break;
       }
       case KRBridgeModule.PERFORMANCE_SCENE: {
@@ -351,6 +356,30 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
+  private performanceMarker(params: KRAny) {
+    if (params == null) {
+      return;
+    }
+    const payload = this.parseRecord(params);
+    const timestampMs = Date.now();
+    const sceneId = this.markerString(payload['sceneId'], 'unknown');
+    const routeName = this.markerString(payload['routeName'], 'unknown');
+    const phase = this.markerString(payload['phase'], 'unknown');
+    const event = this.markerString(payload['event'], 'instant');
+    const threadHash = this.markerString(payload['threadHash'], 'unknown');
+    const durationValue = payload['durationMs'];
+    const durationPart =
+      typeof durationValue === 'number' && durationValue >= 0
+        ? ` durationMs=${durationValue}`
+        : '';
+    const metadataPart = this.markerMetadata(payload['metadata']);
+    const summary =
+      `SLOCK_PERF_MARKER sceneId=${sceneId} route=${routeName} phase=${phase} event=${event} ` +
+      `tsMs=${timestampMs} threadHash=${threadHash}${durationPart}${metadataPart}`;
+    SlockOhosDiagnostics.record('SlockPerfMarker', summary, timestampMs);
+    console.info(`[SlockPerfMarker] ${summary}`);
+  }
+
   private kuiklyPerformanceSnapshot(params: KRAny) {
     if (params == null) {
       return;
@@ -363,6 +392,40 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
     SlockOhosDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
     SlockOhosBuglyDiagnostics.record('SlockKuiklyPerfSnapshot', summary);
+  }
+
+  private markerString(value: Object, fallback: string): string {
+    if (typeof value !== 'string') {
+      return fallback;
+    }
+    const sanitized = SlockOhosDiagnostics.sanitize(value).trim();
+    if (sanitized.length === 0) {
+      return fallback;
+    }
+    return sanitized.replace(/\s+/g, '_').slice(0, 80);
+  }
+
+  private markerMetadata(value: Object): string {
+    if (value == null || typeof value !== 'object' || Array.isArray(value)) {
+      return '';
+    }
+    const record = value as Record<string, Object>;
+    const pairs: Array<string> = [];
+    Object.keys(record).sort().forEach((key: string): void => {
+      if (pairs.length >= 8) {
+        return;
+      }
+      const rawValue = record[key];
+      if (rawValue == null) {
+        return;
+      }
+      const cleanKey = SlockOhosDiagnostics.sanitize(key).replace(/\s+/g, '_').slice(0, 40);
+      const cleanValue = SlockOhosDiagnostics.sanitize(String(rawValue)).replace(/\s+/g, '_').slice(0, 80);
+      if (cleanKey.length > 0 && cleanValue.length > 0) {
+        pairs.push(`${cleanKey}=${cleanValue}`);
+      }
+    });
+    return pairs.length > 0 ? ` meta=${pairs.join(',')}` : '';
   }
 
   private reportRealtime(params: KRAny) {

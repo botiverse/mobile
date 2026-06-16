@@ -38,7 +38,10 @@ The attribution tool therefore joins both with business markers.
 Current code already has the following useful hooks:
 
 - `SharedSettingsRecompositionProfiler` exports `profiler_report.json` and
-  `profiler_frames.jsonl`.
+  `profiler_frames.jsonl`. The Diagnostics start action applies the shared
+  default policy before `start()`: file logging on, console logging on, and
+  `enableOverlay=true` so the bottom-right hotspot FAB/panel is visible during
+  capture.
 - OHOS `KuiklyViewDelegate.ets` enables `KRMonitorType.LAUNCH`,
   `KRMonitorType.FRAME`, and `KRMonitorType.MEMORY`, then records
   `SlockKuiklyPerf`.
@@ -52,10 +55,10 @@ until we add explicit business markers.
 
 ## Marker Contract
 
-Add a common marker API in the next implementation phase. Every marker should be
-emitted both to `SlockOhosDiagnostics` and to a `hilog` line that is easy to
-grep. Where possible, also wrap major windows with `hitrace` tags so DevEco
-trace timelines can show the same names.
+Use `BridgeModule.performanceMarker(...)` for shared business markers. On OHOS
+the bridge emits each marker to `SlockOhosDiagnostics` and to an easy-to-grep
+console/hilog line. Where possible, later platform work can also wrap major
+windows with `hitrace` tags so DevEco trace timelines can show the same names.
 
 Minimum line shape:
 
@@ -167,14 +170,17 @@ Phase 1, tooling:
 
 Phase 2, marker API:
 
-- add common `PerformanceMarker` / `BridgeModule.performanceMarker(...)`;
+- add common `BridgeModule.performanceMarker(...)`;
 - write markers to `SlockOhosDiagnostics` and `hilog`;
 - optionally add `hitrace` wrappers on OHOS native side.
 
 Phase 3, instrumentation:
 
 - instrument Home, Thread, modal, composer, cache, realtime, and icon batch
-  phases with the minimum marker set above.
+  phases with the minimum marker set above. Current shared code already emits
+  route open, Thread payload/render/first-frame, composer send, and realtime
+  batch markers; modal, cache, and icon-batch markers should be added at their
+  specific callsites.
 
 Phase 4, validation:
 

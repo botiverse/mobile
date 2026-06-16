@@ -34,6 +34,46 @@ internal class BridgeModule : Module() {
         performanceScene("exit", sceneName)
     }
 
+    fun performanceMarker(
+        phase: String,
+        routeName: String,
+        event: String = "instant",
+        sceneId: String? = null,
+        threadId: String? = null,
+        durationMs: Long? = null,
+        metadata: Map<String, String> = emptyMap()
+    ) {
+        val cleanPhase = phase.trim().takeIf { it.isNotBlank() } ?: return
+        val cleanRouteName = routeName.trim().takeIf { it.isNotBlank() } ?: "unknown"
+        val cleanEvent = event.trim().takeIf { it.isNotBlank() } ?: "instant"
+        val threadHash = threadId.stableShortHash()
+        val cleanSceneId =
+            sceneId?.trim()?.takeIf { it.isNotBlank() }
+                ?: "$cleanRouteName:$threadHash"
+        val methodArgs =
+            JSONObject().apply {
+                put("sceneId", cleanSceneId)
+                put("routeName", cleanRouteName)
+                put("phase", cleanPhase)
+                put("event", cleanEvent)
+                put("threadHash", threadHash)
+                durationMs?.takeIf { it >= 0L }?.let { put("durationMs", it) }
+                if (metadata.isNotEmpty()) {
+                    put(
+                        "metadata",
+                        JSONObject().apply {
+                            metadata
+                                .filterKeys { key -> key.isNotBlank() }
+                                .forEach { (key, value) ->
+                                    put(key.take(40), value.take(120))
+                                }
+                        }
+                    )
+                }
+            }
+        callNativeMethod(PERFORMANCE_MARKER, methodArgs, null)
+    }
+
     private fun performanceScene(action: String, sceneName: String) {
         val cleanScene = sceneName.trim().takeIf { it.isNotBlank() } ?: return
         val methodArgs = JSONObject()
@@ -631,6 +671,7 @@ internal class BridgeModule : Module() {
         const val OPEN_PAGE = "openPage"
         const val CLOSE_PAGE = "closePage"
         const val LOG = "log"
+        const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"

@@ -179,9 +179,11 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.AgentCreated
+import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerDeleted
@@ -189,8 +191,13 @@ import ai.slock.compose.model.ServerPlanUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerMembershipRemoved
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskDeleted
+import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadConversation
+import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
@@ -1233,6 +1240,18 @@ private fun SlockAppShellContent() {
             "home_open_conversation threadId=${conversation.threadId.value} " +
                 "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
         )
+        bridge.performanceMarker(
+            phase = "home_open",
+            routeName = "kuikly_home",
+            event = "instant",
+            threadId = conversation.threadId.value,
+            metadata =
+                mapOf(
+                    "kind" to conversation.kind.name,
+                    "source" to source,
+                    "anchor" to (anchorMessageId != null).toString()
+                )
+        )
         selectedHomeConversationId = conversation.threadId.value
         val payload = appShellThreadPayload(conversation, anchorMessageId)
         if (pushCurrent) {
@@ -1571,6 +1590,17 @@ private fun SlockAppShellContent() {
                             }
                         }
                     }
+                    bridge.performanceMarker(
+                        phase = "realtime_batch_apply",
+                        routeName = if (activeThread == null) "kuikly_home" else "kuikly_thread",
+                        event = "instant",
+                        threadId = activeThread?.sourceThreadId ?: activeThread?.instanceId,
+                        metadata =
+                            mapOf(
+                                "type" to event.performanceMarkerName(),
+                                "activeThread" to (activeThread != null).toString()
+                            )
+                    )
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
                     // #79: forward machine-scope realtime events to the
                     // settings store so the ComputerDetail page refreshes
@@ -7649,6 +7679,25 @@ private fun TaskStatus.toTaskStatusWireValue(): String =
 
 private fun TaskSummary.tasksDisplayTitleForAppShell(): String =
     taskNumber?.let { "#$it" } ?: title.ifBlank { "Task" }
+
+private fun RealtimeEvent.performanceMarkerName(): String =
+    when (this) {
+        is MessageNew -> "message_new"
+        is MessageUpdated -> "message_updated"
+        is DirectMessageCreated -> "dm_new"
+        is ThreadUpdated -> "thread_updated"
+        is TaskCreated -> "task_created"
+        is TaskUpdated -> "task_updated"
+        is TaskDeleted -> "task_deleted"
+        is MemberPresenceUpdated -> "presence_updated"
+        is RealtimeRefreshRequired -> "refresh_${scope.name}"
+        is ServerMembershipRemoved -> "server_membership_removed"
+        is ServerDeleted -> "server_deleted"
+        is ServerPlanUpdated -> "server_plan_updated"
+        is AgentCreated -> "agent_created"
+        is SyncResumeResponse -> "sync_resume"
+        is Heartbeat -> "heartbeat"
+    }
 
 private fun decodeSharedShellRealtimeEvent(
     eventData: JSONObject,

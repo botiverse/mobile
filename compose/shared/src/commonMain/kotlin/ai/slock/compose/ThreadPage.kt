@@ -526,6 +526,18 @@ private fun requestKuiklyThreadPerformanceSnapshot(
                     threadId = threadId,
                     data = data
                 )
+                bridge.performanceMarker(
+                    phase = "thread_first_frame",
+                    routeName = "kuikly_thread",
+                    event = "instant",
+                    threadId = threadId,
+                    durationMs = data?.pageLoadTime?.firstPaintCost?.toLong(),
+                    metadata =
+                        mapOf(
+                            "reason" to reason,
+                            "status" to "content"
+                        )
+                )
                 bridge.log("kuikly_perf_snapshot $summary")
             }
     }.onFailure { error ->
@@ -535,6 +547,17 @@ private fun requestKuiklyThreadPerformanceSnapshot(
             threadId = threadId,
             data = null,
             statusOverride = "failed"
+        )
+        bridge.performanceMarker(
+            phase = "thread_first_frame",
+            routeName = "kuikly_thread",
+            event = "instant",
+            threadId = threadId,
+            metadata =
+                mapOf(
+                    "reason" to reason,
+                    "status" to "failed"
+                )
         )
         bridge.log("kuikly_perf_snapshot $summary error=${error.message.orEmpty()}")
     }
@@ -1032,6 +1055,17 @@ internal fun SharedThreadRouteContent(
 
     LaunchedEffect(initialPayload) {
         val composer = initialPayload.resolveThreadComposer()
+        bridge.performanceMarker(
+            phase = "thread_open_start",
+            routeName = "kuikly_thread",
+            event = "instant",
+            threadId = initialPayload.sourceThreadId ?: initialPayload.instanceId,
+            metadata =
+                mapOf(
+                    "status" to initialPayload.status.ifBlank { "unknown" },
+                    "source" to initialPayload.threadRenderDiagnosticsSource()
+                )
+        )
         composerDraftText = composer.seedText
         composerDraftAsTask = composer.seedAsTask
         composerSyncNonce = composer.syncNonce
@@ -1077,6 +1111,18 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
         if (firstRenderLoggedThreadId != threadRouteKey) {
             firstRenderLoggedThreadId = threadRouteKey
+            bridge.performanceMarker(
+                phase = "thread_first_render",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadRouteKey,
+                metadata =
+                    mapOf(
+                        "status" to payload.status.ifBlank { "unknown" },
+                        "messages" to payload.messages.size.toString(),
+                        "source" to payload.threadRenderDiagnosticsSource()
+                    )
+            )
             bridge.log(
                 "thread_first_render threadId=${threadRouteKey.orEmpty()} status=${payload.status} " +
                     "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
@@ -1084,6 +1130,17 @@ internal fun SharedThreadRouteContent(
         }
         if (payload.status == "content" && firstContentLoggedThreadId != threadRouteKey) {
             firstContentLoggedThreadId = threadRouteKey
+            bridge.performanceMarker(
+                phase = "thread_payload_ready",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadRouteKey,
+                metadata =
+                    mapOf(
+                        "messages" to payload.messages.size.toString(),
+                        "tasks" to payload.tasks.size.toString()
+                    )
+            )
             bridge.log(
                 "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
             )
@@ -1910,6 +1967,19 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val draftAsTask = composerDraftAsTask
+                    val sendStartedAt = TimeSource.Monotonic.markNow()
+                    bridge.performanceMarker(
+                        phase = "composer_send",
+                        routeName = "kuikly_thread",
+                        event = "start",
+                        threadId = threadId,
+                        metadata =
+                            mapOf(
+                                "asTask" to draftAsTask.toString(),
+                                "attachments" to attachmentIds.size.toString(),
+                                "hasText" to draftText.isNotBlank().toString()
+                            )
+                    )
                     composerSending = true
                     composerFailureLabel = null
                     composerDraftText = ""
@@ -1925,6 +1995,14 @@ internal fun SharedThreadRouteContent(
                                     attachmentIds = attachmentIds
                                 )
                             }.getOrElse {
+                                bridge.performanceMarker(
+                                    phase = "composer_send",
+                                    routeName = "kuikly_thread",
+                                    event = "end",
+                                    threadId = threadId,
+                                    durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                                    metadata = mapOf("result" to "exception")
+                                )
                                 composerSending = false
                                 composerDraftText = draftText
                                 composerDraftAsTask = draftAsTask
@@ -1936,6 +2014,18 @@ internal fun SharedThreadRouteContent(
                             when (sendResponse) {
                                 is ThreadApiResult.Success -> sendResponse.data
                                 is ThreadApiResult.Failure -> {
+                                    bridge.performanceMarker(
+                                        phase = "composer_send",
+                                        routeName = "kuikly_thread",
+                                        event = "end",
+                                        threadId = threadId,
+                                        durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                                        metadata =
+                                            mapOf(
+                                                "result" to "failure",
+                                                "code" to (sendResponse.contractCode ?: "unknown")
+                                            )
+                                    )
                                     composerSending = false
                                     composerDraftText = draftText
                                     composerDraftAsTask = draftAsTask
@@ -1948,6 +2038,14 @@ internal fun SharedThreadRouteContent(
                                 }
                             }
                         if (sentPage.messages.isEmpty()) {
+                            bridge.performanceMarker(
+                                phase = "composer_send",
+                                routeName = "kuikly_thread",
+                                event = "end",
+                                threadId = threadId,
+                                durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                                metadata = mapOf("result" to "empty")
+                            )
                             composerSending = false
                             composerDraftText = draftText
                             composerDraftAsTask = draftAsTask
@@ -1957,6 +2055,18 @@ internal fun SharedThreadRouteContent(
                         }
                         threadViewModel.dispatch(SharedThreadIntent.AppendSentPage(sentPage))
                         threadViewModel.dispatch(SharedThreadIntent.Refresh)
+                        bridge.performanceMarker(
+                            phase = "composer_send",
+                            routeName = "kuikly_thread",
+                            event = "end",
+                            threadId = threadId,
+                            durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                            metadata =
+                                mapOf(
+                                    "result" to "success",
+                                    "messages" to sentPage.messages.size.toString()
+                                )
+                        )
                         uploadedAttachments = emptyList()
                         removedAttachmentIds = emptySet()
                         composerDraftText = ""
