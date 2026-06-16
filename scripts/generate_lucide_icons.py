@@ -12,8 +12,11 @@ Requirements for Android generation:
 """
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -24,6 +27,10 @@ from xml.etree import ElementTree as ET
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 DEFAULT_VERSION = "1.14.0"
+DEFAULT_LUCIDE_CACHE_DIR = os.path.join(os.path.expanduser("~"), ".cache", "slock-lucide")
+LUCIDE_REPO_URL = "https://github.com/lucide-icons/lucide.git"
+LUCIDE_RAW_URL = "https://raw.githubusercontent.com/lucide-icons/lucide"
+LUCIDE_API_URL = "https://api.github.com/repos/lucide-icons/lucide"
 SVG_NS = "http://www.w3.org/2000/svg"
 NORMALIZED_VIEWPORT = 24.0
 PATH_TOKEN_RE = re.compile(r"[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:[eE][-+]?\d+)?")
@@ -65,6 +72,7 @@ LUCIDE_ICONS = [
     "file",
     "file-text",
     "folder-open",
+    "git-branch",
     "globe",
     "hash",
     "house",
@@ -128,7 +136,8 @@ BRAND_SVGS = {
 
 DEFAULT_ANDROID_OUTPUT = os.path.join(
     REPO_ROOT,
-    "app",
+    "compose",
+    "androidApp",
     "src",
     "main",
     "java",
@@ -195,13 +204,134 @@ def ets_string(value):
     return value.replace("\\", "\\\\").replace("'", "\\'")
 
 
-def download_lucide_svg(name, version, fallback_dir=None):
+def git_output(args, cwd=None):
+    result = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)} failed:\n{result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def resolve_lucide_commit(version):
+    url = f"{LUCIDE_API_URL}/commits/{version}"
+    req = urllib.request.Request(url, headers={"User-Agent": "slock-lucide-generator"})
+    with urllib.request.urlopen(req, timeout=30) as response:
+        data = json.loads(response.read().decode("utf-8"))
+    commit_sha = data.get("sha")
+    if not commit_sha:
+        raise RuntimeError(f"Unable to resolve Lucide version '{version}' to a commit SHA")
+    return commit_sha
+
+
+def checkout_head(repo_dir):
+    return git_output(["rev-parse", "HEAD"], cwd=repo_dir)
+
+
+def checkout_matches_version(repo_dir, version):
+    try:
+        exact_tag = git_output(["describe", "--tags", "--exact-match", "HEAD"], cwd=repo_dir)
+        return exact_tag == version
+    except RuntimeError:
+        return False
+
+
+def verify_lucide_checkout(repo_dir, version, expected_commit=None):
+    icons_dir = os.path.join(repo_dir, "icons")
+    if not os.path.isdir(icons_dir):
+        raise RuntimeError(f"Lucide checkout missing icons directory: {icons_dir}")
+    git_dir = os.path.join(repo_dir, ".git")
+    if os.path.isdir(git_dir) and expected_commit:
+        actual = checkout_head(repo_dir)
+        if actual != expected_commit:
+            raise RuntimeError(
+                f"Lucide checkout {repo_dir} is at {actual}, expected {expected_commit} for version {version}"
+            )
+
+
+def find_cached_lucide_checkout(version, cache_dir):
+    root = os.path.abspath(os.path.expanduser(cache_dir))
+    if not os.path.isdir(root):
+        return None
+    for name in sorted(os.listdir(root)):
+        path = os.path.join(root, name)
+        if not name.startswith("lucide-") or not os.path.isdir(path):
+            continue
+        try:
+            verify_lucide_checkout(path, version)
+        except RuntimeError:
+            continue
+        if os.path.isdir(os.path.join(path, ".git")) and checkout_matches_version(path, version):
+            return path
+    return None
+
+
+def ensure_lucide_checkout(version, cache_dir):
+    cached = find_cached_lucide_checkout(version, cache_dir)
+    if cached:
+        return cached
+
+    expected_commit = resolve_lucide_commit(version)
+    checkout_dir = os.path.join(os.path.abspath(os.path.expanduser(cache_dir)), f"lucide-{expected_commit}")
+    if os.path.isdir(checkout_dir):
+        verify_lucide_checkout(checkout_dir, version, expected_commit)
+        return checkout_dir
+
+    os.makedirs(os.path.dirname(checkout_dir), exist_ok=True)
+    tmp_dir = f"{checkout_dir}.tmp"
+    if os.path.exists(tmp_dir):
+        shutil.rmtree(tmp_dir)
+    git_output(["clone", "--depth", "1", "--branch", version, LUCIDE_REPO_URL, tmp_dir])
+    verify_lucide_checkout(tmp_dir, version, expected_commit)
+    os.replace(tmp_dir, checkout_dir)
+    return checkout_dir
+
+
+def resolve_lucide_source(version, cache_dir, repo_dir=None):
+    if repo_dir:
+        resolved = os.path.abspath(os.path.expanduser(repo_dir))
+        expected_commit = None
+        if os.path.isdir(os.path.join(resolved, ".git")) and not checkout_matches_version(resolved, version):
+            expected_commit = resolve_lucide_commit(version)
+        verify_lucide_checkout(resolved, version, expected_commit)
+        return resolved
+    return ensure_lucide_checkout(version, cache_dir)
+
+
+def list_all_lucide_icons(lucide_source_dir):
+    icons_dir = os.path.join(lucide_source_dir, "icons")
+    return sorted(
+        os.path.splitext(name)[0]
+        for name in os.listdir(icons_dir)
+        if name.endswith(".svg") and os.path.isfile(os.path.join(icons_dir, name))
+    )
+
+
+def read_lucide_svg(name, version, fallback_dir=None, lucide_source_dir=None):
     normalized = normalize_icon_name(name)
-    cache_key = (version, normalized)
+    cache_key = (version, normalized, lucide_source_dir or "")
     if cache_key in _SVG_CACHE:
         return _SVG_CACHE[cache_key]
 
-    url = f"https://raw.githubusercontent.com/lucide-icons/lucide/{version}/icons/{normalized}.svg"
+    if lucide_source_dir:
+        source_path = os.path.join(lucide_source_dir, "icons", f"{normalized}.svg")
+        if os.path.exists(source_path):
+            with open(source_path, "r", encoding="utf-8") as file:
+                svg = file.read().strip()
+                _SVG_CACHE[cache_key] = svg
+                return svg
+
+    fallback_path = os.path.join(fallback_dir or DEFAULT_OHOS_RESFILE_OUTPUT, f"{normalized}.svg")
+    if os.path.exists(fallback_path):
+        with open(fallback_path, "r", encoding="utf-8") as file:
+            svg = file.read().strip()
+            _SVG_CACHE[cache_key] = svg
+            return svg
+
+    url = f"{LUCIDE_RAW_URL}/{version}/icons/{normalized}.svg"
     last_error = None
     for attempt in range(3):
         try:
@@ -216,13 +346,23 @@ def download_lucide_svg(name, version, fallback_dir=None):
             if attempt < 2:
                 time.sleep(1 + attempt)
 
-    fallback_path = os.path.join(fallback_dir or DEFAULT_OHOS_RESFILE_OUTPUT, f"{normalized}.svg")
-    if os.path.exists(fallback_path):
-        with open(fallback_path, "r", encoding="utf-8") as file:
-            svg = file.read().strip()
-            _SVG_CACHE[cache_key] = svg
-            return svg
     raise RuntimeError(f"Unable to download Lucide icon '{normalized}' from {url}") from last_error
+
+
+def prefetch_lucide_svgs(icons, version, fallback_dir, lucide_source_dir, workers):
+    if workers <= 1:
+        return
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {
+            executor.submit(read_lucide_svg, icon, version, fallback_dir, lucide_source_dir): icon
+            for icon in icons
+        }
+        for future in as_completed(futures):
+            icon = futures[future]
+            try:
+                future.result()
+            except Exception as error:
+                raise RuntimeError(f"Failed to prefetch Lucide icon '{icon}'") from error
 
 
 def normalize_ohos_svg(svg_text):
@@ -410,7 +550,7 @@ def collect_imports(kt_content):
     return [line for line in kt_content.splitlines() if line.startswith("import ")]
 
 
-def generate_android(icons, version, output, fallback_dir):
+def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
     package = "ai.slock.android.ui.icons"
     entries = []
     all_imports = set()
@@ -418,7 +558,7 @@ def generate_android(icons, version, output, fallback_dir):
     with tempfile.TemporaryDirectory() as tmpdir:
         for name in icons:
             prop = pascal_name(name)
-            svg = download_lucide_svg(name, version, fallback_dir=fallback_dir)
+            svg = read_lucide_svg(name, version, fallback_dir=fallback_dir, lucide_source_dir=lucide_source_dir)
             svg_path = os.path.join(tmpdir, f"{name}.svg")
             with open(svg_path, "w", encoding="utf-8") as file:
                 file.write(svg)
@@ -652,20 +792,26 @@ def ohos_entry_expr(path, viewport_width, viewport_height):
     )
 
 
-def read_ohos_svg(icon_name, version, resfile_output):
+def read_ohos_svg(icon_name, version, resfile_output, lucide_source_dir):
     brand_path = BRAND_SVGS.get(icon_name)
     if brand_path:
-        with open(brand_path, "r", encoding="utf-8") as file:
-            return file.read().strip()
-    return download_lucide_svg(icon_name, version, fallback_dir=resfile_output)
+        if os.path.exists(brand_path):
+            with open(brand_path, "r", encoding="utf-8") as file:
+                return file.read().strip()
+        fallback_path = os.path.join(resfile_output, f"{icon_name}.svg")
+        if os.path.exists(fallback_path):
+            with open(fallback_path, "r", encoding="utf-8") as file:
+                return file.read().strip()
+        raise RuntimeError(f"Brand SVG '{icon_name}' is missing at {brand_path} and {fallback_path}")
+    return read_lucide_svg(icon_name, version, fallback_dir=resfile_output, lucide_source_dir=lucide_source_dir)
 
 
-def generate_ohos(icons, version, output, resfile_output):
+def generate_ohos(icons, version, output, resfile_output, lucide_source_dir):
     all_icons = [*BRAND_SVGS.keys(), *icons]
     cases = []
     os.makedirs(resfile_output, exist_ok=True)
     for icon in all_icons:
-        svg_text = read_ohos_svg(icon, version, resfile_output)
+        svg_text = read_ohos_svg(icon, version, resfile_output, lucide_source_dir)
         with open(os.path.join(resfile_output, f"{icon}.svg"), "w", encoding="utf-8") as file:
             file.write(normalize_ohos_svg(svg_text))
         viewport_width, viewport_height = svg_viewbox(svg_text)
@@ -774,13 +920,40 @@ def main():
     parser.add_argument("--ohos-output", default=DEFAULT_OHOS_PATH_OUTPUT)
     parser.add_argument("--ohos-resfile-output", default=DEFAULT_OHOS_RESFILE_OUTPUT)
     parser.add_argument("--shared-catalog-output", default=DEFAULT_SHARED_CATALOG_OUTPUT)
+    parser.add_argument("--lucide-cache-dir", default=DEFAULT_LUCIDE_CACHE_DIR)
+    parser.add_argument("--lucide-repo-dir", default=None)
+    parser.add_argument("--download-workers", type=int, default=8)
+    parser.add_argument("--all-lucide-icons", action="store_true")
     args = parser.parse_args()
 
-    icons = [normalize_icon_name(icon) for icon in (args.icons or LUCIDE_ICONS)]
+    lucide_source_dir = resolve_lucide_source(args.version, args.lucide_cache_dir, args.lucide_repo_dir)
+    if args.all_lucide_icons:
+        icons = list_all_lucide_icons(lucide_source_dir)
+    else:
+        icons = [normalize_icon_name(icon) for icon in (args.icons or LUCIDE_ICONS)]
+    prefetch_lucide_svgs(
+        icons,
+        args.version,
+        os.path.abspath(args.ohos_resfile_output),
+        lucide_source_dir,
+        args.download_workers,
+    )
     if "android" in args.targets:
-        generate_android(icons, args.version, os.path.abspath(args.android_output), os.path.abspath(args.ohos_resfile_output))
+        generate_android(
+            icons,
+            args.version,
+            os.path.abspath(args.android_output),
+            os.path.abspath(args.ohos_resfile_output),
+            lucide_source_dir,
+        )
     if "ohos" in args.targets:
-        generate_ohos(icons, args.version, os.path.abspath(args.ohos_output), os.path.abspath(args.ohos_resfile_output))
+        generate_ohos(
+            icons,
+            args.version,
+            os.path.abspath(args.ohos_output),
+            os.path.abspath(args.ohos_resfile_output),
+            lucide_source_dir,
+        )
     if "shared" in args.targets:
         generate_shared_catalog(icons, os.path.abspath(args.shared_catalog_output))
 

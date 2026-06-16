@@ -27,6 +27,7 @@ internal object SlockLucideIcons {
         "file",
         "file-text",
         "folder-open",
+        "git-branch",
         "globe",
         "hash",
         "house",

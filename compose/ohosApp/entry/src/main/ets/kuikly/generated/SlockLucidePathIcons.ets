@@ -40,6 +40,7 @@ export const SlockLucidePathIconNames: string[] = [
   'file',
   'file-text',
   'folder-open',
+  'git-branch',
   'globe',
   'hash',
   'house',
@@ -963,6 +964,45 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       return [
     {
       commands: 'm 6 14 1.5 -2.9 A 2 2 0 0 1 9.24 10 H 20 a 2 2 0 0 1 1.94 2.5 l -1.54 6 a 2 2 0 0 1 -1.95 1.5 H 4 a 2 2 0 0 1 -2 -2 V 5 a 2 2 0 0 1 2 -2 h 3.9 a 2 2 0 0 1 1.69 0.9 l 0.81 1.2 a 2 2 0 0 0 1.67 0.9 H 18 a 2 2 0 0 1 2 2 v 2',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'git-branch':
+      return [
+    {
+      commands: 'M 15 6 a 9 9 0 0 0 -9 9 V 3',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 15 6 A 3 3 0 1 0 21 6 A 3 3 0 1 0 15 6 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 3 18 A 3 3 0 1 0 9 18 A 3 3 0 1 0 3 18 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
