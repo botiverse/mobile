@@ -100,7 +100,15 @@ internal class SharedThreadDataSource(
     private val channelRepository: ChannelRepository? = null,
     private val agentsApiClient: SlockAgentsApiClient? = null,
     private val actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
-    private val savedStatusRepository: SavedStatusRepository? = null
+    private val savedStatusRepository: SavedStatusRepository? = null,
+    /**
+     * Task #43: shared create-agent coordinator used by the action-card
+     * path. Mirrors the field on `SharedMembersDataSource`; the actual
+     * body construction + API call lives in
+     * [ai.slock.compose.data.SharedCreateAgentCoordinator] so the
+     * Members page and Thread action card share the same code path.
+     */
+    private val createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator? = null
 ) {
     constructor(
         networkApi: SharedThreadNetworkApi,
@@ -111,7 +119,8 @@ internal class SharedThreadDataSource(
         channelRepository: ChannelRepository? = null,
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
-        savedStatusRepository: SavedStatusRepository? = null
+        savedStatusRepository: SavedStatusRepository? = null,
+        createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator? = null
     ) : this(
         api = SlockThreadApiClient(networkApi),
         sessionStore = sessionStore,
@@ -121,7 +130,8 @@ internal class SharedThreadDataSource(
         channelRepository = channelRepository,
         agentsApiClient = agentsApiClient,
         actionCardsApiClient = actionCardsApiClient,
-        savedStatusRepository = savedStatusRepository
+        savedStatusRepository = savedStatusRepository,
+        createAgentCoordinator = createAgentCoordinator
     )
 
     private val payloadCache = mutableMapOf<String, KuiklyThreadScreenPayload>()
@@ -163,6 +173,49 @@ internal class SharedThreadDataSource(
         card: ThreadActionCard
     ): DataResult<ThreadActionCard> {
         return commitAgentCreateActionCardInternal(messageId, card)
+    }
+
+    /**
+     * Task #43: action-card create-agent path that goes through the shared
+     * [SharedCreateAgentCoordinator]. The dialog collects a full
+     * [SharedCreateAgentDialogSubmit] (name, description, machineId,
+     * runtimeConfig, external); the coordinator owns the body construction
+     * and the API call. The action card is just the metadata that gets
+     * marked executed on success.
+     *
+     * Replaces the legacy `commitAgentCreateActionCard(messageId, card)`
+     * which only used name/description/machineId from the action card.
+     */
+    suspend fun commitAgentCreateActionCardFromDialog(
+        messageId: String,
+        card: ThreadActionCard,
+        submit: SharedCreateAgentDialogSubmit
+    ): DataResult<ThreadActionCard> {
+        if (!card.type.equals("agent:create", ignoreCase = true)) {
+            return DataResult.Error(ScreenError(code = "action_card_unsupported", retryable = false))
+        }
+        val actionsApi = actionCardsApiClient
+            ?: return DataResult.Error(ScreenError(code = "action_card_actions_api_missing", retryable = false))
+        val coordinator = createAgentCoordinator
+            ?: return DataResult.Error(ScreenError(code = "action_card_coordinator_missing", retryable = false))
+
+        val created = coordinator.createAgent(submit.toCreateAgentRequest())
+        return when (created) {
+            is DataResult.Content -> {
+                val resultName = created.data.name.takeIf { it.isNotBlank() } ?: submit.name
+                val executedCard = card.withExecutedAgent(id = created.data.id, name = resultName)
+                markThreadActionCardExecuted(
+                    actionsApi = actionsApi,
+                    messageId = messageId,
+                    body = buildMarkAgentActionExecutedBody(agentId = created.data.id, agentName = resultName),
+                    executedCard = executedCard
+                )
+            }
+            is DataResult.Empty ->
+                DataResult.Error(ScreenError(code = "agent_create_empty", retryable = true))
+            is DataResult.Error -> created
+            is DataResult.NoPermission -> created
+        }
     }
 
     suspend fun commitThreadActionCard(

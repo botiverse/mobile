@@ -1,96 +1,29 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.SharedCreateAgentDialogSubmit
-import ai.slock.compose.SharedCreateAgentMachineOption
 import ai.slock.compose.model.MemberKind
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 /**
- * KMP-side data source for the Members page flows.
+ * KMP-side data source for the Members page **humans section** flows.
  *
- * Mirrors the existing `SharedThreadDataSource` pattern: thin wrapper that
- * takes typed API clients and exposes a focused surface. The host page builds
- * the underlying transport (e.g. `KuiklySlockNetworkClient` from the pager's
- * `SlockNetworkModule`) and passes both API clients in.
- *
- * Capability surface (task #42):
- *   - `createAgent`: POST /agents with the runtime config payload from
- *     `SharedCreateAgentDialog`. Returns the new `MemberProfile` so the caller
- *     can append it to the Members list without re-fetching.
- *   - `loadMachines`: GET /servers/{id}/machines for the computer picker.
- *   - `loadServerMembers`: GET /servers/{id}/members for the add-human
+ * Per @artin 2026-06-17 #members专修 msg=f1db7897 ("应该抽象一个统一的"),
+ * the create-agent flow was extracted to its own
+ * [SharedCreateAgentCoordinator]. This data source now owns only the
+ * members-side surface that is **not** the create-agent flow:
+ *   - `loadServerMembers`: GET /servers/{id}/members for the humans "+"
  *     picker (candidates minus current channel members).
  *   - `addChannelMember`: POST /channels/{id}/members with the kind-keyed
- *     body (`{agentId}` or `{userId}`) for the humans section "+".
+ *     body (`{agentId}` or `{userId}`) for the humans section "+"
+ *     when the chosen UX is "add existing human to channel".
+ *
+ * If the humans "+" UX turns out to be "invite by email" instead (per the
+ * 2026-06-17 #43 spec, artin said "对齐 react" — see
+ * `third_party/slock-source/packages/web/src/components/agent/ChannelMembers.tsx`),
+ * the invite API methods will be added here too; the create-agent methods
+ * will not come back.
  */
 internal class SharedMembersDataSource(
-    private val agentsApiClient: SlockAgentsApiClient,
-    private val computersApiClient: SlockComputersApiClient,
     private val memberRepository: MemberRepository
 ) {
-    suspend fun createAgent(
-        submit: SharedCreateAgentDialogSubmit
-    ): DataResult<ai.slock.compose.model.MemberProfile> {
-        val body = buildCreateAgentBody(
-            CreateAgentBody(
-                name = submit.name,
-                description = submit.description,
-                model = submit.runtimeConfig?.model?.let { it.toModelIdOrNull() },
-                runtime = submit.runtimeConfig?.runtime,
-                reasoningEffort = submit.runtimeConfig?.reasoningEffort,
-                machineId = submit.machineId,
-                envVars = submit.runtimeConfig?.envVars,
-                runtimeConfig = submit.runtimeConfig,
-                external = submit.external.takeIf { it }
-            )
-        )
-        return when (val result = agentsApiClient.createAgent(body)) {
-            is DataResult.Content -> {
-                val summary = result.data
-                val profile = ai.slock.compose.model.MemberProfile(
-                    id = ai.slock.compose.model.MemberId(summary.id),
-                    displayName = summary.displayName?.takeIf { it.isNotBlank() } ?: summary.name,
-                    handle = summary.name,
-                    kind = ai.slock.compose.model.MemberKind.Agent,
-                    description = summary.activityDetail,
-                    roleDescription = summary.model,
-                    presence = ai.slock.compose.model.Presence.Offline,
-                    agentStatus = ai.slock.compose.model.AgentStatus.Online
-                )
-                DataResult.Content(profile)
-            }
-            is DataResult.Empty -> DataResult.Empty(result.reason)
-            is DataResult.Error -> result
-            is DataResult.NoPermission -> result
-        }
-    }
-
-    suspend fun loadMachines(
-        serverId: String
-    ): DataResult<List<SharedCreateAgentMachineOption>> {
-        return when (val result = computersApiClient.machines(ai.slock.compose.model.ServerId(serverId))) {
-            is DataResult.Content -> {
-                val opts = result.data.machines.map { m ->
-                    SharedCreateAgentMachineOption(
-                        id = m.id,
-                        name = m.name,
-                        status = when (m.status) {
-                            ComputerStatus.Online -> "online"
-                            ComputerStatus.Offline -> "offline"
-                            ComputerStatus.Unknown -> "unknown"
-                        },
-                        runtimes = m.runtimes
-                    )
-                }
-                DataResult.Content(opts)
-            }
-            is DataResult.Empty -> DataResult.Empty(result.reason)
-            is DataResult.Error -> result
-            is DataResult.NoPermission -> result
-        }
-    }
-
     suspend fun loadServerMembers(
         serverId: String
     ): DataResult<List<ai.slock.compose.model.MemberProfile>> {
@@ -122,10 +55,3 @@ internal class SharedMembersDataSource(
         }
     }
 }
-
-private fun ai.slock.compose.model.RuntimeModelConfig.toModelIdOrNull(): String? =
-    when (this) {
-        is ai.slock.compose.model.RuntimeModelConfig.Preset -> id
-        is ai.slock.compose.model.RuntimeModelConfig.Custom -> name
-    }
-

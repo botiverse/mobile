@@ -240,7 +240,14 @@ data class KuiklyMembersPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour
+    val timeFormat: String = SlockTimeFormat24Hour,
+    /**
+     * Whether the active session can create agents. Driven by the host from
+     * server capabilities (mirrors React's `useServerPermissions().capabilities`).
+     * When false, the agents "+" is hidden. When null/true, the "+" is rendered.
+     * Field was added by #43 to address QA-2 from #42 review.
+     */
+    val canCreateAgents: Boolean = true
 )
 
 @Serializable
@@ -330,7 +337,7 @@ internal fun MembersPageContent() {
         }
     }
 
-    // Build the KMP dataSource directly (no bridge event round-trip).
+    // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Mirrors ThreadPage's pattern: sharedStores gives us the auth store;
     // pager.acquireModule<SlockNetworkModule>(...) gives us a network client.
     val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(bridge) }
@@ -344,14 +351,25 @@ internal fun MembersPageContent() {
             warningLogger = { message -> bridge.log("members_network $message") }
         )
     }
-    val dataSource = remember {
+    val agentsApiClient = remember(networkClient) {
+        ai.slock.compose.data.SlockAgentsApiClient(
+            ai.slock.compose.data.SlockAgentsNetworkApi(networkClient)
+        )
+    }
+    val computersApiClient = remember(networkClient) {
+        ai.slock.compose.data.SlockComputersApiClient(
+            ai.slock.compose.data.SlockComputersNetworkApi(networkClient)
+        )
+    }
+    val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
+        ai.slock.compose.data.SharedCreateAgentCoordinator(
+            agentsApiClient = agentsApiClient,
+            computersApiClient = computersApiClient,
+            logger = { message -> bridge.log("members_create_agent $message") }
+        )
+    }
+    val membersDataSource = remember(networkClient, authStore) {
         ai.slock.compose.data.SharedMembersDataSource(
-            agentsApiClient = ai.slock.compose.data.SlockAgentsApiClient(
-                ai.slock.compose.data.SlockAgentsNetworkApi(networkClient)
-            ),
-            computersApiClient = ai.slock.compose.data.SlockComputersApiClient(
-                ai.slock.compose.data.SlockComputersNetworkApi(networkClient)
-            ),
             memberRepository = ai.slock.compose.data.RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
@@ -369,14 +387,31 @@ internal fun MembersPageContent() {
         localMembers = payload.members
         currentAgentCount = payload.members.count { it.kind == MemberKind.Agent }
     }
-    val serverId = remember { readCurrentServerId() ?: "default" }
+    // Derive the active serverId from the auth session. Replaces the prior
+    // `readCurrentServerId()` stub (fixed QA-3): machines load + plan limit
+    // checks now use the real selected server.
+    var activeServerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(authStore) {
+        activeServerId = authStore.readSession()?.currentServerId
+    }
+    val serverId = activeServerId ?: ""
     val scope = rememberCoroutineScope()
     val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
-        remember(dataSource) {
+        remember(createAgentCoordinator) {
             { submit ->
-                val result = dataSource.createAgent(submit)
+                val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
-                    localMembers = localMembers + result.data
+                    val profile = ai.slock.compose.model.MemberProfile(
+                        id = ai.slock.compose.model.MemberId(result.data.id),
+                        displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
+                        handle = result.data.name,
+                        kind = ai.slock.compose.model.MemberKind.Agent,
+                        description = result.data.activityDetail,
+                        roleDescription = result.data.model,
+                        presence = ai.slock.compose.model.Presence.Offline,
+                        agentStatus = ai.slock.compose.model.AgentStatus.Online
+                    )
+                    localMembers = localMembers + profile
                 }
                 when (result) {
                     is DataResult.Content -> DataResult.Content(Unit)
@@ -387,12 +422,12 @@ internal fun MembersPageContent() {
             }
         }
     // Load machines lazily when the dialog opens; see MembersListContent state.
-    val loadMachines: () -> Unit = remember(dataSource) {
+    val loadMachines: () -> Unit = remember(createAgentCoordinator, serverId) {
         {
-            if (machines.isEmpty() && !machinesLoading) {
+            if (machines.isEmpty() && !machinesLoading && serverId.isNotBlank()) {
                 machinesLoading = true
                 scope.launch {
-                    val result = dataSource.loadMachines(serverId)
+                    val result = createAgentCoordinator.loadMachines(serverId)
                     machinesLoading = false
                     if (result is DataResult.Content) {
                         machines = result.data
@@ -410,7 +445,7 @@ internal fun MembersPageContent() {
             bridge.copyToPasteboard(it.id.value)
             bridge.toast("Copied member id")
         },
-        canCreateAgents = true,
+        canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = machines,
         createAgentMachinesLoading = machinesLoading,
@@ -434,6 +469,7 @@ private fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
+        canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
             humans = labelsJson?.optString("humans").orEmpty().ifBlank { "HUMANS" },

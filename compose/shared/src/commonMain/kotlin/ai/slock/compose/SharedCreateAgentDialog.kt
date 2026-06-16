@@ -65,6 +65,21 @@ internal data class SharedCreateAgentDialogSubmit(
     val external: Boolean = false
 )
 
+/**
+ * Convert a dialog submit to the data-layer [ai.slock.compose.data.CreateAgentRequest].
+ * Keeps the data layer free of UI types — the dialog knows about runtime
+ * config, the coordinator knows about the body shape; the mapping lives
+ * here at the boundary.
+ */
+internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): ai.slock.compose.data.CreateAgentRequest =
+    ai.slock.compose.data.CreateAgentRequest(
+        name = name,
+        description = description,
+        machineId = machineId,
+        runtimeConfig = runtimeConfig,
+        external = external
+    )
+
 internal data class SharedCreateAgentMachineOption(
     val id: String,
     val name: String,
@@ -107,6 +122,7 @@ internal fun SharedCreateAgentDialog(
     var providerMode by remember { mutableStateOf<RuntimeProviderMode>(RUNTIME_PROVIDER_MODE_DEFAULT) }
     var providerApiUrl by remember { mutableStateOf("") }
     var providerApiKey by remember { mutableStateOf("") }
+    var showApiKey by remember { mutableStateOf(false) }
     var fastMode by remember { mutableStateOf(false) }
     var reasoningEffort by remember { mutableStateOf<String?>(null) }
     var command by remember { mutableStateOf("") }
@@ -250,6 +266,8 @@ internal fun SharedCreateAgentDialog(
                     onProviderApiUrlChange = { providerApiUrl = it },
                     providerApiKey = providerApiKey,
                     onProviderApiKeyChange = { providerApiKey = it },
+                    showApiKey = showApiKey,
+                    onShowApiKeyChange = { showApiKey = it },
                     fastMode = fastMode,
                     onFastModeChange = { fastMode = it },
                     reasoningEffort = reasoningEffort,
@@ -459,6 +477,8 @@ private fun AdvancedRuntimeSection(
     onProviderApiUrlChange: (String) -> Unit,
     providerApiKey: String,
     onProviderApiKeyChange: (String) -> Unit,
+    showApiKey: Boolean,
+    onShowApiKeyChange: (Boolean) -> Unit,
     fastMode: Boolean,
     onFastModeChange: (Boolean) -> Unit,
     reasoningEffort: String?,
@@ -583,14 +603,31 @@ private fun AdvancedRuntimeSection(
                         color = SlockColor.AccentRed
                     )
                 }
+                val displayedApiKey = if (showApiKey) providerApiKey else "\u2022".repeat(providerApiKey.length.coerceAtMost(32))
                 SlockBrutalTextField(
                     label = "Provider API key",
                     required = true,
-                    value = providerApiKey,
+                    value = displayedApiKey,
                     onValueChange = { onProviderApiKeyChange(it) },
-                    placeholder = "sk_...",
+                    placeholder = if (showApiKey) "sk_..." else "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
                     enabled = enabled
                 )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onShowApiKeyChange(!showApiKey) }.padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = if (showApiKey) "\u25be" else "\u25b8",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        text = if (showApiKey) "Hide" else "Show",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
                 if (providerKeyInvalid) {
                     Text(
                         text = "Provider API key is required for custom provider",
