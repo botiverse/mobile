@@ -23,6 +23,8 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.SlockComputersApiClient
+import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
