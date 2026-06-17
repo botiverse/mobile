@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyListScope
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.text.BasicTextField
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -426,7 +427,14 @@ internal fun TextField(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    focusRequester: FocusRequester = remember { FocusRequester() }
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    /**
+     * Task #43 QA-4: visual transformation for password-typed inputs.
+     * When non-null (e.g. [PasswordVisualTransformation()]), the
+     * underlying value stays intact but the rendered text is masked.
+     * Show/Hide toggles in the caller just switch this parameter.
+     */
+    visualTransformation: VisualTransformation = VisualTransformation.None
 ) {
     var lastFocus by remember { mutableStateOf(false) }
 
@@ -460,6 +468,7 @@ internal fun TextField(
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
         cursorBrush = cursorBrush,
+        visualTransformation = visualTransformation,
         decorationBox = { innerTextField ->
             Box(contentAlignment = Alignment.CenterStart) {
                 if (value.isEmpty() && placeholder.isNotEmpty()) {

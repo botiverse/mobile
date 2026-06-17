@@ -7,6 +7,8 @@ import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import ai.slock.compose.TextField
+import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import ai.slock.compose.toSlockDpOffset
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
@@ -389,7 +391,15 @@ internal fun SlockBrutalTextField(
     autoFocus: Boolean = false,
     maxLines: Int = 1,
     textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-    fieldMinHeight: Dp = 42.dp
+    fieldMinHeight: Dp = 42.dp,
+    /**
+     * Task #43 QA-4 fix: when `true`, the text field uses a native password
+     * visual transformation that masks the value with `•` while keeping
+     * the underlying string in `value` intact. Show/hide toggles in the
+     * caller are expected to switch this flag, not edit bullet chars
+     * into the real value.
+     */
+    password: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val shadowOffset = if (focused && enabled) 4.dp else 3.dp
@@ -429,6 +439,13 @@ internal fun SlockBrutalTextField(
                     onBlur = { focused = false },
                     maxLines = maxLines,
                     textStyle = textStyle,
+                    // Task #43 QA-4 fix: when `password` is set, the field
+                    // uses a native visual transformation so the value
+                    // stays in `value` but the UI masks it with `•`.
+                    // The caller (e.g. SharedCreateAgentDialog) controls
+                    // the show/hide via toggling `password` — no need
+                    // to edit bullet chars into the real value.
+                    visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

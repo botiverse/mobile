@@ -603,13 +603,19 @@ private fun AdvancedRuntimeSection(
                         color = SlockColor.AccentRed
                     )
                 }
-                val displayedApiKey = if (showApiKey) providerApiKey else "\u2022".repeat(providerApiKey.length.coerceAtMost(32))
                 SlockBrutalTextField(
                     label = "Provider API key",
                     required = true,
-                    value = displayedApiKey,
+                    value = providerApiKey,
+                    // Task #43 QA-4 fix (artin's instruction: same component
+                    // shape as the login page password field): use a
+                    // native password-typed text field via
+                    // `password = !showApiKey`. The showApiKey flag only
+                    // toggles the visual transformation; the underlying
+                    // value is never overwritten with bullet characters.
+                    password = !showApiKey,
                     onValueChange = { onProviderApiKeyChange(it) },
-                    placeholder = if (showApiKey) "sk_..." else "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022",
+                    placeholder = if (showApiKey) "sk_..." else "",
                     enabled = enabled
                 )
                 Row(
