@@ -1254,6 +1254,18 @@ class SharedSettingsStoreTest {
             return DataResult.Content(link)
         }
 
+        override suspend fun createServerJoinLinkForInvite(
+            request: SettingsServerJoinLinkCreateRequest
+        ): DataResult<SettingsServerJoinLinkSnapshot> = createServerJoinLink(request)
+
+        override suspend fun listServerJoinLinks(
+            serverId: String
+        ): DataResult<List<SettingsServerJoinLinkSnapshot>> {
+            calls += "listServerJoinLinks:$serverId"
+            val current = (serverResult as? DataResult.Content)?.data
+            return DataResult.Content(current?.joinLinks.orEmpty())
+        }
+
         override suspend fun revokeServerJoinLink(linkId: String): DataResult<SettingsServerActionResult> {
             calls += "revokeServerJoinLink:$linkId"
             val current = (serverResult as? DataResult.Content)?.data

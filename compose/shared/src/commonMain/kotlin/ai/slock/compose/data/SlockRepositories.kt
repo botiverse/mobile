@@ -54,6 +54,25 @@ interface SettingsRepository {
     suspend fun updateLanguageRegionPreference(
         request: SettingsLanguageRegionPreferenceUpdateRequest
     ): DataResult<SettingsLanguageRegionSnapshot>
+    /**
+     * Task #43: create a server join link with no expiry / no max-uses.
+     * Exposed on the main [SettingsRepository] interface (not just
+     * [SettingsServerActionRepository]) so callers that don't already
+     * have a `SettingsServerActionRepository` handle (e.g. the Members
+     * page data source) can call it through the single `SettingsRepository`
+     * instance. Returns the new link snapshot with its URL populated.
+     */
+    suspend fun createServerJoinLinkForInvite(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot>
+    /**
+     * Task #43: list server join links. The first entry is the canonical
+     * "anyone with this link can join" link the React `InviteHumanDialog`
+     * shows. The list endpoint is read-only; mutation goes through
+     * [createServerJoinLinkForInvite] / [revokeServerJoinLink] on
+     * [SettingsServerActionRepository].
+     */
+    suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>>
 }
 
 interface SettingsServerActionRepository {

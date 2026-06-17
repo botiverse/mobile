@@ -567,6 +567,51 @@ class RealSettingsRepository(
         return settingsCreateServerInvite(server.id, email)
     }
 
+    /**
+     * Task #43: read-only list of server join links. Exposed on
+     * [SettingsRepository] so callers that need a single link
+     * (e.g. the Members page humans "+" invite flow) don't have to
+     * fetch the full server settings snapshot.
+     *
+     * Permission: requires `canManageServer` (same gate as
+     * [createServerInvite] / [createServerJoinLinkForInvite]). Without the
+     * capability we return NoPermission so the dialog surfaces a
+     * clear "no permission" error instead of an empty list.
+     */
+    override suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> {
+        val server = selectedServer() ?: return serverRequired()
+        if (server.id != serverId) {
+            // Caller asked for a different server than the active session;
+            // treat as server-required to keep state simple.
+            return serverRequired()
+        }
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        return fetchServerJoinLinks(serverId)
+    }
+
+    /**
+     * Task #43: thin pass-through to [createServerJoinLink] with the
+     * permission gate. Required so the [SettingsRepository] interface
+     * exposes the create operation to non-`SettingsServerActionRepository`
+     * callers (Members page data source) without forcing them to
+     * separately obtain a `SettingsServerActionRepository` handle.
+     */
+    override suspend fun createServerJoinLinkForInvite(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites")
+            )
+        }
+        return settingsCreateServerJoinLink(server.id, request)
+    }
+
     override suspend fun revokeServerInvite(inviteId: String): DataResult<SettingsServerActionResult> {
         val server = selectedServer() ?: return serverRequired()
         if (!server.canManageServer) {

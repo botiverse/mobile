@@ -7,22 +7,27 @@ import ai.slock.compose.model.MemberKind
  *
  * Per @artin 2026-06-17 #members专修 msg=f1db7897 ("应该抽象一个统一的"),
  * the create-agent flow was extracted to its own
- * [SharedCreateAgentCoordinator]. This data source now owns only the
+ * [SharedCreateAgentCoordinator]. This data source now owns the
  * members-side surface that is **not** the create-agent flow:
  *   - `loadServerMembers`: GET /servers/{id}/members for the humans "+"
  *     picker (candidates minus current channel members).
  *   - `addChannelMember`: POST /channels/{id}/members with the kind-keyed
  *     body (`{agentId}` or `{userId}`) for the humans section "+"
  *     when the chosen UX is "add existing human to channel".
+ *   - `loadJoinLink` / `ensureJoinLink`: GET/POST /servers/{id}/join-links
+ *     for the humans "+" invite flow (task #43).
+ *   - `sendInvites`: POST /servers/{id}/invites per email for the humans
+ *     "+" invite flow (task #43).
  *
- * If the humans "+" UX turns out to be "invite by email" instead (per the
- * 2026-06-17 #43 spec, artin said "对齐 react" — see
- * `third_party/slock-source/packages/web/src/components/agent/ChannelMembers.tsx`),
- * the invite API methods will be added here too; the create-agent methods
- * will not come back.
+ * The invite-flow methods mirror the React `InviteHumanDialog.tsx` flow
+ * (join link + emails + send). They use the existing
+ * `SettingsRepository` API surface (`createServerJoinLink`,
+ * `createServerInvite`) which already supports permission gating
+ * (`canManageServer`) and structured error codes.
  */
 internal class SharedMembersDataSource(
-    private val memberRepository: MemberRepository
+    private val memberRepository: MemberRepository,
+    private val settingsRepository: SettingsRepository
 ) {
     suspend fun loadServerMembers(
         serverId: String
@@ -53,5 +58,43 @@ internal class SharedMembersDataSource(
             is DataResult.Error -> result
             is DataResult.NoPermission -> result
         }
+    }
+
+    /**
+     * List existing server join links. The first one is the canonical
+     * "anyone with this link can join" link that the React
+     * `InviteHumanDialog` shows.
+     *
+     * Returns the list (possibly empty) wrapped in [DataResult]. Callers
+     * are expected to fall back to [ensureJoinLink] when the list is
+     * empty, matching the React flow.
+     */
+    suspend fun loadJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> {
+        return when (val result = settingsRepository.listServerJoinLinks(serverId)) {
+            is DataResult.Content -> DataResult.Content(result.data)
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> result
+            is DataResult.NoPermission -> result
+        }
+    }
+
+    /**
+     * Create a server join link with no expiry / no max-uses. Returns
+     * the new link snapshot with its URL populated.
+     */
+    suspend fun ensureJoinLink(serverId: String): DataResult<SettingsServerJoinLinkSnapshot> {
+        return settingsRepository.createServerJoinLinkForInvite(
+            SettingsServerJoinLinkCreateRequest(expiresAt = null, maxUses = null)
+        )
+    }
+
+    /**
+     * Send an invite email to one address. Returns success on 2xx,
+     * NoPermission if the active session can't manage invites.
+     */
+    suspend fun sendInvite(serverId: String, email: String): DataResult<SettingsServerActionResult> {
+        return settingsRepository.createServerInvite(
+            SettingsServerInviteCreateRequest(email = email)
+        )
     }
 }

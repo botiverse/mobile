@@ -13,6 +13,7 @@ import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SlockAgentsApiClient
@@ -374,6 +375,11 @@ internal fun MembersPageContent() {
                 sessionStore = authStore,
                 networkClient = networkClient,
                 logger = { message -> bridge.log("members_member_repository $message") }
+            ),
+            settingsRepository = ai.slock.compose.data.RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("members_settings_repository $message") }
             )
         )
     }
@@ -437,6 +443,66 @@ internal fun MembersPageContent() {
         }
     }
 
+    // Task #43 step 3: humans "+" invite flow state. Mirrors the React
+    // `InviteHumanDialog.tsx` (join link + emails + send). Join link
+    // auto-loads on first open; if none exist, the data source creates
+    // one (no expiry, no max-uses). Sending POSTs one `/servers/{id}/invites`
+    // per non-empty email.
+    var inviteJoinLinkLoading by remember { mutableStateOf(false) }
+    var inviteJoinLinkUrl by remember { mutableStateOf<String?>(null) }
+    var inviteJoinLinkCopied by remember { mutableStateOf(false) }
+    fun loadInviteJoinLink() {
+        if (serverId.isBlank() || inviteJoinLinkLoading) return
+        inviteJoinLinkLoading = true
+        scope.launch {
+            val listed = membersDataSource.loadJoinLinks(serverId)
+            val existing = (listed as? DataResult.Content)?.data.orEmpty().firstOrNull()
+            val result = if (existing != null) {
+                DataResult.Content(existing)
+            } else {
+                membersDataSource.ensureJoinLink(serverId)
+            }
+            inviteJoinLinkLoading = false
+            when (result) {
+                is DataResult.Content -> inviteJoinLinkUrl = result.data.url
+                is DataResult.NoPermission ->
+                    bridge.toast("You do not have permission to manage invites.")
+                is DataResult.Error ->
+                    bridge.toast("Failed to load join link: ${result.error.code}")
+                is DataResult.Empty -> Unit
+            }
+        }
+    }
+    val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+        remember(membersDataSource, serverId) {
+            { emails ->
+                if (serverId.isBlank()) {
+                    DataResult.Error(ScreenError(code = "server_id_missing", retryable = false))
+                } else {
+                    val results = emails.map { email ->
+                        membersDataSource.sendInvite(serverId, email)
+                    }
+                    when {
+                        results.isEmpty() ->
+                            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+                        results.all { it is DataResult.Content } ->
+                            DataResult.Content(Unit)
+                        else -> {
+                            val firstError = results.firstNotNullOfOrNull {
+                                (it as? DataResult.Error)?.error?.code
+                            }
+                            DataResult.Error(
+                                ScreenError(
+                                    code = firstError ?: "invite_send_failed",
+                                    retryable = true
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
     MembersRouteContent(
         payload = payload.copy(members = localMembers),
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
@@ -451,7 +517,19 @@ internal fun MembersPageContent() {
         createAgentMachinesLoading = machinesLoading,
         createAgentCurrentAgentCount = currentAgentCount,
         createAgentMaxAgents = maxAgents,
-        createAgentLoadMachines = loadMachines
+        createAgentLoadMachines = loadMachines,
+        inviteHumanSubmit = inviteHumanSubmit,
+        inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+        inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+        inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+        inviteHumanJoinLinkCopy = {
+            val url = inviteJoinLinkUrl
+            if (url != null) {
+                bridge.copyToPasteboard(url)
+                inviteJoinLinkCopied = true
+            }
+        },
+        inviteHumanLoadJoinLink = { loadInviteJoinLink() }
     )
 }
 
@@ -563,7 +641,18 @@ internal fun MembersRouteContent(
      * Permission gate for showing the agents "+". Defaults to false (no create).
      * When true, the agents "+" is rendered. When false, the "+" is hidden.
      */
-    canCreateAgents: Boolean = false
+    canCreateAgents: Boolean = false,
+    /**
+     * Optional invite-human flow. When non-null, the humans section "+" opens
+     * a [SharedInviteHumanDialog] and submit is forwarded to this host
+     * callback. Mirrors the [createAgentSubmit] pattern.
+     */
+    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
+    inviteHumanJoinLinkLoading: Boolean = false,
+    inviteHumanJoinLinkUrl: String? = null,
+    inviteHumanJoinLinkCopied: Boolean = false,
+    inviteHumanJoinLinkCopy: () -> Unit = {},
+    inviteHumanLoadJoinLink: () -> Unit = {}
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
@@ -627,7 +716,13 @@ internal fun MembersRouteContent(
             createAgentMachinesLoading = createAgentMachinesLoading,
             createAgentCurrentAgentCount = createAgentCurrentAgentCount,
             createAgentMaxAgents = createAgentMaxAgents,
-            createAgentLoadMachines = createAgentLoadMachines
+            createAgentLoadMachines = createAgentLoadMachines,
+            inviteHumanSubmit = inviteHumanSubmit,
+            inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
+            inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
+            inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
+            inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
+            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() }
         )
     }
 }
@@ -643,7 +738,13 @@ internal fun MembersListContent(
     createAgentMachinesLoading: Boolean = false,
     createAgentCurrentAgentCount: Int = 0,
     createAgentMaxAgents: Int = -1,
-    createAgentLoadMachines: () -> Unit = {}
+    createAgentLoadMachines: () -> Unit = {},
+    inviteHumanSubmit: (suspend (emails: List<String>) -> DataResult<Unit>)? = null,
+    inviteHumanJoinLinkLoading: Boolean = false,
+    inviteHumanJoinLinkUrl: String? = null,
+    inviteHumanJoinLinkCopied: Boolean = false,
+    inviteHumanJoinLinkCopy: () -> Unit = {},
+    inviteHumanLoadJoinLink: () -> Unit = {}
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -660,6 +761,9 @@ internal fun MembersListContent(
     var activeCreateAgent by remember(payload.instanceId) { mutableStateOf(false) }
     var createAgentSubmitting by remember { mutableStateOf(false) }
     var createAgentError by remember { mutableStateOf<String?>(null) }
+    var activeInviteHuman by remember(payload.instanceId) { mutableStateOf(false) }
+    var inviteHumanSubmitting by remember { mutableStateOf(false) }
+    var inviteHumanError by remember { mutableStateOf<String?>(null) }
     val lazyItemCount =
         membersLazyItemCount(
             agents = agents,
@@ -733,7 +837,11 @@ internal fun MembersListContent(
                     onExpandedChange = { humansExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        SlockSectionHeaderIconAction("plus", "Add member", onAddHuman)
+                        SlockSectionHeaderIconAction(
+                            icon = "plus",
+                            contentDescription = "Invite human",
+                            onClick = { activeInviteHuman = true }
+                        )
                     }
                 )
             }
@@ -747,7 +855,6 @@ internal fun MembersListContent(
                     )
                 }
             }
-            item { Spacer(Modifier.height(180.dp)) }
         }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
@@ -785,6 +892,55 @@ internal fun MembersListContent(
                         }
                         is DataResult.NoPermission -> {
                             createAgentError = "You do not have permission to create agents."
+                        }
+                    }
+                }
+            }
+        )
+    }
+    val inviteSubmit: (suspend (List<String>) -> DataResult<Unit>)? = inviteHumanSubmit
+    if (activeInviteHuman && inviteSubmit != null) {
+        val scope = rememberCoroutineScope()
+        // Load the join link when the dialog opens. Cheap: one GET (and at
+        // most one POST if the list is empty), both gated on the user's
+        // manage-invite permission via the data source.
+        LaunchedEffect(Unit) {
+            if (inviteHumanJoinLinkUrl == null && !inviteHumanJoinLinkLoading) {
+                inviteHumanLoadJoinLink()
+            }
+        }
+        SharedInviteHumanDialog(
+            submitting = inviteHumanSubmitting,
+            errorMessage = inviteHumanError,
+            joinLinkLoading = inviteHumanJoinLinkLoading,
+            joinLinkUrl = inviteHumanJoinLinkUrl,
+            copied = inviteHumanJoinLinkCopied,
+            onCopyJoinLink = inviteHumanJoinLinkCopy,
+            onDismiss = {
+                if (!inviteHumanSubmitting) {
+                    activeInviteHuman = false
+                    inviteHumanError = null
+                }
+            },
+            onSubmit = { emails ->
+                inviteHumanSubmitting = true
+                inviteHumanError = null
+                scope.launch {
+                    val result = inviteSubmit(emails)
+                    inviteHumanSubmitting = false
+                    when (result) {
+                        is DataResult.Content -> {
+                            activeInviteHuman = false
+                            inviteHumanError = null
+                        }
+                        is DataResult.Empty -> {
+                            inviteHumanError = "Empty response"
+                        }
+                        is DataResult.Error -> {
+                            inviteHumanError = "Failed to send invites: ${result.error.code}"
+                        }
+                        is DataResult.NoPermission -> {
+                            inviteHumanError = "You do not have permission to send invites."
                         }
                     }
                 }
