@@ -1087,12 +1087,26 @@ private fun SlockAppShellContent() {
     }
 
     fun popThreadRoute(): Boolean {
+        val routeBefore = navController.currentRoute.orEmpty()
+        val canNavigateBackBefore = navController.canNavigateBack
+        val threadBackStackSizeBefore = threadBackStack.size
+        val hadActiveThread = activeThreadPayload != null
         if (threadBackStack.isNotEmpty()) {
             activeThreadPayload = threadBackStack.last()
             threadBackStack = threadBackStack.dropLast(1)
+            bridge.log(
+                "app_back_pop_thread result=thread_stack routeBefore=$routeBefore " +
+                    "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                    "activeThreadBefore=$hadActiveThread"
+            )
             return true
         }
         if (navController.currentRoute != AppShellRouteThread && !navController.canNavigateBack) {
+            bridge.log(
+                "app_back_pop_thread result=no_thread_route routeBefore=$routeBefore " +
+                    "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                    "activeThreadBefore=$hadActiveThread"
+            )
             return false
         }
         val popped = navController.popBackStack()
@@ -1100,6 +1114,11 @@ private fun SlockAppShellContent() {
             activeThreadPayload = null
             threadBackStack = emptyList()
         }
+        bridge.log(
+            "app_back_pop_thread result=nav_pop popped=$popped routeBefore=$routeBefore " +
+                "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                "activeThreadBefore=$hadActiveThread"
+        )
         return popped
     }
 
@@ -1350,14 +1369,41 @@ private fun SlockAppShellContent() {
     }
 
     val handleAppShellBack by rememberUpdatedState {
-        if (!popThreadRoute() && !popMainRoute()) {
+        val routeBefore = navController.currentRoute.orEmpty()
+        val canNavigateBackBefore = navController.canNavigateBack
+        val threadBackStackSizeBefore = threadBackStack.size
+        val hadActiveThread = activeThreadPayload != null
+        if (popThreadRoute()) {
+            bridge.log(
+                "app_back_root result=thread routeBefore=$routeBefore " +
+                    "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                    "activeThreadBefore=$hadActiveThread"
+            )
+        } else if (popMainRoute()) {
+            bridge.log(
+                "app_back_root result=main routeBefore=$routeBefore " +
+                    "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                    "activeThreadBefore=$hadActiveThread"
+            )
+        } else {
+            bridge.logWarn(
+                "app_back_root result=close_page routeBefore=$routeBefore " +
+                    "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
+                    "activeThreadBefore=$hadActiveThread"
+            )
             bridge.closePage()
         }
     }
 
-    SlockAppShellRootBackHandler {
-        handleAppShellBack()
-    }
+    SlockAppShellRootBackHandler(
+        onLifecycleLog = { event ->
+            bridge.log(
+                "app_back_root_handler $event route=${navController.currentRoute.orEmpty()} " +
+                    "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
+                    "activeThread=${activeThreadPayload != null}"
+            )
+        }
+    ) { handleAppShellBack() }
 
     LaunchedEffect(selectedTab) {
         if (selectedTab == "tasks") {
@@ -1654,6 +1700,24 @@ private fun SlockAppShellContent() {
             if (payload == null) {
                 SlockCenteredLoading(message = "Opening thread...")
             } else {
+                SlockBackHandler(
+                    enabled = true,
+                    label = "app_shell_thread",
+                    onLifecycleLog = { event ->
+                        bridge.log(
+                            "app_back_thread_handler $event route=${navController.currentRoute.orEmpty()} " +
+                                "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
+                                "activeThread=${activeThreadPayload != null}"
+                        )
+                    }
+                ) {
+                    val handled = popThreadRoute()
+                    bridge.log(
+                        "app_back_thread_handler result=$handled route=${navController.currentRoute.orEmpty()} " +
+                            "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
+                            "activeThread=${activeThreadPayload != null}"
+                    )
+                }
                 SharedThreadRouteContent(
                     initialPayload = payload,
                     bridge = bridge,

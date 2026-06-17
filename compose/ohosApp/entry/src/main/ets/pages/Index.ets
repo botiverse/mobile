@@ -1,5 +1,6 @@
 import { ErrorReason, KRNativeRenderController, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
 import deviceInfo from '@ohos.deviceInfo';
+import hilog from '@ohos.hilog';
 import router from '@ohos.router';
 import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
@@ -11,6 +12,7 @@ const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
 const DEFAULT_PAGE_NAME = 'compose_slock_app_shell';
 const HDS_MIN_API_VERSION = 23;
 const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
+const SLOCK_BACK_PRESS_LOG_TAG = 'SlockBackPress';
 
 @Entry
 @Component
@@ -68,7 +70,25 @@ struct Index {
   }
 
   onBackPress(): boolean {
-    return this.controller?.onBackPress() ?? false;
+    const pageName = this.pageName ?? DEFAULT_PAGE_NAME;
+    if (this.controller === undefined) {
+      hilog.warn(
+        0x0000,
+        SLOCK_BACK_PRESS_LOG_TAG,
+        'host_onBackPress result=no_controller page=%{public}s',
+        pageName
+      );
+      return false;
+    }
+    const consumed = this.controller.onBackPress();
+    hilog.info(
+      0x0000,
+      SLOCK_BACK_PRESS_LOG_TAG,
+      'host_onBackPress consumed=%{public}s page=%{public}s',
+      consumed ? 'true' : 'false',
+      pageName
+    );
+    return consumed;
   }
 
   private pageDataWithSafeArea(): KRRecord {

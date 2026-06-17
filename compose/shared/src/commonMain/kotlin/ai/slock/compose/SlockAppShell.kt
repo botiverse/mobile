@@ -31,8 +31,16 @@ internal fun rememberSlockAppShellScope(): SlockAppShellScope {
 }
 
 @Composable
-internal fun SlockAppShellRootBackHandler(onBack: () -> Unit) {
-    SlockBackHandler(enabled = true, onBack = onBack)
+internal fun SlockAppShellRootBackHandler(
+    onLifecycleLog: ((String) -> Unit)? = null,
+    onBack: () -> Unit
+) {
+    SlockBackHandler(
+        enabled = true,
+        label = "app_shell_root",
+        onLifecycleLog = onLifecycleLog,
+        onBack = onBack
+    )
 }
 
 @Composable

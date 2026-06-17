@@ -4,27 +4,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import com.tencent.kuikly.compose.ui.platform.LocalActivity
-import com.tencent.kuikly.core.base.BackPressCallback
-import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.compose.BackHandler
 
 @Composable
 internal fun SlockBackHandler(
     enabled: Boolean,
+    label: String? = null,
+    onLifecycleLog: ((String) -> Unit)? = null,
     onBack: () -> Unit
 ) {
     if (!enabled) return
 
-    val pager = LocalActivity.current.getPager() as Pager
     val currentOnBack by rememberUpdatedState(onBack)
-    DisposableEffect(pager) {
-        val callback =
-            object : BackPressCallback() {
-                override fun handleOnBackPressed() {
-                    currentOnBack()
-                }
-            }
-        pager.getBackPressHandler().addCallback(callback)
-        onDispose { pager.getBackPressHandler().removeCallback(callback) }
+    val currentOnLifecycleLog by rememberUpdatedState(onLifecycleLog)
+    DisposableEffect(label) {
+        currentOnLifecycleLog?.invoke("registered label=${label ?: "unknown"}")
+        onDispose { currentOnLifecycleLog?.invoke("disposed label=${label ?: "unknown"}") }
+    }
+    BackHandler {
+        currentOnLifecycleLog?.invoke("invoked label=${label ?: "unknown"}")
+        currentOnBack()
     }
 }

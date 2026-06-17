@@ -28,6 +28,7 @@ import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Base64
 import android.util.Log
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -38,6 +39,7 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
@@ -136,6 +138,12 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
+    private val kuiklySystemBackCallback =
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    handleKuiklySystemBack()
+                }
+            }
     private val threadImageAttachmentPickerLauncher: ActivityResultLauncher<String> =
             registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
                 handleThreadAttachmentPickerResult(uris)
@@ -150,6 +158,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        onBackPressedDispatcher.addCallback(this, kuiklySystemBackCallback)
         SlockKuiklyAdapters.init(applicationContext)
         setContentView(R.layout.activity_slock_kuikly)
         setupImmersiveMode()
@@ -195,8 +204,25 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     @Suppress("DEPRECATION")
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-        if (!kuiklyRenderViewDelegator.onBackPressed()) {
-            super.onBackPressed()
+        handleKuiklySystemBack()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+            if (kuiklyRenderViewDelegator.onBackPressed()) {
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleKuiklySystemBack() {
+        if (kuiklyRenderViewDelegator.onBackPressed()) return
+        kuiklySystemBackCallback.isEnabled = false
+        try {
+            onBackPressedDispatcher.onBackPressed()
+        } finally {
+            kuiklySystemBackCallback.isEnabled = true
         }
     }
 
