@@ -75,6 +75,9 @@ kotlin {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
+                // #85 follow-up: needed for `androidx.compose.ui.platform.LocalContext`
+                // in the Android `actual` of [StringDesc.localized].
+                implementation("androidx.compose.ui:ui:1.7.3")
             }
         }
         val androidUnitTest by getting {

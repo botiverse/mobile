@@ -27,6 +27,27 @@ enum class AppLocale(
     }
 }
 
+/**
+ * #85 follow-up: BCP-47 tag used by moko KBA's
+ * `StringDesc.LocaleType.Custom(tag)` to pick a resource folder at
+ * runtime. The `moko-resources/<lang>-<region>/` folder parser expects
+ * BCP-47 with `r` separator, e.g. `zh-rCN`. We use the same tags
+ * moko uses for `moko:resources-ohosarm64` and `moko:resources-android`
+ * (i.e. the existing folder names) so the runtime lookup lands on the
+ * actual generated folders.
+ *
+ * English falls through to the `base/` folder; Simplified Chinese
+ * maps to the `zh-rCN/` folder (region-based; moko's BCP-47 matching
+ * falls back from `zh-Hans` script-only to `zh-rCN` region-only by
+ * language match).
+ */
+val AppLocale.mokoLocaleTag: String
+    get() =
+        when (this) {
+            AppLocale.English -> "en"
+            AppLocale.SimplifiedChinese -> "zh-CN"
+        }
+
 data class LocaleSnapshot(
     val current: AppLocale,
     val supported: List<AppLocale> = AppLocale.entries

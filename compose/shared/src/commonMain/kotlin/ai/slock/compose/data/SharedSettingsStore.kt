@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import dev.icerock.moko.resources.desc.StringDesc
 import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -427,6 +428,13 @@ class SharedSettingsDataSource(
             AppLocale.entries.firstOrNull { it.languageTag == localeTag || it.storageKey == localeTag }
                 ?: return DataResult.Error(ScreenError("settings_locale_unknown", retryable = false))
         repository.selectLocale(locale)
+        // #85 follow-up: keep the moko KBA `StringDesc.localeType` in
+        // sync with the user's selected `AppLocale` so any
+        // `MR.strings.<key>.desc()` call site (now or future) renders
+        // the correct locale. This is a one-way set: the source of
+        // truth for the user's preference remains the
+        // `LocaleRepository`; moko's global just consumes it.
+        StringDesc.localeType = StringDesc.LocaleType.Custom(locale.mokoLocaleTag)
         return loadMobile()
     }
 

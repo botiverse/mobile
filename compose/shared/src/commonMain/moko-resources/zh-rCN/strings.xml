@@ -2,4 +2,6 @@
 <resources>
     <string name="common_ok">确定</string>
     <string name="common_cancel">取消</string>
+    <string name="settings_invite_by_email">通过邮件邀请</string>
+    <string name="settings_delete_server">删除服务器</string>
 </resources>

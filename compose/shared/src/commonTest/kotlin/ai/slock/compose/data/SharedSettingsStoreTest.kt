@@ -406,6 +406,73 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun setLocaleKeepsMokoStringDescLocaleTypeInSync() = runBlocking {
+        // #85 follow-up: `SharedSettingsDataSource.setLocale` must keep
+        // the moko KBA `StringDesc.localeType` global in lock-step
+        // with the user's `AppLocale` selection so that any
+        // `MR.strings.<key>.desc()` call site (now or future) renders
+        // the correct locale without each call site having to thread
+        // a locale through.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localeRepository = FakeLocaleRepository(current = AppLocale.English)
+        val dataSource =
+            SharedSettingsDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                settingsRepository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot())),
+                localeRepository = localeRepository
+            )
+        // Save the original `StringDesc.localeType` and restore it
+        // after the test so we don't leak the global to other tests
+        // in the same JVM.
+        val originalLocaleType = dev.icerock.moko.resources.desc.StringDesc.localeType
+        try {
+            val store =
+                SharedSettingsStore(
+                    dataSource = dataSource,
+                    scope = scope
+                )
+
+            // Step 1: switch to Simplified Chinese. The moko
+            // `StringDesc.localeType` should now be a `Custom` whose
+            // underlying BCP-47 tag (when resolved through
+            // `getSystemLocale()`) is `zh-CN` (the moko KBA folder
+            // matcher falls back to the `zh-rCN/` folder by language
+            // match).
+            val result1 = dataSource.setLocale("zh-Hans")
+            assertIs<DataResult.Content<*>>(result1)
+            val custom1 =
+                dev.icerock.moko.resources.desc.StringDesc.localeType
+                    as dev.icerock.moko.resources.desc.StringDesc.LocaleType.Custom
+            assertEquals("zh-CN", custom1.systemLocale.toLanguageTag())
+
+            // Step 2: switch back to English. The moko
+            // `StringDesc.localeType` should now be a `Custom`
+            // whose tag is `en`.
+            val result2 = dataSource.setLocale("en")
+            assertIs<DataResult.Content<*>>(result2)
+            val custom2 =
+                dev.icerock.moko.resources.desc.StringDesc.localeType
+                    as dev.icerock.moko.resources.desc.StringDesc.LocaleType.Custom
+            assertEquals("en", custom2.systemLocale.toLanguageTag())
+        } finally {
+            dev.icerock.moko.resources.desc.StringDesc.localeType = originalLocaleType
+        }
+        scope.cancel()
+    }
+
+    @Test
+    fun mokoLocaleTagMappingCoversSupportedAppLocales() {
+        // #85 follow-up: `AppLocale.mokoLocaleTag` must produce a
+        // BCP-47 tag that moko KBA's folder parser can resolve.
+        // English is `en`; Simplified Chinese is `zh-CN` (moko's
+        // folder matcher falls back from the script-only
+        // `zh-Hans` form to the region-based `zh-rCN` folder by
+        // language match).
+        assertEquals("en", AppLocale.English.mokoLocaleTag)
+        assertEquals("zh-CN", AppLocale.SimplifiedChinese.mokoLocaleTag)
+    }
+
+    @Test
     fun mobilePreferenceIntentsPersistAndEchoThroughSharedState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val notificationRepository = FakeNotificationPreferenceRepository(enabled = false)
