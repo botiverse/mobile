@@ -390,21 +390,22 @@ class SharedHomeStore(
         priority: DataRequestPriority,
         forceNetwork: Boolean
     ) {
+        val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
         val result =
-            when (val result = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)) {
-                is DataResult.Content -> SharedHomeContentState.Content(result.data, activeSession)
+            when (dataResult) {
+                is DataResult.Content -> SharedHomeContentState.Content(dataResult.data, activeSession)
                 is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
                 is DataResult.Error -> {
                     diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${result.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        "home_ui_error source=shared_home_load code=${dataResult.error.code} mapped=${_state.value.content.refreshFailureMapping()}"
                     )
-                    _state.value.content.asRefreshFailed(result.error.code)
+                    _state.value.content.asRefreshFailed(dataResult.error.code)
                 }
                 is DataResult.NoPermission -> {
                     diagnosticsLogger(
-                        "home_ui_error source=shared_home_load code=${result.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
+                        "home_ui_error source=shared_home_load code=${dataResult.blocker.code} mapped=${_state.value.content.refreshFailureMapping()}"
                     )
-                    _state.value.content.asRefreshFailed(result.blocker.code)
+                    _state.value.content.asRefreshFailed(dataResult.blocker.code)
                 }
             }
         val resultServerId = (result as? SharedHomeContentState.Content)?.snapshot?.server?.id
@@ -419,10 +420,20 @@ class SharedHomeStore(
             // #81: derive the badge projection from the fresh snapshot.
             // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
             //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
-            // - On Error / NoPermission (nextContent is not Content): keep
-            //   last value but flip isStale = true so a future UI layer can
-            //   hint staleness. lastUpdated MUST NOT advance.
-            val freshSnapshot = (result as? SharedHomeContentState.Content)?.snapshot
+            // - On Error / NoPermission: keep last value but flip isStale = true
+            //   so a future UI layer can hint staleness. lastUpdated MUST NOT
+            //   advance.
+            //
+            // #82: derive `freshSnapshot` from the **original** data source
+            // result (before the `asRefreshFailed` content transform). When
+            // the previous state is `Content`, `asRefreshFailed` returns
+            // `Content.copy(contentRefreshing = false)` — the failure case
+            // therefore produces a transformed `result` whose snapshot is
+            // non-null, and the old `(result as? Content)?.snapshot` check
+            // would mis-classify the failure as a fresh success and skip
+            // `isStale = true`. The original `dataResult` is the source of
+            // truth for whether the network actually succeeded.
+            val freshSnapshot = (dataResult as? DataResult.Content)?.data
             val nextBadge =
                 if (freshSnapshot != null) {
                     val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)

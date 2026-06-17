@@ -917,24 +917,19 @@ class SharedHomeStoreTest {
         // fetch. KDoc: "badge not flashing is better than badge oscillating
         // between stale and fresh values".
         //
-        // #82 follow-up (unresolved): the test below only computes the
-        // expected in-place projection of `previous.copy(isStale = true)`;
-        // it does not drive the real `SharedHomeStore` refresh-failure
-        // path because doing so exposes a real bug in
-        // `SharedHomeStore.loadHomeFromNetwork` — the failure path's
-        // `else { previous.copy(isStale = true) }` branch is dead code
-        // when `_state.value.content` is `Content`, because
-        // `asRefreshFailed` on `Content` returns `Content` (with
-        // `contentRefreshing = false`) and the subsequent
-        // `freshSnapshot` check then takes the success branch and
-        // recomputes a fresh badge with `isStale = false`.
+        // #82 deterministic regression: drive the real
+        // `SharedHomeStore.refresh()` failure path end-to-end against a
+        // [SwitchableHomeApi] and assert on the actual store state. This
+        // closes the prior placeholder (which only computed
+        // `previous.copy(isStale = true)` in-line without ever exercising
+        // the failure path).
         //
-        // The fix is to derive `freshSnapshot` from the **original**
-        // data source result (before the `asRefreshFailed` content
-        // transform), not from the transformed `result`. Once that
-        // fix lands, this test should be replaced with a deterministic
-        // variant that drives a real Refresh on a SwitchableHomeApi
-        // and asserts on `store.state.value.appBadgeCount.isStale`.
+        // The fix in #82 derives `freshSnapshot` from the original data
+        // source result so the failure path's `else { previous.copy(
+        // isStale = true) }` branch actually runs when the previous
+        // content was `Content`. Without that fix, the assertion at the
+        // end of this test fails deterministically with
+        // `expected:<true> but was:<false>`.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val switchableApi = SwitchableHomeApi()
@@ -950,18 +945,38 @@ class SharedHomeStoreTest {
             scope = scope
         )
 
+        // Step 1: successful initial load seeds the badge with
+        // count=9, source=SERVER_UNREAD_SUMMARY, isStale=false.
         store.accept(SharedHomeIntent.Start)
         val before = store.state.value.appBadgeCount
         assertEquals(9, before.count)
+        assertEquals(AppBadgeSource.SERVER_UNREAD_SUMMARY, before.source)
         assertEquals(false, before.isStale)
+        assertEquals("server-1", before.selectedServerId?.value)
         val lastUpdatedBefore = before.lastUpdated
         val sourceBefore = before.source
 
-        val expectedAfterFailure = before.copy(isStale = true)
-        assertEquals(true, expectedAfterFailure.isStale)
-        assertEquals(lastUpdatedBefore, expectedAfterFailure.lastUpdated)
-        assertEquals(sourceBefore, expectedAfterFailure.source)
-        assertEquals(9, expectedAfterFailure.count)
+        // Step 2: arm the api to fail on the next call, then drive
+        // Refresh. `loadHomeFromNetwork` runs synchronously on the
+        // test's coroutine (no background launch involved): the api
+        // throws, `HomeDataSource.loadHome` catches and returns
+        // `DataResult.Error("home_network")`, the failure branch
+        // computes `nextBadge = previous.copy(isStale = true)`, and
+        // `reduceState` writes the new state before `accept(Refresh)`
+        // returns.
+        switchableApi.setFailing(true)
+        store.accept(SharedHomeIntent.Refresh)
+
+        // Step 3: assert the failure-path transition. count / source /
+        // selectedServerId / lastUpdated MUST be unchanged; isStale
+        // MUST be true. The badge must not "look fresh" even though
+        // the network call just failed.
+        val afterFailure = store.state.value.appBadgeCount
+        assertEquals(9, afterFailure.count)
+        assertEquals(sourceBefore, afterFailure.source)
+        assertEquals(true, afterFailure.isStale)
+        assertEquals(lastUpdatedBefore, afterFailure.lastUpdated)
+        assertEquals("server-1", afterFailure.selectedServerId?.value)
         scope.cancel()
     }
 
