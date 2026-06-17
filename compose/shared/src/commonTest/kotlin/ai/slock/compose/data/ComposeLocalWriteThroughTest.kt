@@ -470,7 +470,7 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun realtimePresenceUpdatesCachedDirectMessage() = runBlocking {
+    fun realtimePresenceDoesNotMutateCachedDirectMessage() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         val dm =
@@ -494,11 +494,11 @@ class ComposeLocalWriteThroughTest {
         )
 
         val cached = store.readHome(serverId)?.directMessages?.single()
-        assertEquals(Presence.Active, cached?.presence)
+        assertEquals(Presence.Offline, cached?.presence)
     }
 
     @Test
-    fun realtimePresenceBatchUpdatesCachedDirectMessagesWithSingleHomeWrite() = runBlocking {
+    fun realtimePresenceBatchSkipsHomeCacheWrites() = runBlocking {
         val logs = mutableListOf<String>()
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store, logger = logs::add)
@@ -543,10 +543,9 @@ class ComposeLocalWriteThroughTest {
         )
 
         val cached = store.readHome(serverId)?.directMessages.orEmpty()
-        assertEquals(Presence.Active, cached[0].presence)
-        assertEquals(Presence.Away, cached[1].presence)
-        assertEquals(1, logs.count { it.startsWith("write_home_realtime source=presence_batch") })
-        assertTrue(logs.single { it.startsWith("write_home_realtime source=presence_batch") }.contains("members=2 changed=2"))
+        assertEquals(Presence.Offline, cached[0].presence)
+        assertEquals(Presence.Offline, cached[1].presence)
+        assertEquals(emptyList(), logs.filter { it.startsWith("write_home_realtime source=presence_batch") })
     }
 
     @Test

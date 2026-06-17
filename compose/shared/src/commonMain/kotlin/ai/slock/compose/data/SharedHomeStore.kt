@@ -1,13 +1,15 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ServerId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -42,7 +44,6 @@ class SharedHomeStore(
     private var presenceFlushJob: Job? = null
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
-    private var homePresenceRealtimeEnabled = true
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -102,8 +103,6 @@ class SharedHomeStore(
                 )
             is SharedHomeIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(ServerId(intent.serverId), intent.event)
-            is SharedHomeIntent.SetHomePresenceRealtimeEnabled ->
-                setHomePresenceRealtimeEnabled(intent.enabled)
             is SharedHomeIntent.DismissNotification ->
                 dismissNotification(intent.id)
             is SharedHomeIntent.ChannelCreated ->
@@ -475,9 +474,6 @@ class SharedHomeStore(
         }
         pendingPresenceServerId = serverId
         pendingPresenceEvents[event.memberId] = event
-        if (!homePresenceRealtimeEnabled) {
-            return
-        }
         if (presenceFlushJob?.isActive == true) return
         presenceFlushJob =
             scope.launch {
@@ -488,49 +484,31 @@ class SharedHomeStore(
             }
     }
 
-    private suspend fun setHomePresenceRealtimeEnabled(enabled: Boolean) {
-        if (homePresenceRealtimeEnabled == enabled) return
-        homePresenceRealtimeEnabled = enabled
-        if (enabled && pendingPresenceEvents.isNotEmpty()) {
-            presenceFlushJob?.cancel()
-            presenceFlushJob = null
-            flushPresenceEvents()
-        }
-    }
-
-    private suspend fun flushPresenceEvents() {
-        if (!homePresenceRealtimeEnabled) return
+    private fun flushPresenceEvents() {
         val serverId = pendingPresenceServerId ?: return
         val events = pendingPresenceEvents.values.toList()
         pendingPresenceEvents.clear()
         pendingPresenceServerId = null
         presenceFlushJob = null
         if (events.isEmpty()) return
-        val visibleServerId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
+        val visibleServerId = currentContent.snapshot.server.id
         val selectedServerId = _state.value.serverSwitchState.selectedServerId
-        if (visibleServerId != null && visibleServerId != serverId) return
+        if (visibleServerId != serverId) return
         if (selectedServerId != null && selectedServerId != serverId.value) return
-        val result = dataSource.applyRealtimeEvents(
-            serverId = serverId,
-            events = events,
-            activeConversationId = _state.value.selectedConversationId
+        val patch = currentContent.snapshot.directMessages.withPresenceEvents(events)
+        if (patch.changedCount == 0) return
+        diagnosticsLogger(
+            "home_presence_realtime_patch serverId=${serverId.value} members=${events.distinctBy { it.memberId }.size} changed=${patch.changedCount}"
         )
-        if (result is DataResult.Content) {
-            val currentContent = _state.value.content as? SharedHomeContentState.Content
-            val session = currentContent?.session
-                ?: authStore.readSession()
-                ?: return
-            reduceState(
-                _state.value.copy(
-                    content =
-                        SharedHomeContentState.Content(
-                            snapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot),
-                            session = session,
-                            contentRefreshing = currentContent?.contentRefreshing == true
-                        )
-                )
+        reduceState(
+            _state.value.copy(
+                content =
+                    currentContent.copy(
+                        snapshot = currentContent.snapshot.copy(directMessages = patch.directMessages)
+                    )
             )
-        }
+        )
     }
 
     private suspend fun loadNotifications() {
@@ -668,7 +646,6 @@ sealed interface SharedHomeIntent {
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeIntent
     data class SelectServer(val serverId: String) : SharedHomeIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
-    data class SetHomePresenceRealtimeEnabled(val enabled: Boolean) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
 }
@@ -684,7 +661,6 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectConversation,
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
-            is SharedHomeIntent.SetHomePresenceRealtimeEnabled,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated -> false
         }
@@ -722,6 +698,53 @@ private fun SharedHomeContentState.refreshFailureMapping(): String =
         is SharedHomeContentState.Content -> "keep_cached_content"
         else -> "home_error_panel"
     }
+
+private data class PresencePatch(
+    val directMessages: List<ConversationSummary>,
+    val changedCount: Int
+)
+
+private fun List<ConversationSummary>.withPresenceEvents(
+    events: List<MemberPresenceUpdated>
+): PresencePatch {
+    if (isEmpty() || events.isEmpty()) {
+        return PresencePatch(this, changedCount = 0)
+    }
+    val latestEvents = events.associateBy { event -> event.memberId }.values
+    var changedCount = 0
+    val updated =
+        map { conversation ->
+            val event = latestEvents.firstOrNull { presenceEvent ->
+                conversation.matchesPresenceMember(presenceEvent)
+            } ?: return@map conversation
+            val next =
+                conversation.copy(
+                    presence = event.presence,
+                    agentStatus = event.agentStatus ?: conversation.agentStatus,
+                    presenceMemberId = conversation.presenceMemberId ?: event.memberId
+                )
+            if (next == conversation) {
+                conversation
+            } else {
+                changedCount += 1
+                next
+            }
+        }
+    return if (changedCount == 0) {
+        PresencePatch(this, changedCount = 0)
+    } else {
+        PresencePatch(updated, changedCount)
+    }
+}
+
+private fun ConversationSummary.matchesPresenceMember(
+    event: MemberPresenceUpdated
+): Boolean =
+    kind == ConversationKind.DirectMessage &&
+        (event.kind == null || event.kind == MemberKind.Agent || event.kind == MemberKind.Human) &&
+        (presenceMemberId == event.memberId ||
+            channelId?.value == event.memberId.value ||
+            threadId.value == event.memberId.value)
 
 private fun Throwable.safeHomeStoreDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"

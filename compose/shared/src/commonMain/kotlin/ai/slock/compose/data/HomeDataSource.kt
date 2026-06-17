@@ -152,8 +152,8 @@ private fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is SyncResumeResponse,
         is ThreadUpdated,
         is TaskCreated,
-        is TaskUpdated,
-        is MemberPresenceUpdated -> true
+        is TaskUpdated -> true
+        is MemberPresenceUpdated -> false
         is RealtimeRefreshRequired ->
             this.scope == RealtimeRefreshScope.Home ||
                 this.scope == RealtimeRefreshScope.ChannelMembers ||

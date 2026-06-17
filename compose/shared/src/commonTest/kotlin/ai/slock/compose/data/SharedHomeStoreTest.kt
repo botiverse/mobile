@@ -536,7 +536,7 @@ class SharedHomeStoreTest {
     }
 
     @Test
-    fun threadActiveQueuesPresenceUntilHomeRealtimeIsEnabled() = runBlocking {
+    fun realtimePresencePatchesVisibleHomeWithoutWritingCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()
         val localStore = InMemoryComposeLocalDataStore()
@@ -565,7 +565,6 @@ class SharedHomeStoreTest {
         logs.clear()
         val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
 
-        store.accept(SharedHomeIntent.SetHomePresenceRealtimeEnabled(false))
         store.accept(
             SharedHomeIntent.ApplyRealtimeEvent(
                 serverId = "server-1",
@@ -578,20 +577,86 @@ class SharedHomeStoreTest {
             )
         )
 
-        val whileThreadActive = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
-        assertTrue(before === whileThreadActive)
-        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
-        assertEquals(emptyList(), logs)
-
-        store.accept(SharedHomeIntent.SetHomePresenceRealtimeEnabled(true))
-
         val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
         assertTrue(before !== after)
         assertTrue(before[0] !== after[0])
         assertTrue(before[1] === after[1])
         assertEquals(Presence.Active, after[0].presence)
-        assertEquals(Presence.Active, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
-        assertEquals(1, logs.count { it.startsWith("write_home_realtime source=presence_batch") })
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
+        assertEquals(emptyList(), logs)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePresenceBatchUsesLatestEventAndSkipsNoOpState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline),
+                        directMessage("dm-2", "Agent Two", "agent-2", Presence.Active)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            presenceFlushDelayMillis = 1L
+        )
+        store.accept(SharedHomeIntent.Start)
+        val before = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Away,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-2"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+        delay(10L)
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        assertTrue(before !== after)
+        assertTrue(before[0] !== after[0])
+        assertTrue(before[1] === after[1])
+        assertEquals(Presence.Away, after[0].presence)
+        assertEquals(Presence.Active, after[1].presence)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
         scope.cancel()
     }
 

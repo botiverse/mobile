@@ -156,15 +156,11 @@ class ComposeLocalWriteThrough(
         activeConversationId: String? = null
     ): Boolean {
         if (events.isEmpty()) return false
-        val presenceEvents = events.filterIsInstance<MemberPresenceUpdated>()
         val newMessages = mutableListOf<Message>()
         val updatedMessages = mutableListOf<Message>()
         val threadUpdates = mutableListOf<ThreadUpdated>()
         val taskPatches = mutableListOf<ai.slock.compose.model.TaskSummary>()
         var wrote = false
-        if (presenceEvents.isNotEmpty()) {
-            wrote = updateHomePresence(serverId, presenceEvents) || wrote
-        }
         events.forEach { event ->
             when (event) {
                 is MemberPresenceUpdated -> Unit
@@ -424,48 +420,6 @@ class ComposeLocalWriteThrough(
             }
             .values
             .toList()
-
-    private suspend fun updateHomePresence(
-        serverId: ServerId,
-        event: MemberPresenceUpdated
-    ): Boolean =
-        updateHomePresence(serverId, listOf(event))
-
-    private suspend fun updateHomePresence(
-        serverId: ServerId,
-        events: List<MemberPresenceUpdated>
-    ): Boolean {
-        if (events.isEmpty()) return false
-        val latestEvents = events.associateBy { event -> event.memberId }
-        val home = store.readHome(serverId) ?: return false
-        var changedCount = 0
-        val updatedDirectMessages =
-            home.directMessages.map { conversation ->
-                val event = latestEvents.values.firstOrNull { presenceEvent ->
-                    conversation.matchesPresenceMember(presenceEvent)
-                }
-                if (event == null) {
-                    conversation
-                } else {
-                    val updatedConversation =
-                        conversation.copy(
-                            presence = event.presence,
-                            agentStatus = event.agentStatus ?: conversation.agentStatus,
-                            presenceMemberId = conversation.presenceMemberId ?: event.memberId
-                        )
-                    if (updatedConversation != conversation) {
-                        changedCount += 1
-                    }
-                    updatedConversation
-                }
-            }
-        if (updatedDirectMessages == home.directMessages) return false
-        store.writeHome(home.copy(directMessages = updatedDirectMessages))
-        logger(
-            "write_home_realtime source=presence_batch serverId=${serverId.value} members=${latestEvents.size} changed=$changedCount"
-        )
-        return true
-    }
 
     private suspend fun updateHomePreview(
         serverId: ServerId,
@@ -810,15 +764,6 @@ private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnap
         unreadTotal = (unreadTotal - cleared).coerceAtLeast(0)
     )
 }
-
-private fun ConversationSummary.matchesPresenceMember(
-    event: MemberPresenceUpdated
-): Boolean =
-    kind == ConversationKind.DirectMessage &&
-        (event.kind == null || event.kind == ai.slock.compose.model.MemberKind.Agent || event.kind == ai.slock.compose.model.MemberKind.Human) &&
-        (presenceMemberId == event.memberId ||
-            channelId?.value == event.memberId.value ||
-            threadId.value == event.memberId.value)
 
 private fun ConversationSummary.withThreadMetadata(event: ThreadUpdated): ConversationSummary =
     if (lastMessageId == event.parentMessageId || thread?.parentMessageId == event.parentMessageId) {

@@ -900,10 +900,6 @@ private fun SlockAppShellContent() {
     val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
     val latestActiveThreadPayload by rememberUpdatedState(activeThreadPayload)
     val latestReadySession by rememberUpdatedState(readySession)
-    val homePresenceRealtimeEnabled = activeThreadPayload == null
-    LaunchedEffect(homePresenceRealtimeEnabled) {
-        homeViewModel.dispatch(SharedHomeIntent.SetHomePresenceRealtimeEnabled(homePresenceRealtimeEnabled))
-    }
     val loadedSettingsTimeFormat =
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
     val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat
