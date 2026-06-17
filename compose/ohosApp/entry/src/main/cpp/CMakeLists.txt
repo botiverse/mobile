@@ -15,6 +15,9 @@ add_library(kuikly_render SHARED IMPORTED)
 set_target_properties(kuikly_render
         PROPERTIES
         IMPORTED_LOCATION ${NATIVERENDER_ROOT_PATH}/../../../../oh_modules/.ohpm/oh_modules/@kuikly-open/render/libs/${OHOS_ARCH}/libkuikly.so)
+target_include_directories(kuikly_render
+        INTERFACE
+        ${NATIVERENDER_ROOT_PATH}/../../../../oh_modules/.ohpm/oh_modules/@kuikly-open/render/include)
 
 add_library(kuikly_shared SHARED IMPORTED)
 set_target_properties(kuikly_shared
