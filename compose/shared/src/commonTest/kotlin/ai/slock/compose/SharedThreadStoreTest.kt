@@ -46,9 +46,12 @@ import ai.slock.compose.data.RemoveChannelMemberRequest
 import ai.slock.compose.data.SendMessageResult
 import ai.slock.compose.data.SavedMessageStatusSnapshot
 import ai.slock.compose.data.SavedStatusRepository
+import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.SlockAgentsApi
 import ai.slock.compose.data.SlockAgentsApiClient
+import ai.slock.compose.data.SlockComputersApi
+import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.StoredAuthSession
@@ -431,6 +434,23 @@ class SharedThreadStoreTest {
         assertEquals("action_card_agent_create_dialog_required", result.error.code)
         assertTrue(agentsApi.createBodies.isEmpty())
         assertTrue(actionCardsApi.calls.isEmpty())
+    }
+
+    @Test
+    fun threadDataSourceRetainsCreateAgentCoordinatorForRouteInjection() {
+        val coordinator =
+            SharedCreateAgentCoordinator(
+                agentsApiClient = SlockAgentsApiClient(RecordingAgentsApi()),
+                computersApiClient = SlockComputersApiClient(RecordingComputersApi())
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                createAgentCoordinator = coordinator
+            )
+
+        assertTrue(dataSource.createAgentCoordinatorOrNull === coordinator)
     }
 
     @Test
@@ -1911,6 +1931,17 @@ class SharedThreadStoreTest {
         override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
         override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+    }
+
+    private class RecordingComputersApi : SlockComputersApi {
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse = error("unused")
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse = error("unused")
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse = error("unused")
+        override suspend fun deleteMachineWorkspace(serverId: ServerId, machineId: String, directoryName: String): HomeNetworkResponse = error("unused")
     }
 
     private class RecordingActionCardsApi(

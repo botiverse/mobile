@@ -120,8 +120,11 @@ import ai.slock.compose.data.SearchSenderFilterItem
 import ai.slock.compose.data.SearchTimeRange
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.SlockComputersApiClient
+import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
+import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
@@ -753,6 +756,22 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("shared_conversation_repository $message") }
             )
         }
+    val agentsApiClient =
+        remember(appShellNetworkClient) {
+            SlockAgentsApiClient(SlockAgentsNetworkApi(appShellNetworkClient))
+        }
+    val computersApiClient =
+        remember(appShellNetworkClient) {
+            SlockComputersApiClient(SlockComputersNetworkApi(appShellNetworkClient))
+        }
+    val createAgentCoordinator =
+        remember(agentsApiClient, computersApiClient) {
+            SharedCreateAgentCoordinator(
+                agentsApiClient = agentsApiClient,
+                computersApiClient = computersApiClient,
+                logger = { message -> bridge.log("app_shell_thread_create_agent $message") }
+            )
+        }
     val savedRepository =
         remember {
             RealSavedRepository(
@@ -770,11 +789,12 @@ private fun SlockAppShellContent() {
                 memberRepository = memberRepository,
                 conversationRepository = conversationRepository,
                 channelRepository = channelRepository,
-                agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(appShellNetworkClient)),
+                agentsApiClient = agentsApiClient,
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
                     SlockIntegrationsActionsPushNetworkApi(appShellNetworkClient)
                 ),
-                savedStatusRepository = savedRepository
+                savedStatusRepository = savedRepository,
+                createAgentCoordinator = createAgentCoordinator
             )
         }
     val searchRepository =
