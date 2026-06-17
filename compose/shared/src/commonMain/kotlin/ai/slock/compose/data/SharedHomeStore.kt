@@ -44,6 +44,7 @@ class SharedHomeStore(
     private var presenceFlushJob: Job? = null
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
+    private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -69,6 +70,7 @@ class SharedHomeStore(
         presenceFlushJob = null
         pendingPresenceEvents.clear()
         pendingPresenceServerId = null
+        presenceFactsByServer.clear()
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
@@ -138,16 +140,18 @@ class SharedHomeStore(
         val nextContent =
             when (val current = content) {
                 is SharedHomeContentState.Content ->
-                    current.copy(
+                    contentFromDurableSnapshot(
                         snapshot =
-                            current.snapshot.copy(
+                            current.baseSnapshot.copy(
                                 channels =
-                                    (current.snapshot.channels.filterNot {
+                                    (current.baseSnapshot.channels.filterNot {
                                         it.threadId == channel.threadId ||
                                             it.channelId == channel.channelId
                                     } + channel)
                             ),
-                        contentRefreshing = false
+                        session = current.session,
+                        contentRefreshing = false,
+                        previousContent = current
                     )
                 else -> current
             }
@@ -192,20 +196,21 @@ class SharedHomeStore(
             // call above preserves the existing unreadSource field on the
             // snapshot, so we can derive a fresh badge from it directly.
             // lastUpdated advances, isStale clears.
-            val nextSnapshot = result.data.preserveStableRowsFrom(currentContent?.snapshot)
+            val nextContent =
+                contentFromDurableSnapshot(
+                    snapshot = result.data,
+                    session = session,
+                    contentRefreshing = currentContent?.contentRefreshing == true,
+                    previousContent = currentContent
+                )
             val nextBadge = snapshotToBadgeCount(
-                snapshot = nextSnapshot,
-                selectedServerId = nextSnapshot.server.id,
+                snapshot = nextContent.baseSnapshot,
+                selectedServerId = nextContent.baseSnapshot.server.id,
                 isStale = false
             )
             reduceState(
                 _state.value.copy(
-                    content =
-                        SharedHomeContentState.Content(
-                            snapshot = nextSnapshot,
-                            session = session,
-                            contentRefreshing = currentContent?.contentRefreshing == true
-                        ),
+                    content = nextContent,
                     appBadgeCount = nextBadge
                 )
             )
@@ -293,7 +298,7 @@ class SharedHomeStore(
                     val latestSwitch = _state.value.serverSwitchState
                     val cachedServerId = cached.data.server.id
                     if (latestSwitch.isCurrent(request.requestGeneration, cachedServerId)) {
-                        val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
+                        val previousContent = _state.value.content as? SharedHomeContentState.Content
                         // #81: cached hit also seeds the badge projection.
                         // lastUpdated is 0L here because we don't know
                         // exactly when the cache was written; isStale
@@ -317,10 +322,11 @@ class SharedHomeStore(
                         reduceState(
                             _state.value.copy(
                                 content =
-                                    SharedHomeContentState.Content(
-                                        cached.data.preserveStableRowsFrom(previousSnapshot),
-                                        activeSession,
-                                        contentRefreshing = showRefreshAffordance
+                                    contentFromDurableSnapshot(
+                                        snapshot = cached.data,
+                                        session = activeSession,
+                                        contentRefreshing = showRefreshAffordance,
+                                        previousContent = previousContent
                                     ),
                                 serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId),
                                 appBadgeCount = effectiveCachedBadge
@@ -390,9 +396,16 @@ class SharedHomeStore(
         forceNetwork: Boolean
     ) {
         val dataResult = dataSource.loadHome(serverId = activeServer, priority = priority, forceNetwork = forceNetwork)
+        val previousContent = _state.value.content as? SharedHomeContentState.Content
         val result =
             when (dataResult) {
-                is DataResult.Content -> SharedHomeContentState.Content(dataResult.data, activeSession)
+                is DataResult.Content ->
+                    contentFromDurableSnapshot(
+                        snapshot = dataResult.data,
+                        session = activeSession,
+                        contentRefreshing = false,
+                        previousContent = previousContent
+                    )
                 is DataResult.Empty -> SharedHomeContentState.Empty(activeSession)
                 is DataResult.Error -> {
                     diagnosticsLogger(
@@ -411,11 +424,7 @@ class SharedHomeStore(
             ?: activeServer
         val latestSwitch = _state.value.serverSwitchState
         if (resultServerId == null || latestSwitch.isCurrent(request.requestGeneration, resultServerId)) {
-            val nextContent =
-                (result as? SharedHomeContentState.Content)?.let { content ->
-                    val previousSnapshot = (_state.value.content as? SharedHomeContentState.Content)?.snapshot
-                    content.copy(snapshot = content.snapshot.preserveStableRowsFrom(previousSnapshot))
-                } ?: result
+            val nextContent = result
             // #81: derive the badge projection from the fresh snapshot.
             // - On success: source comes from the parser (SERVER_UNREAD_SUMMARY
             //   or CHANNEL_DM_FALLBACK), isStale is false, lastUpdated advances.
@@ -491,23 +500,71 @@ class SharedHomeStore(
         pendingPresenceServerId = null
         presenceFlushJob = null
         if (events.isEmpty()) return
+        val changedFacts = recordPresenceFacts(serverId, events)
+        if (changedFacts == 0) return
         val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
-        val visibleServerId = currentContent.snapshot.server.id
+        val visibleServerId = currentContent.baseSnapshot.server.id
         val selectedServerId = _state.value.serverSwitchState.selectedServerId
         if (visibleServerId != serverId) return
         if (selectedServerId != null && selectedServerId != serverId.value) return
-        val patch = currentContent.snapshot.directMessages.withPresenceEvents(events)
-        if (patch.changedCount == 0) return
+        val projection = projectPresence(currentContent.baseSnapshot)
+        if (projection.changedCount == 0) return
+        val nextContent =
+            currentContent.copy(
+                snapshot = projection.snapshot.preserveStableRowsFrom(currentContent.snapshot)
+            )
+        if (nextContent == currentContent) return
         diagnosticsLogger(
-            "home_presence_realtime_patch serverId=${serverId.value} members=${events.distinctBy { it.memberId }.size} changed=${patch.changedCount}"
+            "home_presence_realtime_project serverId=${serverId.value} members=${events.distinctBy { it.memberId }.size} changed=${projection.changedCount}"
         )
         reduceState(
             _state.value.copy(
-                content =
-                    currentContent.copy(
-                        snapshot = currentContent.snapshot.copy(directMessages = patch.directMessages)
-                    )
+                content = nextContent
             )
+        )
+    }
+
+    private fun recordPresenceFacts(
+        serverId: ServerId,
+        events: List<MemberPresenceUpdated>
+    ): Int {
+        if (events.isEmpty()) return 0
+        val serverFacts = presenceFactsByServer.getOrPut(serverId) { linkedMapOf() }
+        var changedCount = 0
+        events.forEach { event ->
+            if (serverFacts[event.memberId] != event) {
+                serverFacts[event.memberId] = event
+                changedCount += 1
+            }
+        }
+        return changedCount
+    }
+
+    private fun contentFromDurableSnapshot(
+        snapshot: HomeSnapshot,
+        session: StoredAuthSession,
+        contentRefreshing: Boolean,
+        previousContent: SharedHomeContentState.Content?
+    ): SharedHomeContentState.Content {
+        val baseSnapshot = snapshot.preserveStableRowsFrom(previousContent?.baseSnapshot)
+        val projection = projectPresence(baseSnapshot)
+        return SharedHomeContentState.Content(
+            snapshot = projection.snapshot.preserveStableRowsFrom(previousContent?.snapshot),
+            session = session,
+            contentRefreshing = contentRefreshing,
+            baseSnapshot = baseSnapshot
+        )
+    }
+
+    private fun projectPresence(snapshot: HomeSnapshot): PresenceProjection {
+        val facts = presenceFactsByServer[snapshot.server.id]?.values.orEmpty()
+        val patch = snapshot.directMessages.withPresenceEvents(facts)
+        if (patch.changedCount == 0) {
+            return PresenceProjection(snapshot, changedCount = 0)
+        }
+        return PresenceProjection(
+            snapshot = snapshot.copy(directMessages = patch.directMessages),
+            changedCount = patch.changedCount
         )
     }
 
@@ -672,7 +729,8 @@ sealed interface SharedHomeContentState {
     data class Content(
         val snapshot: HomeSnapshot,
         val session: StoredAuthSession,
-        val contentRefreshing: Boolean = false
+        val contentRefreshing: Boolean = false,
+        val baseSnapshot: HomeSnapshot = snapshot
     ) : SharedHomeContentState
 }
 
@@ -704,8 +762,13 @@ private data class PresencePatch(
     val changedCount: Int
 )
 
+private data class PresenceProjection(
+    val snapshot: HomeSnapshot,
+    val changedCount: Int
+)
+
 private fun List<ConversationSummary>.withPresenceEvents(
-    events: List<MemberPresenceUpdated>
+    events: Collection<MemberPresenceUpdated>
 ): PresencePatch {
     if (isEmpty() || events.isEmpty()) {
         return PresencePatch(this, changedCount = 0)

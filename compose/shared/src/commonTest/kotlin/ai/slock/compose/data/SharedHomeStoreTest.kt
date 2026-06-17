@@ -577,13 +577,75 @@ class SharedHomeStoreTest {
             )
         )
 
-        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        val contentAfter = store.state.value.content as SharedHomeContentState.Content
+        val after = contentAfter.snapshot.directMessages
         assertTrue(before !== after)
         assertTrue(before[0] !== after[0])
         assertTrue(before[1] === after[1])
         assertEquals(Presence.Active, after[0].presence)
+        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages[0].presence)
         assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
         assertEquals(emptyList(), logs)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimePresenceOverlayRematerializesAfterCachedRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                channels = listOf(channel("channel-1", "general")),
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            presenceFlushDelayMillis = 0L
+        )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+        val beforeRefresh = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(Presence.Active, beforeRefresh.snapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, beforeRefresh.baseSnapshot.directMessages.single().presence)
+
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                channels = listOf(channel("channel-2", "updates")),
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
+                    )
+            )
+        )
+        store.accept(SharedHomeIntent.Refresh)
+
+        val afterRefresh = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("channel-2", afterRefresh.baseSnapshot.channels.single().threadId.value)
+        assertEquals(Presence.Offline, afterRefresh.baseSnapshot.directMessages.single().presence)
+        assertEquals(Presence.Active, afterRefresh.snapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
         scope.cancel()
     }
 
@@ -650,12 +712,15 @@ class SharedHomeStoreTest {
         )
         delay(10L)
 
-        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.directMessages
+        val contentAfter = store.state.value.content as SharedHomeContentState.Content
+        val after = contentAfter.snapshot.directMessages
         assertTrue(before !== after)
         assertTrue(before[0] !== after[0])
         assertTrue(before[1] === after[1])
         assertEquals(Presence.Away, after[0].presence)
         assertEquals(Presence.Active, after[1].presence)
+        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages[0].presence)
+        assertEquals(Presence.Active, contentAfter.baseSnapshot.directMessages[1].presence)
         assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.first()?.presence)
         scope.cancel()
     }
