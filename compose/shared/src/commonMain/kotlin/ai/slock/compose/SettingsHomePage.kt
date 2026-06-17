@@ -1675,6 +1675,8 @@ private fun SlockAppShellContent() {
                             }
                         }
                     },
+                    createAgentCoordinator = threadDataSource.createAgentCoordinatorOrNull
+                        ?: error("threadDataSource must be constructed with a SharedCreateAgentCoordinator"),
                     realtimeEventSignal = threadRealtimeEventSignal
                 )
             }

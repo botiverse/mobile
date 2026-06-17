@@ -667,6 +667,19 @@ private fun ThreadPageScreen() {
                 warningLogger = { message -> bridge.log("kuikly_network $message") }
             )
         }
+    val agentsApiClient = remember(networkClient) {
+        SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient))
+    }
+    val computersApiClient = remember(networkClient) {
+        SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+    }
+    val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
+        ai.slock.compose.data.SharedCreateAgentCoordinator(
+            agentsApiClient = agentsApiClient,
+            computersApiClient = computersApiClient,
+            logger = { message -> bridge.log("thread_create_agent $message") }
+        )
+    }
     val dataSource =
         remember {
             SharedThreadDataSource(
@@ -700,7 +713,8 @@ private fun ThreadPageScreen() {
                         sessionStore = authStore,
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_saved_repository $message") }
-                    )
+                    ),
+                createAgentCoordinator = createAgentCoordinator
             )
         }
     val tasksDataSource =
@@ -715,6 +729,7 @@ private fun ThreadPageScreen() {
         dataSource = dataSource,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
+        createAgentCoordinator = createAgentCoordinator,
         onBack = {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
@@ -990,6 +1005,7 @@ internal fun SharedThreadRouteContent(
     dataSource: SharedThreadDataSource,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
+    createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,

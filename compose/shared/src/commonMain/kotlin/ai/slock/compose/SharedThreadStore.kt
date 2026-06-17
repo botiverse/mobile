@@ -110,6 +110,18 @@ internal class SharedThreadDataSource(
      */
     private val createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator? = null
 ) {
+    /**
+     * Public accessor for the [ai.slock.compose.data.SharedCreateAgentCoordinator]
+     * field. Used by callers (e.g. `SettingsHomePage` which constructs
+     * `SharedThreadDataSource` and forwards to `SharedThreadRouteContent`)
+     * that need the coordinator to wire up the action-card create-agent
+     * dialog. Returns null when the data source was constructed without
+     * a coordinator; in that case the create-agent action card falls back
+     * to the legacy name/description/machineId-only path.
+     */
+    val createAgentCoordinatorOrNull: ai.slock.compose.data.SharedCreateAgentCoordinator?
+        get() = createAgentCoordinator
+
     constructor(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
