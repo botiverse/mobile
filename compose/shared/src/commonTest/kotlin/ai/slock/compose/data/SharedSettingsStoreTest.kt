@@ -410,7 +410,7 @@ class SharedSettingsStoreTest {
         // #85 follow-up: `SharedSettingsDataSource.setLocale` must keep
         // the moko KBA `StringDesc.localeType` global in lock-step
         // with the user's `AppLocale` selection so that any
-        // `MR.strings.<key>.desc()` call site (now or future) renders
+        // `stringResource(MR.strings.<key>)` call site (now or future) renders
         // the correct locale without each call site having to thread
         // a locale through.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)

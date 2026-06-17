@@ -6,8 +6,8 @@ set -euo pipefail
 # 2.2.21-0.3.0 (KLIB ABI 2.2.0), while Slock currently uses
 # 2.0.21-KBA-010 (KLIB ABI 1.8.0). This script pins the OHOS forks,
 # applies the minimal KBA compatibility patches from vendored third_party
-# sources, and publishes the core Android/OHOS resources artifacts needed by
-# the shared module.
+# sources, and publishes the Android/OHOS resources and resources-compose
+# artifacts needed by the shared module.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
@@ -51,8 +51,18 @@ resources_artifacts_ready() {
     maven_file_exists "dev/icerock/mobile/multiplatform-resources/dev.icerock.mobile.multiplatform-resources.gradle.plugin/${MOKO_RESOURCES_VERSION}/dev.icerock.mobile.multiplatform-resources.gradle.plugin-${MOKO_RESOURCES_VERSION}.pom"
 }
 
+resources_compose_artifacts_ready() {
+    maven_file_exists "dev/icerock/moko/resources-compose/${MOKO_RESOURCES_VERSION}/resources-compose-${MOKO_RESOURCES_VERSION}.module" &&
+    maven_file_exists "dev/icerock/moko/resources-compose-ohosarm64/${MOKO_RESOURCES_VERSION}/resources-compose-ohosarm64-${MOKO_RESOURCES_VERSION}.klib" &&
+    maven_file_exists "dev/icerock/moko/resources-compose-android/${MOKO_RESOURCES_VERSION}/resources-compose-android-${MOKO_RESOURCES_VERSION}.aar"
+}
+
+resources_stack_artifacts_ready() {
+    resources_artifacts_ready && resources_compose_artifacts_ready
+}
+
 artifacts_ready() {
-    graphics_artifacts_ready && resources_artifacts_ready
+    graphics_artifacts_ready && resources_stack_artifacts_ready
 }
 
 copy_cached_kotlin_stdlib_to_maven_local() {
@@ -241,7 +251,7 @@ PATCH_GRAPHICS
 }
 
 patch_resources() {
-  sed 's/^@BLANK_CONTEXT@$/ /' <<'PATCH_RESOURCES' | git -C "${RESOURCES_WORKDIR}" apply --whitespace=nowarn
+  sed 's/^@BLANK_CONTEXT@$/ /' <<'PATCH_RESOURCES' | git -C "${RESOURCES_WORKDIR}" apply --recount --whitespace=nowarn
 diff --git a/build.gradle.kts b/build.gradle.kts
 index 2798964..212a436 100644
 --- a/build.gradle.kts
@@ -543,6 +553,77 @@ index 44660c3..fa80842 100644
 \ No newline at end of file
 +    dependsOn(buildCppLibraryOhosArm64)
 +}
+diff --git a/resources-compose/build.gradle.kts b/resources-compose/build.gradle.kts
+--- a/resources-compose/build.gradle.kts
++++ b/resources-compose/build.gradle.kts
+@@ -2,6 +2,8 @@
+  * Copyright 2021 IceRock MAG Inc. Use of this source code is governed by the Apache 2.0 license.
+  */
+@BLANK_CONTEXT@
++import org.jetbrains.kotlin.gradle.dsl.JvmTarget
++
+ plugins {
+     id("com.android.library")
+     id("org.jetbrains.kotlin.multiplatform")
+@@ -9,9 +11,6 @@ plugins {
+     id("android-base-convention")
+     id("dev.icerock.mobile.multiplatform.android-manifest")
+     id("multiplatform-android-publish-convention")
+-    if(org.gradle.internal.os.OperatingSystem.current().isMacOsX) {
+-        id("apple-main-convention")
+-    }
+     id("detekt-convention")
+     id("org.jetbrains.compose")
+     id("javadoc-stub-convention")
+@@ -28,15 +27,15 @@ android {
+@BLANK_CONTEXT@
+ kotlin {
+ //    jvm()
+-    androidTarget()
+-    iosX64()
+-    iosArm64()
+-    iosSimulatorArm64()
++    androidTarget {
++        compilerOptions {
++            jvmTarget.set(JvmTarget.JVM_11)
++        }
++    }
+ //    macosX64()
+ //    macosArm64()
+ //    js { browser() }
+ //    @OptIn(org.jetbrains.kotlin.gradle.ExperimentalWasmDsl::class)
+ //    wasmJs { browser() }
+     // 鸿蒙化适配：添加 ohosArm64 编译目标
+     ohosArm64()
+-    ohosX64()
+@BLANK_CONTEXT@
+     sourceSets {
+         // Mac 上 apple-main 会套用 multiplatform-library-convention，已创建 ohosMain；非 Mac 需自建
+@@ -45,13 +44,11 @@ kotlin {
+             }
+         }
+         getByName("ohosArm64Main").dependsOn(getByName("ohosMain"))
+-        getByName("ohosX64Main").dependsOn(getByName("ohosMain"))
+@BLANK_CONTEXT@
+         commonMain {
+             dependencies {
+                 api(projects.resources)
+-                api(compose.runtime)
+-                api(compose.foundation)
++                api("com.tencent.kuikly-open.compose.runtime:runtime:1.7.3-kuikly1")
+             }
+         }
+         androidMain {
+@@ -61,10 +58,3 @@ kotlin {
+         }
+     }
+ }
+-
+-compose {
+-    ohos {
+-        skia("0.9.22.2-0.1.1")
+-    }
+-}
 diff --git a/resources/src/ohosMain/kotlin/dev/icerock/moko/resources/utils/OhosUtils.ohosArm64.kt b/resources/src/ohosMain/kotlin/dev/icerock/moko/resources/utils/OhosUtils.ohosArm64.kt
 index 8f57f99..cca351f 100644
 --- a/resources/src/ohosMain/kotlin/dev/icerock/moko/resources/utils/OhosUtils.ohosArm64.kt
@@ -596,13 +677,28 @@ index 78073ce..a8e4492 100644
  }
 
  include(":resources")
--include(":resources-compose")
+ include(":resources-compose")
 -include(":resources-test")
 PATCH_RESOURCES
+
+  # Slock only consumes the string/plural/StringDesc Compose helpers. The
+  # upstream color/font/image helpers require the full Compose UI/skia stack,
+  # which is not available on Slock's pinned Kuikly OHOS Compose 1.7.3 line.
+  rm -f \
+    "${RESOURCES_WORKDIR}/resources-compose/src/commonMain/kotlin/dev/icerock/moko/resources/compose/ColorResource.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/commonMain/kotlin/dev/icerock/moko/resources/compose/FontResource.common.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/commonMain/kotlin/dev/icerock/moko/resources/compose/ImageResource.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/androidMain/kotlin/dev/icerock/moko/resources/compose/ColorResource.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/androidMain/kotlin/dev/icerock/moko/resources/compose/FontResource.android.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/androidMain/kotlin/dev/icerock/moko/resources/compose/ImageResource.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/ohosMain/kotlin/dev/icerock/moko/resources/compose/ColorResource.ohosArm64.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/ohosMain/kotlin/dev/icerock/moko/resources/compose/FontResource.common.ohosArm64.kt" \
+    "${RESOURCES_WORKDIR}/resources-compose/src/ohosMain/kotlin/dev/icerock/moko/resources/compose/ImageResource.ohosArm64.kt"
+  rm -rf "${RESOURCES_WORKDIR}/resources-compose/src/ohosMain/kotlin/dev/icerock/moko/resources/compose/internal"
 }
 
 if [[ "${force}" -eq 0 ]] && artifacts_ready; then
-  echo "moko-resources Android/OHOS KBA artifacts already exist in ${MAVEN_LOCAL}."
+  echo "moko-resources/resources-compose Android/OHOS KBA artifacts already exist in ${MAVEN_LOCAL}."
   exit 0
 fi
 
@@ -628,7 +724,7 @@ else
   echo "moko-graphics KBA artifacts already exist in ${MAVEN_LOCAL}."
 fi
 
-if [[ "${force}" -eq 1 ]] || ! resources_artifacts_ready; then
+if [[ "${force}" -eq 1 ]] || ! resources_stack_artifacts_ready; then
   prepare_workdir_from_vendor "${RESOURCES_SOURCE_DIR}" "${RESOURCES_WORKDIR}" "${RESOURCES_COMMIT}"
   patch_resources
   "${RESOURCES_WORKDIR}/gradlew" \
@@ -643,18 +739,21 @@ if [[ "${force}" -eq 1 ]] || ! resources_artifacts_ready; then
     :resources:publishKotlinMultiplatformPublicationToMavenLocal \
     :resources:publishOhosArm64PublicationToMavenLocal \
     :resources:publishAndroidPublicationToMavenLocal \
-    :resources-generator:publishToMavenLocal
+    :resources-generator:publishToMavenLocal \
+    :resources-compose:publishKotlinMultiplatformPublicationToMavenLocal \
+    :resources-compose:publishOhosArm64PublicationToMavenLocal \
+    :resources-compose:publishAndroidPublicationToMavenLocal
 else
-  echo "moko-resources KBA artifacts already exist in ${MAVEN_LOCAL}."
+  echo "moko-resources/resources-compose KBA artifacts already exist in ${MAVEN_LOCAL}."
 fi
 
 if ! artifacts_ready; then
-  echo "moko-resources KBA artifact preparation finished but required MavenLocal artifacts are still missing." >&2
+  echo "moko-resources/resources-compose KBA artifact preparation finished but required MavenLocal artifacts are still missing." >&2
   exit 5
 fi
 
 cat <<EOF
-Prepared moko-resources Android/OHOS KBA artifacts.
+Prepared moko-resources/resources-compose Android/OHOS KBA artifacts.
 Kotlin: ${KBA_KOTLIN_VERSION}
 graphics: ${MOKO_GRAPHICS_VERSION}
 resources: ${MOKO_RESOURCES_VERSION}

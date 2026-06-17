@@ -90,6 +90,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
                 implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
+                implementation("dev.icerock.moko:resources-compose:0.26.0-KBA-010")
             }
         }
         val commonTest by getting {

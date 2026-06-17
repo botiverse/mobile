@@ -430,7 +430,7 @@ class SharedSettingsDataSource(
         repository.selectLocale(locale)
         // #85 follow-up: keep the moko KBA `StringDesc.localeType` in
         // sync with the user's selected `AppLocale` so any
-        // `MR.strings.<key>.desc()` call site (now or future) renders
+        // `stringResource(MR.strings.<key>)` call site (now or future) renders
         // the correct locale. This is a one-way set: the source of
         // truth for the user's preference remains the
         // `LocaleRepository`; moko's global just consumes it.

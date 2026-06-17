@@ -16,8 +16,8 @@ import dev.icerock.moko.resources.desc.StringDesc
  * lifecycle. The right place is the @Page entry
  * [ComposeSlockAppShellPage] -> [SlockAppShellContent], not a
  * Settings-specific data source. Otherwise the global would only
- * be seeded when the user visits Settings, and `MR.strings.<key>.
- * desc()` calls in other pages would render with moko's default
+ * be seeded when the user visits Settings, and `stringResource(MR.strings.<key>)`
+ * calls in other pages would render with moko's default
  * `LocaleType.System` (which is the OS locale) instead of the
  * user's persisted choice.
  *
@@ -51,8 +51,8 @@ internal fun rememberMokoLocaleSeed(pager: Pager) {
 /**
  * Convenience: same as [rememberMokoLocaleSeed] but takes the
  * [Pager] from the current [LocalActivity]. Call this from the
- * top of [SlockAppShellContent] so any subsequent `MR.strings.<key>.
- * desc()` in the same composition tree resolves against the
+ * top of [SlockAppShellContent] so any subsequent `stringResource(MR.strings.<key>)`
+ * in the same composition tree resolves against the
  * user's persisted locale.
  */
 @Composable

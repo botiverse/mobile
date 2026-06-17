@@ -19,7 +19,7 @@ import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.resources.MR
-import dev.icerock.moko.resources.desc.desc
+import dev.icerock.moko.resources.compose.stringResource
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -676,7 +676,7 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
 private fun SlockAppShellContent() {
     // #85 follow-up: seed the moko KBA `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
-    // in the app shell lifecycle, so any `MR.strings.<key>.desc()`
+    // in the app shell lifecycle, so any `stringResource(MR.strings.<key>)`
     // call site (in the home tab, thread page, settings, etc.)
     // resolves against the user's last selection rather than
     // the OS default.
@@ -2466,7 +2466,7 @@ private fun SettingsServerInviteFormCard(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(MR.strings.settings_invite_by_email.desc().localized(), style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        Text(stringResource(MR.strings.settings_invite_by_email), style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
         SlockBrutalTextField(
             label = "Email",
             value = email,
@@ -2500,7 +2500,7 @@ private fun SettingsServerDeleteFormCard(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(MR.strings.settings_delete_server.desc().localized(), style = SlockType.SectionLabel.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+        Text(stringResource(MR.strings.settings_delete_server), style = SlockType.SectionLabel.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
         Text(
             "Type ${expectedServerName.ifBlank { "the server name" }} to permanently delete this server.",
             style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
