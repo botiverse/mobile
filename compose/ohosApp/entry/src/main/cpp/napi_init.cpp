@@ -25,6 +25,7 @@ namespace {
 //   仍有效直到下一次同线程调用覆盖。OHOS 渲染层应同步使用，不跨线程缓存。
 //   如需跨线程，caller 自己拷贝。
 static constexpr unsigned int kSlockFontLogDomain = 0xA001;
+static constexpr unsigned int kSlockKuiklyLogDomain = 0xA002;
 
 static constexpr const char *kSlockFontFamilies[] = {
     "space_grotesk",
@@ -57,6 +58,14 @@ static char *SlockFontAdapter(const char *fontFamily,
 }
 
 static std::once_flag g_slockFontAdaptersOnceFlag;
+static std::once_flag g_slockLogAdapterOnceFlag;
+
+static void SlockKuiklyLogAdapter(int /*logLevel*/, const char *tag, const char *message) {
+    const char *safeTag = tag != nullptr && tag[0] != '\0' ? tag : "KuiklyRender";
+    const char *safeMessage = message != nullptr ? message : "";
+    OH_LOG_Print(LOG_APP, LOG_INFO, kSlockKuiklyLogDomain, safeTag, "%{public}s", safeMessage);
+}
+
 static void RegisterSlockFontAdapters() {
     std::call_once(g_slockFontAdaptersOnceFlag, []() {
         for (const auto *family : kSlockFontFamilies) {
@@ -68,10 +77,17 @@ static void RegisterSlockFontAdapters() {
     });
 }
 
+static void RegisterSlockLogAdapter() {
+    std::call_once(g_slockLogAdapterOnceFlag, []() {
+        KRRegisterLogAdapter(SlockKuiklyLogAdapter);
+    });
+}
+
 }  // namespace
 
 static napi_value InitKuikly(napi_env env, napi_callback_info info) {
-    // 在 Kuikly init 之前注册 OHOS host 的 font adapter
+    // 在 Kuikly init 之前注册 OHOS host adapters
+    RegisterSlockLogAdapter();
     RegisterSlockFontAdapters();
     auto api = libshared_symbols();
     int handler = api->kotlin.root.initKuikly();
