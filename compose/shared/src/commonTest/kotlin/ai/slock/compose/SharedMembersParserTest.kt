@@ -5,6 +5,9 @@ import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerPermissions
+import ai.slock.compose.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -102,6 +105,57 @@ class SharedMembersParserTest {
 
         assertEquals(1, merged.size)
         assertEquals(MemberKind.Agent, merged.single().kind)
+    }
+
+    @Test
+    fun membersPayloadCanCreateAgentsDefaultsToTrueWhenMissing() {
+        val payload =
+            """
+            {
+              "instanceId": "server-1",
+              "members": []
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+
+        assertEquals(true, payload.canCreateAgents)
+    }
+
+    @Test
+    fun membersPayloadCanCreateAgentsParsesFalseAndTrue() {
+        val falsePayload =
+            """
+            {
+              "instanceId": "server-1",
+              "canCreateAgents": false
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+        val truePayload =
+            """
+            {
+              "instanceId": "server-1",
+              "canCreateAgents": true
+            }
+            """.trimIndent().toKuiklyMembersPayload()
+
+        assertEquals(false, falsePayload.canCreateAgents)
+        assertEquals(true, truePayload.canCreateAgents)
+    }
+
+    @Test
+    fun hostMembersPayloadMapsCreateAgentsToManageSettingsPermission() {
+        val restrictedServer =
+            ServerSummary(
+                id = ServerId("server-1"),
+                name = "Restricted",
+                permissions = ServerPermissions(canManageSettings = false)
+            )
+        val adminServer =
+            restrictedServer.copy(
+                permissions = ServerPermissions(canManageSettings = true)
+            )
+
+        assertEquals(false, buildHostMembersPayload(restrictedServer, emptyList(), null).canCreateAgents)
+        assertEquals(true, buildHostMembersPayload(adminServer, emptyList(), null).canCreateAgents)
     }
 
     @Test

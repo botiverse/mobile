@@ -535,7 +535,7 @@ internal fun MembersPageContent() {
 
 private fun readCurrentServerId(): String? = null
 
-private fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
+internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
     if (isBlank()) return KuiklyMembersPayload()
     val payload = JSONObject(this)
     val labelsJson = payload.optJSONObject("labels")

@@ -4627,15 +4627,7 @@ private fun SharedMembersScreen(
             )
         is SharedMembersUiState.Content ->
             MembersRouteContent(
-                payload = KuiklyMembersPayload(
-                    instanceId = current.server.id.value,
-                    title = "Members",
-                    members = current.members,
-                    localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
-                    todayEpochDay = timeContext?.todayEpochDay,
-                    nowEpochMillis = timeContext?.nowEpochMillis,
-                    timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
-                ),
+                payload = buildHostMembersPayload(current.server, current.members, timeContext),
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
                 onCopyMemberId = {
@@ -4728,6 +4720,24 @@ private fun SharedMembersScreen(
             )
     }
 }
+
+internal fun buildHostMembersPayload(
+    server: ServerSummary,
+    members: List<MemberProfile>,
+    timeContext: SlockTimeContext?
+): KuiklyMembersPayload =
+    KuiklyMembersPayload(
+        instanceId = server.id.value,
+        title = "Members",
+        members = members,
+        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        todayEpochDay = timeContext?.todayEpochDay,
+        nowEpochMillis = timeContext?.nowEpochMillis,
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
+        // Product mapping for now: create-agent follows server admin/settings permission
+        // until the API exposes a dedicated capability.
+        canCreateAgents = server.permissions.canManageSettings
+    )
 
 private sealed interface SharedMembersUiState {
     data object Loading : SharedMembersUiState
