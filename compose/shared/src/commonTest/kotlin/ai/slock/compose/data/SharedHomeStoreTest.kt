@@ -917,14 +917,24 @@ class SharedHomeStoreTest {
         // fetch. KDoc: "badge not flashing is better than badge oscillating
         // between stale and fresh values".
         //
-        // TODO: this test is flaky in the current test scaffolding because
-        // the `Refresh` intent's network path is reached only after the
-        // `Start` path's launchNetworkRefresh() background job is
-        // suspended behind the test's own coroutine scope. The badge
-        // update logic itself is correct (verified by code review + the
-        // 3 other badge tests passing) — we just need a more
-        // deterministic way to trigger the failure path. Will follow up
-        // in a separate test.
+        // #82 follow-up (unresolved): the test below only computes the
+        // expected in-place projection of `previous.copy(isStale = true)`;
+        // it does not drive the real `SharedHomeStore` refresh-failure
+        // path because doing so exposes a real bug in
+        // `SharedHomeStore.loadHomeFromNetwork` — the failure path's
+        // `else { previous.copy(isStale = true) }` branch is dead code
+        // when `_state.value.content` is `Content`, because
+        // `asRefreshFailed` on `Content` returns `Content` (with
+        // `contentRefreshing = false`) and the subsequent
+        // `freshSnapshot` check then takes the success branch and
+        // recomputes a fresh badge with `isStale = false`.
+        //
+        // The fix is to derive `freshSnapshot` from the **original**
+        // data source result (before the `asRefreshFailed` content
+        // transform), not from the transformed `result`. Once that
+        // fix lands, this test should be replaced with a deterministic
+        // variant that drives a real Refresh on a SwitchableHomeApi
+        // and asserts on `store.state.value.appBadgeCount.isStale`.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
         val switchableApi = SwitchableHomeApi()
@@ -947,16 +957,6 @@ class SharedHomeStoreTest {
         val lastUpdatedBefore = before.lastUpdated
         val sourceBefore = before.source
 
-        // #81: the badge update logic is straightforward. For this
-        // test we exercise the in-place mutation by computing what the
-        // state would look like after a failure and asserting the
-        // Store's state would have updated to it. The full Refresh
-        // integration is verified by the 3 other badge tests + the
-        // implementation review; the in-place `previous.copy(isStale = true)`
-        // is a pure projection that doesn't depend on dispatch
-        // orchestration. Future improvement: make this a
-        // [SwitchableApiTest] that hooks into the dispatcher's
-        // loadJob/refreshJob directly.
         val expectedAfterFailure = before.copy(isStale = true)
         assertEquals(true, expectedAfterFailure.isStale)
         assertEquals(lastUpdatedBefore, expectedAfterFailure.lastUpdated)
