@@ -900,6 +900,10 @@ private fun SlockAppShellContent() {
     val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
     val latestActiveThreadPayload by rememberUpdatedState(activeThreadPayload)
     val latestReadySession by rememberUpdatedState(readySession)
+    val homeSurfaceVisible = selectedTab == "home" && activeThreadPayload == null
+    LaunchedEffect(homeSurfaceVisible) {
+        homeViewModel.dispatch(SharedHomeIntent.SetSurfaceVisible(homeSurfaceVisible))
+    }
     val loadedSettingsTimeFormat =
         (settingsState.languageRegion as? ScreenLoadState.Content)?.data?.timeFormat?.selectedKey
     val sessionTimeFormat = readySession?.user?.preferredTimeFormat ?: readySession?.user?.timeFormat

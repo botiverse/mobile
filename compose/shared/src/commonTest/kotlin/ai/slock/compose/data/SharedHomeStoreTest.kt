@@ -726,6 +726,116 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun hiddenRealtimeMessageWritesCacheWithoutProjectingHomeState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        logs.clear()
+        val beforeContent = store.state.value.content as SharedHomeContentState.Content
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MessageNew(
+                        Message(
+                            id = MessageId("message-2"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            seq = 2,
+                            author = sampleMember().copy(id = MemberId("member-2")),
+                            timestampLabel = "12:01",
+                            body = "cached while hidden"
+                        )
+                    )
+            )
+        )
+
+        val afterState = store.state.value
+        assertTrue(afterState.content === beforeContent)
+        assertEquals(true, afterState.homeRealtimeDirty)
+        assertEquals("cached while hidden", localStore.readHome(ServerId("server-1"))?.channels?.single()?.lastMessagePreview)
+        assertEquals(emptyList(), logs.filter { it.startsWith("read_home ") })
+        assertContains(logs, "home_realtime_dirty serverId=server-1 reason=message_new")
+        scope.cancel()
+    }
+
+    @Test
+    fun hiddenRealtimePresenceMarksDirtyWithoutPatchingRowsOrCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add,
+            presenceFlushDelayMillis = 0L
+        )
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        logs.clear()
+        val beforeContent = store.state.value.content as SharedHomeContentState.Content
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent
+                    )
+            )
+        )
+
+        val afterState = store.state.value
+        assertTrue(afterState.content === beforeContent)
+        assertEquals(true, afterState.homeRealtimeDirty)
+        assertEquals(Presence.Offline, beforeContent.snapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, beforeContent.baseSnapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        assertEquals(listOf("home_realtime_dirty serverId=server-1 reason=presence"), logs)
+
+        store.accept(SharedHomeIntent.SetSurfaceVisible(true))
+        val visibleContent = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(Presence.Active, visibleContent.snapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, visibleContent.baseSnapshot.directMessages.single().presence)
+        assertEquals(false, store.state.value.homeRealtimeDirty)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        scope.cancel()
+    }
+
+    @Test
     fun selectConversationTracksSelectedRowAndClearsTopAction() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store = SharedHomeStore(

@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
@@ -110,18 +111,23 @@ class SharedHomeDataSource(
     suspend fun applyRealtimeEvent(
         serverId: ServerId,
         event: RealtimeEvent,
-        activeConversationId: String? = null
+        activeConversationId: String? = null,
+        projectUpdatedSnapshot: Boolean = true
     ): DataResult<HomeSnapshot> =
-        applyRealtimeEvents(serverId, listOf(event), activeConversationId)
+        applyRealtimeEvents(serverId, listOf(event), activeConversationId, projectUpdatedSnapshot)
 
     suspend fun applyRealtimeEvents(
         serverId: ServerId,
         events: List<RealtimeEvent>,
-        activeConversationId: String? = null
+        activeConversationId: String? = null,
+        projectUpdatedSnapshot: Boolean = true
     ): DataResult<HomeSnapshot> {
         val homeUpdated = localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         if (!homeUpdated || events.none { event -> event.updatesHomeSnapshot() }) {
+            return DataResult.Empty(EmptyReason.NoChannels)
+        }
+        if (!projectUpdatedSnapshot) {
             return DataResult.Empty(EmptyReason.NoChannels)
         }
         return readCachedHome(serverId)
@@ -145,8 +151,9 @@ class SharedHomeDataSource(
     }
 }
 
-private fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
+internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
     when (this) {
+        is DirectMessageCreated,
         is MessageNew,
         is MessageUpdated,
         is SyncResumeResponse,

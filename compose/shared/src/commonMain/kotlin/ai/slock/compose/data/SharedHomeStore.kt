@@ -45,6 +45,7 @@ class SharedHomeStore(
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
     private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
+    private var hiddenHomeSnapshotDirty: Boolean = false
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -71,6 +72,7 @@ class SharedHomeStore(
         pendingPresenceEvents.clear()
         pendingPresenceServerId = null
         presenceFactsByServer.clear()
+        hiddenHomeSnapshotDirty = false
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
@@ -133,6 +135,8 @@ class SharedHomeStore(
                 )
                 load(nextSwitch, showRefreshAffordance = true)
             }
+            is SharedHomeIntent.SetSurfaceVisible ->
+                setHomeSurfaceVisible(intent.visible)
         }
     }
 
@@ -167,6 +171,10 @@ class SharedHomeStore(
         val currentContent = current as? SharedHomeContentState.Content
         val visibleServerId = currentContent?.snapshot?.server?.id
         if (visibleServerId != null && visibleServerId != serverId) {
+            return
+        }
+        if (!_state.value.homeSurfaceVisible) {
+            applyRealtimeEventWhileHomeHidden(serverId, event)
             return
         }
         if (event is RealtimeRefreshRequired) {
@@ -215,6 +223,78 @@ class SharedHomeStore(
                 )
             )
         }
+    }
+
+    private suspend fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
+        when (event) {
+            is RealtimeRefreshRequired -> {
+                if (event.scope == RealtimeRefreshScope.Announcements) {
+                    loadNotifications()
+                } else if (event.updatesHomeSnapshot()) {
+                    hiddenHomeSnapshotDirty = true
+                    markHomeRealtimeDirty(serverId, "refresh:${event.scope}")
+                }
+            }
+            is MemberPresenceUpdated -> {
+                if (recordPresenceFacts(serverId, listOf(event)) > 0) {
+                    markHomeRealtimeDirty(serverId, "presence")
+                }
+            }
+            else -> {
+                dataSource.applyRealtimeEvent(
+                    serverId = serverId,
+                    event = event,
+                    activeConversationId = _state.value.selectedConversationId,
+                    projectUpdatedSnapshot = false
+                )
+                if (event.updatesHomeSnapshot()) {
+                    hiddenHomeSnapshotDirty = true
+                    markHomeRealtimeDirty(serverId, event.homeRealtimeDirtyReason())
+                }
+            }
+        }
+    }
+
+    private suspend fun setHomeSurfaceVisible(visible: Boolean) {
+        val current = _state.value
+        if (current.homeSurfaceVisible == visible) return
+        if (visible && current.homeRealtimeDirty) {
+            val currentContent = current.content as? SharedHomeContentState.Content
+            if (hiddenHomeSnapshotDirty) {
+                hiddenHomeSnapshotDirty = false
+                val nextSwitch = current.serverSwitchState.refresh()
+                reduceState(
+                    current.copy(
+                        homeSurfaceVisible = true,
+                        homeRealtimeDirty = false,
+                        serverSwitchState = nextSwitch
+                    )
+                )
+                load(nextSwitch, showRefreshAffordance = false)
+                return
+            }
+            val nextContent =
+                currentContent?.let { content ->
+                    val projection = projectPresence(content.baseSnapshot)
+                    content.copy(snapshot = projection.snapshot.preserveStableRowsFrom(content.snapshot))
+                } ?: current.content
+            reduceState(
+                current.copy(
+                    homeSurfaceVisible = true,
+                    homeRealtimeDirty = false,
+                    content = nextContent
+                )
+            )
+            return
+        }
+        reduceState(current.copy(homeSurfaceVisible = visible))
+    }
+
+    private fun markHomeRealtimeDirty(serverId: ServerId, reason: String) {
+        val current = _state.value
+        if (current.homeRealtimeDirty) return
+        diagnosticsLogger("home_realtime_dirty serverId=${serverId.value} reason=$reason")
+        reduceState(current.copy(homeRealtimeDirty = true))
     }
 
     private suspend fun applyRealtimeRefresh(event: RealtimeRefreshRequired) {
@@ -502,6 +582,10 @@ class SharedHomeStore(
         if (events.isEmpty()) return
         val changedFacts = recordPresenceFacts(serverId, events)
         if (changedFacts == 0) return
+        if (!_state.value.homeSurfaceVisible) {
+            markHomeRealtimeDirty(serverId, "presence")
+            return
+        }
         val currentContent = _state.value.content as? SharedHomeContentState.Content ?: return
         val visibleServerId = currentContent.baseSnapshot.server.id
         val selectedServerId = _state.value.serverSwitchState.selectedServerId
@@ -677,6 +761,8 @@ data class SharedHomeState(
     val selectedConversationId: String? = null,
     val selectedTopAction: SharedHomeTopAction? = null,
     val notifications: List<SharedHomeNotification> = emptyList(),
+    val homeSurfaceVisible: Boolean = true,
+    val homeRealtimeDirty: Boolean = false,
     /**
      * #81: typed projection of the selected-server app badge. Derived from
      * the snapshot's [SharedHomeSnapshot.unreadTotal] (which is
@@ -705,6 +791,7 @@ sealed interface SharedHomeIntent {
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeIntent
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
+    data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -719,7 +806,8 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.SelectTopAction,
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.DismissNotification,
-            is SharedHomeIntent.ChannelCreated -> false
+            is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.SetSurfaceVisible -> false
         }
 
 sealed interface SharedHomeContentState {
@@ -808,6 +896,18 @@ private fun ConversationSummary.matchesPresenceMember(
         (presenceMemberId == event.memberId ||
             channelId?.value == event.memberId.value ||
             threadId.value == event.memberId.value)
+
+private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
+    when (this) {
+        is DirectMessageCreated -> "direct_message_created"
+        is ai.slock.compose.model.MessageNew -> "message_new"
+        is ai.slock.compose.model.MessageUpdated -> "message_updated"
+        is ai.slock.compose.model.SyncResumeResponse -> "sync_resume"
+        is ai.slock.compose.model.ThreadUpdated -> "thread_updated"
+        is ai.slock.compose.model.TaskCreated -> "task_created"
+        is ai.slock.compose.model.TaskUpdated -> "task_updated"
+        else -> "realtime"
+    }
 
 private fun Throwable.safeHomeStoreDiagnosticsType(): String =
     this::class.simpleName?.takeIf { it.isNotBlank() } ?: "Throwable"
