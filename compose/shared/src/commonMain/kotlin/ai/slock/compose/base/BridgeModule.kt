@@ -336,13 +336,6 @@ internal class BridgeModule : Module() {
         callNativeMethod("appBadge", methodArgs, null)
     }
 
-    suspend fun authRequest(command: JSONObject): JSONObject? =
-        suspendCoroutine { continuation ->
-            callNativeMethod(AUTH_REQUEST, command) {
-                continuation.resume(it)
-            }
-        }
-
     suspend fun socialAuth(provider: String): JSONObject? =
         suspendCoroutine { continuation ->
             val methodArgs = JSONObject()
@@ -719,7 +712,6 @@ internal class BridgeModule : Module() {
         const val CURRENT_TIMESTAMP = "currentTimestamp"
         const val DATE_FORMATTER = "dateFormatter"
         const val REPORT_REALTIME = "reportRealTime"
-        const val AUTH_REQUEST = "authRequest"
         const val SOCIAL_AUTH = "socialAuth"
         const val MOTION_CAPABILITY = "motionCapability"
         const val MOTION_EVENT = "slockMotionEvent"

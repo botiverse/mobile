@@ -1163,10 +1163,6 @@ internal class SlockKuiklyBridgeModule(
                 )
                 null
             }
-            "authRequest" -> {
-                authRequest(params, callback)
-                null
-            }
             "socialAuth" -> {
                 socialAuth(params, callback)
                 null
@@ -2160,65 +2156,6 @@ internal class SlockKuiklyBridgeModule(
                             "message" to message
                     )
             )
-        }
-    }
-
-    private fun authRequest(params: String?, callback: KuiklyRenderCallback?) {
-        SlockKuiklyThreadAdapter.execute("auth-request") {
-            val request = JSONObject(params ?: "{}")
-            val urlText = request.optString("url")
-            val method = request.optString("method").ifBlank { "GET" }
-            val startedAt = System.currentTimeMillis()
-            val result =
-                    runCatching {
-                        val url = URL(urlText)
-                        val connection = (url.openConnection() as HttpURLConnection).apply {
-                            requestMethod = method
-                            connectTimeout = 30_000
-                            readTimeout = 30_000
-                            setRequestProperty("Accept", "application/json")
-                            setRequestProperty("Content-Type", "application/json")
-                            request.optString("authorization").takeIf { it.isNotBlank() }?.let {
-                                setRequestProperty("Authorization", it)
-                            }
-                            request.optString("serverId").takeIf { it.isNotBlank() }?.let {
-                                setRequestProperty("X-Server-Id", it)
-                            }
-                        }
-                        val bodyText = request.optString("bodyText")
-                        if (bodyText.isNotBlank()) {
-                            connection.doOutput = true
-                            connection.outputStream.use { output ->
-                                output.write(bodyText.toByteArray(StandardCharsets.UTF_8))
-                            }
-                        }
-                        val code = connection.responseCode
-                        val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-                        val body = stream?.bufferedReader(StandardCharsets.UTF_8)?.use { it.readText() }.orEmpty()
-                        val duration = System.currentTimeMillis() - startedAt
-                        SlockDiagnosticsLogger.record(
-                                "SlockAuthNetwork",
-                                "method=$method url=${safeUrlForDiagnostics(urlText)} code=$code durationMs=$duration"
-                        )
-                        mapOf(
-                                "code" to code,
-                                "bodyText" to if (code in 200..299) body else "",
-                                "errorBodyText" to if (code in 200..299) "" else body
-                        )
-                    }.getOrElse { throwable ->
-                        val duration = System.currentTimeMillis() - startedAt
-                        SlockDiagnosticsLogger.record(
-                                "SlockAuthNetwork",
-                                "method=$method url=${safeUrlForDiagnostics(urlText)} failed=${throwable::class.java.simpleName} durationMs=$duration"
-                        )
-                        mapOf(
-                                "code" to 0,
-                                "bodyText" to "",
-                                "errorBodyText" to (throwable.message ?: "Network unavailable"),
-                                "message" to (throwable.message ?: "Network unavailable")
-                        )
-                    }
-            callback?.invoke(result)
         }
     }
 

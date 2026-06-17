@@ -219,11 +219,13 @@ class NetworkPriorityCallSiteTest {
         val commonMain = File(root, "compose/shared/src/commonMain/kotlin/ai/slock/compose")
         val bannedSymbols =
                 listOf(
+                        "AUTH_REQUEST",
                         "BridgeAuthApi",
                         "BridgeAuthenticatedRequestExecutor",
                         "BridgeSlockNetworkClient",
                         "BridgeTasksApi",
-                        "BridgeThreadApi"
+                        "BridgeThreadApi",
+                        "authRequest"
                 )
 
         val offenders =
@@ -241,6 +243,39 @@ class NetworkPriorityCallSiteTest {
         assertTrue(
                 "Business REST must not go through BridgeAuthenticatedRequestExecutor/authRequest bridge helpers. " +
                         "Use SlockNetworkClient/KuiklySlockAuthTransport; keep platform capability HTTP separate.\n" +
+                        offenders.joinToString("\n"),
+                offenders.isEmpty()
+        )
+    }
+
+    @Test
+    fun platformHostsDoNotKeepLegacyBridgeAuthRequestHandler() {
+        val root = findRepoRoot()
+        val hostFiles =
+                listOf(
+                        "compose/androidApp/src/main/java/ai/slock/android/shared/SlockKuiklyActivity.kt",
+                        "compose/ohosApp/entry/src/main/ets/kuikly/modules/KRBridgeModule.ets"
+                )
+        val bannedSymbols =
+                listOf(
+                        "\"authRequest\"",
+                        "AUTH_REQUEST",
+                        "private fun authRequest",
+                        "private async authRequest"
+                )
+
+        val offenders =
+                hostFiles.flatMap { path ->
+                    val file = File(root, path)
+                    file.readLines().mapIndexedNotNull { index, line ->
+                        val banned = bannedSymbols.firstOrNull { line.contains(it) }
+                        banned?.let { "${file.relativeTo(root).path}:${index + 1}: $it :: ${line.trim()}" }
+                    }
+                }
+
+        assertTrue(
+                "Platform hosts must not keep the legacy bridge.authRequest business REST handler. " +
+                        "Auth product flows use KuiklySlockAuthTransport and other business REST uses SlockNetworkClient.\n" +
                         offenders.joinToString("\n"),
                 offenders.isEmpty()
         )

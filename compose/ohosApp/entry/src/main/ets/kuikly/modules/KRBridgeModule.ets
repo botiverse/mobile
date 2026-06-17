@@ -70,7 +70,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly CURRENT_TIME_STAMP = "currentTimestamp";
   static readonly DATE_FORMATTER = "dateFormatter";
   static readonly READ_ASSET_FILE = "readAssetFile";
-  static readonly AUTH_REQUEST = "authRequest";
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
@@ -148,10 +147,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       }
       case KRBridgeModule.READ_ASSET_FILE: {
         this.readAssetFile(params, callback);
-        break;
-      }
-      case KRBridgeModule.AUTH_REQUEST: {
-        this.authRequest(params, callback);
         break;
       }
       case KRBridgeModule.MOTION_CAPABILITY: {
@@ -453,64 +448,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   // TODO format date
   private dateFormatter(params: KRAny): string {
     return "";
-  }
-
-  private async authRequest(params: KRAny, callback: KuiklyRenderCallback) {
-    const request = http.createHttp();
-    let url = "";
-    let methodName = "GET";
-    const startedAt = Date.now();
-    try {
-      const records = this.parseRecord(params);
-      url = records["url"] as string;
-      methodName = ((records["method"] as string) ?? "GET").toUpperCase();
-      const bodyText = records["bodyText"] as string | undefined;
-      const authorization = records["authorization"] as string | undefined;
-      const serverId = records["serverId"] as string | undefined;
-      const header: Record<string, string> = {
-        "Accept": "application/json",
-        "Content-Type": "application/json"
-      };
-      if (authorization !== undefined && authorization.length > 0) {
-        header["Authorization"] = authorization;
-      }
-      if (serverId !== undefined && serverId.length > 0) {
-        header["X-Server-Id"] = serverId;
-      }
-
-      const response = await request.request(url, {
-        method: methodName === "POST" ? http.RequestMethod.POST : http.RequestMethod.GET,
-        header: header,
-        extraData: bodyText,
-        connectTimeout: 30000,
-        readTimeout: 30000
-      });
-      const responseCode = Number(response.responseCode ?? 0);
-      const body = this.httpResultToString(response.result);
-      SlockOhosDiagnostics.record(
-        "SlockAuthNetwork",
-        `method=${methodName} url=${this.safeUrlForDiagnostics(url)} code=${responseCode} durationMs=${Date.now() - startedAt}`
-      );
-      callback({
-        "code": responseCode,
-        "bodyText": responseCode >= 200 && responseCode < 300 ? body : "",
-        "errorBodyText": responseCode >= 200 && responseCode < 300 ? "" : body
-      });
-    } catch (error) {
-      const businessError = error as BusinessError;
-      SlockOhosDiagnostics.record(
-        "SlockAuthNetwork",
-        `method=${methodName} url=${this.safeUrlForDiagnostics(url)} failed=${businessError.code ?? "unknown"} durationMs=${Date.now() - startedAt}`
-      );
-      callback({
-        "code": 0,
-        "bodyText": "",
-        "errorBodyText": businessError.message ?? `${error}`,
-        "message": businessError.message ?? `${error}`
-      });
-    } finally {
-      request.destroy();
-    }
   }
 
   private async settingsCapability(params: KRAny, callback: KuiklyRenderCallback) {
