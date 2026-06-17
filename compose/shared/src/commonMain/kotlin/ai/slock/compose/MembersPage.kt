@@ -660,7 +660,7 @@ internal fun MembersRouteContent(
     var agentDetailState by remember(selectedMember?.id?.value) {
         mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
     }
-    LaunchedEffect(selectedMemberId, payload.members) {
+    LaunchedEffect(selectedMemberId, selectedMember?.id?.value) {
         if (selectedMemberId != null && selectedMember == null) {
             selectedMemberId = null
         }

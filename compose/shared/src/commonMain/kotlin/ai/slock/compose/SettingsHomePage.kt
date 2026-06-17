@@ -8453,7 +8453,7 @@ private fun SettingsHomeScreen() {
         pager.pageData.params.optString("payload"),
         pager.pageData.params.optString("instanceId")
     )
-    LaunchedEffect(payload) {
+    LaunchedEffect(payload.instanceId, payload.items.size) {
         bridge.log("settings_home_render instanceId=${payload.instanceId} items=${payload.items.size}")
     }
     SettingsHomeContent(payload) { key ->

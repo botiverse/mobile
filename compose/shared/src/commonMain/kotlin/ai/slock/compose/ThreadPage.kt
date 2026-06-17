@@ -1451,13 +1451,28 @@ internal fun SharedThreadRouteContent(
             loadThreadFiles("initial_tab")
         }
     }
-    LaunchedEffect(renderedPayload) {
-        val replyRows = renderedPayload.messages.filter { it.replyCount > 0 }
+    val threadRenderReplyRows = remember(renderedPayload.messages) {
+        renderedPayload.messages.filter { it.replyCount > 0 }
+    }
+    val threadRenderFirstReply = threadRenderReplyRows.firstOrNull()
+    LaunchedEffect(
+        renderedPayload.instanceId,
+        renderedPayload.sourceThreadId,
+        renderedPayload.status,
+        renderedPayload.selectedTab,
+        renderedPayload.messages.size,
+        renderedPayload.tasks.size,
+        renderedPayload.showReplyActions,
+        threadRenderReplyRows.size,
+        threadRenderFirstReply?.id?.take(8),
+        threadRenderFirstReply?.replyCount,
+        threadRenderFirstReply?.unreadReplyCount
+    ) {
         bridge.log(
             "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} " +
                 "messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size} " +
-                "showReplyActions=${renderedPayload.showReplyActions} replyRows=${replyRows.size} " +
-                "firstReply=${replyRows.firstOrNull()?.let { "${it.id.take(8)}:${it.replyCount}/${it.unreadReplyCount}" } ?: "none"}"
+                "showReplyActions=${renderedPayload.showReplyActions} replyRows=${threadRenderReplyRows.size} " +
+                "firstReply=${threadRenderFirstReply?.let { "${it.id.take(8)}:${it.replyCount}/${it.unreadReplyCount}" } ?: "none"}"
         )
     }
     LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.status, renderedPayload.messages.size) {

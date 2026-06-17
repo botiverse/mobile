@@ -240,7 +240,7 @@ private fun SlockHomePageContent() {
         payloadText,
         instanceId
     )
-    LaunchedEffect(payload) {
+    LaunchedEffect(payload.instanceId, payload.channels.size, payload.directMessages.size) {
         bridge.log("home_render instanceId=${payload.instanceId} channels=${payload.channels.size} dms=${payload.directMessages.size}")
     }
     SlockStructuralHomeShell(

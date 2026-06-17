@@ -453,7 +453,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
 
   // TODO format date
   private dateFormatter(params: KRAny): string {
-    console.log(`========== ${params}`)
     return "";
   }
 
