@@ -694,7 +694,7 @@ private fun SlockAppShellContent() {
         remember {
             ComposeLocalWriteThrough(
                 sharedStores.localDataStore,
-                logger = { message -> bridge.log("shared_home_cache $message") }
+                logger = { message -> bridge.logDebug("shared_home_cache $message") }
             )
         }
     val authDataSource =

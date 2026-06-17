@@ -656,7 +656,7 @@ private fun ThreadPageScreen() {
         remember(threadLocalStore) {
             ComposeLocalWriteThrough(
                 threadLocalStore,
-                logger = { message -> bridge.log("shared_thread_cache $message") }
+                logger = { message -> bridge.logDebug("shared_thread_cache $message") }
             )
         }
     val networkClient =

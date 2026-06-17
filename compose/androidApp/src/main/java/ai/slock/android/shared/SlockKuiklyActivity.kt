@@ -1115,9 +1115,16 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "log" -> {
-                val content = JSONObject(params ?: "{}").optString("content")
-                Log.i("SlockKuikly", content)
-                SlockDiagnosticsLogger.d("SlockKuikly", content)
+                val payload = JSONObject(params ?: "{}")
+                val content = payload.optString("content")
+                val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
+                SanitizedDiagnosticsLogBuffer.record("SlockKuikly", content)
+                when (level) {
+                    SlockBridgeLogLevel.DEBUG -> Unit
+                    SlockBridgeLogLevel.INFO -> Log.i("SlockKuikly", content)
+                    SlockBridgeLogLevel.WARN -> Log.w("SlockKuikly", content)
+                    SlockBridgeLogLevel.ERROR -> Log.e("SlockKuikly", content)
+                }
                 null
             }
             "copyToPasteboard" -> {
@@ -2233,6 +2240,24 @@ internal class SlockKuiklyBridgeModule(
         private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+    }
+}
+
+private enum class SlockBridgeLogLevel {
+    DEBUG,
+    INFO,
+    WARN,
+    ERROR;
+
+    companion object {
+        fun fromWire(value: String?): SlockBridgeLogLevel =
+                when (value?.trim()?.lowercase()) {
+                    "debug" -> DEBUG
+                    "warn" -> WARN
+                    "error",
+                    "fatal" -> ERROR
+                    else -> INFO
+                }
     }
 }
 

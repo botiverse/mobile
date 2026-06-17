@@ -290,43 +290,42 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const payload = this.parseRecord(params);
     const contentValue = payload['content'];
     const content = typeof contentValue === 'string' ? contentValue : JSON.stringify(params);
+    const level = this.parseBridgeLogLevel(payload['level']);
     SlockOhosDiagnostics.record('KuiklyRender', content);
-    if (this.shouldMirrorBridgeLogToConsole(content)) {
-      console.log(`KuiklyRender ${JSON.stringify(params)}`,)
+    if (this.shouldMirrorBridgeLogLevel(level)) {
+      this.mirrorBridgeLogToConsole(level, content);
     }
   }
 
-  private shouldMirrorBridgeLogToConsole(content: string): boolean {
-    const lower = content.toLowerCase();
-    const critical =
-      lower.indexOf('error') >= 0 ||
-        lower.indexOf('failed') >= 0 ||
-        lower.indexOf('failure') >= 0 ||
-        lower.indexOf('exception') >= 0 ||
-        lower.indexOf('crash') >= 0 ||
-        lower.indexOf('auth_required') >= 0;
-    if (critical) {
-      return true;
+  private parseBridgeLogLevel(value: Object | undefined): string {
+    if (typeof value !== 'string') {
+      return 'info';
     }
-    if (this.isHighVolumeBridgeLog(content)) {
-      return false;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'debug' || normalized === 'info' || normalized === 'warn' || normalized === 'error') {
+      return normalized;
     }
-    return content.indexOf('home_open_conversation') >= 0 ||
-      content.indexOf('thread_payload_result') >= 0 ||
-      content.indexOf('thread_refresh_result') >= 0 ||
-      content.indexOf('auth_gate_state') >= 0 ||
-      content.indexOf('shared_realtime_auth_refresh') >= 0 ||
-      content.indexOf('shared_realtime_server_') >= 0 ||
-      content.indexOf('kuikly_perf_snapshot') >= 0;
+    if (normalized === 'fatal') {
+      return 'error';
+    }
+    return 'info';
   }
 
-  private isHighVolumeBridgeLog(content: string): boolean {
-    return content.indexOf('write_realtime_skip') >= 0 ||
-      content.indexOf('presence_batch') >= 0 ||
-      content.indexOf('read_home') >= 0 ||
-      content.indexOf('write_home') >= 0 ||
-      content.indexOf('shared_home_cache') >= 0 ||
-      content.indexOf('shared_thread_cache') >= 0;
+  private shouldMirrorBridgeLogLevel(level: string): boolean {
+    return level !== 'debug';
+  }
+
+  private mirrorBridgeLogToConsole(level: string, content: string) {
+    const message = `KuiklyRender ${content}`;
+    if (level === 'warn') {
+      console.warn(message);
+      return;
+    }
+    if (level === 'error') {
+      console.error(message);
+      return;
+    }
+    console.log(message);
   }
 
   private reportDT(params: KRAny) {

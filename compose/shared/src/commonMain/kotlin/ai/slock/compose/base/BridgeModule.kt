@@ -10,6 +10,28 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
 
+internal enum class BridgeLogLevel(
+    val wireValue: String
+) {
+    Debug("debug"),
+    Info("info"),
+    Warn("warn"),
+    Error("error");
+
+    companion object {
+        fun fromWire(value: String?): BridgeLogLevel =
+            when (value?.trim()?.lowercase()) {
+                Debug.wireValue -> Debug
+                Warn.wireValue -> Warn
+                Error.wireValue,
+                "fatal" -> Error
+                else -> Info
+            }
+    }
+}
+
+internal fun BridgeLogLevel.mirrorsToConsole(): Boolean = this != BridgeLogLevel.Debug
+
 internal class BridgeModule : Module() {
 
     override fun moduleName(): String {
@@ -21,9 +43,26 @@ internal class BridgeModule : Module() {
     }
 
     fun log(content: String) {
+        log(BridgeLogLevel.Info, content)
+    }
+
+    fun log(level: BridgeLogLevel, content: String) {
         val methodArgs = JSONObject()
         methodArgs.put("content", content)
+        methodArgs.put("level", level.wireValue)
         callNativeMethod(LOG, methodArgs, null)
+    }
+
+    fun logDebug(content: String) {
+        log(BridgeLogLevel.Debug, content)
+    }
+
+    fun logWarn(content: String) {
+        log(BridgeLogLevel.Warn, content)
+    }
+
+    fun logError(content: String) {
+        log(BridgeLogLevel.Error, content)
     }
 
     fun enterPerformanceScene(sceneName: String) {
