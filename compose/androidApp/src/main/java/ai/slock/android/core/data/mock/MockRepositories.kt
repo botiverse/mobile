@@ -78,6 +78,8 @@ import ai.slock.compose.data.SettingsRepository
 import ai.slock.compose.data.SettingsServerActionResult
 import ai.slock.compose.data.SettingsServerDeleteRequest
 import ai.slock.compose.data.SettingsServerInviteCreateRequest
+import ai.slock.compose.data.SettingsServerJoinLinkCreateRequest
+import ai.slock.compose.data.SettingsServerJoinLinkSnapshot
 import ai.slock.compose.data.SettingsServerProfileUpdateRequest
 import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsSnapshot
@@ -286,6 +288,16 @@ class MockSettingsRepository(
             SettingsServerActionResult(success = true, message = request.email)
         }
 
+    override suspend fun createServerJoinLinkForInvite(
+        request: SettingsServerJoinLinkCreateRequest
+    ): DataResult<SettingsServerJoinLinkSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockServerJoinLink() }
+
+    override suspend fun listServerJoinLinks(serverId: String): DataResult<List<SettingsServerJoinLinkSnapshot>> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.settingsServerSnapshot.joinLinks.ifEmpty { listOf(mockServerJoinLink()) }
+        }
+
     override suspend fun deleteServer(
         request: SettingsServerDeleteRequest
     ): DataResult<SettingsServerActionResult> =
@@ -313,6 +325,16 @@ class MockSettingsRepository(
                     } ?: MockSeedData.settingsLanguageRegionSnapshot.autoTranslation
             )
         }
+
+    private fun mockServerJoinLink(): SettingsServerJoinLinkSnapshot =
+        SettingsServerJoinLinkSnapshot(
+            id = "join-link-mock",
+            label = "Anyone with this link",
+            url = "https://example.invalid/join/mock",
+            maxUsesLabel = "Unlimited",
+            usageLabel = "0 uses",
+            expiresAtLabel = "Never expires"
+        )
 }
 
 class MockConversationRepository(
