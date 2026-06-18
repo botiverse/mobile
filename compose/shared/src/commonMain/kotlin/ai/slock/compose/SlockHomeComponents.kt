@@ -405,6 +405,7 @@ fun SlockStructuralHomeShell(
     onChannelClick: (String) -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
+    var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(channelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
@@ -447,6 +448,7 @@ fun SlockStructuralHomeShell(
             jointCount = displayedJointChannels.size,
             directMessagesCount = displayedDirectMessages.size,
             channelsExpanded = channelsExpanded,
+            jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
             contentRefreshEnabled = contentRefreshEnabled
         )
@@ -512,7 +514,7 @@ fun SlockStructuralHomeShell(
                         item {
                             SlockCollapsibleSectionHeader(
                                 label = labels.channels,
-                                count = channels.size,
+                                count = displayedChannels.size,
                                 expanded = channelsExpanded,
                                 onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
                                 sortContentDescription = "Sort ${labels.channels}",
@@ -547,12 +549,12 @@ fun SlockStructuralHomeShell(
                                 SlockCollapsibleSectionHeader(
                                     label = labels.jointChannels,
                                     count = displayedJointChannels.size,
-                                    expanded = channelsExpanded,
-                                    onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },
+                                    expanded = jointChannelsExpanded,
+                                    onExpandedChange = { if (sidebarInteractionsEnabled) jointChannelsExpanded = it },
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                                 )
                             }
-                            if (channelsExpanded) {
+                            if (jointChannelsExpanded) {
                                 items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
                                     val channel = displayedJointChannels[index]
                                     ChannelRow(
@@ -669,6 +671,7 @@ internal fun homeLazyItemCount(
     jointCount: Int,
     directMessagesCount: Int,
     channelsExpanded: Boolean,
+    jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
     contentRefreshEnabled: Boolean
 ): Int {
@@ -685,7 +688,8 @@ internal fun homeLazyItemCount(
     return fixedItems +
         (if (contentRefreshEnabled) 1 else 0) +
         jointSectionItems +
-        (if (channelsExpanded) channelsCount + jointCount else 0) +
+        (if (channelsExpanded) channelsCount else 0) +
+        (if (jointChannelsExpanded) jointCount else 0) +
         (if (directMessagesExpanded) directMessagesCount else 0)
 }
 

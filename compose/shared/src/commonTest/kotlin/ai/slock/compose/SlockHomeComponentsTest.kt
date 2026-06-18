@@ -130,6 +130,7 @@ class SlockHomeComponentsTest {
                 jointCount = 0,
                 directMessagesCount = 2,
                 channelsExpanded = true,
+                jointChannelsExpanded = true,
                 directMessagesExpanded = true,
                 contentRefreshEnabled = true
             )
@@ -141,8 +142,37 @@ class SlockHomeComponentsTest {
                 jointCount = 0,
                 directMessagesCount = 2,
                 channelsExpanded = false,
+                jointChannelsExpanded = false,
                 directMessagesExpanded = false,
                 contentRefreshEnabled = false
+            )
+        )
+    }
+
+    @Test
+    fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
+        assertEquals(
+            15,
+            homeLazyItemCount(
+                channelsCount = 3,
+                jointCount = 2,
+                directMessagesCount = 2,
+                channelsExpanded = false,
+                jointChannelsExpanded = true,
+                directMessagesExpanded = true,
+                contentRefreshEnabled = true
+            )
+        )
+        assertEquals(
+            16,
+            homeLazyItemCount(
+                channelsCount = 3,
+                jointCount = 2,
+                directMessagesCount = 2,
+                channelsExpanded = true,
+                jointChannelsExpanded = false,
+                directMessagesExpanded = true,
+                contentRefreshEnabled = true
             )
         )
     }
