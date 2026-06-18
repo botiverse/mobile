@@ -39,6 +39,7 @@ const SLOCK_FONTS: SlockFontResource[] = [
   { familyName: 'space_grotesk_light', familySrc: $rawfile('fonts/space_grotesk_light.ttf') },
   { familyName: 'space_grotesk_variable', familySrc: $rawfile('fonts/space_grotesk_variable.ttf') },
 ];
+const SLOCK_FONT_LOG_TAG = 'SlockFont';
 
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
@@ -88,14 +89,12 @@ export default class EntryAbility extends UIAbility {
   private registerSlockFonts(mainWindow?: window.Window): void {
     if (!EntryAbility.fontModuleRegistered) {
       SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
-        try {
+        this.registerFontResource('module', fontResource.familyName, () => {
           font.registerFont({
             familyName: fontResource.familyName,
             familySrc: fontResource.familySrc,
           });
-        } catch (err) {
-          hilog.warn(0x0000, 'testTag', 'Failed to register font module %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
-        }
+        });
       });
       EntryAbility.fontModuleRegistered = true;
     }
@@ -105,20 +104,61 @@ export default class EntryAbility extends UIAbility {
     try {
       const uiFont = mainWindow.getUIContext().getFont();
       SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
-        try {
+        this.registerFontResource('ui', fontResource.familyName, () => {
           uiFont.registerFont({
             familyName: fontResource.familyName,
             familySrc: fontResource.familySrc,
           });
-        } catch (err) {
-          hilog.warn(0x0000, 'testTag', 'Failed to register UI font %{public}s. Cause: %{public}s', fontResource.familyName, JSON.stringify(err) ?? '');
-        }
+        });
       });
       this.context.getApplicationContext().setFont('space_grotesk_regular');
       EntryAbility.uiFontsRegistered = true;
     } catch (err) {
       hilog.warn(0x0000, 'testTag', 'Skip UI font registration until UIContext is ready. Cause: %{public}s', JSON.stringify(err) ?? '');
     }
+  }
+
+  private registerFontResource(scope: string, familyName: string, register: () => void): void {
+    try {
+      register();
+    } catch (err) {
+      const message = this.safeErrorMessage(err);
+      if (this.isDuplicateFontRegistration(message)) {
+        SlockOhosDiagnostics.record(
+          SLOCK_FONT_LOG_TAG,
+          `font_registration_already_ready scope=${scope} family=${familyName}`
+        );
+        return;
+      }
+      hilog.warn(
+        0x0000,
+        SLOCK_FONT_LOG_TAG,
+        'Failed to register %{public}s font %{public}s. Cause: %{public}s',
+        scope,
+        familyName,
+        message
+      );
+    }
+  }
+
+  private isDuplicateFontRegistration(message: string): boolean {
+    const lower = message.toLowerCase();
+    return lower.includes('already') ||
+      lower.includes('exist') ||
+      lower.includes('duplicate') ||
+      lower.includes('repeat');
+  }
+
+  private safeErrorMessage(error: Object): string {
+    try {
+      const encoded = JSON.stringify(error);
+      if (encoded !== undefined && encoded.length > 0 && encoded !== '{}') {
+        return encoded;
+      }
+    } catch (_err) {
+      // Fall back to String(error) below.
+    }
+    return String(error);
   }
 
   private updateSafeAreaStorage(mainWindow: window.Window): void {

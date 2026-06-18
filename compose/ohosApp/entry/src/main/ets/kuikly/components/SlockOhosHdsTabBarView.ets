@@ -22,6 +22,7 @@ const kItemHeight = 40;
 const kIconSize = 17;
 const kGradientMaskColor = '#66F1F3F5';
 const kGradientMaskHeight = 92;
+const kBottomBarPosition = 1 as BarPosition;
 
 interface SlockHdsTabItem {
   key: string;
@@ -105,6 +106,13 @@ export class SlockOhosHdsTabBarView extends KuiklyRenderBaseView {
     return index >= 0 ? index : 0;
   }
 
+  syncControllerIndex(index: number) {
+    const selectedIndex = this.selectedIndex();
+    if (index !== selectedIndex) {
+      this.controller.changeIndex(selectedIndex);
+    }
+  }
+
   selectIndex(index: number) {
     const items = this.items();
     if (index < 0 || index >= items.length) {
@@ -169,7 +177,7 @@ export struct SlockOhosHdsTabBar {
         }, (item: SlockHdsTabItem) => item.key)
       }
       .vertical(false)
-      .barPosition(BarPosition.End)
+      .barPosition(kBottomBarPosition)
       .barMode(BarMode.Fixed)
       .scrollable(false)
       .animationDuration(kAnimationDuration)
@@ -190,10 +198,10 @@ export struct SlockOhosHdsTabBar {
         },
       })
       .onChange((index: number) => {
-        this.renderView.selectIndex(index);
+        this.renderView.syncControllerIndex(index);
       })
       .onTabBarClick((index: number) => {
-        this.renderView.selectIndex(index);
+        this.renderView.syncControllerIndex(index);
       })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
@@ -228,6 +236,9 @@ export struct SlockOhosHdsTabBar {
     .alignItems(HorizontalAlign.Center)
     .borderRadius(16)
     .backgroundColor('#00FFFFFF')
+    .onClick(() => {
+      this.renderView.selectIndex(index);
+    })
   }
 }
 
