@@ -41,6 +41,7 @@ class KuiklySlockNetworkClient(
         ) {
             val startedAt = TimeSource.Monotonic.markNow()
             val category = path.networkDiagnosticsCategory()
+            val normalizedPath = path.networkDiagnosticsPath()
             val response =
                 authMiddleware.request(serverIdOverride) { auth ->
                     networkModule.requestRaw(
@@ -52,7 +53,13 @@ class KuiklySlockNetworkClient(
                     )
                 }
             warningLogger(
-                "endpoint category=$category method=${method.uppercase()} code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+                "endpoint category=$category path=$normalizedPath method=${method.uppercase()} " +
+                    "queryKeys=${query.networkDiagnosticsQueryKeys()} " +
+                    "requestBytes=${bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "result=${response.networkDiagnosticsResult()}"
             )
             response
         }
@@ -94,12 +101,17 @@ class KuiklySlockNetworkClient(
                                 boundary = boundary,
                                 fields = mapOf("channelId" to channelId.value),
                                 files = files
-                            ),
+                        ),
                         bodyText = null
                     )
                 }
             warningLogger(
-                "endpoint category=attachments_upload method=POST code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} result=${response.networkDiagnosticsResult()}"
+                "endpoint category=attachments_upload path=attachments/upload method=POST " +
+                    "fileCount=${files.size} requestBytes=${files.sumOf { it.bytes.size }} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "result=${response.networkDiagnosticsResult()}"
             )
             response
         }
@@ -300,11 +312,24 @@ private fun String.networkDiagnosticsCategory(): String {
     val normalized = trim().trimStart('/')
     return when {
         normalized.startsWith("channels/dm") -> "direct_messages"
+        normalized.startsWith("channels/threads/followed") -> "followed_threads"
+        normalized.startsWith("channels/threads/follow") -> "thread_follow"
+        normalized.startsWith("channels/threads") -> "thread_actions"
         normalized.startsWith("channels/unread") -> "channel_unread_counts"
+        normalized.startsWith("channels/inbox/read-all") -> "inbox_read_all"
+        normalized.startsWith("channels/") && normalized.endsWith("/read-all") -> "channel_read_all"
+        normalized.startsWith("channels/") && normalized.endsWith("/unread") -> "channel_unread"
+        normalized.startsWith("channels/") && normalized.endsWith("/threads") -> "channel_threads"
+        normalized.startsWith("channels/") && normalized.endsWith("/files") -> "channel_files"
+        normalized.startsWith("messages/channel/") -> "messages_channel"
+        normalized.startsWith("messages/context/") -> "messages_context"
+        normalized.startsWith("messages/sync") -> "messages_sync"
         normalized.startsWith("channels") -> "channels"
         normalized.startsWith("servers/unread-summary") -> "server_unread_summary"
+        normalized.startsWith("servers") -> "servers"
         normalized.startsWith("members") -> "members"
         normalized.startsWith("messages/search") -> "message_search"
+        normalized.startsWith("messages") -> "messages"
         normalized.startsWith("saved") -> "saved_items"
         normalized.startsWith("attachments/upload") -> "attachments_upload"
         normalized.startsWith("tasks") -> "tasks"
@@ -312,6 +337,16 @@ private fun String.networkDiagnosticsCategory(): String {
         else -> normalized.substringBefore('/').ifBlank { "unknown" }
     }
 }
+
+private fun String.networkDiagnosticsPath(): String =
+    trim().trimStart('/').ifBlank { "root" }
+
+private fun List<Pair<String, String>>.networkDiagnosticsQueryKeys(): String =
+    if (isEmpty()) {
+        "none"
+    } else {
+        joinToString(",") { it.first }
+    }
 
 private fun HomeNetworkResponse.networkDiagnosticsResult(): String =
     when {

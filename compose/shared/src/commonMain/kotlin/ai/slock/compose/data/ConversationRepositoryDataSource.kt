@@ -20,11 +20,20 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val conversationRepositoryJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
 }
+
+private fun DataResult<*>.conversationDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "content"
+        is DataResult.Empty -> "empty:${reason.name}"
+        is DataResult.Error -> "error:${error.code}"
+        is DataResult.NoPermission -> "no_permission:${blocker.code}"
+    }
 
 private suspend fun SlockNetworkClient.channelMessages(
     priority: DataRequestPriority,
@@ -384,9 +393,15 @@ class RealConversationRepository(
         source: String,
         includeFollowedSummaries: Boolean = true
     ): DataResult<ThreadSnapshot> = coroutineScope {
+        val loadStartedAt = TimeSource.Monotonic.markNow()
+        warningLogger(
+            "thread_load_start source=$source threadId=${threadId.value} " +
+                "messageLimit=$messageLimit includeFollowedSummaries=$includeFollowedSummaries"
+        )
         val messagesDeferred =
             async {
-                executeConversation(
+                val branchStartedAt = TimeSource.Monotonic.markNow()
+                val result = executeConversation(
                     emptyReason = EmptyReason.NoMessages,
                     block = block,
                     emptyWhen = { it.messages.isEmpty() },
@@ -400,35 +415,70 @@ class RealConversationRepository(
                         )
                     }
                 )
+                warningLogger(
+                    "thread_load_branch source=$source branch=messages " +
+                        "result=${result.conversationDiagnosticsResult()} " +
+                        "messages=${(result as? DataResult.Content)?.data?.messages?.size ?: 0} " +
+                        "tasks=${(result as? DataResult.Content)?.data?.tasks?.size ?: 0} " +
+                        "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+                result
             }
         val threadSummariesDeferred =
             async {
-                executeConversation(
+                val branchStartedAt = TimeSource.Monotonic.markNow()
+                val result = executeConversation(
                     emptyReason = EmptyReason.NoInboxItems,
                     block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
                     emptyWhen = { false },
                     source = "${source}_thread_summaries",
                     mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }
                 )
+                warningLogger(
+                    "thread_load_branch source=$source branch=channel_thread_summaries " +
+                        "result=${result.conversationDiagnosticsResult()} " +
+                        "threads=${(result as? DataResult.Content)?.data?.threads?.size ?: 0} " +
+                        "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+                result
             }
         val followedSummariesDeferred =
             if (includeFollowedSummaries) {
                 async {
-                    executeConversation(
+                    val branchStartedAt = TimeSource.Monotonic.markNow()
+                    val result = executeConversation(
                         emptyReason = EmptyReason.NoInboxItems,
                         block = { networkClient.followedThreads(DataRequestPriority.Visible, MESSAGE_PAGE_LIMIT) },
                         emptyWhen = { false },
                         source = "${source}_followed_summaries",
                         mapper = { bodyText -> parseFollowedThreadListSnapshotFromBody(bodyText, context) }
                     )
+                    warningLogger(
+                        "thread_load_branch source=$source branch=followed_thread_summaries " +
+                            "result=${result.conversationDiagnosticsResult()} " +
+                            "threads=${(result as? DataResult.Content)?.data?.threads?.size ?: 0} " +
+                            "durationMs=${branchStartedAt.elapsedNow().inWholeMilliseconds}"
+                    )
+                    result
                 }
             } else {
+                warningLogger(
+                    "thread_load_branch source=$source branch=followed_thread_summaries " +
+                        "result=skipped:disabled threads=0 durationMs=0"
+                )
                 null
             }
         val messagesResult = messagesDeferred.await()
         val threadSummaries = threadSummariesDeferred.await()
         val followedSummaries = followedSummariesDeferred?.await()
         if (messagesResult !is DataResult.Content) {
+            warningLogger(
+                "thread_load_result source=$source threadId=${threadId.value} " +
+                    "result=${messagesResult.conversationDiagnosticsResult()} messages=0 tasks=0 " +
+                    "channelSummaries=${(threadSummaries as? DataResult.Content)?.data?.threads?.size ?: 0} " +
+                    "followedSummaries=${(followedSummaries as? DataResult.Content)?.data?.threads?.size ?: 0} " +
+                    "mergedSummaries=0 durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
             messagesResult
         } else {
             val channelThreads = if (threadSummaries is DataResult.Content) threadSummaries.data.threads else emptyList()
@@ -439,6 +489,14 @@ class RealConversationRepository(
                     emptyList()
                 }
             val mergedThreads = (channelThreads + followedForChannel).distinctBy { it.key }
+            warningLogger(
+                "thread_load_result source=$source threadId=${threadId.value} " +
+                    "result=${messagesResult.conversationDiagnosticsResult()} " +
+                    "messages=${messagesResult.data.messages.size} tasks=${messagesResult.data.tasks.size} " +
+                    "channelSummaries=${channelThreads.size} followedSummaries=${followedForChannel.size} " +
+                    "mergedSummaries=${mergedThreads.size} " +
+                    "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
             if (threadSummaries is DataResult.Error && followedSummaries is DataResult.Error) {
                 warningLogger(
                     "thread_summaries_error source=$source " +

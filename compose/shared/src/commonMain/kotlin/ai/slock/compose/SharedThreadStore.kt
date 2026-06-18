@@ -1416,6 +1416,11 @@ internal class SharedThreadStore(
         val refreshStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
         val hasRenderableContent = existing.hasRenderableThreadContent()
+        diagnosticsLogger?.invoke(
+            "thread_refresh_start threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                "existingStatus=${existing.status} existingMessages=${existing.messages.size} " +
+                "hasRenderableContent=$hasRenderableContent"
+        )
         val loadingBase =
             if (hasRenderableContent) {
                 existing.withRouteContext(basePayload)
@@ -1459,10 +1464,28 @@ internal class SharedThreadStore(
     }
 
     private suspend fun loadMembers() {
+        val membersStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
         if (existing.sourceThreadId.isNullOrBlank()) return
+        diagnosticsLogger?.invoke(
+            "thread_members_load_start threadId=${existing.sourceThreadId.orEmpty()} " +
+                "existingMembers=${existing.members.size} existingCandidates=${existing.memberCandidates.size}"
+        )
         val enrichedPayload = dataSource.enrichThreadMembers(existing)
-        if (enrichedPayload == existing) return
+        if (enrichedPayload == existing) {
+            diagnosticsLogger?.invoke(
+                "thread_members_load_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                    "result=unchanged members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
+                    "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return
+        }
+        diagnosticsLogger?.invoke(
+            "thread_members_load_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                "result=changed members=${enrichedPayload.members.size} " +
+                "candidates=${enrichedPayload.memberCandidates.size} canAddMembers=${enrichedPayload.canAddMembers} " +
+                "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
+        )
         reducePayloadPatch(cachePayload = true) { currentPayload -> currentPayload.withMembersPatchFrom(enrichedPayload) }
     }
 
@@ -1533,7 +1556,13 @@ internal class SharedThreadStore(
 
     private suspend fun markVisibleReadAll() {
         val channelId = _state.value.payload.cacheThreadId() ?: return
-        dataSource.markChannelReadAll(channelId)
+        val startedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger?.invoke("thread_read_all_start channelId=$channelId")
+        val result = dataSource.markChannelReadAll(channelId)
+        diagnosticsLogger?.invoke(
+            "thread_read_all_result channelId=$channelId result=${result.threadDiagnosticsResult()} " +
+                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+        )
     }
 
     private suspend fun loadOlder() {
@@ -1768,7 +1797,7 @@ private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThrea
         copy(status = "error", errorCode = code)
     }
 
-private fun DataResult<KuiklyThreadScreenPayload>.threadDiagnosticsResult(): String =
+private fun DataResult<*>.threadDiagnosticsResult(): String =
     when (this) {
         is DataResult.Content -> "content"
         is DataResult.Empty -> "empty:${reason.name}"
