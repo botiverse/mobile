@@ -176,6 +176,7 @@ data class SlockHomeShellLabels(
     val followedThreads: String = "Followed threads",
     val saved: String = "Saved",
     val channels: String = "CHANNELS",
+    val jointChannels: String = "Joint Channels",
     val directMessages: String = "DIRECT MESSAGES",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
@@ -521,7 +522,7 @@ fun SlockStructuralHomeShell(
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
                                 SlockCollapsibleSectionHeader(
-                                    label = "Joint Channels",
+                                    label = labels.jointChannels,
                                     count = displayedJointChannels.size,
                                     expanded = channelsExpanded,
                                     onExpandedChange = { if (sidebarInteractionsEnabled) channelsExpanded = it },

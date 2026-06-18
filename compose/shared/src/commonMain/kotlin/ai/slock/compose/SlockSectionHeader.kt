@@ -144,7 +144,7 @@ internal fun SlockCollapsibleSectionHeader(
             Modifier.size(SectionChevronSize)
         )
         Text(
-            label,
+            label.uppercase(),
             style = SlockType.SectionLabel,
             color = SlockColor.TextBlack,
             modifier = Modifier.padding(start = SlockSpacing.Xs)
