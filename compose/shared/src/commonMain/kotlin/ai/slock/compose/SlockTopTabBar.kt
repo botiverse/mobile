@@ -25,7 +25,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal data class SlockTopTabBarItem(
     val key: String,
     val label: String,
-    val iconName: String,
+    val iconName: SlockLucideIconName,
     val width: Dp = SlockTopTabBarDefaults.TabWidth
 )
 

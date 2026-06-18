@@ -95,16 +95,16 @@ private val MembersActionIconSize = 16.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
-    val iconName: String,
+    val iconName: SlockLucideIconName,
     val privateSurface: Boolean = true
 ) {
-    Profile("Profile", "bot", privateSurface = false),
-    Permissions("Permissions", "shield-check"),
-    Dms("Agent DMs", "message-square"),
-    Reminders("Reminders", "bell-ring"),
-    Workspace("Workspace", "folder-open"),
-    Apps("Apps", "plug"),
-    Activity("Activity", "activity")
+    Profile("Profile", SlockLucideIconName.Bot, privateSurface = false),
+    Permissions("Permissions", SlockLucideIconName.ShieldCheck),
+    Dms("Agent DMs", SlockLucideIconName.MessageSquare),
+    Reminders("Reminders", SlockLucideIconName.BellRing),
+    Workspace("Workspace", SlockLucideIconName.FolderOpen),
+    Apps("Apps", SlockLucideIconName.AppWindow),
+    Activity("Activity", SlockLucideIconName.Activity)
 }
 
 internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: Boolean): List<MembersAgentDetailTab> =

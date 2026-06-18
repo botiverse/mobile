@@ -41,6 +41,60 @@ object LucideIcons {
                 }.build()
     }
 
+    val AppWindow: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideAppWindow",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 4.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 8.0f)
+                        horizontalLineToRelative(dx = 20.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 4.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                }.build()
+    }
+
     val Archive: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideArchive",
@@ -2588,11 +2642,12 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "git-branch", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "lock", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "user-minus", "user-plus", "users", "x")
+    val Names: List<String> = listOf("activity", "app-window", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "git-branch", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "list-todo", "lock", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "user-minus", "user-plus", "users", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
             "activity" -> Activity
+            "app-window" -> AppWindow
             "archive" -> Archive
             "arrow-left" -> ArrowLeft
             "arrow-up-down" -> ArrowUpDown
@@ -2668,5 +2723,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, GitBranch, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, Lock, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, UserMinus, UserPlus, Users, X)
+    val All: List<ImageVector> = listOf(Activity, AppWindow, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, GitBranch, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, ListTodo, Lock, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, UserMinus, UserPlus, Users, X)
 }

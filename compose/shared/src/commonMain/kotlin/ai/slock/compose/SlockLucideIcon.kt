@@ -43,6 +43,40 @@ internal class SlockLucideIconAttr : Attr() {
 
 @Composable
 internal fun SlockLucideIcon(
+    name: SlockLucideIconName,
+    modifier: Modifier = Modifier,
+    color: String = SlockColor.TextBlackArgb,
+    fill: String? = null,
+    strokeWidth: Float? = null
+) {
+    SlockLucideIconByName(
+        name = name.wireName,
+        modifier = modifier,
+        color = color,
+        fill = fill,
+        strokeWidth = strokeWidth
+    )
+}
+
+@Composable
+internal fun SlockLucideIcon(
+    name: String,
+    modifier: Modifier = Modifier,
+    color: String = SlockColor.TextBlackArgb,
+    fill: String? = null,
+    strokeWidth: Float? = null
+) {
+    SlockLucideIconByName(
+        name = name,
+        modifier = modifier,
+        color = color,
+        fill = fill,
+        strokeWidth = strokeWidth
+    )
+}
+
+@Composable
+internal fun SlockLucideIconByName(
     name: String,
     modifier: Modifier = Modifier,
     color: String = SlockColor.TextBlackArgb,

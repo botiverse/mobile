@@ -614,12 +614,12 @@ internal data class SharedThreadRealtimeEventSignal(
     val event: RealtimeEvent
 )
 
-private val KuiklyThreadTab.icon: String
+private val KuiklyThreadTab.icon: SlockLucideIconName
     get() =
         when (this) {
-            KuiklyThreadTab.Chat -> "message-square"
-            KuiklyThreadTab.Tasks -> "list-todo"
-            KuiklyThreadTab.Files -> "paperclip"
+            KuiklyThreadTab.Chat -> SlockLucideIconName.MessageSquare
+            KuiklyThreadTab.Tasks -> SlockLucideIconName.ListTodo
+            KuiklyThreadTab.Files -> SlockLucideIconName.Paperclip
         }
 
 @Composable
