@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
@@ -46,6 +47,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -93,7 +95,20 @@ internal data class CreateAgentModelDropdownItem(
     val custom: Boolean = false
 )
 
+internal data class CreateAgentDropdownItem(
+    val id: String,
+    val label: String,
+    val custom: Boolean = false
+)
+
+internal val CreateAgentDropdownShadowOffset = 4.dp
+
 private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
+
+internal fun createAgentRuntimeDropdownItems(): List<CreateAgentDropdownItem> =
+    RUNTIMES.filter { it.supported }.map { runtime ->
+        CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
+    }
 
 internal fun createAgentModelDropdownItems(
     runtime: String,
@@ -529,6 +544,7 @@ private fun AdvancedRuntimeSection(
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
     val modelOptions = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
+    val runtimeOptions = createAgentRuntimeDropdownItems()
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
@@ -536,46 +552,37 @@ private fun AdvancedRuntimeSection(
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         SlockBrutalSectionLabel(label = "Runtime", required = true)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            supportedRuntimes.take(4).forEach { r ->
-                RuntimeChip(
-                    label = r.displayName,
-                    selected = r.id == runtime,
-                    enabled = enabled,
-                    onClick = { onRuntimeChange(r.id) }
-                )
-            }
-        }
-        if (supportedRuntimes.size > 4) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                supportedRuntimes.drop(4).forEach { r ->
-                    RuntimeChip(
-                        label = r.displayName,
-                        selected = r.id == runtime,
-                        enabled = enabled,
-                        onClick = { onRuntimeChange(r.id) }
-                    )
+        CreateAgentDropdownField(
+            items = runtimeOptions,
+            selectedId = runtime,
+            selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: getRuntimeDisplayName(runtime),
+            emptyLabel = "Select runtime",
+            enabled = enabled,
+            rowHeight = 36.dp,
+            onSelect = { onRuntimeChange(it.id) }
+        )
+        SlockBrutalSectionLabel(label = "Model", required = true)
+        CreateAgentDropdownField(
+            items = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) },
+            selectedId = model,
+            selectedLabel =
+                if (customModelMode) {
+                    customModelName.trim().ifBlank { "Custom..." }
+                } else {
+                    modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
+                },
+            emptyLabel = "Select model",
+            selectedIsCustom = customModelMode,
+            enabled = enabled,
+            rowHeight = 36.dp,
+            onSelect = { item ->
+                if (item.custom) {
+                    onCustomModelModeChange(true)
+                } else {
+                    onModelChange(item.id)
+                    onCustomModelModeChange(false)
                 }
             }
-        }
-        SlockBrutalSectionLabel(label = "Model", required = true)
-        ModelDropdownField(
-            models = modelOptions,
-            selectedId = model,
-            customModelMode = customModelMode,
-            customModelName = customModelName,
-            enabled = enabled,
-            onSelectPreset = {
-                onModelChange(it)
-                onCustomModelModeChange(false)
-            },
-            onSelectCustom = { onCustomModelModeChange(true) }
         )
         if (customModelMode) {
             SlockBrutalTextField(
@@ -796,22 +803,18 @@ private fun RuntimeChip(label: String, selected: Boolean, enabled: Boolean, onCl
 }
 
 @Composable
-private fun ModelDropdownField(
-    models: List<CreateAgentModelDropdownItem>,
+private fun CreateAgentDropdownField(
+    items: List<CreateAgentDropdownItem>,
     selectedId: String,
-    customModelMode: Boolean,
-    customModelName: String,
+    selectedLabel: String,
+    emptyLabel: String,
+    selectedIsCustom: Boolean = false,
     enabled: Boolean,
-    onSelectPreset: (String) -> Unit,
-    onSelectCustom: () -> Unit
+    rowHeight: Dp,
+    onSelect: (CreateAgentDropdownItem) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val selectedLabel =
-        if (customModelMode) {
-            customModelName.trim().ifBlank { "Custom..." }
-        } else {
-            models.firstOrNull { it.id == selectedId }?.label ?: selectedId.ifBlank { "Select model" }
-        }
+    val displayLabel = selectedLabel.ifBlank { emptyLabel }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
             modifier = Modifier
@@ -824,7 +827,7 @@ private fun ModelDropdownField(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedLabel,
+                text = displayLabel,
                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
                 color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -838,49 +841,68 @@ private fun ModelDropdownField(
             )
         }
         if (expanded) {
-            LazyColumn(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(((models.size * 36) + 2).dp.coerceAtMost(220.dp))
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceWhite)
+                    .height(createAgentDropdownSurfaceHeight(items.size, rowHeight))
             ) {
-                items(models.size, key = { idx -> models[idx].id }) { idx ->
-                    val item = models[idx]
-                    val selected =
-                        if (item.custom) customModelMode else !customModelMode && selectedId == item.id
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = enabled) {
-                                expanded = false
-                                if (item.custom) onSelectCustom() else onSelectPreset(item.id)
-                            }
-                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (selected) "✓" else " ",
-                            style = SlockType.Caption,
-                            color = SlockColor.TextBlack,
-                            modifier = Modifier.width(14.dp)
-                        )
-                        Text(
-                            text = item.label,
-                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(createAgentDropdownListHeight(items.size, rowHeight))
+                        .offset(x = CreateAgentDropdownShadowOffset, y = CreateAgentDropdownShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+                )
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(createAgentDropdownListHeight(items.size, rowHeight))
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .background(SlockColor.SurfaceWhite)
+                ) {
+                    items(items.size, key = { idx -> items[idx].id }) { idx ->
+                        val item = items[idx]
+                        val selected =
+                            if (item.custom) selectedIsCustom else !selectedIsCustom && selectedId == item.id
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable(enabled = enabled) {
+                                    expanded = false
+                                    onSelect(item)
+                                }
+                                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (selected) "✓" else " ",
+                                style = SlockType.Caption,
+                                color = SlockColor.TextBlack,
+                                modifier = Modifier.width(14.dp)
+                            )
+                            Text(
+                                text = item.label,
+                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
                 }
             }
         }
     }
 }
+
+internal fun createAgentDropdownListHeight(itemCount: Int, rowHeight: Dp): Dp =
+    ((itemCount * rowHeight.value) + 2f).dp.coerceAtMost(220.dp)
+
+internal fun createAgentDropdownSurfaceHeight(itemCount: Int, rowHeight: Dp): Dp =
+    createAgentDropdownListHeight(itemCount, rowHeight) + CreateAgentDropdownShadowOffset
 
 @Composable
 private fun EnvVarsEditor(
