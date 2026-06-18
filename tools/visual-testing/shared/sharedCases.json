@@ -160,6 +160,42 @@
       }
     },
     {
+      "id": "thread.composer.empty",
+      "title": "Thread Composer Empty",
+      "surface": "thread",
+      "fixture": "fixtures/thread.composer.empty.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "empty-send-disabled",
+          "name": "Empty Send Disabled",
+          "props": {
+            "draft": "",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='thread.composer.empty']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_empty",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "thread.composer.states",
       "title": "Thread Composer States",
       "surface": "thread",
@@ -1041,12 +1077,51 @@
       ]
     },
     {
+      "id": "thread.composer.empty",
+      "title": "Thread Composer Empty",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput empty state vs Android connected visual-only rendering of ThreadComposerContent with an empty seed. This case specifically protects the disabled send button color/opacity and empty placeholder treatment.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "fixtures/thread.composer.empty.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerEmpty",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
       "id": "thread.composer.states",
       "title": "Thread Composer States",
       "surface": "thread",
       "group": "product",
       "status": "baseline",
-      "notes": "Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. First baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button; pending variants remain out until deterministic hooks exist.",
+      "notes": "Real React MessageInput draft state vs Android connected visual-only rendering of ThreadComposerContent. Baseline covers the complete composer shell with draft text, attachment buttons, As Task toggle, and Send button using the same component-bounds crop as the empty and selected states.",
       "providers": [
         {
           "id": "react",

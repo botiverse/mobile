@@ -2,8 +2,9 @@ package ai.slock.android.visual
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.os.Build
 import android.os.SystemClock
 import android.app.Activity
@@ -50,6 +51,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerEmpty() {
+        captureKmpComponentCase(
+            caseId = "thread.composer.empty",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-empty")
+                    .put("payload", threadComposerPayload(seedText = "").toString()),
+            crop = THREAD_COMPOSER_COMPONENT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadComposerStates() {
         captureKmpComponentCase(
             caseId = "thread.composer.states",
@@ -58,7 +72,7 @@ class KmpVisualScreenshotCaptureTest {
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
                     .put("payload", threadComposerPayload().toString()),
-            crop = FULL_VIEWPORT_CROP
+            crop = THREAD_COMPOSER_COMPONENT_CROP
         )
     }
 
@@ -247,10 +261,7 @@ class KmpVisualScreenshotCaptureTest {
             Thread.sleep(2_500)
             scenario.onActivity { suppressVisualKeyboard(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val screenshot =
-                requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
-                    "Unable to capture KMP visual screenshot for $caseId"
-                }
+            val screenshot = captureActivityScreenshot(scenario, caseId)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
             val normalized = cropped.normalizeToDpPixels(context)
@@ -311,10 +322,7 @@ class KmpVisualScreenshotCaptureTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             scenario.onActivity { suppressVisualKeyboard(it) }
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
-            val screenshot =
-                requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
-                    "Unable to capture KMP visual screenshot for $caseId"
-                }
+            val screenshot = captureActivityScreenshot(scenario, caseId)
             validateCropBounds(caseId, screenshot, crop)
             val cropped = screenshot.cropDp(crop)
             val normalized = cropped.normalizeToDpPixels(context)
@@ -381,6 +389,25 @@ class KmpVisualScreenshotCaptureTest {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.hide(WindowInsets.Type.ime())
         }
+    }
+
+    private fun captureActivityScreenshot(
+        scenario: ActivityScenario<SlockKuiklyActivity>,
+        caseId: String
+    ): Bitmap {
+        var bitmap: Bitmap? = null
+        scenario.onActivity { activity ->
+            val root = activity.window.decorView.rootView
+            if (root.width > 0 && root.height > 0) {
+                bitmap = Bitmap.createBitmap(root.width, root.height, Bitmap.Config.ARGB_8888).also { output ->
+                    root.draw(Canvas(output))
+                }
+            }
+        }
+        return bitmap
+            ?: requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()) {
+                "Unable to capture KMP visual screenshot for $caseId"
+            }
     }
 
     private fun homeServerSwitcherPageData(): JSONObject {
@@ -724,7 +751,7 @@ class KmpVisualScreenshotCaptureTest {
         val widthDp: Int,
         val heightDp: Int,
         val contract: String = "component-bounds",
-        val captureMethod: String = "full-screen-takeScreenshot-manual-crop-density-resize"
+        val captureMethod: String = "app-window-root-draw-manual-crop-density-resize"
     )
 
     private data class VisualBitmapStats(
@@ -740,7 +767,7 @@ class KmpVisualScreenshotCaptureTest {
                 widthDp = 390,
                 heightDp = 844,
                 contract = "viewport-bounds",
-                captureMethod = "full-screen-takeScreenshot-viewport-density-resize"
+                captureMethod = "app-window-root-draw-viewport-density-resize"
             )
         private val HOME_SAVED_RESULTS_CROP =
             VisualCrop(
