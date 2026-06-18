@@ -6,6 +6,7 @@ import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
 import slockOhosMotionBridge from '../kuikly/SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
+import { SlockOhosBuglyDiagnostics } from '../entryability/SlockOhosBuglyDiagnostics';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
 const SAFE_AREA_BOTTOM_PX = 'slockSafeAreaBottomPx';
@@ -118,6 +119,7 @@ struct Index {
   private handleKuiklyExceptionStack(stack: string): void {
     const stackText = this.symbolicatedKuiklyStack(stack);
     this.exception = stackText;
+    this.reportKuiklyExceptionToBugly(stackText);
     stackText.split('\n').forEach((line: string) => {
       if (line.length > 0) {
         hilog.error(0x0000, SLOCK_KUIKLY_EXCEPTION_LOG_TAG, '%{public}s', line);
@@ -140,6 +142,19 @@ struct Index {
       );
     }
     return stack;
+  }
+
+  private reportKuiklyExceptionToBugly(stackText: string): void {
+    const firstLine = stackText.split('\n').find((line: string) => line.length > 0) ?? 'Kuikly exception';
+    SlockOhosBuglyDiagnostics.reportCaughtError(
+      'KuiklyException',
+      firstLine,
+      stackText,
+      JSON.stringify({
+        source: 'kuikly_exception_callback',
+        pageName: this.pageName ?? DEFAULT_PAGE_NAME,
+      })
+    );
   }
 
   private supportsHdsTabBar(): boolean {

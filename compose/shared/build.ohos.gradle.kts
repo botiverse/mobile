@@ -75,6 +75,7 @@ kotlin {
         binaries.sharedLib {
             // Preserve lightweight K/N debug metadata so OHOS crash stacks can be symbolicated.
             freeCompilerArgs += "-Xadd-light-debug=enable"
+            linkerOpts("--build-id=sha1")
             linkerOpts("-L${sqliteLibDir.absolutePath}")
         }
     }
