@@ -1145,15 +1145,12 @@ private fun SlockAppShellContent() {
         openThreadPayload(returnPayload, pushCurrent = false)
     }
 
-    val threadTitle = stringResource(MR.strings.thread_title)
-
     fun appShellThreadPayload(conversation: ConversationSummary, anchorMessageId: String? = null): KuiklyThreadScreenPayload =
         buildAppShellThreadPayload(
             conversation = conversation,
             timeContext = threadTimeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-            anchorMessageId = anchorMessageId,
-            replyThreadTitle = threadTitle
+            anchorMessageId = anchorMessageId
         )
 
     fun openDiagnosticsFeedbackChannel(
