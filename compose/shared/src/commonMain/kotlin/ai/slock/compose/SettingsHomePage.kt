@@ -3,11 +3,13 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalListRow
 import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalPanelShell
 import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.components.SlockLinkButton
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
@@ -4514,7 +4516,7 @@ private fun AppShellServerGateContent(
                 )
             } else {
                 latestSession.servers.forEach { server ->
-                    AuthBrutalListRow(
+                    SlockBrutalListRow(
                         title = server.name,
                         subtitle =
                             if (pendingServerId == server.id) {
@@ -4537,7 +4539,7 @@ private fun AppShellServerGateContent(
                     enabled = !loading
                 )
             }
-            AuthLinkButton(
+            SlockLinkButton(
                 text = "Sign out",
                 enabled = !loading,
                 onClick = {
