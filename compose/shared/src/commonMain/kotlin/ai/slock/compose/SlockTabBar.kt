@@ -79,9 +79,15 @@ internal fun slockAppBottomTabBarContentInset(bottomSafeArea: Dp): Dp {
         // OHOS HDS dock already floats above the system gesture area; adding the host safe area
         // again here creates an extra blank strip below the dock and pushes content too far up.
         SlockAppTabBarRenderer.OhosHdsImmersive -> SlockOhosHdsBottomTabBarHostHeight + SlockSpacing.Lg
-        SlockAppTabBarRenderer.SharedCompose -> SlockSharedBottomTabBarHeight + bottomSafeArea + SlockSpacing.Lg
+        SlockAppTabBarRenderer.SharedCompose -> slockSharedBottomTabBarContentInset(bottomSafeArea)
     }
 }
+
+internal fun slockSharedBottomTabBarHostHeight(bottomSafeArea: Dp): Dp =
+    SlockSharedBottomTabBarHeight + bottomSafeArea
+
+internal fun slockSharedBottomTabBarContentInset(bottomSafeArea: Dp): Dp =
+    slockSharedBottomTabBarHostHeight(bottomSafeArea) + SlockSpacing.Lg
 
 @Composable
 internal fun SlockVerticalTabBar(
@@ -186,7 +192,7 @@ internal fun SlockAppBottomTabBarHost(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(SlockSharedBottomTabBarHeight + bottomSafeArea)
+            .height(slockSharedBottomTabBarHostHeight(bottomSafeArea))
             .background(SlockColor.SurfaceWhite)
     ) {
         SlockBottomTabBar(
@@ -194,7 +200,7 @@ internal fun SlockAppBottomTabBarHost(
             onSelect = onSelect,
             modifier = Modifier
                 .fillMaxWidth()
-                .align(Alignment.BottomCenter)
+                .align(Alignment.TopCenter)
         )
     }
 }

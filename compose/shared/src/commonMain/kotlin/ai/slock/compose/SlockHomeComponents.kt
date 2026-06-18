@@ -457,6 +457,13 @@ fun SlockStructuralHomeShell(
     val sidebarInteractionsEnabled = !(indicatorRefreshing || pullRefreshActive)
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val bottomSafeArea = if (showBottomBar) slockBottomSafeAreaPadding() else 0.dp
+    val effectiveBottomContentPadding =
+        if (showBottomBar) {
+            bottomContentPadding.max(slockAppBottomTabBarContentInset(bottomSafeArea))
+        } else {
+            bottomContentPadding
+        }
     Column(
         modifier = modifier.fillMaxSize().background(SlockColor.AppBgLightBlue).padding(outerPadding)
     ) {
@@ -605,7 +612,7 @@ fun SlockStructuralHomeShell(
                                 )
                             }
                         }
-                        item { Spacer(Modifier.height(bottomContentPadding)) }
+                        item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
                     }
                 }
             }
@@ -640,7 +647,7 @@ fun SlockStructuralHomeShell(
             }
         }
         if (showBottomBar) {
-            SlockBottomTabBar(
+            SlockAppBottomTabBarHost(
                 items = listOf(
                     SlockBottomTabItemPayload("home", "HOME", "house", selected = selectedTabKey == "home"),
                     SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = selectedTabKey == "tasks"),
@@ -648,11 +655,15 @@ fun SlockStructuralHomeShell(
                     SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedTabKey == "settings")
                 ),
                 onSelect = onTabSelected,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                bottomSafeArea = bottomSafeArea
             )
         }
     }
 }
+
+private fun Dp.max(other: Dp): Dp =
+    if (this >= other) this else other
 
 internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceIn(

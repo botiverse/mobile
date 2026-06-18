@@ -19,4 +19,14 @@ class SlockAppShellTest {
         assertEquals(18.dp, scope.bottomSafeArea)
         assertEquals(88.dp, scope.bottomTabBarContentInset)
     }
+
+    @Test
+    fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
+        assertEquals(58.dp, slockSharedBottomTabBarHostHeight(0.dp))
+        assertEquals(76.dp, slockSharedBottomTabBarHostHeight(18.dp))
+        assertEquals(
+            slockSharedBottomTabBarHostHeight(18.dp) + SlockSpacing.Lg,
+            slockSharedBottomTabBarContentInset(18.dp)
+        )
+    }
 }
