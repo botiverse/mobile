@@ -8,11 +8,44 @@ import com.tencent.kuikly.core.base.DeclarativeBaseView
 import com.tencent.kuikly.core.base.event.Event
 
 internal class SlockLucideIconView : DeclarativeBaseView<SlockLucideIconAttr, Event>() {
+    private var appliedName: String? = null
+    private var appliedColor: String? = null
+    private var appliedFill: String? = null
+    private var appliedStrokeWidth: Float? = null
+
     override fun createAttr(): SlockLucideIconAttr = SlockLucideIconAttr()
 
     override fun createEvent(): Event = Event()
 
     override fun viewName(): String = VIEW_NAME
+
+    fun applyIconAttrs(
+        name: String,
+        color: String,
+        fill: String,
+        strokeWidth: Float,
+        force: Boolean = false
+    ) {
+        if (
+            !force &&
+                appliedName == name &&
+                appliedColor == color &&
+                appliedFill == fill &&
+                appliedStrokeWidth == strokeWidth
+        ) {
+            return
+        }
+        appliedName = name
+        appliedColor = color
+        appliedFill = fill
+        appliedStrokeWidth = strokeWidth
+        getViewAttr().run {
+            name(name)
+            color(color)
+            fill(fill)
+            strokeWidth(strokeWidth)
+        }
+    }
 
     companion object {
         const val VIEW_NAME = "SlockLucideIconView"
@@ -83,24 +116,27 @@ internal fun SlockLucideIconByName(
     fill: String? = null,
     strokeWidth: Float? = null
 ) {
+    val resolvedFill = fill ?: ""
+    val resolvedStrokeWidth = strokeWidth ?: 0f
     MakeKuiklyComposeNode<SlockLucideIconView>(
         factory = { SlockLucideIconView() },
         modifier = modifier,
         viewInit = {
-            getViewAttr().run {
-                name(name)
-                color(color)
-                fill(fill ?: "")
-                strokeWidth(strokeWidth ?: 0f)
-            }
+            applyIconAttrs(
+                name = name,
+                color = color,
+                fill = resolvedFill,
+                strokeWidth = resolvedStrokeWidth,
+                force = true
+            )
         },
         viewUpdate = { view ->
-            view.getViewAttr().run {
-                name(name)
-                color(color)
-                fill(fill ?: "")
-                strokeWidth(strokeWidth ?: 0f)
-            }
+            view.applyIconAttrs(
+                name = name,
+                color = color,
+                fill = resolvedFill,
+                strokeWidth = resolvedStrokeWidth
+            )
         }
     )
 }

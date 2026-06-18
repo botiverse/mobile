@@ -1,5 +1,5 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
-import { ComponentContent, NodeContent } from '@kit.ArkUI';
+import { ComponentContent } from '@kit.ArkUI';
 import { SlockLucidePathEntry, slockLucidePathEntries } from '../generated/SlockLucidePathIcons';
 
 const kName = 'name';
@@ -21,7 +21,6 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
   renderRevision: number = 0;
-  slot: NodeContent | null = new NodeContent();
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -35,17 +34,16 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   setProp(propKey: string, propValue: KRAny | KuiklyRenderCallback): boolean {
     switch (propKey) {
       case kName:
-        this.iconName = normalizeIconName(propValue as string);
+        this.updateIconName(propValue as string);
         return true;
       case kColor:
-        this.iconColor = normalizeColor(propValue as string);
+        this.updateIconColor(propValue as string);
         return true;
       case kFill:
-        this.iconFillEnabled = hasColorValue(propValue as string);
-        this.iconFill = this.iconFillEnabled ? normalizeColor(propValue as string) : '#00000000';
+        this.updateIconFill(propValue as string);
         return true;
       case kStrokeWidth:
-        this.iconStrokeWidth = normalizeStrokeWidth(propValue);
+        this.updateStrokeWidth(propValue);
         return true;
       case kFrame:
         this.applyFrame(propValue);
@@ -57,10 +55,6 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
 
   call(method: string, params: KRAny, callback: KuiklyRenderCallback | null): KRAny {
     return null;
-  }
-
-  getContentSlot(): NodeContent | null {
-    return this.slot;
   }
 
   didMoveToParentView(): void {
@@ -94,18 +88,61 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
   }
 
-  private updateRenderSize(width: number, height: number): void {
-    if (this.iconRenderWidth !== width || this.iconRenderHeight !== height) {
-      this.bumpRenderRevision();
+  private updateIconName(value: string): void {
+    const nextName = normalizeIconName(value);
+    if (this.iconName === nextName) {
+      return;
+    }
+    this.iconName = nextName;
+  }
+
+  private updateIconColor(value: string): void {
+    const nextColor = normalizeColor(value);
+    if (this.iconColor === nextColor) {
+      return;
+    }
+    this.iconColor = nextColor;
+  }
+
+  private updateIconFill(value: string): void {
+    const nextFillEnabled = hasColorValue(value);
+    const nextFill = nextFillEnabled ? normalizeColor(value) : '#00000000';
+    if (this.iconFillEnabled === nextFillEnabled && this.iconFill === nextFill) {
+      return;
+    }
+    this.iconFillEnabled = nextFillEnabled;
+    this.iconFill = nextFill;
+  }
+
+  private updateStrokeWidth(value: KRAny | KuiklyRenderCallback): void {
+    const nextStrokeWidth = normalizeStrokeWidth(value);
+    if (this.iconStrokeWidth === nextStrokeWidth) {
+      return;
+    }
+    this.iconStrokeWidth = nextStrokeWidth;
+  }
+
+  private updateRenderSize(width: number, height: number): boolean {
+    const sizeChanged = this.iconRenderWidth !== width || this.iconRenderHeight !== height;
+    if (!sizeChanged) {
+      return false;
     }
     this.iconRenderWidth = width;
     this.iconRenderHeight = height;
+    this.bumpRenderRevision();
+    return true;
   }
 
   private updateRenderFrame(x: number, y: number, width: number, height: number): void {
-    this.iconRenderX = x;
-    this.iconRenderY = y;
-    this.updateRenderSize(width, height);
+    const positionChanged = this.iconRenderX !== x || this.iconRenderY !== y;
+    if (positionChanged) {
+      this.iconRenderX = x;
+      this.iconRenderY = y;
+    }
+    const sizeChanged = this.updateRenderSize(width, height);
+    if (positionChanged && !sizeChanged) {
+      this.bumpRenderRevision();
+    }
   }
 
   private applyFrame(value: KRAny | KuiklyRenderCallback): void {
@@ -146,7 +183,6 @@ export struct SlockLucideIcon {
           .scale({ x: this.renderView.drawScale(entry), y: this.renderView.drawScale(entry) })
           .antiAlias(true)
       }, (entry: SlockLucidePathEntry) => `${this.renderView.renderRevision}:${this.renderView.iconName}:${entry.commands}:${entry.strokeWidth}`)
-      ContentSlot(this.renderView.slot)
     }
       .alignContent(Alignment.Center)
       .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY })
