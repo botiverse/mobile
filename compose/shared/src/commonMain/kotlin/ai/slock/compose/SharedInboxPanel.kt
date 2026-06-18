@@ -765,7 +765,7 @@ private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): String =
         ai.slock.compose.model.TaskStatus.Closed -> "ban"
     }
 
-private fun InboxItem.toConversationSummary(): ConversationSummary {
+internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = threadChannelId ?: channelId
     val parentId = parentMessageId
     val parentChannel = parentChannelId ?: if (kind == InboxItemKind.Thread) channelId else null
@@ -789,13 +789,12 @@ private fun InboxItem.toConversationSummary(): ConversationSummary {
                 null
             },
         kind =
-            parentChannelKind
-                ?: when (kind) {
-                    InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                    InboxItemKind.Thread -> ConversationKind.Thread
-                    InboxItemKind.System -> ConversationKind.System
-                    InboxItemKind.Channel -> ConversationKind.Channel
-                },
+            when (kind) {
+                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+                InboxItemKind.Thread -> ConversationKind.Thread
+                InboxItemKind.System -> ConversationKind.System
+                InboxItemKind.Channel -> parentChannelKind ?: ConversationKind.Channel
+            },
         name = displayTitle(),
         subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
         unreadCount = unreadCount,
