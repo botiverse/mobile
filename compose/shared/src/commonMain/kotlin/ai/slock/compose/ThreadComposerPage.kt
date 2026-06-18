@@ -457,6 +457,9 @@ internal fun ThreadComposerContent(
         }
     val showMemberSuggestions = focused && filteredMemberSuggestions.isNotEmpty()
     val showChannelSuggestions = focused && filteredChannelSuggestions.isNotEmpty()
+    if (suggestionTrigger !is KuiklyComposerSuggestionTrigger.None) {
+        println("[composer] suggestions focused=" + focused + " memberCount=" + filteredMemberSuggestions.size + " channelCount=" + filteredChannelSuggestions.size + " showMember=" + showMemberSuggestions + " showChannel=" + showChannelSuggestions)
+    }
     val composerEnabled = state.enabled && surface.sendChannelId != null
     val canSend =
         composerEnabled &&
