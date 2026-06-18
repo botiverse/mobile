@@ -1894,6 +1894,7 @@ private fun SlockAppShellContent() {
                                 bridge = bridge,
                                 authStore = authStore,
                                 memberRepository = memberRepository,
+                                createAgentCoordinator = createAgentCoordinator,
                                 settingsCapabilities = settingsCapabilities,
                                 agentDetailRefreshKey = membersAgentDetailRefreshKey,
                                 timeContext = threadTimeContext
@@ -4664,12 +4665,16 @@ private fun SharedMembersScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     authStore: SlockAuthSessionStore,
     memberRepository: MemberRepository,
+    createAgentCoordinator: SharedCreateAgentCoordinator,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     agentDetailRefreshKey: Int,
     timeContext: AppShellTimeContext?
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    var createAgentMachines by remember { mutableStateOf<List<SharedCreateAgentMachineOption>>(emptyList()) }
+    var createAgentMachinesLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         state = SharedMembersUiState.Loading
@@ -4718,9 +4723,50 @@ private fun SharedMembersScreen(
                 message = "Could not load members",
                 code = current.code
             )
-        is SharedMembersUiState.Content ->
+        is SharedMembersUiState.Content -> {
+            val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
+            val serverId = current.server.id.value
+            val loadMachines: () -> Unit = {
+                if (serverId.isNotBlank() && createAgentMachines.isEmpty() && !createAgentMachinesLoading) {
+                    createAgentMachinesLoading = true
+                    scope.launch {
+                        val result = createAgentCoordinator.loadMachines(serverId)
+                        createAgentMachinesLoading = false
+                        if (result is DataResult.Content) {
+                            createAgentMachines = result.data
+                        }
+                    }
+                }
+            }
+            val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
+                val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
+                if (result is DataResult.Content) {
+                    val profile = MemberProfile(
+                        id = MemberId(result.data.id),
+                        displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
+                        handle = result.data.name,
+                        kind = MemberKind.Agent,
+                        description = result.data.activityDetail,
+                        roleDescription = result.data.model,
+                        presence = Presence.Offline,
+                        agentStatus = AgentStatus.Online
+                    )
+                    state =
+                        when (val latest = state) {
+                            is SharedMembersUiState.Content ->
+                                latest.copy(members = latest.members + profile)
+                            else -> latest
+                        }
+                }
+                when (result) {
+                    is DataResult.Content -> DataResult.Content(Unit)
+                    is DataResult.Empty -> DataResult.Empty(result.reason)
+                    is DataResult.Error -> result
+                    is DataResult.NoPermission -> result
+                }
+            }
             MembersRouteContent(
-                payload = buildHostMembersPayload(current.server, current.members, timeContext),
+                payload = membersPayload,
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
                 onCopyMemberId = {
@@ -4809,8 +4855,15 @@ private fun SharedMembersScreen(
                     current.server.permissions.canManageSettings ||
                         detail?.summary?.creatorId == current.currentUserId
                 },
-                onUnavailableAction = { bridge.toast(it) }
+                onUnavailableAction = { bridge.toast(it) },
+                canCreateAgents = membersPayload.canCreateAgents,
+                createAgentSubmit = createAgentSubmit,
+                createAgentMachines = createAgentMachines,
+                createAgentMachinesLoading = createAgentMachinesLoading,
+                createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
+                createAgentLoadMachines = loadMachines
             )
+        }
     }
 }
 
