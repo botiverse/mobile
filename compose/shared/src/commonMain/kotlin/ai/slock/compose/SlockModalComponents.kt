@@ -324,8 +324,16 @@ internal fun SlockModalListShell(
 }
 
 @Composable
-internal fun SlockModalSectionHeader(label: String) {
-    SlockBrutalListSectionHeader(label = label)
+internal fun SlockModalSectionHeader(
+    label: String,
+    leadingIcon: String? = null,
+    onLeadingClick: (() -> Unit)? = null
+) {
+    SlockBrutalListSectionHeader(
+        label = label,
+        leadingIcon = leadingIcon,
+        onLeadingClick = onLeadingClick
+    )
 }
 
 @Composable

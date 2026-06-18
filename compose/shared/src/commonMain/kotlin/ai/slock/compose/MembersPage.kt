@@ -517,6 +517,7 @@ internal fun MembersPageContent() {
         createAgentCurrentAgentCount = currentAgentCount,
         createAgentMaxAgents = maxAgents,
         createAgentLoadMachines = loadMachines,
+        renderLogger = { message -> bridge.log("members_render $message") },
         inviteHumanSubmit = inviteHumanSubmit,
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
@@ -651,7 +652,8 @@ internal fun MembersRouteContent(
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: () -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {}
+    inviteHumanLoadJoinLink: () -> Unit = {},
+    renderLogger: (String) -> Unit = {}
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
@@ -721,7 +723,8 @@ internal fun MembersRouteContent(
             inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
             inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
             inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() }
+            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+            renderLogger = renderLogger
         )
     }
 }
@@ -743,7 +746,8 @@ internal fun MembersListContent(
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: () -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {}
+    inviteHumanLoadJoinLink: () -> Unit = {},
+    renderLogger: (String) -> Unit = {}
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -770,6 +774,20 @@ internal fun MembersListContent(
             agentsExpanded = agentsExpanded,
             humansExpanded = humansExpanded
         )
+    LaunchedEffect(
+        payload.instanceId,
+        agents.size,
+        humans.size,
+        canCreateAgents,
+        createAgentSubmit != null,
+        inviteHumanSubmit != null
+    ) {
+        renderLogger(
+            "members_list instanceId=${payload.instanceId} " +
+                "canCreateAgents=$canCreateAgents hasCreateAgentSubmit=${createAgentSubmit != null} " +
+                "agentsCount=${agents.size} humansCount=${humans.size} hasInviteHumanSubmit=${inviteHumanSubmit != null}"
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -790,7 +808,7 @@ internal fun MembersListContent(
                     expanded = agentsExpanded,
                     onExpandedChange = { agentsExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
-                    trailingContent = {
+                    inlineActionContent = {
                         if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
                                 icon = "plus",
@@ -837,7 +855,7 @@ internal fun MembersListContent(
                     expanded = humansExpanded,
                     onExpandedChange = { humansExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
-                    trailingContent = {
+                    inlineActionContent = {
                         SlockSectionHeaderIconAction(
                             icon = "plus",
                             contentDescription = "Invite human",

@@ -836,7 +836,9 @@ internal fun SlockBrutalListShell(
 @Composable
 internal fun SlockBrutalListSectionHeader(
     label: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    leadingIcon: String? = null,
+    onLeadingClick: (() -> Unit)? = null
 ) {
     Row(
         modifier =
@@ -846,6 +848,15 @@ internal fun SlockBrutalListSectionHeader(
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (leadingIcon != null && onLeadingClick != null) {
+            SlockBrutalIconButton(
+                iconName = leadingIcon,
+                onClick = onLeadingClick,
+                modifier = Modifier.padding(end = 8.dp),
+                size = 22.dp,
+                shadowOffset = 2.dp
+            )
+        }
         Text(
             text = label,
             style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),

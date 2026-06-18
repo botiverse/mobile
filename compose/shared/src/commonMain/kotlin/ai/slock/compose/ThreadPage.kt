@@ -5664,7 +5664,13 @@ private fun ThreadMembersModal(
                     }
                 } else {
                     if (agents.isNotEmpty()) {
-                        item { SlockModalSectionHeader("AGENTS") }
+                        item {
+                            SlockModalSectionHeader(
+                                label = "AGENTS",
+                                leadingIcon = "plus".takeIf { canAddMembers },
+                                onLeadingClick = if (canAddMembers) onAddMember else null
+                            )
+                        }
                         items(agents.size, key = { agents[it].memberKey }) { index ->
                             val member = agents[index]
                             SlockModalCompactMemberRow(
