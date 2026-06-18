@@ -1,11 +1,12 @@
 import { KRAny, KuiklyRenderBaseView, KuiklyRenderCallback } from '@kuikly-open/render';
-import { ComponentContent } from '@kit.ArkUI';
+import { ComponentContent, NodeContent } from '@kit.ArkUI';
 import { SlockLucidePathEntry, slockLucidePathEntries } from '../generated/SlockLucidePathIcons';
 
 const kName = 'name';
 const kColor = 'color';
 const kFill = 'fill';
 const kStrokeWidth = 'strokeWidth';
+const kFrame = 'frame';
 
 @Observed
 export class SlockLucideIconView extends KuiklyRenderBaseView {
@@ -18,6 +19,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
   renderRevision: number = 0;
+  slot: NodeContent | null = new NodeContent();
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
     const uiContext = this.getUIContext() as UIContext;
@@ -43,6 +45,9 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
       case kStrokeWidth:
         this.iconStrokeWidth = normalizeStrokeWidth(propValue);
         return true;
+      case kFrame:
+        this.applyFrame(propValue);
+        return true;
       default:
         return super.setProp(propKey, propValue);
     }
@@ -52,6 +57,10 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     return null;
   }
 
+  getContentSlot(): NodeContent | null {
+    return this.slot;
+  }
+
   didMoveToParentView(): void {
     this.bumpRenderRevision();
     this.updateArkUI();
@@ -59,11 +68,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
 
   sizeDidChanged(width: number, height: number): void {
     super.sizeDidChanged(width, height);
-    if (this.iconRenderWidth !== width || this.iconRenderHeight !== height) {
-      this.bumpRenderRevision();
-    }
-    this.iconRenderWidth = width;
-    this.iconRenderHeight = height;
+    this.updateRenderSize(width, height);
   }
 
   entries(): SlockLucidePathEntry[] {
@@ -85,6 +90,27 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
 
   private bumpRenderRevision(): void {
     this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
+  }
+
+  private updateRenderSize(width: number, height: number): void {
+    if (this.iconRenderWidth !== width || this.iconRenderHeight !== height) {
+      this.bumpRenderRevision();
+    }
+    this.iconRenderWidth = width;
+    this.iconRenderHeight = height;
+  }
+
+  private applyFrame(value: KRAny | KuiklyRenderCallback): void {
+    const frameText = typeof value === 'string' ? value : String(value);
+    const fields = frameText.trim().split(/\s+/);
+    if (fields.length < 4) {
+      return;
+    }
+    const width = Number(fields[2]);
+    const height = Number(fields[3]);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      this.updateRenderSize(width, height);
+    }
   }
 }
 
@@ -110,6 +136,7 @@ export struct SlockLucideIcon {
           .scale({ x: this.renderView.drawScale(entry), y: this.renderView.drawScale(entry) })
           .antiAlias(true)
       }, (entry: SlockLucidePathEntry) => `${this.renderView.renderRevision}:${this.renderView.iconName}:${entry.commands}:${entry.strokeWidth}`)
+      ContentSlot(this.renderView.slot)
     }
       .width('100%')
       .height('100%')
