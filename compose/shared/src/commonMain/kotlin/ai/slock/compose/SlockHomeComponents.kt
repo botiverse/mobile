@@ -82,6 +82,7 @@ private val ChannelAvatarFontSize = 11.sp
 private val ChannelRowHeight = 32.dp
 private val ChannelRowHorizontalPadding = 8.dp
 private val ChannelRowShadowOffset = 2.dp
+private val DirectMessageStatusDotSize = 8.dp
 private val CountPillMinWidth = 18.dp
 private val CountPillHeight = 16.dp
 private val HomeUnreadBadgeRadius = 4.dp
@@ -133,9 +134,11 @@ data class SlockHomeConversationItem(
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
     val createdAt: String? = null,
+    val description: String? = null,
     val avatarLabel: String = name.take(2).uppercase(),
     val avatarUrl: String? = null,
     val avatarWireValue: String? = avatarUrl,
+    val peerType: String? = null,
     val presence: SlockPresence? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true
@@ -585,13 +588,13 @@ fun SlockStructuralHomeShell(
                         if (directMessagesExpanded) {
                             items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
                                 val dm = displayedDirectMessages[index]
-                                ChannelRow(
+                                DirectMessageRow(
                                     name = dm.name,
+                                    description = dm.description,
                                     avatarLabel = dm.avatarLabel,
-                                    avatarUrl = dm.avatarUrl,
                                     avatarWireValue = dm.avatarWireValue,
-                                    presence = homeDmStatusPresence(dm.presence),
-                                    showPresence = dm.kind != "human",
+                                    peerType = dm.peerType,
+                                    presence = dm.presence,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -1358,6 +1361,109 @@ private fun DimmedUnreadCount(text: String) {
             textAlign = TextAlign.Center
         )
     }
+}
+
+@Composable
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+    val selected = interactionState == ChannelRowInteractionState.Selected
+    val unread = badge != null
+    val isAgent = peerType?.equals("agent", ignoreCase = true) == true
+    val descriptionText = description?.takeIf { it.isNotBlank() }
+    val rowBackground = when (interactionState) {
+        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
+    }
+    val borderColor = when (interactionState) {
+        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
+        ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+    }
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    ) {
+        if (selected) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(ChannelRowHeight)
+                        .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
+        com.tencent.kuikly.compose.foundation.layout.Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(ChannelRowHeight)
+                    .background(rowBackground)
+                    .border(SlockStroke.Default, borderColor)
+                    .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
+                SlockAvatar(avatarWireValue, avatarLabel)
+            }
+            com.tencent.kuikly.compose.foundation.layout.Row(
+                modifier =
+                    Modifier
+                        .padding(start = SidebarActionLabelGap)
+                        .weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    name,
+                    style = if (unread) SlockType.ButtonBold else SlockType.Button,
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(if (descriptionText != null) 0.68f else 1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (descriptionText != null) {
+                    Spacer(Modifier.width(SlockSpacing.Xs))
+                    Text(
+                        descriptionText,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.weight(0.32f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (isAgent || hasDraft || badge != null) {
+                Spacer(Modifier.width(SlockSpacing.Sm))
+            }
+            if (isAgent) {
+                DirectMessageStatusDot(homeDmStatusPresence(presence))
+            }
+            if (hasDraft) {
+                if (isAgent) Spacer(Modifier.width(SlockSpacing.Xs))
+                SlockLucideIcon("pencil", Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+            }
+            if (badge != null) {
+                if (isAgent || hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
+                CountPill(badge, SlockColor.AccentPink)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DirectMessageStatusDot(presence: SlockPresence) {
+    Box(
+        modifier =
+            Modifier
+                .size(DirectMessageStatusDotSize)
+                .borderRadius(4.dp)
+                .background(presence.homeRowColor)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    )
 }
 
 @Composable

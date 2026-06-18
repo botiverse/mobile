@@ -243,6 +243,7 @@ private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> U
         subtitle =
             peerDescription?.takeIf { it.isNotBlank() }
                 ?: description?.takeIf { it.isNotBlank() },
+        directMessagePeerType = peerType.takeIf { it.isNotBlank() },
         avatarUrl = effectiveAvatarUrl,
         avatar = effectiveAvatarUrl?.let { AvatarReference.fromWireValue(it) },
         presenceMemberId = MemberId(peerId),

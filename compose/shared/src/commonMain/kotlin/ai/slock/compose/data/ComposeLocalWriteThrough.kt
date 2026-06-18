@@ -684,6 +684,8 @@ private fun HomeSnapshot.withStoredDirectMessagePresence(previous: HomeSnapshot?
                     conversation
                 } else {
                     conversation.copy(
+                        directMessagePeerType =
+                            conversation.directMessagePeerType ?: previousConversation.directMessagePeerType,
                         presence = conversation.presence ?: previousConversation.presence,
                         agentStatus = conversation.agentStatus ?: previousConversation.agentStatus,
                         presenceMemberId =

@@ -17,6 +17,7 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
     return copy(
         name = if (shouldUseFallbackName) fallback.name else name,
         subtitle = subtitle ?: fallback.subtitle,
+        directMessagePeerType = directMessagePeerType ?: fallback.directMessagePeerType.takeIf { sameConversation },
         channelId = channelId ?: fallback.channelId.takeIf { sameConversation },
         channelType = channelType ?: fallback.channelType.takeIf { sameConversation },
         thread = thread ?: fallback.thread.takeIf { sameConversation },

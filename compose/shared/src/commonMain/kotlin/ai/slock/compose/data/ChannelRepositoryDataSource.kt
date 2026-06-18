@@ -528,6 +528,7 @@ private fun ConversationSummary.mergeConversationSummary(incoming: ConversationS
     incoming.copy(
         name = incoming.name.takeUnless { it.isGenericConversationName(incoming) } ?: name,
         subtitle = incoming.subtitle ?: subtitle,
+        directMessagePeerType = incoming.directMessagePeerType ?: directMessagePeerType,
         avatarUrl = incoming.avatarUrl ?: avatarUrl,
         avatar = incoming.avatar ?: avatar,
         unreadCount =
@@ -563,6 +564,7 @@ private fun ConversationSummary.withDirectMessageFallback(previous: Conversation
     copy(
         name = name.takeUnless { it.isGenericConversationName(this) } ?: previous.name,
         subtitle = subtitle ?: previous.subtitle,
+        directMessagePeerType = directMessagePeerType ?: previous.directMessagePeerType,
         avatarUrl = avatarUrl ?: previous.avatarUrl,
         avatar = avatar ?: previous.avatar,
         unreadCount =

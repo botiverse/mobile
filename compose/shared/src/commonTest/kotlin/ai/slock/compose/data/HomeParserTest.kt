@@ -66,6 +66,7 @@ class HomeParserTest {
         val dm = snapshot.directMessages.single()
         assertEquals(ConversationKind.DirectMessage, dm.kind)
         assertEquals("Agent One", dm.name)
+        assertEquals("agent", dm.directMessagePeerType)
         assertEquals("agent-1", dm.presenceMemberId?.value)
         assertEquals("https://www.gravatar.com/avatar/abc123?s=52&d=404", dm.avatarUrl)
         assertEquals(2, dm.unreadCount)

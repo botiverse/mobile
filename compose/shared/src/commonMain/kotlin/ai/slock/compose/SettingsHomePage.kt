@@ -7509,8 +7509,10 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         kind = kind.name.lowercase(),
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
+        description = subtitle?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         presence = presence.toSharedPresence(),
         hasDraft = hasDraft,
         joined = joined && permissions.canRead

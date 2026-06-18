@@ -57,6 +57,7 @@ data class ConversationSummary(
     val kind: ConversationKind,
     val name: String,
     val subtitle: String? = null,
+    val directMessagePeerType: String? = null,
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
     val unreadCount: Int = 0,
