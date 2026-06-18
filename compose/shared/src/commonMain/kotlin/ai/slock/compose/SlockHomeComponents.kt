@@ -17,6 +17,8 @@ import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -1281,7 +1283,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1293,12 +1295,26 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    val clickModifier = remember(onClick, onLongPress) {
+        if (onLongPress != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick?.invoke() },
+                    onLongPress = { onLongPress.invoke() }
+                )
+            }
+        } else if (onClick != null) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        }
+    }
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(clickModifier)
     ) {
         if (selected) {
             Box(
