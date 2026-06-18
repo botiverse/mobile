@@ -609,6 +609,15 @@ private enum class KuiklyThreadTab(val wireValue: String, val label: String) {
     }
 }
 
+internal fun shouldShowThreadComposerForTab(
+    joined: Boolean,
+    showComposer: Boolean,
+    selectedTab: String?
+): Boolean =
+    joined &&
+        showComposer &&
+        KuiklyThreadTab.fromWireValue(selectedTab) == KuiklyThreadTab.Chat
+
 internal data class SharedThreadRealtimeEventSignal(
     val sequence: Long,
     val event: RealtimeEvent
@@ -2977,7 +2986,7 @@ private fun ThreadPageContent(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
-            } else if (payload.showComposer) {
+            } else if (shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(

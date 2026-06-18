@@ -48,6 +48,15 @@ import kotlin.test.assertTrue
 
 class ThreadPayloadTest {
     @Test
+    fun threadComposerOnlyShowsOnChatTab() {
+        assertTrue(shouldShowThreadComposerForTab(joined = true, showComposer = true, selectedTab = "chat"))
+        assertFalse(shouldShowThreadComposerForTab(joined = true, showComposer = true, selectedTab = "tasks"))
+        assertFalse(shouldShowThreadComposerForTab(joined = true, showComposer = true, selectedTab = "files"))
+        assertFalse(shouldShowThreadComposerForTab(joined = false, showComposer = true, selectedTab = "chat"))
+        assertFalse(shouldShowThreadComposerForTab(joined = true, showComposer = false, selectedTab = "chat"))
+    }
+
+    @Test
     fun threadMessagesLazyItemCountTracksScrollableRows() {
         assertEquals(
             4,
