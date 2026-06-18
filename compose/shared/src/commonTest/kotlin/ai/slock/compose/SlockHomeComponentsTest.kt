@@ -21,6 +21,50 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeDisplayedSelectedConversationHidesWhenTopActionSelected() {
+        assertEquals(
+            null,
+            homeDisplayedSelectedConversationId(
+                selectedChannelId = "channel-1",
+                searchSelected = false,
+                activitySelected = true,
+                savedSelected = false
+            )
+        )
+        assertEquals(
+            null,
+            homeDisplayedSelectedConversationId(
+                selectedChannelId = "channel-1",
+                searchSelected = true,
+                activitySelected = false,
+                savedSelected = false
+            )
+        )
+        assertEquals(
+            null,
+            homeDisplayedSelectedConversationId(
+                selectedChannelId = "channel-1",
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = true
+            )
+        )
+    }
+
+    @Test
+    fun homeDisplayedSelectedConversationKeepsConversationWhenNoTopActionSelected() {
+        assertEquals(
+            "channel-1",
+            homeDisplayedSelectedConversationId(
+                selectedChannelId = "channel-1",
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = false
+            )
+        )
+    }
+
+    @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
             14,

@@ -410,6 +410,13 @@ fun SlockStructuralHomeShell(
     val displayedChannels = remember(channels, channelSortModeState) { channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
     val displayedJointChannels = remember(channels, channelSortModeState) { channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
     val displayedDirectMessages = remember(directMessages, directMessageSortMode) { directMessages.sortedForSidebar(directMessageSortMode) { it.name } }
+    val displayedSelectedChannelId =
+        homeDisplayedSelectedConversationId(
+            selectedChannelId = selectedChannelId,
+            searchSelected = searchSelected,
+            activitySelected = activitySelected,
+            savedSelected = savedSelected
+        )
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -505,7 +512,7 @@ fun SlockStructuralHomeShell(
                                     hasDraft = channel.hasDraft,
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = if (channel.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                 )
                             }
@@ -531,7 +538,7 @@ fun SlockStructuralHomeShell(
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        interactionState = if (channel.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                        interactionState = if (channel.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                     )
                                 }
@@ -567,7 +574,7 @@ fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
-                                    interactionState = if (dm.id == selectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = if (dm.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null
                                 )
                             }
@@ -667,6 +674,14 @@ private val SlockHomeSortMenuItems =
 
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
     presence ?: SlockPresence.Offline
+
+internal fun homeDisplayedSelectedConversationId(
+    selectedChannelId: String?,
+    searchSelected: Boolean,
+    activitySelected: Boolean,
+    savedSelected: Boolean
+): String? =
+    selectedChannelId.takeUnless { searchSelected || activitySelected || savedSelected }
 
 internal fun List<SlockHomeConversationItem>.sortedForSidebar(
     mode: SlockSidebarSortMode,
