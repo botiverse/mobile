@@ -17,8 +17,13 @@ export class KuiklyViewDelegate extends IKuiklyViewDelegate {
 
   getCustomRenderViewCreatorRegisterMap(): Map<string, KRRenderViewExportCreator> {
     const map: Map<string, KRRenderViewExportCreator> = new Map();
-    map.set(SlockLucideIconView.VIEW_NAME, () => new SlockLucideIconView());
     map.set(SlockOhosHdsTabBarView.VIEW_NAME, () => new SlockOhosHdsTabBarView());
+    return map;
+  }
+
+  getCustomRenderViewCreatorRegisterMapV2(): Map<string, KRRenderViewExportCreator> {
+    const map: Map<string, KRRenderViewExportCreator> = new Map();
+    map.set(SlockLucideIconView.VIEW_NAME, () => new SlockLucideIconView());
     return map;
   }
 
