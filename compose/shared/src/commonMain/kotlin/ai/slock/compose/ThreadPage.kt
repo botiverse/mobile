@@ -2101,7 +2101,7 @@ internal fun SharedThreadRouteContent(
                                 )
                         )
                         uploadedAttachments = emptyList()
-                        removedAttachmentIds = emptySet()
+                        removedAttachmentIds = removedAttachmentIds + attachmentIds.toSet()
                         composerDraftText = ""
                         composerDraftAsTask = false
                         composerSyncNonce += 1

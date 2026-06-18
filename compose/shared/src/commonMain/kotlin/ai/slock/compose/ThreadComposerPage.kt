@@ -77,6 +77,7 @@ internal data class KuiklyThreadComposerPayload(
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
+    val attachmentActionsEnabled: Boolean = true,
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -117,6 +118,7 @@ internal data class ThreadComposerUiState(
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
+    val attachmentActionsEnabled: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
@@ -339,6 +341,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         focusRequestNonce = focusRequestNonce,
         placeholder = placeholder,
         enabled = enabled,
+        attachmentActionsEnabled = attachmentActionsEnabled,
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
@@ -621,11 +624,13 @@ internal fun ThreadComposerContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            ComposerIconButton("image-plus", composerEnabled) {
-                                onEvent("attachImage", null, null, null)
-                            }
-                            ComposerIconButton("paperclip", composerEnabled) {
-                                onEvent("attachFile", null, null, null)
+                            if (state.attachmentActionsEnabled) {
+                                ComposerIconButton("image-plus", composerEnabled) {
+                                    onEvent("attachImage", null, null, null)
+                                }
+                                ComposerIconButton("paperclip", composerEnabled) {
+                                    onEvent("attachFile", null, null, null)
+                                }
                             }
                         }
                         if (surface.showTaskButton) {
@@ -833,9 +838,9 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val disabledOpacity = if (enabled) 1f else 0.3f
+    val disabledOpacity = if (enabled || sending) 1f else 0.3f
     ComposerIconButton(
-        icon = "send",
+        icon = if (sending) "refresh-cw" else "send",
         enabled = enabled,
         modifier = Modifier.alpha(disabledOpacity),
         backgroundColor = SlockColor.AccentPink,
