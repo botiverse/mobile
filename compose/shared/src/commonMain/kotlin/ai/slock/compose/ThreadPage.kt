@@ -147,7 +147,7 @@ private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
-private val ThreadComposerBottomSafeAreaLift = 4.dp
+private val ThreadComposerBottomSafeAreaLift = 2.dp
 private val threadHeaderUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
 private val threadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
