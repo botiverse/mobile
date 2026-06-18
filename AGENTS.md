@@ -177,6 +177,15 @@ where the branch is), then push. Do not push a divergent / non-fast-forward
     render/runtime implementation details.
 - Treat the KuiklyUI reference tree as vendor/reference source. Do not modify it
   unless explicitly asked; for Slock product fixes, change Slock shared/app code.
+- Cross-platform visual states must not rely on parent/view opacity when the
+  intended result is a specific token color. Kuikly Compose emits
+  `Modifier.alpha(...)` as an `opacity` prop; Android applies that through
+  `View.alpha`, while OHOS applies it through ArkUI `NODE_OPACITY`. The final
+  subtree blending can differ, especially for disabled buttons/icons on light
+  backgrounds. Prefer explicit ARGB colors such as
+  `AccentPink.copy(alpha = 0.3f)` and matching icon colors (`#4D000000`) for
+  disabled/pressed states instead of wrapping the whole component in
+  `Modifier.alpha(0.3f)`.
 - To refresh the `.agents/` Kuikly AI skill/rule bundle from upstream, run:
 
 ```bash
