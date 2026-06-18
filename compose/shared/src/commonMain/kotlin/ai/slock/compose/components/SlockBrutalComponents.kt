@@ -636,14 +636,16 @@ internal fun SlockToolbarChip(
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
-    inactiveBackgroundColor: Color = SlockColor.SurfaceWhite
+    inactiveBackgroundColor: Color = SlockColor.SurfaceWhite,
+    borderColor: Color = SlockColor.BorderBlack,
+    disabledBorderColor: Color = SlockColor.EmptyStateGray
 ) {
     Box(
         modifier =
             modifier
                 .heightIn(min = 30.dp)
                 .background(if (active) activeBackgroundColor else inactiveBackgroundColor)
-                .border(SlockStroke.Default, if (enabled) SlockColor.BorderBlack else SlockColor.EmptyStateGray)
+                .border(SlockStroke.Default, if (enabled) borderColor else disabledBorderColor)
                 .clickable(enabled = enabled, onClick = onClick)
                 .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
@@ -694,7 +696,9 @@ internal fun SlockAnchoredToolbarChip(
     uppercase: Boolean = true,
     count: Int? = null,
     activeBackgroundColor: Color = SlockColor.AccentCyan,
-    inactiveBackgroundColor: Color = SlockColor.SurfaceWhite
+    inactiveBackgroundColor: Color = SlockColor.SurfaceWhite,
+    borderColor: Color = SlockColor.BorderBlack,
+    disabledBorderColor: Color = SlockColor.EmptyStateGray
 ) {
     val density = LocalDensity.current
     var anchor by remember { mutableStateOf<Offset?>(null) }
@@ -716,6 +720,8 @@ internal fun SlockAnchoredToolbarChip(
             count = count,
             activeBackgroundColor = activeBackgroundColor,
             inactiveBackgroundColor = inactiveBackgroundColor,
+            borderColor = borderColor,
+            disabledBorderColor = disabledBorderColor,
             onClick = { anchor?.let(onClick) }
         )
     }

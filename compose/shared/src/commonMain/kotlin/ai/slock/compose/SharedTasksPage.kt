@@ -672,6 +672,7 @@ private fun SharedTasksToolbar(
                             iconName = SlockLucideIconName.Hash,
                             active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
                             enabled = channelOptions.isNotEmpty(),
+                            borderColor = SlockColor.EmptyStateGray,
                             onClick = onChannelChipClick
                         )
                     }
@@ -682,6 +683,7 @@ private fun SharedTasksToolbar(
                         iconName = SlockLucideIconName.CircleUser,
                         active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
                         enabled = creatorOptions.isNotEmpty(),
+                        borderColor = SlockColor.EmptyStateGray,
                         onClick = onCreatorChipClick
                     )
                 }
@@ -691,6 +693,7 @@ private fun SharedTasksToolbar(
                         iconName = SlockLucideIconName.User,
                         active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
                         enabled = assigneeOptions.isNotEmpty(),
+                        borderColor = SlockColor.EmptyStateGray,
                         onClick = onAssigneeChipClick
                     )
                 }
