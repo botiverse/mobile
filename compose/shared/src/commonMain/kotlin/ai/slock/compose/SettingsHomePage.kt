@@ -2885,16 +2885,9 @@ private fun appShellSettingsHomePayload(
                     selected = selectedDestination == SettingsDestinationStorage
                 ),
                 SlockTabItemPayload(
-                    key = SettingsDestinationDiagnostics,
-                    title = "Diagnostics",
-                    subtitle = "Logs and performance tools",
-                    iconName = "clipboard-list",
-                    selected = selectedDestination == SettingsDestinationDiagnostics
-                ),
-                SlockTabItemPayload(
                     key = SettingsDestinationAbout,
                     title = "About",
-                    subtitle = "Version and feedback",
+                    subtitle = "Version, diagnostics, feedback",
                     iconName = "bug",
                     selected = selectedDestination == SettingsDestinationAbout
                 ),
@@ -3911,7 +3904,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics tools", "Open sanitized runtime logs and shared diagnostics.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics", "Open logs, profiler, and diagnostic feedback tools.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
                             KuiklySharedSettingsRow("openSlock", "external-link", "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("feedback", "message-square-plus", "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true)

@@ -38,15 +38,12 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.LanguageRegion,
                 SharedSettingsDestination.Mobile,
                 SharedSettingsDestination.Storage,
-                SharedSettingsDestination.Diagnostics,
                 SharedSettingsDestination.About
             ),
             home.items.map { it.destination }
         )
-        assertEquals(
-            "Logs and performance tools",
-            home.items.first { it.destination == SharedSettingsDestination.Diagnostics }.subtitle
-        )
+        assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Diagnostics })
+        assertEquals("Version, diagnostics, feedback", home.items.first { it.destination == SharedSettingsDestination.About }.subtitle)
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Router && it.productVisible })
         scope.cancel()
     }
