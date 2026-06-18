@@ -7,6 +7,7 @@ import ai.slock.compose.data.SharedSettingsRecompositionProfilerFiles
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
@@ -33,6 +34,29 @@ class SettingsHomePageDiagnosticsTest {
             listOf("Actions", "Log"),
             payload.sections.map { it.title }
         )
+    }
+
+    @Test
+    fun emptyDiagnosticsStillAllowsCopyAndShareButNotClear() {
+        val payload =
+            emptyList<ai.slock.compose.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state =
+                    ScreenLoadState.Content(
+                        SharedSettingsDiagnosticsSnapshot(
+                            profiler = SharedSettingsRecompositionProfilerSnapshot(supported = false)
+                        )
+                    ),
+                actionState = null
+            )
+
+        val actionRows = payload.sections.first { it.title == "Actions" }.rows.associateBy { it.key }
+
+        assertTrue(actionRows.getValue("copyLogs").enabled)
+        assertEquals("Copy", actionRows.getValue("copyLogs").status)
+        assertTrue(actionRows.getValue("shareLogs").enabled)
+        assertEquals("Share", actionRows.getValue("shareLogs").status)
+        assertFalse(actionRows.getValue("clearLogs").enabled)
+        assertEquals("Disabled", actionRows.getValue("clearLogs").status)
     }
 
     @Test

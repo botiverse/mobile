@@ -7,6 +7,15 @@ import org.junit.Test
 
 class SanitizedDiagnosticsLogBufferTest {
     @Test
+    fun exportTextExplainsEmptyBuffer() {
+        SanitizedDiagnosticsLogBuffer.clear()
+
+        val exported = SanitizedDiagnosticsLogBuffer.exportText()
+
+        assertEquals("No sanitized diagnostics entries recorded.", exported)
+    }
+
+    @Test
     fun redactsSensitiveFieldsBeforeExport() {
         SanitizedDiagnosticsLogBuffer.clear()
 

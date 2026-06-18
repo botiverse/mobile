@@ -3924,6 +3924,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     actionState: ai.slock.compose.data.SharedSettingsActionState?
 ): KuiklySharedSettingsPayload {
     val logsAvailable = isNotEmpty()
+    val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
     val profiler = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data?.profiler
         ?: SharedSettingsRecompositionProfilerSnapshot()
     val profilerRunning = profiler.statusLabel == "Running"
@@ -4186,8 +4187,8 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("copyLogs", "copy", "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (logsAvailable) "Copy" else "Disabled", enabled = logsAvailable),
-                            KuiklySharedSettingsRow("shareLogs", "share", "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (logsAvailable) "Share" else "Disabled", enabled = logsAvailable),
+                            KuiklySharedSettingsRow("copyLogs", "copy", "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("shareLogs", "share", "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
                             KuiklySharedSettingsRow("feedback", "message-square-plus", "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true),
                             KuiklySharedSettingsRow("clearLogs", "trash-2", "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
                         )

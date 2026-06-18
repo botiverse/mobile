@@ -36,10 +36,15 @@ object SanitizedDiagnosticsLogBuffer {
         entries.clear()
     }
 
-    fun exportText(): String =
-        recent().joinToString(separator = "\n") { entry ->
+    fun exportText(): String {
+        val snapshot = recent()
+        if (snapshot.isEmpty()) {
+            return "No sanitized diagnostics entries recorded."
+        }
+        return snapshot.joinToString(separator = "\n") { entry ->
             "${entry.timestampMillis} ${entry.tag}: ${entry.message}"
         }
+    }
 
     fun sanitize(value: String): String {
         var sanitized = value
