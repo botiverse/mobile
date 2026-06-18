@@ -4726,18 +4726,6 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Content -> {
             val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
             val serverId = current.server.id.value
-            LaunchedEffect(
-                serverId,
-                current.server.role,
-                membersPayload.canCreateAgents,
-                current.members.size
-            ) {
-                bridge.log(
-                    "members_render host_members serverId=$serverId role=${current.server.role ?: "none"} " +
-                        "canManageSettings=${current.server.permissions.canManageSettings} " +
-                        "canCreateAgents=${membersPayload.canCreateAgents} membersCount=${current.members.size}"
-                )
-            }
             val loadMachines: () -> Unit = {
                 if (serverId.isNotBlank() && createAgentMachines.isEmpty() && !createAgentMachinesLoading) {
                     createAgentMachinesLoading = true
@@ -4873,8 +4861,7 @@ private fun SharedMembersScreen(
                 createAgentMachines = createAgentMachines,
                 createAgentMachinesLoading = createAgentMachinesLoading,
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                createAgentLoadMachines = loadMachines,
-                renderLogger = { message -> bridge.log("members_render $message") }
+                createAgentLoadMachines = loadMachines
             )
         }
     }

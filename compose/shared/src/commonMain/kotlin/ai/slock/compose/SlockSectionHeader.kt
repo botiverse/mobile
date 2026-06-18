@@ -129,7 +129,6 @@ internal fun SlockCollapsibleSectionHeader(
     modifier: Modifier = Modifier,
     sortContentDescription: String? = null,
     onSortClick: ((Offset) -> Unit)? = null,
-    inlineActionContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     Row(
@@ -156,9 +155,6 @@ internal fun SlockCollapsibleSectionHeader(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(start = SlockSpacing.Xs)
         )
-        if (inlineActionContent != null) {
-            Box(content = inlineActionContent)
-        }
         Spacer(Modifier.weight(1f))
         if (sortContentDescription != null && onSortClick != null) {
             SlockSectionHeaderIconAction(
