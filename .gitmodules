@@ -19,7 +19,7 @@
 [submodule "third_party/kuikly-ui"]
 	path = third_party/kuikly-ui
 	url = https://github.com/bytemain/KuiklyUI.git
-	branch = staging
+	branch = staging2
 [submodule "third_party/moko-graphics"]
 	path = third_party/moko-graphics
 	url = https://github.com/bytemain/moko-graphics.git
