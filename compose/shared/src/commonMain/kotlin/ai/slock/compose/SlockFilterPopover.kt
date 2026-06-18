@@ -10,6 +10,7 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -23,6 +24,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -81,6 +83,8 @@ internal fun SlockFilterPopover(
     surfaceBorderColor: Color = SlockColor.BorderBlack,
     surfaceShadowColor: Color = SlockColor.ShadowBlack,
     selectedRowColor: Color = SlockColor.AppBgLightBlue.copy(alpha = 0.28f),
+    searchable: Boolean = true,
+    showClearWhenSelected: Boolean = multiSelect,
     headerSlot: (@Composable () -> Unit)? = null
 ) {
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
@@ -136,9 +140,9 @@ internal fun SlockFilterPopover(
                         color = SlockColor.TextMutedGray
                     )
                     Box(modifier = Modifier.weight(1f))
-                    if (multiSelect && selectedIds.isNotEmpty()) {
+                    if (showClearWhenSelected && selectedIds.isNotEmpty()) {
                         Text(
-                            text = "CLEAR",
+                            text = "Clear",
                             style = SlockType.Caption.copy(
                                 fontSize = 10.sp,
                                 lineHeight = 12.sp,
@@ -150,27 +154,29 @@ internal fun SlockFilterPopover(
                     }
                 }
                 headerSlot?.invoke()
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
-                        .padding(horizontal = 8.dp, vertical = 8.dp)
-                ) {
-                    TextField(
-                        value = searchText,
-                        onValueChange = onSearchChange,
-                        placeholder = searchPlaceholder,
-                        placeholderColor = SlockColor.TextMutedGray,
-                        textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                        autoFocus = false,
-                        maxLines = 1,
+                if (searchable) {
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 36.dp)
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
                             .padding(horizontal = 8.dp, vertical = 8.dp)
-                    )
+                    ) {
+                        TextField(
+                            value = searchText,
+                            onValueChange = onSearchChange,
+                            placeholder = searchPlaceholder,
+                            placeholderColor = SlockColor.TextMutedGray,
+                            textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
+                            autoFocus = false,
+                            maxLines = 1,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 32.dp)
+                                .background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        )
+                    }
                 }
                 if (filtered.isEmpty()) {
                     Text(
@@ -189,7 +195,7 @@ internal fun SlockFilterPopover(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .heightIn(min = 36.dp)
+                                            .height(36.dp)
                                             .background(if (selected) selectedRowColor else SlockColor.SurfaceWhite)
                                             .clickable {
                                                 onToggle(option.id)
