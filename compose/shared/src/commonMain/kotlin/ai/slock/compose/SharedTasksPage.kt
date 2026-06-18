@@ -148,7 +148,8 @@ internal fun SharedTasksPanel(
                 }
                 SharedTasksStateBody(
                     title = "No tasks",
-                    detail = loadState.reason.name
+                    detail = null,
+                    iconName = "square-check-big"
                 )
             }
             is ScreenLoadState.Error -> {
@@ -440,7 +441,8 @@ private fun SharedTasksLoadedBodyContent(
                         if (visibleContent.filteredTasks.isEmpty()) {
                             SharedTasksStateBody(
                                 title = "No matching tasks",
-                                detail = "Try clearing your filters."
+                                detail = "Try clearing your filters.",
+                                iconName = "search"
                             )
                         } else {
                             LazyColumn(
@@ -1034,8 +1036,9 @@ private fun SharedTasksNotice(
 @Composable
 private fun SharedTasksStateBody(
     title: String,
-    detail: String,
+    detail: String?,
     loading: Boolean = false,
+    iconName: String = "square-check-big",
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
@@ -1043,30 +1046,13 @@ private fun SharedTasksStateBody(
         SlockCenteredLoading(message = title)
         return
     }
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(if (loading) SlockColor.AppBgLightBlue else SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Md)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-                Text(text = title, style = SlockType.PageTitle, color = SlockColor.TextBlack)
-                Text(text = detail, style = SlockType.Body, color = SlockColor.TextMutedGray)
-            }
-        }
-        if (actionLabel != null && onAction != null) {
-            SharedTasksPillButton(label = actionLabel, selected = false, onClick = onAction)
-        }
-    }
+    SlockEmptyState(
+        title = title,
+        detail = detail,
+        iconName = iconName,
+        actionLabel = actionLabel,
+        onAction = onAction
+    )
 }
 
 private val TaskStatus.label: String
