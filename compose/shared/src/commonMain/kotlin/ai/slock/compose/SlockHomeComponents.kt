@@ -1437,7 +1437,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     color = SlockColor.TextBlack,
                     modifier =
                         if (descriptionText != null) {
-                            Modifier.weight(0.68f, fill = false)
+                            Modifier.widthIn(max = 260.dp)
                         } else {
                             Modifier.weight(1f)
                         },
@@ -1450,7 +1450,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         descriptionText,
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
                         color = SlockColor.TextMutedGray,
-                        modifier = Modifier.weight(0.32f),
+                        modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
