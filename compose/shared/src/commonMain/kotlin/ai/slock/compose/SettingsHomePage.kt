@@ -6366,6 +6366,7 @@ private fun SharedHomeSearchFilters(
             state.selectedSenderId != null ||
             state.selectedChannelId != null ||
             state.timeRange != SearchTimeRange.Any
+    val sortEnabled = state.query.isNotBlank() || state.searched || hasActiveFilters
     val selectedSender = state.senderFilters.firstOrNull { it.id == state.selectedSenderId }
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
     SharedHomeSearchControlsBlock {
@@ -6457,11 +6458,11 @@ private fun SharedHomeSearchFilters(
                 SlockAnchoredToolbarChip(
                     label = state.sort.searchLabel,
                     active = state.sort != SearchSort.Relevance,
-                    enabled = state.query.isNotBlank(),
+                    enabled = sortEnabled,
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
                     activeBackgroundColor = SlockColor.BrandYellow,
-                    borderColor = if (state.sort != SearchSort.Relevance) SlockColor.BorderBlack else SearchMutedBorderColor,
+                    borderColor = if (sortEnabled || state.sort != SearchSort.Relevance) SlockColor.BorderBlack else SearchMutedBorderColor,
                     onClick = { anchor ->
                         sortAnchorChanged(anchor)
                         onOpenFilter("sort")
@@ -6743,45 +6744,15 @@ private fun SharedHomeSearchEmptyState(
     title: String,
     detail: String
 ) {
-    Column(
+    SlockEmptyState(
+        title = title,
+        detail = detail,
+        iconName = "search",
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = 300.dp)
-                .padding(horizontal = 32.dp, vertical = 44.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(58.dp)
-                    .background(SlockColor.BrandYellow)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon("search", color = "#FF000000", modifier = Modifier.size(24.dp))
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(
-            text = title,
-            style =
-                SlockType.PageTitle
-                    .copy(fontSize = 18.sp, lineHeight = 22.sp, letterSpacing = 0.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-            color = SlockColor.TextBlack,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
-        )
-        Spacer(Modifier.height(7.dp))
-        Text(
-            text = detail,
-            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, letterSpacing = 0.sp),
-            color = SearchMutedTextColor,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+                .height(300.dp)
+    )
 }
 
 @Composable
