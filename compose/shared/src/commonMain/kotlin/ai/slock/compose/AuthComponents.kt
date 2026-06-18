@@ -35,6 +35,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -69,6 +70,7 @@ private fun Modifier.authStaticTextFocus(): Modifier =
 internal fun AuthScaffold(
     modifier: Modifier = Modifier,
     onDiagnosticsShortcut: (() -> Unit)? = null,
+    contentTopPadding: Dp = 136.dp,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
@@ -97,7 +99,7 @@ internal fun AuthScaffold(
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 314.dp)
-                    .padding(top = 136.dp),
+                    .padding(top = contentTopPadding),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content

@@ -263,6 +263,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
+import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -4450,7 +4451,7 @@ private fun AppShellServerGateContent(
         }
     }
 
-    AuthScaffold {
+    AuthScaffold(contentTopPadding = 72.dp) {
         AuthCenterMark()
         Text(
             text =
@@ -4532,13 +4533,11 @@ private fun AppShellServerGateContent(
                     enabled = !loading
                 )
             }
-            AuthTextLink(
-                text = "Sign out",
+            AppShellServerSignOutLink(
+                enabled = !loading,
                 onClick = {
-                    if (!loading) {
-                        pendingServerId = "__logout__"
-                        loading = true
-                    }
+                    pendingServerId = "__logout__"
+                    loading = true
                 }
             )
         }
@@ -4571,6 +4570,33 @@ private fun AppShellServerGateContent(
         }
     }
 
+}
+
+@Composable
+private fun AppShellServerSignOutLink(
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val color = SlockColor.TextBlack.copy(alpha = if (enabled) 0.5f else 0.28f)
+    Text(
+        text = "Sign out",
+        style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(
+            fontSize = 14.sp,
+            lineHeight = 18.sp,
+            color = color,
+            textDecoration = TextDecoration.Underline
+        ),
+        color = color,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    if (enabled) {
+                        onClick()
+                    }
+                },
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable
@@ -4607,7 +4633,7 @@ private fun AppShellServerRow(
     onClick: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().background(SlockColor.ShadowBlack).padding(0.dp))
+        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
         Button(
             onClick = if (enabled) onClick else ({}),
             enabled = enabled,
