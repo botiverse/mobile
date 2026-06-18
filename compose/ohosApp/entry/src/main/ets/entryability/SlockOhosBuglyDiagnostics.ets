@@ -53,10 +53,33 @@ export interface SlockBuglyDiagnosticsConfig {
 }
 
 export class SlockOhosBuglyDiagnostics {
+  private static buglyReady: boolean = false;
+  private static disabledReason: string = 'not_initialized';
   private static initialized: boolean = false;
+
+  static markBuglyReady(): void {
+    SlockOhosBuglyDiagnostics.buglyReady = true;
+    SlockOhosBuglyDiagnostics.disabledReason = '';
+    SlockOhosDiagnostics.record(TAG, 'bugly_core_ready');
+  }
+
+  static disable(reason: string): void {
+    SlockOhosBuglyDiagnostics.buglyReady = false;
+    SlockOhosBuglyDiagnostics.initialized = false;
+    SlockOhosBuglyDiagnostics.disabledReason = reason.length > 0 ? reason : 'disabled';
+    SlockOhosDiagnostics.record(TAG, `bugly_disabled reason=${SlockOhosBuglyDiagnostics.disabledReason}`);
+  }
+
+  static isBuglyReady(): boolean {
+    return SlockOhosBuglyDiagnostics.buglyReady;
+  }
 
   static init(context: common.UIAbilityContext, config: SlockBuglyDiagnosticsConfig): void {
     if (SlockOhosBuglyDiagnostics.initialized) {
+      return;
+    }
+    if (!SlockOhosBuglyDiagnostics.buglyReady) {
+      SlockOhosDiagnostics.record(TAG, `bugly_diagnostics_init_skipped reason=${SlockOhosBuglyDiagnostics.disabledReason}`);
       return;
     }
 
@@ -116,6 +139,10 @@ export class SlockOhosBuglyDiagnostics {
   }
 
   static reportCaughtError(name: string, message: string, stack: string, extraData: string = ''): Record<string, Object> {
+    if (!SlockOhosBuglyDiagnostics.buglyReady) {
+      SlockOhosDiagnostics.record(TAG, `bugly_custom_error_skipped ${name} reason=${SlockOhosBuglyDiagnostics.disabledReason}`);
+      return SlockOhosBuglyDiagnostics.disabledResult('bugly_custom_error_disabled');
+    }
     try {
       Bugly.postCustomError(name, message, stack, false, undefined, extraData);
       SlockOhosDiagnostics.record(TAG, `bugly_custom_error_posted ${name}`);
@@ -130,6 +157,10 @@ export class SlockOhosBuglyDiagnostics {
   }
 
   static storeCrashRelatedError(context: common.UIAbilityContext, name: string, message: string, stack: string, extraData: string): void {
+    if (!SlockOhosBuglyDiagnostics.buglyReady) {
+      SlockOhosDiagnostics.record(TAG, `bugly_crash_related_error_skipped ${name} reason=${SlockOhosBuglyDiagnostics.disabledReason}`);
+      return;
+    }
     try {
       Bugly.postCustomError(name, message, stack, true, context.getApplicationContext(), extraData);
       SlockOhosDiagnostics.record(TAG, `bugly_crash_related_error_stored ${name}`);
@@ -139,6 +170,9 @@ export class SlockOhosBuglyDiagnostics {
   }
 
   static testCrash(kind: string): Record<string, Object> {
+    if (!SlockOhosBuglyDiagnostics.buglyReady) {
+      return SlockOhosBuglyDiagnostics.disabledResult('bugly_test_crash_disabled');
+    }
     try {
       switch (kind) {
         case 'js': {
@@ -168,9 +202,29 @@ export class SlockOhosBuglyDiagnostics {
     }
   }
 
+  static updateScene(action: string, sceneName: string): Record<string, Object> {
+    if (!SlockOhosBuglyDiagnostics.buglyReady) {
+      return SlockOhosBuglyDiagnostics.disabledResult('bugly_scene_disabled');
+    }
+    try {
+      if (action === 'exit') {
+        Bugly.exitScene(sceneName);
+      } else {
+        Bugly.enterScene(sceneName);
+      }
+      return { "status": "ok", "code": "bugly_scene_updated" };
+    } catch (error) {
+      return {
+        "status": "error",
+        "code": "bugly_scene_failed",
+        "message": SlockOhosBuglyDiagnostics.safeString(error),
+      };
+    }
+  }
+
   static uploadDiagnostics(context: common.UIAbilityContext): Record<string, Object> {
     if (!SlockOhosBuglyDiagnostics.initialized) {
-      return { "status": "error", "code": "bugly_diagnostics_not_initialized" };
+      return SlockOhosBuglyDiagnostics.disabledResult('bugly_diagnostics_not_initialized');
     }
 
     try {
@@ -288,6 +342,16 @@ export class SlockOhosBuglyDiagnostics {
 
   private static isFileExistsError(error: Object): boolean {
     return (error as BusinessError).code === 13900015;
+  }
+
+  private static disabledResult(code: string): Record<string, Object> {
+    return {
+      "status": "disabled",
+      "code": code,
+      "reason": SlockOhosBuglyDiagnostics.disabledReason.length > 0
+        ? SlockOhosBuglyDiagnostics.disabledReason
+        : 'not_initialized',
+    };
   }
 
   private static safeString(value: Object): string {

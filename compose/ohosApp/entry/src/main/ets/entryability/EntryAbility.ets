@@ -42,14 +42,14 @@ const SLOCK_FONTS: SlockFontResource[] = [
 
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
+  private static buglyInitializing: boolean = false;
   private static fontModuleRegistered: boolean = false;
   private static uiFontsRegistered: boolean = false;
   private mainWindow?: window.Window;
 
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     hilog.info(0x0000, 'testTag', '%{public}s', 'Ability onCreate');
-    this.initBugly();
-    this.reportLastExitReason(launchParam);
+    this.initBugly(launchParam);
     SlockOhosCrashReporter.install(this.context);
   }
 
@@ -163,10 +163,11 @@ export default class EntryAbility extends UIAbility {
     slockOhosRealtimeBridge.onPageHide();
   }
 
-  private initBugly(): void {
-    if (EntryAbility.buglyInitialized) {
+  private initBugly(launchParam: AbilityConstant.LaunchParam): void {
+    if (EntryAbility.buglyInitialized || EntryAbility.buglyInitializing) {
       return;
     }
+    EntryAbility.buglyInitializing = true;
     try {
       const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
       const builder = new BuglyBuilder();
@@ -188,24 +189,41 @@ export default class EntryAbility extends UIAbility {
       builder.enableJsCrashProtect = false;
       builder.enablePrivacyInfoAuthorized = true;
       builder.enablePerfModules = ModuleName.AllModules;
-      Bugly.init(this.context.getApplicationContext(), builder);
-      Bugly.setCrashMonitorAble(true, true);
-      SlockOhosBuglyDiagnostics.init(this.context, {
-        appId: BUGLY_APP_ID,
-        appKey: BUGLY_APP_KEY,
-        deviceId,
-        appVersion: bundleInfo.versionName,
-        deviceModel,
-        debugMode: BUGLY_DEBUG_MODE,
-      });
-      SlockOhosDiagnostics.setPersistentRecorder((tag: string, message: string): void => {
-        SlockOhosBuglyDiagnostics.record(tag, message);
-      });
-      EntryAbility.buglyInitialized = true;
-      hilog.info(0x0000, 'testTag', '%{public}s', 'Bugly initialized');
+      Bugly.init(this.context.getApplicationContext(), builder)
+        .then((): void => {
+          Bugly.setCrashMonitorAble(true, true);
+          SlockOhosBuglyDiagnostics.markBuglyReady();
+          SlockOhosBuglyDiagnostics.init(this.context, {
+            appId: BUGLY_APP_ID,
+            appKey: BUGLY_APP_KEY,
+            deviceId,
+            appVersion: bundleInfo.versionName,
+            deviceModel,
+            debugMode: BUGLY_DEBUG_MODE,
+          });
+          SlockOhosDiagnostics.setPersistentRecorder((tag: string, message: string): void => {
+            SlockOhosBuglyDiagnostics.record(tag, message);
+          });
+          EntryAbility.buglyInitialized = true;
+          EntryAbility.buglyInitializing = false;
+          this.reportLastExitReason(launchParam);
+          hilog.info(0x0000, 'testTag', '%{public}s', 'Bugly initialized');
+        })
+        .catch((err: Object): void => {
+          this.handleBuglyInitFailure(err);
+        });
     } catch (err) {
-      hilog.error(0x0000, 'testTag', 'Failed to initialize Bugly. Cause: %{public}s', JSON.stringify(err) ?? '');
+      this.handleBuglyInitFailure(err);
     }
+  }
+
+  private handleBuglyInitFailure(err: Object): void {
+    const message = JSON.stringify(err) ?? '';
+    EntryAbility.buglyInitialized = false;
+    EntryAbility.buglyInitializing = false;
+    SlockOhosBuglyDiagnostics.disable(`init_failed ${message}`);
+    SlockOhosDiagnostics.setPersistentRecorder(null);
+    hilog.error(0x0000, 'testTag', 'Failed to initialize Bugly. Cause: %{public}s', message);
   }
 
   private reportLastExitReason(launchParam: AbilityConstant.LaunchParam): void {

@@ -11,7 +11,6 @@ import router from '@ohos.router';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
 import deviceInfo from '@ohos.deviceInfo';
-import { Bugly } from 'bugly';
 import { SlockOhosBuglyDiagnostics } from '../../entryability/SlockOhosBuglyDiagnostics';
 import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
@@ -338,15 +337,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     if (sceneName.length === 0) {
       return;
     }
-    try {
-      if (action === 'exit') {
-        Bugly.exitScene(sceneName);
-      } else {
-        Bugly.enterScene(sceneName);
-      }
+    const result = SlockOhosBuglyDiagnostics.updateScene(action, sceneName);
+    if (result["status"] === "ok") {
       SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=ok`);
-    } catch (error) {
-      SlockOhosDiagnostics.record('SlockPerfScene', `${action} scene=${sceneName} result=failed ${JSON.stringify(error) ?? ''}`);
+    } else {
+      SlockOhosDiagnostics.record(
+        'SlockPerfScene',
+        `${action} scene=${sceneName} result=${result["status"]} code=${result["code"]}`
+      );
     }
   }
 
