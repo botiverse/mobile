@@ -4444,7 +4444,7 @@ private fun AppShellServerGateContent(
     }
 
     AuthScaffold {
-        AuthLogoBadge("RAFT")
+        AuthCenterMark()
         Text(
             text =
                 when (mode) {
@@ -4519,20 +4519,20 @@ private fun AppShellServerGateContent(
                     )
                 }
                 AuthActionButton(
-                    text = "Switch or create server",
+                    text = "+ Create new server",
                     onClick = { mode = "create" },
-                    tone = AuthButtonTone.Cyan,
+                    tone = AuthButtonTone.Yellow,
                     enabled = !loading
                 )
             }
-            AuthActionButton(
+            AuthTextLink(
                 text = "Sign out",
                 onClick = {
-                    pendingServerId = "__logout__"
-                    loading = true
-                },
-                tone = AuthButtonTone.White,
-                enabled = !loading
+                    if (!loading) {
+                        pendingServerId = "__logout__"
+                        loading = true
+                    }
+                }
             )
         }
     }
@@ -4599,34 +4599,33 @@ private fun AppShellServerRow(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().height(42.dp).padding(end = 2.dp, bottom = 2.dp)) {
+    Box(modifier = Modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
         Box(Modifier.fillMaxSize().background(SlockColor.ShadowBlack).padding(0.dp))
         Button(
             onClick = if (enabled) onClick else ({}),
             enabled = enabled,
             modifier = Modifier
                 .fillMaxSize()
-                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalAlignment = Alignment.Start
             ) {
                 Text(
                     text = server.name,
                     style = SlockType.Button.copy(color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
-                    modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (pending) "..." else if (selected) "Selected" else "Open",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
+                    text = if (pending) "Opening..." else "/${server.slug.orEmpty().ifBlank { server.id }}",
+                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
+                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1
                 )
             }

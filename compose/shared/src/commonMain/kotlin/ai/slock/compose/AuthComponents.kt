@@ -45,6 +45,7 @@ internal enum class AuthProvider {
 
 internal enum class AuthButtonTone {
     Pink,
+    Yellow,
     Cyan,
     White,
     Black,
@@ -323,6 +324,7 @@ internal fun AuthActionButton(
 ) {
     val background = when (tone) {
         AuthButtonTone.Pink -> SlockColor.AccentPink
+        AuthButtonTone.Yellow -> SlockColor.BrandYellow
         AuthButtonTone.Cyan -> SlockColor.AccentCyan
         AuthButtonTone.White -> SlockColor.SurfaceWhite
         AuthButtonTone.Black -> SlockColor.TextBlack
