@@ -326,7 +326,6 @@ private val SearchMessagesHorizontalPadding = 16.dp
 private val SearchControlShadowOffset = 2.dp
 private val SearchPopoverBorderColor = SlockColor.BorderBlack
 private val SearchPopoverShadowColor = SlockColor.ShadowBlack
-private val SearchMutedBorderColor = SlockColor.TextBlack.copy(alpha = 0.28f)
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 
@@ -6356,7 +6355,6 @@ private fun SharedHomeSearchFilters(
             state.selectedSenderId != null ||
             state.selectedChannelId != null ||
             state.timeRange != SearchTimeRange.Any
-    val sortEnabled = state.query.isNotBlank() || state.searched || hasActiveFilters
     val selectedSender = state.senderFilters.firstOrNull { it.id == state.selectedSenderId }
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
     SharedHomeSearchControlsBlock {
@@ -6373,7 +6371,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedSender == null,
                         iconName = SlockLucideIconName.CircleUser,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = if (state.selectedSenderId != null) SlockColor.BorderBlack else SearchMutedBorderColor,
+                        borderColor = SlockColor.BorderBlack,
                         onClick = { anchor ->
                             senderAnchorChanged(anchor)
                             onOpenFilter("sender")
@@ -6388,7 +6386,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = if (state.selectedChannelId != null) SlockColor.BorderBlack else SearchMutedBorderColor,
+                        borderColor = SlockColor.BorderBlack,
                         onClick = { anchor ->
                             channelAnchorChanged(anchor)
                             onOpenFilter("channel")
@@ -6403,7 +6401,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = if (state.timeRange != SearchTimeRange.Any) SlockColor.BorderBlack else SearchMutedBorderColor,
+                        borderColor = SlockColor.BorderBlack,
                         onClick = { anchor ->
                             timeAnchorChanged(anchor)
                             onOpenFilter("time")
@@ -6419,7 +6417,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = if (state.selectedChannelId != null) SlockColor.BorderBlack else SearchMutedBorderColor,
+                        borderColor = SlockColor.BorderBlack,
                         onClick = { anchor ->
                             channelAnchorChanged(anchor)
                             onOpenFilter("channel")
@@ -6436,7 +6434,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = if (state.timeRange != SearchTimeRange.Any) SlockColor.BorderBlack else SearchMutedBorderColor,
+                        borderColor = SlockColor.BorderBlack,
                         onClick = { anchor ->
                             timeAnchorChanged(anchor)
                             onOpenFilter("time")
@@ -6448,11 +6446,11 @@ private fun SharedHomeSearchFilters(
                 SlockAnchoredToolbarChip(
                     label = state.sort.searchLabel,
                     active = state.sort != SearchSort.Relevance,
-                    enabled = sortEnabled,
+                    enabled = true,
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
                     activeBackgroundColor = SlockColor.BrandYellow,
-                    borderColor = if (sortEnabled || state.sort != SearchSort.Relevance) SlockColor.BorderBlack else SearchMutedBorderColor,
+                    borderColor = SlockColor.BorderBlack,
                     onClick = { anchor ->
                         sortAnchorChanged(anchor)
                         onOpenFilter("sort")

@@ -494,15 +494,12 @@ internal fun SlockBrutalInputField(
                     modifier = Modifier.weight(1f)
                 )
                 if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
-                    Box(
-                        modifier =
-                            Modifier
-                                .size(24.dp)
-                                .clickable { onClear?.invoke() ?: onValueChange("") },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
-                    }
+                    SlockBrutalIconButton(
+                        iconName = "x",
+                        onClick = { onClear?.invoke() ?: onValueChange("") },
+                        size = 18.dp,
+                        shadowOffset = 2.dp
+                    )
                 }
             }
         }
