@@ -201,7 +201,7 @@ export struct SlockOhosHdsTabBar {
         this.renderView.syncControllerIndex(index);
       })
       .onTabBarClick((index: number) => {
-        this.renderView.syncControllerIndex(index);
+        this.renderView.selectIndex(index);
       })
       .divider({ mode: DividerMode.NONE })
       .width('100%')
