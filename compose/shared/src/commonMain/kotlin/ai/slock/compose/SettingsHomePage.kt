@@ -7432,13 +7432,12 @@ internal fun InboxItem.toAppShellConversationSummary(): ConversationSummary {
                 null
             },
         kind =
-            parentChannelKind
-                ?: when (kind) {
-                    InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                    InboxItemKind.Thread -> ConversationKind.Thread
-                    InboxItemKind.System -> ConversationKind.System
-                    else -> ConversationKind.Channel
-                },
+            when (kind) {
+                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
+                InboxItemKind.Thread -> ConversationKind.Thread
+                InboxItemKind.System -> ConversationKind.System
+                else -> parentChannelKind ?: ConversationKind.Channel
+            },
         name =
             when (kind) {
                 InboxItemKind.Thread -> parentChannelName ?: channelName
@@ -7596,7 +7595,7 @@ internal fun buildAppShellThreadPayload(
             },
         status = "loading",
         surfaceKind = surfaceKind,
-        sourceThreadId = conversation.threadId.value,
+        sourceThreadId = streamChannelId,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,

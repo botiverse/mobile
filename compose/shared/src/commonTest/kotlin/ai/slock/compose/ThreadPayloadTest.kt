@@ -376,6 +376,7 @@ class ThreadPayloadTest {
         assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("thread-channel-1", payload.sourceThreadId)
         assertEquals("thread-channel-1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
@@ -383,6 +384,38 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
+    }
+
+    @Test
+    fun appShellActivityThreadItemFallsBackToParentChannelWhenThreadStreamIsMissing() {
+        val conversation =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentChannelKind = ConversationKind.Channel,
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityPreview = "Latest reply"
+            ).toAppShellConversationSummary()
+
+        val payload = buildAppShellThreadPayload(conversation)
+
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
+        assertEquals(ConversationKind.Thread, conversation.kind)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
     }
 
     @Test
