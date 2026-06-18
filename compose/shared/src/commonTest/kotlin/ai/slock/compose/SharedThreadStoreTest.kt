@@ -160,8 +160,8 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.LoadOlder)
         store.accept(SharedThreadIntent.LoadNewer)
 
-        assertEquals(listOf(10, 10), api.channelMessageLimits)
-        assertEquals(listOf(10), api.syncLimits)
+        assertEquals(listOf(30, 30), api.channelMessageLimits)
+        assertEquals(listOf(30), api.syncLimits)
         scope.cancel()
     }
 
@@ -662,7 +662,7 @@ class SharedThreadStoreTest {
         localStore.writeThread(
             ThreadSnapshot(
                 conversation = conversationSummary(),
-                messages = (1..12).map { index -> message(id = "cached-$index", seq = index.toLong(), body = "cached $index") }
+                messages = (1..35).map { index -> message(id = "cached-$index", seq = index.toLong(), body = "cached $index") }
             )
         )
         val dataSource =
@@ -676,7 +676,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payload = store.state.value.payload
-        assertEquals((3..12).map { "cached $it" }, payload.messages.map { it.body })
+        assertEquals((6..35).map { "cached $it" }, payload.messages.map { it.body })
         assertEquals(true, payload.canLoadMoreBefore)
         scope.cancel()
     }

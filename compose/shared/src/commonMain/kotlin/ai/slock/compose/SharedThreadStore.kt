@@ -1208,7 +1208,7 @@ private fun ThreadApiResult<Unit>.toUnitDataResult(fallbackCode: String): DataRe
     }
 
 internal object SharedThreadPaging {
-    const val initialPageSize = 10
+    const val initialPageSize = 30
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
