@@ -402,16 +402,52 @@ internal fun SlockBrutalTextField(
      */
     password: Boolean = false
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shadowOffset = if (focused && enabled) 4.dp else 3.dp
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockBrutalSectionLabel(label = label, required = required, optional = optional)
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(fieldMinHeight + shadowOffset)
-        ) {
+        SlockBrutalInputField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = placeholder,
+            enabled = enabled,
+            autoFocus = autoFocus,
+            maxLines = maxLines,
+            textStyle = textStyle,
+            fieldMinHeight = fieldMinHeight,
+            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None
+        )
+    }
+}
+
+@Composable
+internal fun SlockBrutalInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    autoFocus: Boolean = false,
+    maxLines: Int = 1,
+    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+    fieldMinHeight: Dp = 42.dp,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 8.dp,
+    showShadow: Boolean = true,
+    visualTransformation: VisualTransformation = VisualTransformation.None
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shadowOffset = if (showShadow) {
+        if (focused && enabled) 4.dp else 3.dp
+    } else {
+        0.dp
+    }
+    val reservedShadowOffset = if (showShadow) 4.dp else 0.dp
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .height(fieldMinHeight + reservedShadowOffset)
+    ) {
+        if (showShadow) {
             Box(
                 modifier =
                     Modifier
@@ -420,36 +456,30 @@ internal fun SlockBrutalTextField(
                         .offset(x = shadowOffset, y = shadowOffset)
                         .background(SlockColor.ShadowBlack)
             )
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(fieldMinHeight)
-                        .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                TextField(
-                    value = value,
-                    onValueChange = { if (enabled) onValueChange(it) },
-                    placeholder = placeholder,
-                    placeholderColor = SlockColor.TextMutedGray,
-                    autoFocus = autoFocus,
-                    onFocus = { focused = true },
-                    onBlur = { focused = false },
-                    maxLines = maxLines,
-                    textStyle = textStyle,
-                    // Task #43 QA-4 fix: when `password` is set, the field
-                    // uses a native visual transformation so the value
-                    // stays in `value` but the UI masks it with `•`.
-                    // The caller (e.g. SharedCreateAgentDialog) controls
-                    // the show/hide via toggling `password` — no need
-                    // to edit bullet chars into the real value.
-                    visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+        }
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(fieldMinHeight)
+                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = SlockColor.TextMutedGray,
+                autoFocus = autoFocus,
+                onFocus = { focused = true },
+                onBlur = { focused = false },
+                maxLines = maxLines,
+                textStyle = textStyle,
+                visualTransformation = visualTransformation,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.components.SlockBrutalInputField
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -161,20 +162,19 @@ internal fun SlockFilterPopover(
                             .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.1f))
                             .padding(horizontal = 8.dp, vertical = 8.dp)
                     ) {
-                        TextField(
+                        SlockBrutalInputField(
                             value = searchText,
                             onValueChange = onSearchChange,
                             placeholder = searchPlaceholder,
-                            placeholderColor = SlockColor.TextMutedGray,
                             textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
                             autoFocus = false,
                             maxLines = 1,
+                            fieldMinHeight = 32.dp,
+                            horizontalPadding = 8.dp,
+                            verticalPadding = 6.dp,
+                            showShadow = false,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 32.dp)
-                                .background(SlockColor.SurfaceWhite)
-                                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
                 }
