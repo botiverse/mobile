@@ -36,8 +36,6 @@ import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
-import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
-import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -77,6 +75,7 @@ internal data class KuiklyThreadComposerPayload(
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
+    val attachmentActionsEnabled: Boolean = true,
     val showAsTaskToggle: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
@@ -117,6 +116,7 @@ internal data class ThreadComposerUiState(
     val focusRequestNonce: Int = 0,
     val placeholder: String = "Message",
     val enabled: Boolean = true,
+    val attachmentActionsEnabled: Boolean = true,
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
@@ -339,6 +339,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         focusRequestNonce = focusRequestNonce,
         placeholder = placeholder,
         enabled = enabled,
+        attachmentActionsEnabled = attachmentActionsEnabled,
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
@@ -409,15 +410,15 @@ internal fun ThreadComposerContent(
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
 ) {
     var fieldValue by remember(state.instanceId) {
-        mutableStateOf(state.seedText.toComposerFieldValueAtEnd())
+        mutableStateOf(state.seedText)
     }
-    val text = fieldValue.text
+    val text = fieldValue
     var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
     var focused by remember(state.instanceId) { mutableStateOf(false) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
-        fieldValue = state.seedText.toComposerFieldValueAtEnd()
+        fieldValue = state.seedText
         asTask = state.seedAsTask
         focused = false
     }
@@ -468,16 +469,16 @@ internal fun ThreadComposerContent(
 
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger ?: return
-        val next = fieldValue.replaceComposerTrigger(trigger.triggerStart, "@${member.handle} ")
-        fieldValue = next
-        emitChange(nextText = next.text)
+        val before = fieldValue.substring(0, trigger.triggerStart)
+        fieldValue = "$before@${member.handle} "
+        emitChange(nextText = fieldValue)
     }
 
     fun applyChannelSuggestion(channel: KuiklyComposerChannelItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger ?: return
-        val next = fieldValue.replaceComposerTrigger(trigger.triggerStart, "#${channel.name} ")
-        fieldValue = next
-        emitChange(nextText = next.text)
+        val before = fieldValue.substring(0, trigger.triggerStart)
+        fieldValue = "$before#${channel.name} "
+        emitChange(nextText = fieldValue)
     }
 
     Box(
@@ -566,7 +567,7 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
-                            emitChange(nextText = next.text)
+                            emitChange(nextText = next)
                         },
                         onFocus = {
                             focused = true
@@ -584,7 +585,7 @@ internal fun ThreadComposerContent(
                             onSend = {
                                 if (canSend) {
                                     onEvent("send", null, null, null)
-                                    fieldValue = "".toComposerFieldValueAtEnd()
+                                    fieldValue = ""
                                     asTask = false
                                 }
                             }
@@ -621,11 +622,13 @@ internal fun ThreadComposerContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            ComposerIconButton("image-plus", composerEnabled) {
-                                onEvent("attachImage", null, null, null)
-                            }
-                            ComposerIconButton("paperclip", composerEnabled) {
-                                onEvent("attachFile", null, null, null)
+                            if (state.attachmentActionsEnabled) {
+                                ComposerIconButton("image-plus", composerEnabled) {
+                                    onEvent("attachImage", null, null, null)
+                                }
+                                ComposerIconButton("paperclip", composerEnabled) {
+                                    onEvent("attachFile", null, null, null)
+                                }
                             }
                         }
                         if (surface.showTaskButton) {
@@ -642,7 +645,7 @@ internal fun ThreadComposerContent(
                             sending = state.composerMode == "sending" || state.composerMode == "uploading"
                         ) {
                             onEvent("send", null, null, null)
-                            fieldValue = "".toComposerFieldValueAtEnd()
+                            fieldValue = ""
                             asTask = false
                         }
                     }
@@ -833,9 +836,9 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val disabledOpacity = if (enabled) 1f else 0.3f
+    val disabledOpacity = if (enabled || sending) 1f else 0.3f
     ComposerIconButton(
-        icon = "send",
+        icon = if (sending) "refresh-cw" else "send",
         enabled = enabled,
         modifier = Modifier.alpha(disabledOpacity),
         backgroundColor = SlockColor.AccentPink,
@@ -901,21 +904,4 @@ private fun detectKuiklyComposerSuggestionTrigger(text: String): KuiklyComposerS
 
 private fun Char.isComposerSuggestionBoundary(): Boolean = !isLetterOrDigit()
 
-private fun String.toComposerFieldValueAtEnd(): TextFieldValue =
-    TextFieldValue(text = this, selection = TextRange(length))
 
-private fun TextFieldValue.replaceComposerTrigger(triggerStart: Int, replacement: String): TextFieldValue {
-    val end = selection.max.coerceIn(0, text.length)
-    val safeStart = triggerStart.coerceIn(0, end)
-    val nextText = text.replaceRange(safeStart, end, replacement)
-    val nextCursor = safeStart + replacement.length
-    return copy(text = nextText, selection = TextRange(nextCursor))
-}
-
-private fun TextFieldValue.insertTextAtSelection(textToInsert: String): TextFieldValue {
-    val start = selection.min.coerceIn(0, text.length)
-    val end = selection.max.coerceIn(0, text.length)
-    val nextText = text.replaceRange(start, end, textToInsert)
-    val nextCursor = start + textToInsert.length
-    return copy(text = nextText, selection = TextRange(nextCursor))
-}
