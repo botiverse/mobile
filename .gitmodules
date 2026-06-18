@@ -20,10 +20,6 @@
 	path = third_party/kuikly-ui
 	url = https://github.com/bytemain/KuiklyUI.git
 	branch = staging
-[submodule "third_party/moko-graphics"]
-	path = third_party/moko-graphics
-	url = https://github.com/icerockdev/moko-graphics.git
-	branch = master
 [submodule "third_party/moko-resources"]
 	path = third_party/moko-resources
 	url = https://gitcode.com/CPF-KMP-CMP/moko-resources.git

@@ -48,7 +48,6 @@ pluginManagement {
             !mavenArtifactExists("dev/icerock/moko", "graphics-android-debug", mokoGraphicsVersion)
 
     if (needsMokoResources) {
-        ensureSubmodule("third_party/moko-graphics")
         ensureSubmodule("third_party/moko-resources")
         runChecked(
             slockRoot,

@@ -17,10 +17,10 @@ MOKO_GRAPHICS_VERSION="0.10.1-KBA-010"
 MOKO_RESOURCES_VERSION="0.26.0-KBA-010"
 
 GRAPHICS_COMMIT="${SLOCK_MOKO_GRAPHICS_COMMIT:-c0e7ef83a243d17772a89be732ef64fb3463ed82}"
+GRAPHICS_REPO_URL="${SLOCK_MOKO_GRAPHICS_REPO_URL:-https://github.com/icerockdev/moko-graphics.git}"
 RESOURCES_COMMIT="${SLOCK_MOKO_RESOURCES_COMMIT:-df9c1a8dc2c6c9c53fc3d608b6e987079995b534}"
 
 THIRD_PARTY_ROOT="${SLOCK_THIRD_PARTY_WORKDIR:-${REPO_ROOT}/third_party/.workdirs}"
-GRAPHICS_SOURCE_DIR="${SLOCK_MOKO_GRAPHICS_SOURCE_DIR:-${REPO_ROOT}/third_party/moko-graphics}"
 RESOURCES_SOURCE_DIR="${SLOCK_MOKO_RESOURCES_SOURCE_DIR:-${REPO_ROOT}/third_party/moko-resources}"
 GRAPHICS_WORKDIR="${SLOCK_MOKO_GRAPHICS_WORKDIR:-${THIRD_PARTY_ROOT}/moko-graphics-kba}"
 RESOURCES_WORKDIR="${SLOCK_MOKO_RESOURCES_WORKDIR:-${THIRD_PARTY_ROOT}/moko-resources-kba}"
@@ -143,6 +143,32 @@ EOF
   git -C "${workdir}" checkout "${expected_commit}"
   git -C "${workdir}" reset --hard "${expected_commit}"
   git -C "${workdir}" clean -fdx
+}
+
+prepare_workdir_from_git() {
+  local repo_url="$1"
+  local workdir="$2"
+  local expected_commit="$3"
+
+  chmod -R u+w "${workdir}" 2>/dev/null || true
+  for cleanup_attempt in 1 2 3; do
+    rm -rf "${workdir}" 2>/dev/null || true
+    if [[ ! -e "${workdir}" ]]; then
+      break
+    fi
+    chmod -R u+w "${workdir}" 2>/dev/null || true
+    sleep "${cleanup_attempt}"
+  done
+  if [[ -e "${workdir}" ]]; then
+    echo "Failed to remove existing moko workdir: ${workdir}" >&2
+    exit 4
+  fi
+
+  mkdir -p "$(dirname "${workdir}")"
+  GIT_CONFIG_GLOBAL="${SLOCK_GIT_CONFIG_GLOBAL:-/dev/null}" git clone "${repo_url}" "${workdir}"
+  GIT_CONFIG_GLOBAL="${SLOCK_GIT_CONFIG_GLOBAL:-/dev/null}" git -C "${workdir}" checkout "${expected_commit}"
+  GIT_CONFIG_GLOBAL="${SLOCK_GIT_CONFIG_GLOBAL:-/dev/null}" git -C "${workdir}" reset --hard "${expected_commit}"
+  GIT_CONFIG_GLOBAL="${SLOCK_GIT_CONFIG_GLOBAL:-/dev/null}" git -C "${workdir}" clean -fdx
 }
 
 patch_graphics() {
@@ -705,7 +731,7 @@ fi
 copy_cached_kotlin_stdlib_to_maven_local
 
 if [[ "${force}" -eq 1 ]] || ! graphics_artifacts_ready; then
-  prepare_workdir_from_vendor "${GRAPHICS_SOURCE_DIR}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_COMMIT}"
+  prepare_workdir_from_git "${GRAPHICS_REPO_URL}" "${GRAPHICS_WORKDIR}" "${GRAPHICS_COMMIT}"
   patch_graphics
   "${GRAPHICS_WORKDIR}/gradlew" \
     --no-daemon \

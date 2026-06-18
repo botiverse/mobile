@@ -112,7 +112,6 @@ pluginManagement {
     }
 
     if (needsMokoResources) {
-        ensureSubmodule("third_party/moko-graphics")
         ensureSubmodule("third_party/moko-resources")
         runChecked(
             slockRoot,
