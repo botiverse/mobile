@@ -20,6 +20,8 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.text.KeyboardActions
+import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
@@ -432,7 +434,11 @@ internal fun SlockBrutalInputField(
     horizontalPadding: Dp = 10.dp,
     verticalPadding: Dp = 8.dp,
     showShadow: Boolean = true,
-    visualTransformation: VisualTransformation = VisualTransformation.None
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
+    showClearWhenNotEmpty: Boolean = false,
+    onClear: (() -> Unit)? = null
 ) {
     var focused by remember { mutableStateOf(false) }
     val shadowOffset = if (showShadow) {
@@ -467,19 +473,38 @@ internal fun SlockBrutalInputField(
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.CenterStart
         ) {
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = SlockColor.TextMutedGray,
-                autoFocus = autoFocus,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
-                maxLines = maxLines,
-                textStyle = textStyle,
-                visualTransformation = visualTransformation,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = value,
+                    onValueChange = { if (enabled) onValueChange(it) },
+                    placeholder = placeholder,
+                    placeholderColor = SlockColor.TextMutedGray,
+                    autoFocus = autoFocus,
+                    onFocus = { focused = true },
+                    onBlur = { focused = false },
+                    maxLines = maxLines,
+                    keyboardOptions = keyboardOptions,
+                    keyboardActions = keyboardActions,
+                    textStyle = textStyle,
+                    visualTransformation = visualTransformation,
+                    modifier = Modifier.weight(1f)
+                )
+                if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(24.dp)
+                                .clickable { onClear?.invoke() ?: onValueChange("") },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon("x", color = "#FF000000", modifier = Modifier.size(12.dp))
+                    }
+                }
+            }
         }
     }
 }

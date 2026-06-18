@@ -173,6 +173,8 @@ internal fun SlockFilterPopover(
                             horizontalPadding = 8.dp,
                             verticalPadding = 6.dp,
                             showShadow = false,
+                            showClearWhenNotEmpty = true,
+                            onClear = { onSearchChange("") },
                             modifier = Modifier
                                 .fillMaxWidth()
                         )

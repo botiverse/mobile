@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalListRow
 import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalPanelShell
@@ -6101,32 +6102,34 @@ private fun SharedHomeSearchInput(
     onClear: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    SharedHomeSearchShadowSurface(
-        modifier = modifier.heightIn(min = 38.dp),
-        background = SlockColor.SurfaceWhite,
-        borderWidth = SlockStroke.Default,
-        contentPaddingHorizontal = 0.dp,
-        contentPaddingVertical = 0.dp
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    if (interactive) {
+        SlockBrutalInputField(
+            value = query,
+            onValueChange = onQueryChange,
+            placeholder = "Search channels, DMs, messages…",
+            maxLines = 1,
+            textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            fieldMinHeight = 38.dp,
+            horizontalPadding = 11.dp,
+            verticalPadding = 5.dp,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
+            showClearWhenNotEmpty = true,
+            onClear = onClear,
+            modifier = modifier
+        )
+    } else {
+        SharedHomeSearchShadowSurface(
+            modifier = modifier.heightIn(min = 38.dp),
+            background = SlockColor.SurfaceWhite,
+            borderWidth = SlockStroke.Default,
+            contentPaddingHorizontal = 0.dp,
+            contentPaddingVertical = 0.dp
         ) {
-            if (interactive) {
-                TextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    placeholder = "Search channels, DMs, messages…",
-                    placeholderColor = SlockColor.TextMutedGray,
-                    autoFocus = false,
-                    maxLines = 1,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
-                    textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 11.dp, top = 7.dp, end = 7.dp, bottom = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
                     text = query.ifBlank { "Search channels, DMs, messages…" },
                     style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -6134,15 +6137,6 @@ private fun SharedHomeSearchInput(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
-                )
-            }
-            if (interactive && query.isNotBlank()) {
-                SharedHomeSearchIconButton(
-                    iconName = "x",
-                    size = 24.dp,
-                    iconSize = 12.dp,
-                    background = SlockColor.SurfaceWhite,
-                    onClick = onClear
                 )
             }
         }
@@ -6322,23 +6316,19 @@ private fun SharedHomePanelSearchField(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        TextField(
+        SlockBrutalInputField(
             value = query,
             onValueChange = onQueryChange,
             placeholder = "Search messages",
-            placeholderColor = SlockColor.TextMutedGray,
             autoFocus = true,
             maxLines = 1,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (query.isNotBlank() && !loading) onSubmit() }),
             textStyle = SlockType.Input.copy(color = SlockColor.TextBlack),
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 42.dp)
-                    .background(SlockColor.AppBgLightBlue.copy(alpha = 0.55f))
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(horizontal = SlockSpacing.Sm, vertical = 9.dp)
+            fieldMinHeight = 42.dp,
+            showShadow = false,
+            showClearWhenNotEmpty = true,
+            modifier = Modifier.weight(1f)
         )
         SharedHomePanelButton(
             label = "Go",
