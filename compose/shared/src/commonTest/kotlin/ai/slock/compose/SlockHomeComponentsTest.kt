@@ -6,6 +6,8 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class SlockHomeComponentsTest {
     @Test
@@ -21,29 +23,38 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeDisplayedSelectedConversationHidesWhenTopActionSelected() {
+    fun homeSidebarSelectionPrefersTopActionOverConversation() {
         assertEquals(
-            null,
-            homeDisplayedSelectedConversationId(
+            SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Activity),
+            homeSidebarSelection(
                 selectedChannelId = "channel-1",
+                selectedConversationSection = null,
+                channels = listOf(SlockHomeConversationItem(id = "channel-1", name = "home")),
+                directMessages = emptyList(),
                 searchSelected = false,
                 activitySelected = true,
                 savedSelected = false
             )
         )
         assertEquals(
-            null,
-            homeDisplayedSelectedConversationId(
+            SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Search),
+            homeSidebarSelection(
                 selectedChannelId = "channel-1",
+                selectedConversationSection = null,
+                channels = listOf(SlockHomeConversationItem(id = "channel-1", name = "home")),
+                directMessages = emptyList(),
                 searchSelected = true,
                 activitySelected = false,
                 savedSelected = false
             )
         )
         assertEquals(
-            null,
-            homeDisplayedSelectedConversationId(
+            SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Saved),
+            homeSidebarSelection(
                 selectedChannelId = "channel-1",
+                selectedConversationSection = null,
+                channels = listOf(SlockHomeConversationItem(id = "channel-1", name = "home")),
+                directMessages = emptyList(),
                 searchSelected = false,
                 activitySelected = false,
                 savedSelected = true
@@ -52,16 +63,62 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeDisplayedSelectedConversationKeepsConversationWhenNoTopActionSelected() {
+    fun homeSidebarSelectionDistinguishesConversationSections() {
         assertEquals(
-            "channel-1",
-            homeDisplayedSelectedConversationId(
+            SlockHomeSidebarSelection(conversationId = "channel-1", conversationSection = SlockHomeConversationSection.Channel),
+            homeSidebarSelection(
                 selectedChannelId = "channel-1",
+                selectedConversationSection = null,
+                channels = listOf(
+                    SlockHomeConversationItem(id = "channel-1", name = "home"),
+                    SlockHomeConversationItem(id = "joint-1", name = "partner", kind = "joint")
+                ),
+                directMessages = listOf(SlockHomeConversationItem(id = "dm-1", name = "artin")),
                 searchSelected = false,
                 activitySelected = false,
                 savedSelected = false
             )
         )
+        assertEquals(
+            SlockHomeSidebarSelection(conversationId = "joint-1", conversationSection = SlockHomeConversationSection.JointChannel),
+            homeSidebarSelection(
+                selectedChannelId = "joint-1",
+                selectedConversationSection = null,
+                channels = listOf(SlockHomeConversationItem(id = "joint-1", name = "partner", kind = "joint")),
+                directMessages = emptyList(),
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = false
+            )
+        )
+        assertEquals(
+            SlockHomeSidebarSelection(conversationId = "dm-1", conversationSection = SlockHomeConversationSection.DirectMessage),
+            homeSidebarSelection(
+                selectedChannelId = "dm-1",
+                selectedConversationSection = null,
+                channels = emptyList(),
+                directMessages = listOf(SlockHomeConversationItem(id = "dm-1", name = "artin")),
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = false
+            )
+        )
+    }
+
+    @Test
+    fun sidebarSelectionRequiresMatchingConversationSection() {
+        val pinnedSelection =
+            SlockHomeSidebarSelection(
+                conversationId = "channel-1",
+                conversationSection = SlockHomeConversationSection.Pinned
+            )
+        val pinnedSectionSelection = pinnedSelection.sectionSelection(SlockHomeConversationSection.Pinned)
+        val channelSectionSelection = pinnedSelection.sectionSelection(SlockHomeConversationSection.Channel)
+
+        assertEquals(SlockHomeConversationSection.Pinned, pinnedSectionSelection.section)
+        assertTrue(pinnedSectionSelection.selects("channel-1"))
+        assertFalse(channelSectionSelection.selects("channel-1"))
+        assertFalse(pinnedSectionSelection.selects("channel-2"))
     }
 
     @Test

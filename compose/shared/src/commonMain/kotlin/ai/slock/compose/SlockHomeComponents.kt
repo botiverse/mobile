@@ -157,6 +157,19 @@ enum class SlockHomeNotificationKind { Warning, Info, Error }
 @Serializable
 enum class SlockPresence { Online, Offline, Unknown }
 
+enum class SlockHomeConversationSection {
+    Channel,
+    JointChannel,
+    DirectMessage,
+    Pinned
+}
+
+enum class SlockHomeSidebarTopSelection {
+    Search,
+    Activity,
+    Saved
+}
+
 @Serializable
 enum class SlockSidebarSortMode(val wireValue: String, val label: String) {
     Manual("manual", "Manual"),
@@ -351,6 +364,7 @@ fun SlockStructuralHomeShell(
     channels: List<SlockHomeConversationItem> = emptyList(),
     directMessages: List<SlockHomeConversationItem> = emptyList(),
     selectedChannelId: String? = null,
+    selectedConversationSection: SlockHomeConversationSection? = null,
     serverUnreadCount: Int = 0,
     inboxUnreadCount: Int = 0,
     savedCount: Int = 0,
@@ -411,13 +425,19 @@ fun SlockStructuralHomeShell(
     val displayedChannels = remember(channels, channelSortModeState) { channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
     val displayedJointChannels = remember(channels, channelSortModeState) { channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
     val displayedDirectMessages = remember(directMessages, directMessageSortMode) { directMessages.sortedForSidebar(directMessageSortMode) { it.name } }
-    val displayedSelectedChannelId =
-        homeDisplayedSelectedConversationId(
+    val sidebarSelection =
+        homeSidebarSelection(
             selectedChannelId = selectedChannelId,
+            selectedConversationSection = selectedConversationSection,
+            channels = channels,
+            directMessages = directMessages,
             searchSelected = searchSelected,
             activitySelected = activitySelected,
             savedSelected = savedSelected
         )
+    val channelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Channel)
+    val jointChannelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.JointChannel)
+    val directMessageSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.DirectMessage)
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
@@ -474,17 +494,17 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                        item { SidebarActionRow("search", labels.search, selected = searchSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
+                        item { SidebarActionRow("search", labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                         item {
                             SidebarActivityRow(
                                 labels.inbox,
                                 inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                                selected = activitySelected,
+                                selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                 onClick = if (sidebarInteractionsEnabled) onInboxClick else null
                             )
                         }
-                        item { SidebarActionRow("bookmark", labels.saved, selected = savedSelected, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                        item { SidebarActionRow("bookmark", labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SlockCollapsibleSectionHeader(
@@ -513,7 +533,7 @@ fun SlockStructuralHomeShell(
                                     hasDraft = channel.hasDraft,
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    interactionState = if (channel.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = if (channelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                 )
                             }
@@ -539,7 +559,7 @@ fun SlockStructuralHomeShell(
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        interactionState = if (channel.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                        interactionState = if (jointChannelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
                                     )
                                 }
@@ -575,7 +595,7 @@ fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
-                                    interactionState = if (dm.id == displayedSelectedChannelId) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = if (directMessageSectionSelection.selects(dm.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null
                                 )
                             }
@@ -676,13 +696,76 @@ private val SlockHomeSortMenuItems =
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
     presence ?: SlockPresence.Offline
 
-internal fun homeDisplayedSelectedConversationId(
+internal data class SlockHomeSidebarSelection(
+    val topAction: SlockHomeSidebarTopSelection? = null,
+    val conversationId: String? = null,
+    val conversationSection: SlockHomeConversationSection? = null
+)
+
+internal data class SlockHomeSectionSelection(
+    val section: SlockHomeConversationSection,
+    val selectedId: String?
+)
+
+internal fun homeSidebarSelection(
     selectedChannelId: String?,
+    selectedConversationSection: SlockHomeConversationSection?,
+    channels: List<SlockHomeConversationItem>,
+    directMessages: List<SlockHomeConversationItem>,
     searchSelected: Boolean,
     activitySelected: Boolean,
     savedSelected: Boolean
-): String? =
-    selectedChannelId.takeUnless { searchSelected || activitySelected || savedSelected }
+): SlockHomeSidebarSelection =
+    when {
+        searchSelected -> SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Search)
+        activitySelected -> SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Activity)
+        savedSelected -> SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Saved)
+        selectedChannelId != null -> {
+            val section =
+                selectedConversationSection
+                    ?: homeConversationSectionForSelection(
+                        selectedChannelId = selectedChannelId,
+                        channels = channels,
+                        directMessages = directMessages
+                    )
+            SlockHomeSidebarSelection(
+                conversationId = selectedChannelId,
+                conversationSection = section
+            )
+        }
+        else -> SlockHomeSidebarSelection()
+    }
+
+internal fun homeConversationSectionForSelection(
+    selectedChannelId: String,
+    channels: List<SlockHomeConversationItem>,
+    directMessages: List<SlockHomeConversationItem>
+): SlockHomeConversationSection? {
+    val channel = channels.firstOrNull { it.id == selectedChannelId }
+    if (channel != null) {
+        return if (channel.kind.equals("joint", ignoreCase = true)) {
+            SlockHomeConversationSection.JointChannel
+        } else {
+            SlockHomeConversationSection.Channel
+        }
+    }
+    return if (directMessages.any { it.id == selectedChannelId }) {
+        SlockHomeConversationSection.DirectMessage
+    } else {
+        null
+    }
+}
+
+internal fun SlockHomeSidebarSelection.sectionSelection(
+    section: SlockHomeConversationSection
+): SlockHomeSectionSelection =
+    SlockHomeSectionSelection(
+        section = section,
+        selectedId = conversationId.takeIf { conversationSection == section }
+    )
+
+internal fun SlockHomeSectionSelection.selects(id: String): Boolean =
+    selectedId == id
 
 internal fun List<SlockHomeConversationItem>.sortedForSidebar(
     mode: SlockSidebarSortMode,
