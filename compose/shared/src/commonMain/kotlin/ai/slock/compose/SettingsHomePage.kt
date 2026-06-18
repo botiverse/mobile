@@ -1936,6 +1936,7 @@ private fun SlockAppShellContent() {
                                         openHomeConversation(conversation, "home_activity")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                    timeContext = threadTimeContext,
                                     shellScope = shellScope
                                 )
                             } else if (selectedHomeDestination == HomeDestinationSearch) {

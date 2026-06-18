@@ -22,6 +22,7 @@ import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.threadIdentity
@@ -71,6 +72,7 @@ internal fun SharedHomeActivityScreen(
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = true,
+    timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier
 ) {
@@ -173,6 +175,7 @@ internal fun SharedHomeActivityScreen(
         },
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+        timeContext = timeContext,
         modifier = modifier
     )
 }
@@ -185,6 +188,7 @@ internal fun SharedHomeActivityPanel(
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = false,
+    timeContext: SlockTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier
 ) {
@@ -199,6 +203,7 @@ internal fun SharedHomeActivityPanel(
         onMarkAllRead = {},
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+        timeContext = timeContext,
         modifier = modifier
     )
 }
@@ -221,6 +226,7 @@ private fun SharedActivityPanelContent(
     onMarkAllRead: () -> Unit,
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
+    timeContext: SlockTimeContext?,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -271,7 +277,8 @@ private fun SharedActivityPanelContent(
                     SharedActivityList(
                         snapshot = state.snapshot,
                         onOpenConversation = onOpenConversation,
-                        bottomContentPadding = bottomContentPadding
+                        bottomContentPadding = bottomContentPadding,
+                        timeContext = timeContext
                     )
                 }
         }
@@ -369,7 +376,8 @@ private fun SharedActivityFilterBar(
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
     onOpenConversation: (ConversationSummary) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(top = 16.dp),
@@ -380,6 +388,7 @@ private fun SharedActivityList(
             SharedActivityRow(
                 item = item,
                 modifier = Modifier.padding(horizontal = 16.dp),
+                timeContext = timeContext,
                 onClick = { onOpenConversation(item.toConversationSummary()) }
             )
         }
@@ -391,6 +400,7 @@ private fun SharedActivityList(
 private fun SharedActivityRow(
     item: InboxItem,
     modifier: Modifier = Modifier,
+    timeContext: SlockTimeContext?,
     onClick: () -> Unit
 ) {
     Row(
@@ -417,7 +427,7 @@ private fun SharedActivityRow(
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = item.activityTimeLabel(),
+                    text = item.activityTimeLabel(timeContext),
                     style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
                     color = SlockColor.TextBlack.copy(alpha = 0.4f),
                     maxLines = 1,
@@ -719,8 +729,11 @@ private fun InboxSnapshot.withSenderAvatarsFromMembers(
     )
 }
 
-private fun InboxItem.activityTimeLabel(): String =
-    latestActivityAt ?: lastMessageAt ?: ""
+internal fun InboxItem.activityTimeLabel(timeContext: SlockTimeContext?): String =
+    timeContext?.formatTimestampLabel(latestActivityAt ?: lastMessageAt)
+        ?: latestActivityAt
+        ?: lastMessageAt
+        ?: ""
 
 private fun InboxItem.previewText(): String =
     if (kind == InboxItemKind.Thread) {
