@@ -54,10 +54,6 @@ class SocketIoRealtimeClient(
     private var lastHeartbeatAtMillis: Long? = null
     private var lastInboundEventAtMillis: Long? = null
     private var watchdogTimer: Timer? = null
-    // Deduplicate MemberPresenceUpdated: agent:activity fires multiple times per second for the
-    // same agent. Skip dispatch when presence+kind is unchanged to avoid redundant recompositions.
-    private val lastPresenceByMember =
-            mutableMapOf<String, Pair<ai.slock.android.core.model.Presence, ai.slock.android.core.model.MemberKind?>>()
     var state: RealtimeConnectionState = RealtimeConnectionState.Disconnected
         private set
 
@@ -91,7 +87,6 @@ class SocketIoRealtimeClient(
                 reason = "client_disconnect",
                 serverId = connectedServerId?.let(::ServerId)
         )
-        lastPresenceByMember.clear()
     }
 
     fun checkHeartbeatSilence(nowMillis: Long = clockMillis()): Boolean {
@@ -315,15 +310,6 @@ class SocketIoRealtimeClient(
                 "heartbeat_gap_detected serverId=${connectedServerId.orEmpty()} " +
                     "serverSeq=${event.seq} appliedSeq=${cursor.appliedLastSeq}"
             )
-        }
-        if (event is MemberPresenceUpdated) {
-            val key = event.memberId.value
-            val next = event.presence to event.kind
-            if (lastPresenceByMember[key] == next) {
-                logger("event_dedup type=member_presence_updated memberId=$key presence=${event.presence} kind=${event.kind?.name.orEmpty()}")
-                return
-            }
-            lastPresenceByMember[key] = next
         }
         diagnostics?.onEvent(event, connectedServerId?.let(::ServerId), visibleThreadId = null)
         logger(

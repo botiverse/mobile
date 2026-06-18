@@ -562,7 +562,10 @@ class SharedHomeStore(
             pendingPresenceEvents.clear()
         }
         pendingPresenceServerId = serverId
-        pendingPresenceEvents[event.memberId] = event
+        val previous = pendingPresenceEvents[event.memberId]
+        if (event.shouldReplacePresenceFact(previous)) {
+            pendingPresenceEvents[event.memberId] = event
+        }
         if (presenceFlushJob?.isActive == true) return
         presenceFlushJob =
             scope.launch {
@@ -616,12 +619,23 @@ class SharedHomeStore(
         val serverFacts = presenceFactsByServer.getOrPut(serverId) { linkedMapOf() }
         var changedCount = 0
         events.forEach { event ->
-            if (serverFacts[event.memberId] != event) {
+            val previous = serverFacts[event.memberId]
+            if (event.shouldReplacePresenceFact(previous)) {
                 serverFacts[event.memberId] = event
                 changedCount += 1
             }
         }
         return changedCount
+    }
+
+    private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean {
+        previous ?: return true
+        val nextSeq = serverSeq
+        val previousSeq = previous.serverSeq
+        if (nextSeq != null && previousSeq != null && nextSeq <= previousSeq) {
+            return false
+        }
+        return this != previous
     }
 
     private fun contentFromDurableSnapshot(

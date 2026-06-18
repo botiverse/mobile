@@ -63,6 +63,7 @@ import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
+import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeDataSource
 import ai.slock.compose.data.HomeSnapshot
@@ -1616,12 +1617,14 @@ private fun SlockAppShellContent() {
                         return
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                    threadRealtimeEventSequence += 1
-                    threadRealtimeEventSignal =
-                        SharedThreadRealtimeEventSignal(
-                            sequence = threadRealtimeEventSequence,
-                            event = event
-                        )
+                    if (RealtimeRoutePolicy.shouldForwardToActiveThread(event)) {
+                        threadRealtimeEventSequence += 1
+                        threadRealtimeEventSignal =
+                            SharedThreadRealtimeEventSignal(
+                                sequence = threadRealtimeEventSequence,
+                                event = event
+                            )
+                    }
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
                     }
@@ -1665,17 +1668,19 @@ private fun SlockAppShellContent() {
                             }
                         }
                     }
-                    bridge.performanceMarker(
-                        phase = "realtime_batch_apply",
-                        routeName = if (activeThread == null) "kuikly_home" else "kuikly_thread",
-                        event = "instant",
-                        threadId = activeThread?.sourceThreadId ?: activeThread?.instanceId,
-                        metadata =
-                            mapOf(
-                                "type" to event.performanceMarkerName(),
-                                "activeThread" to (activeThread != null).toString()
-                            )
-                    )
+                    if (RealtimeRoutePolicy.shouldEmitRouteMarker(event, activeThread = activeThread != null)) {
+                        bridge.performanceMarker(
+                            phase = "realtime_batch_apply",
+                            routeName = if (activeThread == null) "kuikly_home" else "kuikly_thread",
+                            event = "instant",
+                            threadId = activeThread?.sourceThreadId ?: activeThread?.instanceId,
+                            metadata =
+                                mapOf(
+                                    "type" to event.performanceMarkerName(),
+                                    "activeThread" to (activeThread != null).toString()
+                                )
+                        )
+                    }
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
                     // #79: forward machine-scope realtime events to the
                     // settings store so the ComputerDetail page refreshes

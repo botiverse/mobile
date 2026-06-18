@@ -408,7 +408,8 @@ data class MemberPresenceUpdated(
     val presence: Presence,
     val kind: MemberKind? = null,
     val agentStatus: AgentStatus? = null,
-    val statusLabel: String? = null
+    val statusLabel: String? = null,
+    val serverSeq: Long? = null
 ) : RealtimeEvent
 
 @Serializable

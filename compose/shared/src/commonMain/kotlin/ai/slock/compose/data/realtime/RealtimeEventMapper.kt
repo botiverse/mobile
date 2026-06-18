@@ -493,6 +493,7 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
         kind = MemberKind.Agent,
         agentStatus = status,
         statusLabel = detail,
+        serverSeq = serverSeq,
     )
 }
 

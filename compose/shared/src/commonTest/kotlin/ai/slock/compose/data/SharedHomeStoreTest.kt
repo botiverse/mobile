@@ -726,6 +726,65 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun realtimePresenceBatchKeepsHighestServerSeqForMember() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            sampleHome(ServerId("server-1")).copy(
+                directMessages =
+                    listOf(
+                        directMessage("dm-1", "Agent One", "agent-1", Presence.Offline)
+                    )
+            )
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = ThrowingHomeApi(),
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("network failure should not parse") }
+                ),
+            scope = scope,
+            presenceFlushDelayMillis = 1L
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Active,
+                        kind = MemberKind.Agent,
+                        serverSeq = 10L
+                    )
+            )
+        )
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    MemberPresenceUpdated(
+                        memberId = MemberId("agent-1"),
+                        presence = Presence.Away,
+                        kind = MemberKind.Agent,
+                        serverSeq = 9L
+                    )
+            )
+        )
+        delay(10L)
+
+        val contentAfter = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(Presence.Active, contentAfter.snapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, contentAfter.baseSnapshot.directMessages.single().presence)
+        assertEquals(Presence.Offline, localStore.readHome(ServerId("server-1"))?.directMessages?.single()?.presence)
+        scope.cancel()
+    }
+
+    @Test
     fun hiddenRealtimeMessageWritesCacheWithoutProjectingHomeState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val logs = mutableListOf<String>()

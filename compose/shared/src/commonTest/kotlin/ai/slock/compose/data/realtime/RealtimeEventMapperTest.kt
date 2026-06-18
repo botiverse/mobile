@@ -1,10 +1,13 @@
 package ai.slock.compose.data.realtime
 
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
+import ai.slock.compose.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -198,5 +201,29 @@ class RealtimeEventMapperTest {
             )
 
         assertNull(event)
+    }
+
+    @Test
+    fun agentActivityPreservesServerSeq() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-1",
+                  "activity": "thinking",
+                  "detail": "Planning",
+                  "serverSeq": 42
+                }
+                """.trimIndent()
+            )
+
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals("agent-1", presence.memberId.value)
+        assertEquals(Presence.Active, presence.presence)
+        assertEquals(MemberKind.Agent, presence.kind)
+        assertEquals(AgentStatus.Thinking, presence.agentStatus)
+        assertEquals("Planning", presence.statusLabel)
+        assertEquals(42L, presence.serverSeq)
     }
 }
