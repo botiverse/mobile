@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -49,9 +50,11 @@ data class TasksPresentationState(
     val channelSelectorExpanded: Boolean = false,
     val selectedMode: TasksViewMode = TasksViewMode.Board,
     val collapsedStatuses: Set<TaskStatus> = setOf(TaskStatus.Done, TaskStatus.Closed),
+    val selectedCreatorIds: Set<String> = emptySet(),
     val selectedAssigneeIds: Set<String> = emptySet(),
     val openFilterId: String? = null,
     val channelSearch: String = "",
+    val creatorSearch: String = "",
     val assigneeSearch: String = ""
 ) {
     companion object {
@@ -62,6 +65,8 @@ data class TasksPresentationState(
 data class TasksVisibleContent(
     val channelOptions: List<String>,
     val selectedChannelNames: Set<String>,
+    val creatorOptions: List<MemberProfile>,
+    val selectedCreatorIds: Set<String>,
     val assigneeOptions: List<MemberProfile>,
     val selectedAssigneeIds: Set<String>,
     val channelScopedContent: TasksContent,
@@ -119,11 +124,15 @@ sealed interface TasksPresentationIntent {
     data class SelectMode(val mode: TasksViewMode) : TasksPresentationIntent
     data class PruneUnavailableChannels(val availableChannels: Set<String>) : TasksPresentationIntent
     data class ToggleStatusCollapsed(val status: TaskStatus) : TasksPresentationIntent
+    data class ToggleCreator(val memberId: String) : TasksPresentationIntent
+    data object ClearCreators : TasksPresentationIntent
+    data class PruneUnavailableCreators(val availableMemberIds: Set<String>) : TasksPresentationIntent
     data class ToggleAssignee(val memberId: String) : TasksPresentationIntent
     data object ClearAssignees : TasksPresentationIntent
     data class PruneUnavailableAssignees(val availableMemberIds: Set<String>) : TasksPresentationIntent
     data class SetOpenFilter(val filterId: String?) : TasksPresentationIntent
     data class SetChannelSearch(val text: String) : TasksPresentationIntent
+    data class SetCreatorSearch(val text: String) : TasksPresentationIntent
     data class SetAssigneeSearch(val text: String) : TasksPresentationIntent
     data object ClearAllFilters : TasksPresentationIntent
 }
@@ -366,6 +375,18 @@ fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresent
                         collapsedStatuses + intent.status
                     }
             )
+        is TasksPresentationIntent.ToggleCreator ->
+            copy(
+                selectedCreatorIds =
+                    if (intent.memberId in selectedCreatorIds) {
+                        selectedCreatorIds - intent.memberId
+                    } else {
+                        selectedCreatorIds + intent.memberId
+                    }
+            )
+        TasksPresentationIntent.ClearCreators -> copy(selectedCreatorIds = emptySet())
+        is TasksPresentationIntent.PruneUnavailableCreators ->
+            copy(selectedCreatorIds = selectedCreatorIds.filter { it in intent.availableMemberIds }.toSet())
         is TasksPresentationIntent.ToggleAssignee ->
             copy(
                 selectedAssigneeIds =
@@ -384,12 +405,14 @@ fun TasksPresentationState.reduce(intent: TasksPresentationIntent): TasksPresent
                 // Reset the relevant search box when the popover is being closed or swapped
                 // so the next open does not reopen with stale text.
                 channelSearch = if (intent.filterId == "channel") channelSearch else "",
+                creatorSearch = if (intent.filterId == "creator") creatorSearch else "",
                 assigneeSearch = if (intent.filterId == "assignee") assigneeSearch else ""
             )
         is TasksPresentationIntent.SetChannelSearch -> copy(channelSearch = intent.text)
+        is TasksPresentationIntent.SetCreatorSearch -> copy(creatorSearch = intent.text)
         is TasksPresentationIntent.SetAssigneeSearch -> copy(assigneeSearch = intent.text)
         TasksPresentationIntent.ClearAllFilters ->
-            copy(selectedChannelNames = emptySet(), selectedAssigneeIds = emptySet())
+            copy(selectedChannelNames = emptySet(), selectedCreatorIds = emptySet(), selectedAssigneeIds = emptySet())
     }
 
 fun TasksContent.visibleContent(
@@ -406,10 +429,15 @@ fun TasksContent.visibleContent(
         } else {
             emptyList()
         }
-    // Derive the assignee option pool from the loaded tasks so we don't need a separate
-    // members fetch. Each MemberProfile that ever appears as a claimer becomes a chip
-    // option; identical IDs collapse so the popover doesn't show duplicates. Sorted by
-    // display name for stable ordering across refreshes.
+    // Derive identity option pools from the loaded tasks so we don't need a separate
+    // members fetch. Each profile that ever appears as a creator/claimer becomes a chip
+    // option; identical identities collapse so popovers don't show duplicates. Sorted
+    // by display name for stable ordering across refreshes.
+    val creatorOptions =
+        tasks
+            .mapNotNull { it.creator }
+            .distinctBy { it.tasksIdentityFilterId() }
+            .sortedBy { it.displayName.lowercase() }
     val assigneeOptions =
         tasks
             .mapNotNull { it.assignee }
@@ -421,6 +449,9 @@ fun TasksContent.visibleContent(
         } else {
             emptySet()
         }
+    val availableCreatorIds = creatorOptions.mapTo(mutableSetOf()) { it.tasksIdentityFilterId() }
+    val selectedCreatorIds =
+        presentationState.selectedCreatorIds.filter { it in availableCreatorIds }.toSet()
     val availableAssigneeIds = assigneeOptions.mapTo(mutableSetOf()) { it.id.value }
     val selectedAssigneeIds =
         presentationState.selectedAssigneeIds.filter { it in availableAssigneeIds }.toSet()
@@ -439,11 +470,17 @@ fun TasksContent.visibleContent(
                 tasks = channelScopedTasks
             )
         }
-    val assigneeScopedTasks =
-        if (selectedAssigneeIds.isEmpty()) {
+    val creatorScopedTasks =
+        if (selectedCreatorIds.isEmpty()) {
             channelScopedTasks
         } else {
-            channelScopedTasks.filter { task -> task.assignee?.id?.value in selectedAssigneeIds }
+            channelScopedTasks.filter { task -> task.creator?.tasksIdentityFilterId() in selectedCreatorIds }
+        }
+    val assigneeScopedTasks =
+        if (selectedAssigneeIds.isEmpty()) {
+            creatorScopedTasks
+        } else {
+            creatorScopedTasks.filter { task -> task.assignee?.id?.value in selectedAssigneeIds }
         }
     val filteredTasks =
         if (selectedFilter == null) {
@@ -455,6 +492,8 @@ fun TasksContent.visibleContent(
     return TasksVisibleContent(
         channelOptions = channelOptions,
         selectedChannelNames = selectedChannels,
+        creatorOptions = creatorOptions,
+        selectedCreatorIds = selectedCreatorIds,
         assigneeOptions = assigneeOptions,
         selectedAssigneeIds = selectedAssigneeIds,
         channelScopedContent = channelScopedContent,
@@ -596,12 +635,24 @@ fun TaskSummary.tasksDisplayTitle(): String {
     }
 }
 
-fun TaskSummary.tasksAssigneeDisplayName(): String? =
-    assignee?.displayName
-        ?.trim()
-        ?.takeIf { it.isNotBlank() }
+fun TaskSummary.tasksAssigneeDisplayName(): String? {
+    val profile = assignee ?: return null
+    return profile.displayName
+        .trim()
+        .takeIf { it.isNotBlank() }
         ?.takeUnless { it.isUuidLike() }
-        ?.takeUnless { assignee?.id?.value == it }
+        ?.takeUnless { profile.id.value == it }
+}
+
+internal fun MemberProfile.tasksIdentityFilterId(): String =
+    "${kind.tasksIdentityFilterPrefix()}:${id.value}"
+
+private fun MemberKind.tasksIdentityFilterPrefix(): String =
+    when (this) {
+        MemberKind.Agent -> "agent"
+        MemberKind.Human -> "user"
+        MemberKind.System -> "system"
+    }
 
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
     if (loadState is ScreenLoadState.Content) {

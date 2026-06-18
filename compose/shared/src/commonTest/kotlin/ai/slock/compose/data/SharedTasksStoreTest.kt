@@ -374,6 +374,40 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun presentationReducerPrunesCreatorsAndFiltersVisibleTasks() {
+        val artin = member("Artin", MemberKind.Human)
+        val cindy = member("Cindy", MemberKind.Human)
+        val content =
+            TasksContent(
+                summaryCounts = emptyMap(),
+                tasks =
+                    listOf(
+                        task("task-1", TaskStatus.Todo, creator = artin),
+                        task("task-2", TaskStatus.Todo, creator = cindy),
+                        task("task-3", TaskStatus.InReview, creator = artin)
+                    )
+            )
+
+        val presentation =
+            TasksPresentationState()
+                .reduce(TasksPresentationIntent.ToggleCreator(artin.tasksIdentityFilterId()))
+                .reduce(TasksPresentationIntent.ToggleCreator("missing"))
+                .reduce(TasksPresentationIntent.PruneUnavailableCreators(setOf(artin.tasksIdentityFilterId(), cindy.tasksIdentityFilterId())))
+
+        val visible =
+            content.visibleContent(
+                selectedFilter = null,
+                presentationState = presentation,
+                showChannelFilter = true
+            )
+
+        assertEquals(listOf("user:${artin.id.value}", "user:${cindy.id.value}"), visible.creatorOptions.map { it.tasksIdentityFilterId() })
+        assertEquals(setOf(artin.tasksIdentityFilterId()), visible.selectedCreatorIds)
+        assertEquals(listOf("task-1", "task-3"), visible.filteredTasks.map { it.id.value })
+        assertEquals(emptySet(), presentation.reduce(TasksPresentationIntent.ClearAllFilters).selectedCreatorIds)
+    }
+
+    @Test
     fun refreshResultKeepsContentVisibleOnEmptyAndError() {
         val current =
             TasksUiState(
@@ -501,6 +535,7 @@ class SharedTasksStoreTest {
         assertEquals(TaskStatus.InReview, task.status)
         assertEquals("#65 migrate Android UI to shared MVI", task.tasksDisplayTitle())
         assertEquals("KMP", task.channelName)
+        assertEquals("user:user-1", task.creator?.tasksIdentityFilterId())
         assertEquals("KMP-专家", task.tasksAssigneeDisplayName())
         assertEquals(1, content.data.summaryCounts[TaskStatus.InReview])
     }
@@ -549,7 +584,8 @@ class SharedTasksStoreTest {
         status: TaskStatus,
         channelName: String? = null,
         title: String = "Task $id",
-        assignee: MemberProfile? = null
+        assignee: MemberProfile? = null,
+        creator: MemberProfile? = null
     ): TaskSummary =
         TaskSummary(
             id = TaskId(id),
@@ -560,15 +596,16 @@ class SharedTasksStoreTest {
             channelId = ChannelId("channel-1"),
             channelName = channelName,
             assignee = assignee,
+            creator = creator,
             updatedAtLabel = "now"
         )
 
-    private fun member(displayName: String): MemberProfile =
+    private fun member(displayName: String, kind: MemberKind = MemberKind.Agent): MemberProfile =
         MemberProfile(
             id = MemberId("member-$displayName"),
             displayName = displayName,
             handle = displayName,
-            kind = MemberKind.Agent,
+            kind = kind,
             presence = Presence.Active
         )
 
