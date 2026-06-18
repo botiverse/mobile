@@ -423,6 +423,9 @@ internal fun ThreadComposerContent(
         focused = false
     }
     val suggestionTrigger = remember(text) { detectKuiklyComposerSuggestionTrigger(text) }
+    if (text.isNotBlank()) {
+        println("[composer] trigger text=\"\${text.take(30)}\" trigger=\${suggestionTrigger}")
+    }
     val filteredMemberSuggestions =
         remember(suggestionTrigger, state.memberSuggestions) {
             when (val trigger = suggestionTrigger) {
@@ -567,6 +570,7 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
+                            println("[composer] onValueChange text=\"\${next.take(20)}\" len=\${next.length}")
                             emitChange(nextText = next)
                         },
                         onFocus = {

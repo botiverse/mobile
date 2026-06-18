@@ -6329,7 +6329,7 @@ private fun SharedHomeSearchFilters(
                         active = state.selectedChannelId != null,
                         enabled = true,
                         uppercase = selectedChannel == null,
-                        iconName = "hash",
+                        iconName = SlockLucideIconName.Hash,
                         onClick = { anchor ->
                             channelAnchorChanged(anchor)
                             onOpenFilter("channel")
@@ -6342,7 +6342,7 @@ private fun SharedHomeSearchFilters(
                         active = state.timeRange != SearchTimeRange.Any,
                         enabled = true,
                         uppercase = state.timeRange == SearchTimeRange.Any,
-                        iconName = "calendar",
+                        iconName = SlockLucideIconName.Calendar,
                         onClick = { anchor ->
                             timeAnchorChanged(anchor)
                             onOpenFilter("time")
@@ -6377,7 +6377,7 @@ private fun SharedHomeSearchFilters(
                     active = state.selectedChannelId != null,
                     enabled = true,
                     uppercase = selectedChannel == null,
-                    iconName = "hash",
+                    iconName = SlockLucideIconName.Hash,
                     onClick = { anchor ->
                         channelAnchorChanged(anchor)
                         onOpenFilter("channel")
@@ -6396,7 +6396,7 @@ private fun SharedHomeSearchFilters(
                     active = state.timeRange != SearchTimeRange.Any,
                     enabled = true,
                     uppercase = state.timeRange == SearchTimeRange.Any,
-                    iconName = "calendar",
+                    iconName = SlockLucideIconName.Calendar,
                     onClick = { anchor ->
                         timeAnchorChanged(anchor)
                         onOpenFilter("time")
@@ -7260,7 +7260,7 @@ private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOp
             SlockFilterOption(
                 id = sender.id,
                 label = if (sender.isSelf) "Me" else sender.displayLabel,
-                icon = if (sender.kind == MemberKind.Agent) "bot" else "user-circle"
+                icon = if (sender.kind == MemberKind.Agent) "bot" else "circle-user"
             )
         }
         .distinctBy { it.id }

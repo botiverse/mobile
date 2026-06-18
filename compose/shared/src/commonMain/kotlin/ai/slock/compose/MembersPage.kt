@@ -103,7 +103,7 @@ internal enum class MembersAgentDetailTab(
     Dms("Agent DMs", SlockLucideIconName.MessageSquare),
     Reminders("Reminders", SlockLucideIconName.BellRing),
     Workspace("Workspace", SlockLucideIconName.FolderOpen),
-    Apps("Apps", SlockLucideIconName.AppWindow),
+    Apps("Apps", SlockLucideIconName.Link2),
     Activity("Activity", SlockLucideIconName.Activity)
 }
 
@@ -1200,6 +1200,13 @@ private fun MembersDetailContent(
             onCopyMemberId = onCopyMemberId,
             onToggleManagement = { managementExpanded = !managementExpanded }
         )
+        if (member.kind == MemberKind.Agent) {
+            MembersAgentTabBar(
+                tabs = visibleTabs,
+                selectedTab = selectedTab,
+                onSelectedTabChange = { selectedTab = it }
+            )
+        }
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
@@ -1228,14 +1235,6 @@ private fun MembersDetailContent(
                             modifier = Modifier.padding(horizontal = MembersPageInset)
                         )
                     }
-                }
-                item {
-                    MembersAgentTabBar(
-                        tabs = visibleTabs,
-                        selectedTab = selectedTab,
-                        onSelectedTabChange = { selectedTab = it },
-                        modifier = Modifier.padding(horizontal = MembersPageInset)
-                    )
                 }
                 item {
                     MembersAgentDetailStateNotice(

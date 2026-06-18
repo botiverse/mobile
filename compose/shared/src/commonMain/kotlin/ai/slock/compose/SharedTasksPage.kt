@@ -319,7 +319,7 @@ private fun SharedTasksLoadedBodyContent(
         visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = "hash") }
     }
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
-        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = "user-circle") }
+        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = "circle-user") }
     }
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
         visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = "user") }
@@ -669,7 +669,7 @@ private fun SharedTasksToolbar(
                     item {
                         SlockAnchoredToolbarChip(
                             label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
-                            iconName = "hash",
+                            iconName = SlockLucideIconName.Hash,
                             active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
                             enabled = channelOptions.isNotEmpty(),
                             onClick = onChannelChipClick
@@ -679,7 +679,7 @@ private fun SharedTasksToolbar(
                 item {
                     SlockAnchoredToolbarChip(
                         label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
-                        iconName = "user-circle",
+                        iconName = SlockLucideIconName.CircleUser,
                         active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
                         enabled = creatorOptions.isNotEmpty(),
                         onClick = onCreatorChipClick
@@ -688,7 +688,7 @@ private fun SharedTasksToolbar(
                 item {
                     SlockAnchoredToolbarChip(
                         label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
-                        iconName = "user",
+                        iconName = SlockLucideIconName.User,
                         active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
                         enabled = assigneeOptions.isNotEmpty(),
                         onClick = onAssigneeChipClick
@@ -698,7 +698,7 @@ private fun SharedTasksToolbar(
                     item {
                         SlockToolbarChip(
                             label = "Clear all",
-                            iconName = "x",
+                            iconName = SlockLucideIconName.X,
                             active = false,
                             onClick = onClearAll
                         )
@@ -1196,7 +1196,7 @@ private fun TasksCreateDialog(
                 }
                 SlockToolbarChip(
                     label = "Add another",
-                    iconName = "plus",
+                    iconName = SlockLucideIconName.Plus,
                     active = false,
                     onClick = { titles = titles + "" }
                 )
@@ -1214,7 +1214,7 @@ private fun TasksCreateDialog(
                     )
                     SlockToolbarChip(
                         label = if (refreshing) "Creating\u2026" else "Create",
-                        iconName = "check",
+                        iconName = SlockLucideIconName.Check,
                         active = true,
                         enabled = anyNonBlank && !refreshing,
                         onClick = { onSubmit(titles) }

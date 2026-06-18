@@ -26,6 +26,7 @@ export const SlockLucidePathIconNames: string[] = [
   'bookmark',
   'bot',
   'bug',
+  'calendar',
   'check',
   'chevron-down',
   'chevron-left',
@@ -33,6 +34,7 @@ export const SlockLucidePathIconNames: string[] = [
   'circle',
   'circle-arrow-up',
   'circle-check-big',
+  'circle-user',
   'columns-3',
   'copy',
   'download',
@@ -51,6 +53,7 @@ export const SlockLucidePathIconNames: string[] = [
   'key',
   'layout-list',
   'link',
+  'link-2',
   'list-todo',
   'lock',
   'log-in',
@@ -610,6 +613,57 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       viewportHeight: 24,
     }
       ];
+    case 'calendar':
+      return [
+    {
+      commands: 'M 8 2 v 4',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 16 2 v 4',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 5 4 H 19 A 2 2 0 0 1 21 6 V 20 A 2 2 0 0 1 19 22 H 5 A 2 2 0 0 1 3 20 V 6 A 2 2 0 0 1 5 4 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 3 10 h 18',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
     case 'check':
       return [
     {
@@ -740,6 +794,45 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'm 9 11 3 3 L 22 4',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'circle-user':
+      return [
+    {
+      commands: 'M 2 12 A 10 10 0 1 0 22 12 A 10 10 0 1 0 2 12 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 9 10 A 3 3 0 1 0 15 10 A 3 3 0 1 0 9 10 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 7 20.662 V 19 a 2 2 0 0 1 2 -2 h 6 a 2 2 0 0 1 2 2 v 1.662',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
@@ -1442,6 +1535,45 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 14 11 a 5 5 0 0 0 -7.54 -0.54 l -3 3 a 5 5 0 0 0 7.07 7.07 l 1.71 -1.71',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'link-2':
+      return [
+    {
+      commands: 'M 9 17 H 7 A 5 5 0 0 1 7 7 h 2',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 15 7 h 2 a 5 5 0 1 1 0 10 h -2',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 8 12 L 16 12',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

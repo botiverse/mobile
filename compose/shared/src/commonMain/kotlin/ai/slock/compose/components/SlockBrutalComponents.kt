@@ -3,6 +3,7 @@ package ai.slock.compose.components
 import ai.slock.compose.Button as SlockAnchorButton
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockLucideIcon
+import ai.slock.compose.SlockLucideIconName
 import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
@@ -628,8 +629,8 @@ internal fun SlockToolbarChip(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    iconName: String? = null,
-    trailingIconName: String? = null,
+    iconName: SlockLucideIconName? = null,
+    trailingIconName: SlockLucideIconName? = null,
     active: Boolean = false,
     enabled: Boolean = true,
     uppercase: Boolean = true,
@@ -686,8 +687,8 @@ internal fun SlockAnchoredToolbarChip(
     label: String,
     onClick: (Offset) -> Unit,
     modifier: Modifier = Modifier,
-    iconName: String? = null,
-    trailingIconName: String? = "chevron-down",
+    iconName: SlockLucideIconName? = null,
+    trailingIconName: SlockLucideIconName? = SlockLucideIconName.ChevronDown,
     active: Boolean = false,
     enabled: Boolean = true,
     uppercase: Boolean = true,

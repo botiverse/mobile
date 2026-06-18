@@ -1,4 +1,4 @@
-import { ErrorReason, KRNativeRenderController, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
+import { KRNativeRenderController, KRRecord, Kuikly, KuiklyRenderBaseView } from '@kuikly-open/render';
 import deviceInfo from '@ohos.deviceInfo';
 import hilog from '@ohos.hilog';
 import router from '@ohos.router';
@@ -13,6 +13,7 @@ const DEFAULT_PAGE_NAME = 'compose_slock_app_shell';
 const HDS_MIN_API_VERSION = 23;
 const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 const SLOCK_BACK_PRESS_LOG_TAG = 'SlockBackPress';
+const SLOCK_KUIKLY_EXCEPTION_LOG_TAG = 'SlockKuiklyException';
 
 @Entry
 @Component
@@ -43,11 +44,11 @@ struct Index {
         nativeManager: globalNativeManager,
         onControllerReadyCallback: (controller: KRNativeRenderController) => {
           this.controller = controller;
+          controller.registerExceptionCallback((_executeMode, stack) => {
+            this.handleKuiklyExceptionStack(stack);
+          });
           slockOhosMotionBridge.setController(controller);
           slockOhosRealtimeBridge.setController(controller);
-        },
-        onRenderException: (exception: Error, reason: ErrorReason) => {
-          this.exception = `${exception.name}:\n${exception.message}`;
         },
       })
       if (this.exception) {
@@ -112,6 +113,33 @@ struct Index {
       pageData['slockNativeTabBarFallbackReason'] = 'unsupported_ohos_hds';
     }
     return pageData;
+  }
+
+  private handleKuiklyExceptionStack(stack: string): void {
+    const stackText = this.symbolicatedKuiklyStack(stack);
+    this.exception = stackText;
+    stackText.split('\n').forEach((line: string) => {
+      if (line.length > 0) {
+        hilog.error(0x0000, SLOCK_KUIKLY_EXCEPTION_LOG_TAG, '%{public}s', line);
+      }
+    });
+  }
+
+  private symbolicatedKuiklyStack(stack: string): string {
+    try {
+      const stackInfo: KRRecord = JSON.parse(stack) as KRRecord;
+      const stackValue = stackInfo['stack'];
+      if (typeof stackValue === 'string' && stackValue.length > 0) {
+        return stackValue;
+      }
+    } catch (_error) {
+      hilog.warn(
+        0x0000,
+        SLOCK_KUIKLY_EXCEPTION_LOG_TAG,
+        'kuikly_exception_stack_parse_failed'
+      );
+    }
+    return stack;
   }
 
   private supportsHdsTabBar(): boolean {

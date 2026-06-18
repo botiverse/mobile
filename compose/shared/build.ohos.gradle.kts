@@ -73,6 +73,8 @@ kotlin {
     ohosArm64 {
         val sqliteLibDir = ohosSqliteProviderLibDir()
         binaries.sharedLib {
+            // Preserve lightweight K/N debug metadata so OHOS crash stacks can be symbolicated.
+            freeCompilerArgs += "-Xadd-light-debug=enable"
             linkerOpts("-L${sqliteLibDir.absolutePath}")
         }
     }
