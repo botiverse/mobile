@@ -3,12 +3,10 @@ package ai.slock.compose
 import ai.slock.compose.components.SlockBrutalActionButton
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.widthIn
@@ -17,6 +15,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -26,6 +25,7 @@ internal fun SlockEmptyState(
     modifier: Modifier = Modifier,
     detail: String? = null,
     iconName: String = "inbox",
+    iconSize: Dp = 36.dp,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
@@ -42,33 +42,15 @@ internal fun SlockEmptyState(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
-            Box(modifier = Modifier.size(88.dp)) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .background(SlockColor.BrandYellow)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockLucideIcon(
-                        iconName,
-                        modifier = Modifier.size(42.dp),
-                        color = SlockColor.TextBlackArgb
-                    )
-                }
-            }
+            SlockLucideIcon(
+                iconName,
+                modifier = Modifier.size(iconSize),
+                color = SlockColor.TextMutedGrayArgb
+            )
             Text(
                 text = title,
                 style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                color = SlockColor.TextBlack,
+                color = SlockColor.TextMutedGray,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis

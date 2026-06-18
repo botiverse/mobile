@@ -13,6 +13,7 @@ import ai.slock.compose.data.TasksContent
 import ai.slock.compose.data.TasksPresentationIntent
 import ai.slock.compose.data.TasksPresentationState
 import ai.slock.compose.data.TasksUiState
+import ai.slock.compose.data.TasksVisibleContent
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.boardColumns
@@ -146,9 +147,14 @@ internal fun SharedTasksPanel(
                 if (showHeader) {
                     SharedTasksHeader()
                 }
+                val emptyCopy =
+                    sharedTasksEmptyStateCopy(
+                        hasAnyFilter = state.selectedFilter != null,
+                        isChannelMode = createTasksChannelId != null
+                    )
                 SharedTasksStateBody(
-                    title = "No tasks",
-                    detail = null,
+                    title = emptyCopy.title,
+                    detail = emptyCopy.description,
                     iconName = "square-check-big"
                 )
             }
@@ -194,6 +200,38 @@ internal fun tasksHeaderSubtitle(totalTasks: Int, visibleTasks: Int = totalTasks
         "$safeTotal channel tasks"
     }
 }
+
+internal data class SharedTasksEmptyStateCopy(
+    val title: String,
+    val description: String
+)
+
+internal fun sharedTasksEmptyStateCopy(
+    hasAnyFilter: Boolean,
+    isChannelMode: Boolean
+): SharedTasksEmptyStateCopy =
+    when {
+        hasAnyFilter ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks match this filter",
+                description = "Try a different combination or clear the current selection."
+            )
+        isChannelMode ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks yet",
+                description = "Create one with the New Task button."
+            )
+        else ->
+            SharedTasksEmptyStateCopy(
+                title = "No tasks yet",
+                description = "DM and agent task boards are intentionally excluded from this server-wide view."
+            )
+    }
+
+private fun TasksVisibleContent.hasAnyPresentationFilter(): Boolean =
+    selectedChannelNames.isNotEmpty() ||
+        selectedCreatorIds.isNotEmpty() ||
+        selectedAssigneeIds.isNotEmpty()
 
 @Composable
 private fun SharedTasksLoadedBody(
@@ -439,10 +477,15 @@ private fun SharedTasksLoadedBodyContent(
                     }
                     TasksViewMode.List -> {
                         if (visibleContent.filteredTasks.isEmpty()) {
+                            val emptyCopy =
+                                sharedTasksEmptyStateCopy(
+                                    hasAnyFilter = state.selectedFilter != null || visibleContent.hasAnyPresentationFilter(),
+                                    isChannelMode = createTasksChannelId != null
+                                )
                             SharedTasksStateBody(
-                                title = "No matching tasks",
-                                detail = "Try clearing your filters.",
-                                iconName = "search"
+                                title = emptyCopy.title,
+                                detail = emptyCopy.description,
+                                iconName = "square-check-big"
                             )
                         } else {
                             LazyColumn(
