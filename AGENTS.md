@@ -147,6 +147,25 @@ branch, fast-forward `main` to that branch tip (`git checkout main && git merge
 where the branch is), then push. Do not push a divergent / non-fast-forward
 `main` to origin; if divergence is needed, open a PR instead.
 
+## Shared UI Component Discipline
+
+- Product/page code must prefer the existing shared brutal components for
+  common controls: `SlockBrutalActionButton`, `SlockBrutalIconButton`,
+  `SlockBrutalTextField`, `SlockBrutalSearchField`, section labels, chips, and
+  modal/action helpers. Do not hand-roll local back buttons, icon buttons,
+  primary/secondary buttons, text fields, or search controls with ad hoc
+  `Box`/`Row`/`clickable` styling when a shared component already covers the
+  behavior.
+- Local wrappers are acceptable only as semantic adapters, and should preserve
+  shared component defaults for border, hard shadow, padding, typography,
+  disabled behavior, and icon treatment unless the product spec explicitly
+  calls out a variant. If a repeated variant is needed, promote it to a shared
+  component instead of copying per-page styling.
+- Members/detail pages in particular should use the shared brutal buttons for
+  top-left back navigation and all action buttons. Do not reintroduce bespoke
+  members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or
+  caption-sized action text for ordinary page actions.
+
 ## Kuikly References And Skills
 
 - Workspace-level Kuikly guidance lives under `.agents/`:

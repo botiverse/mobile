@@ -90,8 +90,7 @@ private val MembersPageInset = SlockSpacing.Md
 private val MemberAvatarSize = 34.dp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
-private val MembersActionSize = 30.dp
-private val MembersActionIconSize = 16.dp
+private val MembersActionSize = 32.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
@@ -1380,8 +1379,7 @@ private fun MembersDetailHeader(
             SlockBrutalIconButton(
                 iconName = "arrow-left",
                 onClick = onBack,
-                size = MembersActionSize,
-                shadowOffset = 0.dp
+                size = MembersActionSize
             )
             MembersAvatar(
                 member = member,
@@ -1431,15 +1429,13 @@ private fun MembersDetailHeader(
                 SlockBrutalIconButton(
                     iconName = if (managementExpanded) "chevron-up" else "more-horizontal",
                     onClick = onToggleManagement,
-                    size = MembersActionSize,
-                    shadowOffset = if (canManage) 0.dp else 1.dp
+                    size = MembersActionSize
                 )
             } else {
                 SlockBrutalIconButton(
                     iconName = "copy",
                     onClick = onCopyMemberId,
-                    size = MembersActionSize,
-                    shadowOffset = 0.dp
+                    size = MembersActionSize
                 )
             }
         }
@@ -1696,11 +1692,7 @@ private fun MembersLifecycleActionButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        backgroundColor = if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 36.dp,
-        shadowOffset = 1.dp,
-        textStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp).withSlockFontWeight(FontWeight.Bold)
+        backgroundColor = if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceWhite
     )
 }
 
@@ -2233,7 +2225,7 @@ private fun MembersWorkspaceFileViewer(
             label = "Files",
             iconName = "arrow-left",
             enabled = true,
-            modifier = Modifier.width(74.dp),
+            modifier = Modifier.width(96.dp),
             onClick = onBackToTree
         )
         Text(
@@ -2575,12 +2567,7 @@ private fun MembersSmallActionButton(
         leadingIcon = iconName,
         onClick = onClick,
         modifier = modifier,
-        enabled = enabled,
-        backgroundColor = SlockColor.SurfaceWhite,
-        minWidth = 0.dp,
-        minHeight = 34.dp,
-        shadowOffset = 1.dp,
-        textStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp).withSlockFontWeight(FontWeight.Bold)
+        enabled = enabled
     )
 }
 
@@ -2612,11 +2599,7 @@ private fun MembersDetailActionButton(
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
-        backgroundColor = SlockColor.AccentPink,
-        minWidth = 0.dp,
-        minHeight = 42.dp,
-        shadowOffset = 2.dp,
-        textStyle = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp)
+        backgroundColor = SlockColor.AccentPink
     )
 }
 
