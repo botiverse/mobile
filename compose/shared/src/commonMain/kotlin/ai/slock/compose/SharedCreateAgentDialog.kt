@@ -5,7 +5,6 @@ import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.model.RuntimeConfig
 import ai.slock.compose.model.RuntimeProviderMode
-import ai.slock.compose.model.RUNTIME_FAST_MODE_RUNTIMES
 import ai.slock.compose.model.RUNTIME_MODELS
 import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_CUSTOM
 import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_DEFAULT
@@ -13,17 +12,10 @@ import ai.slock.compose.model.RUNTIMES
 import ai.slock.compose.model.REASONING_EFFORTS
 import ai.slock.compose.model.buildRuntimeConfig
 import ai.slock.compose.model.getDefaultModel
-import ai.slock.compose.model.getModelLabel
 import ai.slock.compose.model.getRuntimeDisplayName
 import ai.slock.compose.model.RuntimeModelInfo
-import ai.slock.compose.model.RUNTIME_CONFIG_VERSION
-import ai.slock.compose.model.RuntimeInfo
-import ai.slock.compose.model.RuntimeModeConfig
-import ai.slock.compose.model.RuntimeModelConfig
-import ai.slock.compose.model.RuntimeProviderConfig
 import ai.slock.compose.model.supportsRuntimeApiUrl
 import ai.slock.compose.model.supportsRuntimeCommand
-import ai.slock.compose.model.supportsRuntimeCustomModelName
 import ai.slock.compose.model.supportsRuntimeFastMode
 import ai.slock.compose.model.supportsRuntimeReasoningEffort
 import ai.slock.compose.model.validateAgentName
@@ -93,7 +85,44 @@ internal data class SharedCreateAgentRuntimeModelOption(
     val verified: String? = null
 )
 
+internal const val CREATE_AGENT_CUSTOM_MODEL_ID = "__custom_model__"
+
+internal data class CreateAgentModelDropdownItem(
+    val id: String,
+    val label: String,
+    val custom: Boolean = false
+)
+
 private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
+
+internal fun createAgentModelDropdownItems(
+    runtime: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): List<CreateAgentModelDropdownItem> {
+    val modelOptions =
+        runtimeModelsOverride
+            .takeIf { it.isNotEmpty() }
+            ?.map { RuntimeModelInfo(it.id, it.label, it.verified) }
+            ?: RUNTIME_MODELS[runtime].orEmpty()
+    return modelOptions.map { CreateAgentModelDropdownItem(id = it.id, label = it.label) } +
+        CreateAgentModelDropdownItem(id = CREATE_AGENT_CUSTOM_MODEL_ID, label = "Custom...", custom = true)
+}
+
+internal fun createAgentModelSelectionForValue(
+    runtime: String,
+    model: String,
+    runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption> = emptyList()
+): Pair<Boolean, String> {
+    val trimmed = model.trim()
+    val presetIds = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
+        .filterNot { it.custom }
+        .map { it.id }
+    return if (trimmed.isNotBlank() && trimmed !in presetIds) {
+        true to trimmed
+    } else {
+        false to trimmed.ifBlank { getDefaultModel(runtime) }
+    }
+}
 
 @Composable
 internal fun SharedCreateAgentDialog(
@@ -152,9 +181,11 @@ internal fun SharedCreateAgentDialog(
     val inlineNameError = if (trimmedName.isNotEmpty()) validateAgentName(trimmedName) else null
     val descriptionTooLong = description.length > DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH
     val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
+    val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
     val canSubmit = trimmedName.isNotBlank() &&
         inlineNameError == null &&
         !descriptionTooLong &&
+        !customModelMissing &&
         !atLimit &&
         !submitting &&
         (external || selectedMachineId != null)
@@ -253,9 +284,14 @@ internal fun SharedCreateAgentDialog(
                         }
                     },
                     model = model,
-                    onModelChange = { model = it },
+                    onModelChange = { selectedModel ->
+                        model = selectedModel
+                        customModelMode = false
+                    },
                     customModelMode = customModelMode,
-                    onCustomModelModeChange = { customModelMode = it },
+                    onCustomModelModeChange = { enabled ->
+                        customModelMode = enabled
+                    },
                     customModelName = customModelName,
                     onCustomModelNameChange = { customModelName = it },
                     runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
@@ -492,11 +528,7 @@ private fun AdvancedRuntimeSection(
 ) {
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
-    val modelOptions: List<RuntimeModelInfo> = runtimeModelsOverride
-        .takeIf { it.isNotEmpty() }
-        ?.map { RuntimeModelInfo(it.id, it.label, it.verified) }
-        ?: RUNTIME_MODELS[runtime].orEmpty()
-    val effectiveModel = if (customModelMode) customModelName else model
+    val modelOptions = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
@@ -533,24 +565,18 @@ private fun AdvancedRuntimeSection(
             }
         }
         SlockBrutalSectionLabel(label = "Model", required = true)
-        if (supportsRuntimeCustomModelName(runtime)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = customModelMode,
-                    onCheckedChange = { onCustomModelModeChange(it) },
-                    enabled = enabled
-                )
-                Text(
-                    text = "Use custom model name",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextBlack
-                )
-            }
-        }
+        ModelDropdownField(
+            models = modelOptions,
+            selectedId = model,
+            customModelMode = customModelMode,
+            customModelName = customModelName,
+            enabled = enabled,
+            onSelectPreset = {
+                onModelChange(it)
+                onCustomModelModeChange(false)
+            },
+            onSelectCustom = { onCustomModelModeChange(true) }
+        )
         if (customModelMode) {
             SlockBrutalTextField(
                 label = "Custom model",
@@ -560,12 +586,19 @@ private fun AdvancedRuntimeSection(
                 placeholder = "Enter model name",
                 enabled = enabled
             )
-        } else {
-            ModelChipRow(
-                models = modelOptions,
-                selectedId = model,
-                enabled = enabled,
-                onSelect = onModelChange
+            if (customModelName.isBlank()) {
+                Text(
+                    text = "Custom model is required.",
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                    color = SlockColor.AccentRed
+                )
+            }
+        }
+        if (modelOptions.size == 1) {
+            Text(
+                text = "No preset models available for this runtime yet.",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
             )
         }
         if (supportsRuntimeApiUrl(runtime)) {
@@ -763,33 +796,86 @@ private fun RuntimeChip(label: String, selected: Boolean, enabled: Boolean, onCl
 }
 
 @Composable
-private fun ModelChipRow(
-    models: List<RuntimeModelInfo>,
+private fun ModelDropdownField(
+    models: List<CreateAgentModelDropdownItem>,
     selectedId: String,
+    customModelMode: Boolean,
+    customModelName: String,
     enabled: Boolean,
-    onSelect: (String) -> Unit
+    onSelectPreset: (String) -> Unit,
+    onSelectCustom: () -> Unit
 ) {
-    if (models.isEmpty()) {
-        Text(
-            text = "No models available for this runtime yet",
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
-        )
-        return
-    }
+    var expanded by remember { mutableStateOf(false) }
+    val selectedLabel =
+        if (customModelMode) {
+            customModelName.trim().ifBlank { "Custom..." }
+        } else {
+            models.firstOrNull { it.id == selectedId }?.label ?: selectedId.ifBlank { "Select model" }
+        }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        models.chunked(3).forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                .let { if (enabled) it.clickable { expanded = !expanded } else it }
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = selectedLabel,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = if (expanded) "▴" else "▾",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
+            )
+        }
+        if (expanded) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(((models.size * 36) + 2).dp.coerceAtMost(220.dp))
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                    .background(SlockColor.SurfaceWhite)
             ) {
-                row.forEach { m ->
-                    RuntimeChip(
-                        label = m.label,
-                        selected = selectedId == m.id,
-                        enabled = enabled,
-                        onClick = { onSelect(m.id) }
-                    )
+                items(models.size, key = { idx -> models[idx].id }) { idx ->
+                    val item = models[idx]
+                    val selected =
+                        if (item.custom) customModelMode else !customModelMode && selectedId == item.id
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(enabled = enabled) {
+                                expanded = false
+                                if (item.custom) onSelectCustom() else onSelectPreset(item.id)
+                            }
+                            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (selected) "✓" else " ",
+                            style = SlockType.Caption,
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.width(14.dp)
+                        )
+                        Text(
+                            text = item.label,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
