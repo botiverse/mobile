@@ -16,6 +16,8 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   iconFill: ResourceColor = '#00000000';
   iconFillEnabled: boolean = false;
   iconStrokeWidth: number = 0;
+  iconRenderX: number = 0;
+  iconRenderY: number = 0;
   iconRenderWidth: number = 0;
   iconRenderHeight: number = 0;
   renderRevision: number = 0;
@@ -100,16 +102,24 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     this.iconRenderHeight = height;
   }
 
+  private updateRenderFrame(x: number, y: number, width: number, height: number): void {
+    this.iconRenderX = x;
+    this.iconRenderY = y;
+    this.updateRenderSize(width, height);
+  }
+
   private applyFrame(value: KRAny | KuiklyRenderCallback): void {
     const frameText = typeof value === 'string' ? value : String(value);
     const fields = frameText.trim().split(/\s+/);
     if (fields.length < 4) {
       return;
     }
+    const x = Number(fields[0]);
+    const y = Number(fields[1]);
     const width = Number(fields[2]);
     const height = Number(fields[3]);
     if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-      this.updateRenderSize(width, height);
+      this.updateRenderFrame(Number.isFinite(x) ? x : 0, Number.isFinite(y) ? y : 0, width, height);
     }
   }
 }
@@ -138,8 +148,10 @@ export struct SlockLucideIcon {
       }, (entry: SlockLucidePathEntry) => `${this.renderView.renderRevision}:${this.renderView.iconName}:${entry.commands}:${entry.strokeWidth}`)
       ContentSlot(this.renderView.slot)
     }
-      .width('100%')
-      .height('100%')
+      .alignContent(Alignment.Center)
+      .position({ x: this.renderView.iconRenderX, y: this.renderView.iconRenderY })
+      .size({ width: this.renderView.iconRenderWidth, height: this.renderView.iconRenderHeight })
+      .alignSelf(ItemAlign.Start)
   }
 }
 
