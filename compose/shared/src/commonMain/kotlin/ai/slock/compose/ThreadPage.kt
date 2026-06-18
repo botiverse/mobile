@@ -3181,42 +3181,21 @@ private fun ThreadPageTabs(
     tabs: List<KuiklyThreadTab> = KuiklyThreadTab.entries,
     onSelect: (KuiklyThreadTab) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth().height(ThreadTabHeight).background(SlockColor.SurfaceWhite)) {
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            tabs.forEach { tab ->
-                val selected = selectedTab == tab
-                Row(
-                    modifier = Modifier.width(ThreadTabWidth)
-                        .fillMaxHeight()
-                        .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                        .clickable { onSelect(tab) }
-                        .padding(horizontal = SlockSpacing.Sm + SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm - SlockSpacing.Xxs, Alignment.CenterHorizontally)
-                ) {
-                    SlockLucideIcon(tab.icon, modifier = Modifier.size(16.dp), color = "#FF000000")
-                    Text(
-                        text = tab.label.uppercase(),
-                        style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .height(ThreadTabHeight - SlockStroke.Default)
-                        .width(SlockStroke.Default)
-                        .background(SlockColor.BorderBlack)
-                )
-            }
-            Box(modifier = Modifier.weight(1f).fillMaxHeight().background(SlockColor.SurfaceWhite))
-        }
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-    }
+    SlockTopTabBar(
+        items = tabs.map { tab ->
+            SlockTopTabBarItem(
+                key = tab.wireValue,
+                label = tab.label,
+                iconName = tab.icon
+            )
+        },
+        selectedKey = selectedTab.wireValue,
+        onSelectedKeyChange = { key ->
+            tabs.firstOrNull { it.wireValue == key }?.let(onSelect)
+        },
+        itemKeyPrefix = "thread-tab"
+    )
 }
-
-private val ThreadTabWidth = 98.dp
-private val ThreadTabHeight = 32.dp
 
 @Composable
 private fun ThreadChatTab(

@@ -792,13 +792,15 @@ internal fun MembersListContent(
                     onExpandedChange = { agentsExpanded = it },
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
-                        if (canCreateAgents && createAgentSubmit != null) {
+                        if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
                                 icon = "plus",
                                 contentDescription = "Create agent",
                                 onClick = {
-                                    activeCreateAgent = true
-                                    createAgentLoadMachines()
+                                    if (createAgentSubmit != null) {
+                                        activeCreateAgent = true
+                                        createAgentLoadMachines()
+                                    }
                                 }
                             )
                         }
@@ -1755,40 +1757,33 @@ private fun MembersAgentTabBar(
     onSelectedTabChange: (MembersAgentDetailTab) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LazyRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(38.dp),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        items(tabs.size, key = { "agent-tab-${tabs[it].name}" }) { index ->
-            val tab = tabs[index]
-            val selected = tab == selectedTab
-            Row(
-                modifier = Modifier
-                    .width(if (tab == MembersAgentDetailTab.Dms) 112.dp else 96.dp)
-                    .height(34.dp)
-                    .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable { onSelectedTabChange(tab) }
-                    .padding(horizontal = 7.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                SlockLucideIcon(tab.iconName, Modifier.size(13.dp))
-                Text(
-                    text = tab.label,
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 13.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
+    SlockTopTabBar(
+        items = tabs.map { it.toMembersTopTabBarItem() },
+        selectedKey = selectedTab.name,
+        onSelectedKeyChange = { key ->
+            tabs.firstOrNull { it.name == key }?.let(onSelectedTabChange)
+        },
+        modifier = modifier,
+        itemKeyPrefix = "members-agent-tab"
+    )
 }
+
+private fun MembersAgentDetailTab.toMembersTopTabBarItem(): SlockTopTabBarItem =
+    SlockTopTabBarItem(
+        key = name,
+        label = label,
+        iconName = iconName,
+        width =
+            when (this) {
+                MembersAgentDetailTab.Profile,
+                MembersAgentDetailTab.Activity,
+                MembersAgentDetailTab.Apps -> 98.dp
+                MembersAgentDetailTab.Dms -> 112.dp
+                MembersAgentDetailTab.Permissions,
+                MembersAgentDetailTab.Reminders,
+                MembersAgentDetailTab.Workspace -> 126.dp
+            }
+    )
 
 @Composable
 private fun MembersAgentDetailStateNotice(
