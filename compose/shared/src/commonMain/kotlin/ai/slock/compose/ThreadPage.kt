@@ -144,7 +144,7 @@ private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
-internal const val ThreadReplyPageTitle = "Threads"
+internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val threadHeaderUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
@@ -156,6 +156,7 @@ internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     val name = raw.removePrefix("#").substringBefore(":").trim()
     if (name.isBlank()) return null
     if (name.equals(ThreadReplyPageTitle, ignoreCase = true)) return null
+    if (name.equals("Threads", ignoreCase = true)) return null
     if (name.equals("Thread", ignoreCase = true) || name.equals("Channel", ignoreCase = true)) return null
     if (threadHeaderUuidRegex.matches(name) || threadHeaderShortIdRegex.matches(name)) return null
     return "#$name"

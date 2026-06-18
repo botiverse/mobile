@@ -756,14 +756,14 @@ private fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = threadChannelId ?: channelId
     val parentId = parentMessageId
     val parentChannel = parentChannelId ?: if (kind == InboxItemKind.Thread) channelId else null
-    val threadIdentity =
+    val stableThreadIdentity =
         if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
             threadIdentity(parentChannel, parentId)
         } else {
             null
         }
     return ConversationSummary(
-        threadId = topLevelThreadId(streamChannelId),
+        threadId = stableThreadIdentity ?: topLevelThreadId(streamChannelId),
         channelId = parentChannel ?: channelId,
         thread =
             if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
@@ -784,7 +784,7 @@ private fun InboxItem.toConversationSummary(): ConversationSummary {
                     InboxItemKind.Channel -> ConversationKind.Channel
                 },
         name = displayTitle(),
-        subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: threadIdentity?.value,
+        subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview ?: stableThreadIdentity?.value,
         unreadCount = unreadCount,
         unreadCountKnown = true,
         mentionCount = if (hasMention) 1 else 0,

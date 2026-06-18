@@ -4,6 +4,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
@@ -17,6 +18,7 @@ import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
+import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
@@ -352,6 +354,61 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appShellActivityThreadItemOpensReplyThreadChrome() {
+        val conversation =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityPreview = "Latest reply"
+            ).toAppShellConversationSummary()
+
+        val payload = buildAppShellThreadPayload(conversation)
+
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
+        assertEquals(ConversationKind.Thread, conversation.kind)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("thread-channel-1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("message-1", payload.parentMessageId)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
+        assertEquals(true, payload.showOpenInChannelAction)
+    }
+
+    @Test
+    fun appShellActivityChannelItemKeepsChannelChrome() {
+        val conversation =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                lastMessagePreview = "Latest channel message",
+                unreadCount = 2
+            ).toAppShellConversationSummary()
+
+        val payload = buildAppShellThreadPayload(conversation)
+
+        assertEquals(ThreadId("channel-1"), conversation.threadId)
+        assertEquals(ConversationKind.Channel, conversation.kind)
+        assertEquals("general", payload.title)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals(true, payload.showModeTabs)
+        assertEquals(true, payload.showMembersAction)
+        assertEquals(true, payload.showSettingsAction)
+    }
+
+    @Test
     fun sharedShellThreadRouteOmitsSubtitleWhenChannelDescriptionIsMissing() {
         val payload =
             buildAppShellThreadPayload(
@@ -390,7 +447,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
-        assertEquals("Threads", payload.title)
+        assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
@@ -426,7 +483,7 @@ class ThreadPayloadTest {
 
         requireNotNull(payload)
         assertEquals("shared-shell-task-thread-thread-channel-1", payload.instanceId)
-        assertEquals("Threads", payload.title)
+        assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#bug triage", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals("thread-channel-1", payload.sourceThreadId)
@@ -460,7 +517,7 @@ class ThreadPayloadTest {
             ).replyThreadLoadingPayload(parent)
 
         assertEquals("shared-shell-thread-pending-message-1", payload.instanceId)
-        assertEquals("Threads", payload.title)
+        assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
         assertEquals("loading", payload.status)
         assertEquals(null, payload.sourceThreadId)
@@ -496,7 +553,7 @@ class ThreadPayloadTest {
                 messages = listOf(parent)
             ).replyThreadLoadingPayload(parent)
 
-        assertEquals("Threads", payload.title)
+        assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals(null, payload.subtitle)
     }
 

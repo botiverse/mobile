@@ -1145,12 +1145,15 @@ private fun SlockAppShellContent() {
         openThreadPayload(returnPayload, pushCurrent = false)
     }
 
+    val threadTitle = stringResource(MR.strings.thread_title)
+
     fun appShellThreadPayload(conversation: ConversationSummary, anchorMessageId: String? = null): KuiklyThreadScreenPayload =
         buildAppShellThreadPayload(
             conversation = conversation,
             timeContext = threadTimeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-            anchorMessageId = anchorMessageId
+            anchorMessageId = anchorMessageId,
+            replyThreadTitle = threadTitle
         )
 
     fun openDiagnosticsFeedbackChannel(
@@ -1942,7 +1945,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeDestination = null
                                     },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_search", item.lastMessageId?.value, pushCurrent = true)
+                                        openHomeConversation(item.toAppShellConversationSummary(), "home_search", item.lastMessageId?.value, pushCurrent = true)
                                     },
                                     onOpenEntity = { entity ->
                                         selectedHomeDestination = null
@@ -1971,7 +1974,7 @@ private fun SlockAppShellContent() {
                                     onIntent = homeSearchSavedViewModel::dispatch,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toConversationSummary(), "home_saved", item.lastMessageId?.value, pushCurrent = true)
+                                        openHomeConversation(item.toAppShellConversationSummary(), "home_saved", item.lastMessageId?.value, pushCurrent = true)
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     timeContext = threadTimeContext,
@@ -7351,7 +7354,7 @@ private fun String.searchAvatarSeed(): String =
         .trim('-')
         .ifBlank { "default" }
 
-private fun InboxItem.toConversationSummary(): ConversationSummary {
+internal fun InboxItem.toAppShellConversationSummary(): ConversationSummary {
     val itemParentChannelId = parentChannelId
     val itemParentMessageId = parentMessageId
     val threadId =
@@ -7502,7 +7505,8 @@ internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
-    anchorMessageId: String? = null
+    anchorMessageId: String? = null,
+    replyThreadTitle: String = ThreadReplyPageTitle
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val streamChannelId = conversation.threadStreamChannelId()
@@ -7516,7 +7520,7 @@ internal fun buildAppShellThreadPayload(
     val composer =
         buildThreadSurfaceComposerPayload(
             surfaceKind = surfaceKind,
-            displayName = conversation.name,
+            displayName = if (isReplyThread) replyThreadTitle else conversation.name,
             fallbackId = conversation.threadId.value,
             enabled = canSend,
             showAsTaskToggle = supportsChannelTasks,
@@ -7526,7 +7530,7 @@ internal fun buildAppShellThreadPayload(
         )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
-        title = if (isReplyThread) ThreadReplyPageTitle else conversation.name.ifBlank { "Thread" },
+        title = if (isReplyThread) replyThreadTitle else conversation.name.ifBlank { replyThreadTitle },
         subtitle =
             if (isReplyThread) {
                 threadChannelHeaderSubtitle(conversation.name)
