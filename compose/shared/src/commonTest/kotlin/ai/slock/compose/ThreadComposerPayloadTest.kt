@@ -124,7 +124,6 @@ class ThreadComposerPayloadTest {
     fun typedComposerPayloadKeepsSuggestionsAndAttachmentsWithoutBuilderJson() {
         val payload =
             KuiklyThreadComposerPayload(
-                attachmentActionsEnabled = false,
                 pendingAttachments =
                     listOf(
                         KuiklyPendingAttachmentItem(
@@ -152,24 +151,8 @@ class ThreadComposerPayloadTest {
             )
 
         assertEquals("log.txt", payload.pendingAttachments.single().fileName)
-        assertFalse(payload.toThreadComposerUiState().attachmentActionsEnabled)
         assertEquals("Cindy", payload.memberSuggestions.single().displayName)
         assertEquals("general", payload.channelSuggestions.single().name)
-    }
-
-    @Test
-    fun parsesAttachmentActionFlagForPrefilledComposer() {
-        val payload =
-            parseThreadComposerPayload(
-                payload = """{"seedText":"diagnostics","attachmentActionsEnabled":false,"showAsTaskToggle":false}""",
-                fallbackPageData = """{"instanceId":"host-diagnostics"}""",
-                instanceId = "host-diagnostics"
-            )
-
-        assertEquals("diagnostics", payload.seedText)
-        assertFalse(payload.attachmentActionsEnabled)
-        assertFalse(payload.showAsTaskToggle)
-        assertFalse(payload.toThreadComposerUiState().attachmentActionsEnabled)
     }
 
     @Test

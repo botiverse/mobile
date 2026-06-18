@@ -7583,10 +7583,7 @@ private fun KuiklyThreadScreenPayload.withDiagnosticsFeedbackDraft(
                 focusRequestNonce = composer.focusRequestNonce + syncBump,
                 composerMode = composerMode,
                 statusLabel = statusLabel,
-                pendingAttachments = attachments,
-                attachmentActionsEnabled = false,
-                showAsTaskToggle = false,
-                hookLabels = listOf("Diagnostics feedback")
+                pendingAttachments = attachments
             )
     )
 
