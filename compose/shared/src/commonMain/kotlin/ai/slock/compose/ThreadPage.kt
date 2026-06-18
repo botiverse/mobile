@@ -146,9 +146,17 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
 internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
+private val ThreadComposerBottomBasePadding = 12.dp
+private val ThreadComposerBottomSafeAreaLift = 4.dp
 private val threadHeaderUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
 private val threadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
+
+internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
+    val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
+    val safeAreaInset = if (keyboardInsetDp > 0f) 0.dp else bottomSafeArea
+    return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
+}
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     val raw = channelName?.trim().orEmpty()
@@ -2857,6 +2865,7 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var activeMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
+    val composerBottomSafeArea = slockBottomSafeAreaPadding()
     val taskChannelId =
         remember(payload.sourceThreadId, payload.instanceId) {
             payload.sourceThreadId
@@ -2977,7 +2986,7 @@ private fun ThreadPageContent(
                                 start = SlockSpacing.Sm,
                                 top = 12.dp,
                                 end = SlockSpacing.Sm,
-                                bottom = 12.dp + composerKeyboardInsetDp.dp
+                                bottom = threadComposerBottomPadding(composerKeyboardInsetDp, composerBottomSafeArea)
                             )
                     ) {
                         ThreadComposerContent(
