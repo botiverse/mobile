@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
+import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -36,6 +37,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -385,18 +387,88 @@ internal fun AuthDivider() {
 
 @Composable
 internal fun AuthTextLink(text: String, onClick: () -> Unit) {
-    Text(
+    AuthLinkButton(
         text = text,
-        style = SlockType.Body.copy(
-            fontSize = 12.sp,
-            lineHeight = 16.sp,
-            color = SlockColor.TextMutedGray,
-            textDecoration = TextDecoration.Underline
-        ),
+        onClick = onClick,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
         color = SlockColor.TextMutedGray,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        textAlign = TextAlign.Center
+        disabledColor = SlockColor.TextMutedGray.copy(alpha = 0.55f)
     )
+}
+
+@Composable
+internal fun AuthLinkButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    fontSize: TextUnit = 14.sp,
+    lineHeight: TextUnit = 18.sp,
+    color: Color = SlockColor.TextBlack.copy(alpha = 0.5f),
+    disabledColor: Color = SlockColor.TextBlack.copy(alpha = 0.28f)
+) {
+    val resolvedColor = if (enabled) color else disabledColor
+    Button(
+        onClick = if (enabled) onClick else ({}),
+        enabled = enabled,
+        pressFeedback = false,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = text,
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                color = resolvedColor,
+                textDecoration = TextDecoration.Underline
+            ),
+            color = resolvedColor,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+internal fun AuthBrutalListRow(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) {
+    Box(modifier = modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
+        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+        Button(
+            onClick = if (enabled) onClick else ({}),
+            enabled = enabled,
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalAlignment = Alignment.Start
+            ) {
+                Text(
+                    text = title,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
+                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    maxLines = 1
+                )
+            }
+        }
+    }
 }
 
 @Composable

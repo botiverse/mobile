@@ -263,7 +263,6 @@ import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
-import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -4514,10 +4513,14 @@ private fun AppShellServerGateContent(
                 )
             } else {
                 latestSession.servers.forEach { server ->
-                    AppShellServerRow(
-                        server = server,
-                        selected = server.id == latestSession.selectedServerId,
-                        pending = pendingServerId == server.id,
+                    AuthBrutalListRow(
+                        title = server.name,
+                        subtitle =
+                            if (pendingServerId == server.id) {
+                                "Opening..."
+                            } else {
+                                "/${server.slug.orEmpty().ifBlank { server.id }}"
+                            },
                         enabled = !loading,
                         onClick = {
                             loading = true
@@ -4533,7 +4536,8 @@ private fun AppShellServerGateContent(
                     enabled = !loading
                 )
             }
-            AppShellServerSignOutLink(
+            AuthLinkButton(
+                text = "Sign out",
                 enabled = !loading,
                 onClick = {
                     pendingServerId = "__logout__"
@@ -4573,33 +4577,6 @@ private fun AppShellServerGateContent(
 }
 
 @Composable
-private fun AppShellServerSignOutLink(
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    val color = SlockColor.TextBlack.copy(alpha = if (enabled) 0.5f else 0.28f)
-    Text(
-        text = "Sign out",
-        style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(
-            fontSize = 14.sp,
-            lineHeight = 18.sp,
-            color = color,
-            textDecoration = TextDecoration.Underline
-        ),
-        color = color,
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clickable {
-                    if (enabled) {
-                        onClick()
-                    }
-                },
-        textAlign = TextAlign.Center
-    )
-}
-
-@Composable
 private fun AppShellServerEmptyState(
     onCreateServer: () -> Unit
 ) {
@@ -4623,48 +4600,6 @@ private fun AppShellServerEmptyState(
     }
 }
 
-
-@Composable
-private fun AppShellServerRow(
-    server: ai.slock.compose.data.StoredAuthServer,
-    selected: Boolean,
-    pending: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit
-) {
-    Box(modifier = Modifier.fillMaxWidth().height(62.dp).padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        Button(
-            onClick = if (enabled) onClick else ({}),
-            enabled = enabled,
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-                horizontalAlignment = Alignment.Start
-            ) {
-                Text(
-                    text = server.name,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = if (pending) "Opening..." else "/${server.slug.orEmpty().ifBlank { server.id }}",
-                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                    maxLines = 1
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun AppShellAuthErrorContent(
