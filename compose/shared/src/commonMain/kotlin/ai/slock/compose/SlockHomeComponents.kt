@@ -1424,7 +1424,12 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     name,
                     style = if (unread) SlockType.ButtonBold else SlockType.Button,
                     color = SlockColor.TextBlack,
-                    modifier = Modifier.weight(if (descriptionText != null) 0.68f else 1f),
+                    modifier =
+                        if (descriptionText != null) {
+                            Modifier.weight(0.68f, fill = false)
+                        } else {
+                            Modifier.weight(1f)
+                        },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
