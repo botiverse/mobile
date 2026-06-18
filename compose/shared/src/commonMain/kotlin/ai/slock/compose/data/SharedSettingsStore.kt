@@ -1605,8 +1605,9 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", "shield-check", server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", "languages", null, selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", "smartphone", null, selectedDestination),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and diagnostics", "archive", null, selectedDestination),
-                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", "bug", null, selectedDestination)
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", "archive", null, selectedDestination),
+                nav(SharedSettingsDestination.Diagnostics, "Diagnostics", "Logs and performance tools", "clipboard-list", null, selectedDestination),
+                nav(SharedSettingsDestination.About, "About", "Version and feedback", "bug", null, selectedDestination)
             )
     )
 }

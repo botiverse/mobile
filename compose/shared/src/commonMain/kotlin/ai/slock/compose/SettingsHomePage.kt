@@ -2880,14 +2880,21 @@ private fun appShellSettingsHomePayload(
                 SlockTabItemPayload(
                     key = SettingsDestinationStorage,
                     title = "Storage",
-                    subtitle = "Local cache and diagnostics",
+                    subtitle = "Local cache and temporary files",
                     iconName = "archive",
                     selected = selectedDestination == SettingsDestinationStorage
                 ),
                 SlockTabItemPayload(
+                    key = SettingsDestinationDiagnostics,
+                    title = "Diagnostics",
+                    subtitle = "Logs and performance tools",
+                    iconName = "clipboard-list",
+                    selected = selectedDestination == SettingsDestinationDiagnostics
+                ),
+                SlockTabItemPayload(
                     key = SettingsDestinationAbout,
                     title = "About",
-                    subtitle = "Version, diagnostics, feedback",
+                    subtitle = "Version and feedback",
                     iconName = "bug",
                     selected = selectedDestination == SettingsDestinationAbout
                 ),
