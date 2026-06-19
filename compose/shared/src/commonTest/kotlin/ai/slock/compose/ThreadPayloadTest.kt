@@ -842,7 +842,8 @@ class ThreadPayloadTest {
                     status = TaskStatus.InProgress,
                     taskNumber = 42,
                     messageId = MessageId("message-1"),
-                    channelId = ChannelId("thread-channel-1"),
+                    channelId = ChannelId("parent-channel-1"),
+                    threadId = ThreadId("thread-channel-1"),
                     isThreadTask = true,
                     channelName = "bug triage",
                     updatedAtLabel = "now"
@@ -860,12 +861,38 @@ class ThreadPayloadTest {
         assertEquals("message-1", payload.originParentMessageId)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("thread-channel-1", payload.streamChannelId)
+        assertEquals("parent-channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals("message-1", payload.originMessage?.id)
+        assertEquals("Fix slow route", payload.originMessage?.body)
         assertEquals(false, payload.showReplyActions)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals(true, payload.alignOwnMessagesRight)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
+    }
+
+    @Test
+    fun threadTaskWithoutThreadIdFallsBackToReplyThreadOpen() {
+        val payload =
+            buildAppShellTaskContainingThreadPayload(
+                TaskSummary(
+                    id = TaskId("task-1"),
+                    title = "Fix slow route",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 42,
+                    messageId = MessageId("message-1"),
+                    channelId = ChannelId("parent-channel-1"),
+                    isThreadTask = true,
+                    channelName = "bug triage",
+                    updatedAtLabel = "now"
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true
+            )
+
+        assertEquals(null, payload)
     }
 
     @Test

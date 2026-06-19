@@ -10192,9 +10192,9 @@ internal fun buildAppShellTaskContainingThreadPayload(
     alignOwnMessagesRight: Boolean = false
 ): KuiklyThreadScreenPayload? {
     if (!task.isThreadTask) return null
-    val threadChannelId = task.channelId?.value?.takeIf { it.isNotBlank() }
-        ?: task.threadId?.value?.takeIf { it.isNotBlank() }
-        ?: return null
+    val threadChannelId = task.threadId?.value?.takeIf { it.isNotBlank() } ?: return null
+    val parentMessage = task.toAppShellTaskParentMessage()
+    val parentMessageId = task.parentMessageId?.value ?: task.messageId?.value ?: parentMessage?.id
     return buildAppShellThreadPayload(
         ConversationSummary(
             threadId = ThreadId(threadChannelId),
@@ -10211,11 +10211,13 @@ internal fun buildAppShellTaskContainingThreadPayload(
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         streamChannelId = threadChannelId,
         parentChannelId = task.channelId?.value,
-        parentMessageId = task.parentMessageId?.value ?: task.messageId?.value,
+        parentMessageId = parentMessageId,
         showModeTabs = false,
         showReplyActions = false,
         showOpenInChannelAction = true,
-        originParentMessageId = task.parentMessageId?.value ?: task.messageId?.value,
+        originMessage = parentMessage,
+        originParentMessageId = parentMessageId,
+        originStatus = if (parentMessage != null) "loaded" else "missing",
         emptyTitle = "Opening task",
         emptyDetail = "Loading the task conversation."
     )
