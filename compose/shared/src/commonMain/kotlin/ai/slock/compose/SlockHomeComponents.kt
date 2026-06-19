@@ -17,6 +17,8 @@ import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -402,7 +404,8 @@ fun SlockStructuralHomeShell(
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
-    onChannelClick: (String) -> Unit = {}
+    onChannelClick: (String) -> Unit = {},
+    onChannelLongPress: (String) -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
@@ -546,7 +549,8 @@ fun SlockStructuralHomeShell(
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = if (channelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
                                 )
                             }
                         }
@@ -572,7 +576,8 @@ fun SlockStructuralHomeShell(
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = if (jointChannelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
                                     )
                                 }
                             }
@@ -1296,7 +1301,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1308,12 +1313,26 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    val clickModifier = remember(onClick, onLongPress) {
+        if (onLongPress != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick?.invoke() },
+                    onLongPress = { onLongPress.invoke() }
+                )
+            }
+        } else if (onClick != null) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        }
+    }
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(clickModifier)
     ) {
         if (selected) {
             Box(
