@@ -151,6 +151,27 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownCodeSpansDoNotKeepExplicitMonospaceFont() {
+        val annotated =
+            AnnotatedString(
+                "normal code",
+                spanStyles =
+                    listOf(
+                        AnnotatedString.Range(
+                            SpanStyle(fontFamily = FontFamily.Monospace),
+                            start = 7,
+                            end = 11
+                        )
+                    )
+            ).withSlockMarkdownSpanFonts(SlockType.Body)
+
+        val codeFontSpan = annotated.spanStyles.last { it.start == 7 && it.end == 11 }
+
+        assertEquals(SlockType.Body.fontFamily, codeFontSpan.item.fontFamily)
+        assertFalse(codeFontSpan.item.fontFamily == FontFamily.Monospace)
+    }
+
+    @Test
     fun inlineTagWidthsDoNotReserveLargeTrailingPadding() {
         val mentionWidth =
             slockMarkdownInlineTagWidthSp(

@@ -29,6 +29,7 @@ import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -583,8 +584,18 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     builder.append(this)
     spanStyles.forEach { range ->
         val weight = range.item.fontWeight ?: resolvedBase.fontWeight
-        val family = range.item.fontFamily ?: slockFontFamilyForWeight(weight)
-        if (range.item.fontFamily == null && family != resolvedBase.fontFamily) {
+        val shouldNormalizeFamily =
+            range.item.fontFamily == null ||
+                range.item.fontFamily == FontFamily.Monospace
+        val family =
+            if (shouldNormalizeFamily) {
+                slockFontFamilyForWeight(weight)
+            } else {
+                range.item.fontFamily
+            }
+        if (shouldNormalizeFamily &&
+            (range.item.fontFamily == FontFamily.Monospace || family != resolvedBase.fontFamily)
+        ) {
             builder.addStyle(SpanStyle(fontFamily = family), range.start, range.end)
         }
     }
@@ -620,6 +631,7 @@ fun SlockMarkdownBody(
             content = content,
             colors = slockMarkdownColors(),
             typography = slockMarkdownTypography(textStyle),
+            textProvider = SlockMarkdownTextProvider,
             annotator = slockMarkdownAnnotator(
                 content,
                 highlightedMentions = highlightedMentions,
