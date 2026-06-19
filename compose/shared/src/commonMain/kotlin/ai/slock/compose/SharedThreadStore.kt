@@ -73,6 +73,7 @@ import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
@@ -164,6 +165,9 @@ internal class SharedThreadDataSource(
     suspend fun readCachedPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload? {
         val threadId = basePayload.cacheThreadId() ?: return null
         val snapshot = localWriteThrough?.readThreadSnapshot(ThreadId(threadId)) ?: return null
+        if (basePayload.hasUntrustedReplyThreadStreamHint() && !snapshot.matchesReplyThreadParent(basePayload)) {
+            return null
+        }
         val session = readSession()
         return snapshot
             .toKuiklyThreadPayload(basePayload, session?.user?.id)
@@ -1533,10 +1537,14 @@ internal class SharedThreadStore(
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
         dataSource.cachePayload(initialPayload)
         val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
-        val cached = threadId?.let(dataSource::cachedPayload)?.withRouteContext(initialPayload)
+        val cached =
+            threadId
+                ?.let(dataSource::cachedPayload)
+                ?.takeIf { it.isUsableCachedPayloadForRoute(initialPayload) }
+                ?.withRouteContext(initialPayload)
         val current =
             _state.value.payload.takeIf {
-                it.matchesRouteIdentity(initialPayload) && it.hasRenderableThreadContent()
+                it.isUsableCachedPayloadForRoute(initialPayload) && it.hasRenderableThreadContent()
             }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
@@ -1574,7 +1582,7 @@ internal class SharedThreadStore(
                     "messages=${persistentCached?.messages?.size ?: 0} " +
                     "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
             )
-            if (persistentCached != null && _state.value.payload.matchesRouteIdentity(initialPayload)) {
+            if (persistentCached != null && _state.value.payload.isUsableCachedPayloadForRoute(initialPayload)) {
                 reducePayloadPatch { currentPayload ->
                     val patch = persistentCached.withRouteContext(initialPayload)
                     diagnosticsLogger?.invoke(
@@ -2355,6 +2363,20 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
 
+private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
+    matchesRouteIdentity(route) && cachedReplyParentMatchesRoute(route)
+
+private fun KuiklyThreadScreenPayload.cachedReplyParentMatchesRoute(route: KuiklyThreadScreenPayload): Boolean {
+    if (!route.hasUntrustedReplyThreadStreamHint()) return true
+    val expectedParentChannelId = route.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
+    val expectedParentMessageId =
+        route.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: route.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return true
+    return parentChannelId == expectedParentChannelId &&
+        (parentMessageId == expectedParentMessageId || originParentMessageId == expectedParentMessageId)
+}
+
 private fun KuiklyThreadScreenPayload.matchesRouteIdentity(other: KuiklyThreadScreenPayload): Boolean {
     val source = sourceThreadId?.takeIf { it.isNotBlank() }
     val otherSource = other.sourceThreadId?.takeIf { it.isNotBlank() }
@@ -3023,23 +3045,53 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
     val threadIdValue = cacheThreadId() ?: return null
     val threadId = ThreadId(threadIdValue)
     val channelId = ChannelId(threadIdValue)
+    val replyParentChannelId = parentChannelId?.takeIf { it.isNotBlank() }
+    val replyParentMessageId =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    val snapshotKind =
+        when (surfaceKind) {
+            KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
+            KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
+            else -> if (originParentMessageId.isNullOrBlank()) ConversationKind.Channel else ConversationKind.Thread
+        }
     val conversation =
         ConversationSummary(
             threadId = threadId,
             channelId = channelId,
-            kind =
-                when (surfaceKind) {
-                    KuiklyThreadSurfaceKind.DirectMessage -> ConversationKind.DirectMessage
-                    KuiklyThreadSurfaceKind.ReplyThread -> ConversationKind.Thread
-                    else -> if (originParentMessageId.isNullOrBlank()) ConversationKind.Channel else ConversationKind.Thread
+            thread =
+                if (snapshotKind == ConversationKind.Thread &&
+                    replyParentChannelId != null &&
+                    replyParentMessageId != null
+                ) {
+                    ThreadConversation(
+                        parentChannelId = ChannelId(replyParentChannelId),
+                        parentMessageId = MessageId(replyParentMessageId),
+                        streamChannelId = channelId
+                    )
+                } else {
+                    null
                 },
+            kind = snapshotKind,
             name = title,
             subtitle = subtitle,
             joined = joined,
             memberCount = membersCount.takeIf { it > 0 },
             permissions = ConversationPermissions(canSend = canSend)
         )
-    val parent = originMessage?.toMessage(threadId = threadId, channelId = channelId)
+    val parentChannel =
+        if (snapshotKind == ConversationKind.Thread && replyParentChannelId != null) {
+            ChannelId(replyParentChannelId)
+        } else {
+            channelId
+        }
+    val parentThread =
+        if (snapshotKind == ConversationKind.Thread && replyParentChannelId != null) {
+            ThreadId(replyParentChannelId)
+        } else {
+            threadId
+        }
+    val parent = originMessage?.toMessage(threadId = parentThread, channelId = parentChannel)
     val snapshotMessages =
         (listOfNotNull(parent) + messages.map { item -> item.toMessage(threadId, channelId) })
             .distinctBy { it.id }
