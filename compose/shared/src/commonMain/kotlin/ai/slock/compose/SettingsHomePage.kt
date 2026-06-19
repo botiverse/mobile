@@ -7493,15 +7493,30 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
-            val servers = current.session.servers.map { server ->
-                server.toServerSummary().let { summary ->
-                    if (summary.id == snapshot.server.id) {
-                        snapshot.server
-                    } else {
-                        summary
-                    }
-                }.toSharedSwitcherItem()
-            }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem()) }
+            val servers =
+                remember(current.session.servers, snapshot.server) {
+                    current.session.servers.map { server ->
+                        server.toServerSummary().let { summary ->
+                            if (summary.id == snapshot.server.id) {
+                                snapshot.server
+                            } else {
+                                summary
+                            }
+                        }.toSharedSwitcherItem()
+                    }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem()) }
+                }
+            val channelItems =
+                remember(snapshot.channels) {
+                    snapshot.channels.map { it.toSharedHomeConversationItem() }
+                }
+            val directMessageItems =
+                remember(snapshot.directMessages) {
+                    snapshot.directMessages.map { it.toSharedHomeConversationItem() }
+                }
+            val notificationItems =
+                remember(state.notifications) {
+                    state.notifications.map { it.toHomeNotificationItem() }
+                }
             val conversationsByThreadId =
                 remember(snapshot.channels, snapshot.directMessages) {
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
@@ -7510,8 +7525,8 @@ private fun SharedHomeScreen(
                 currentServerName = snapshot.server.name,
                 currentServerId = snapshot.server.id.value,
                 servers = servers,
-                channels = snapshot.channels.map { it.toSharedHomeConversationItem() },
-                directMessages = snapshot.directMessages.map { it.toSharedHomeConversationItem() },
+                channels = channelItems,
+                directMessages = directMessageItems,
                 selectedChannelId = selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = snapshot.unreadTotal,
@@ -7520,7 +7535,7 @@ private fun SharedHomeScreen(
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
-                notifications = state.notifications.map { it.toHomeNotificationItem() },
+                notifications = notificationItems,
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
