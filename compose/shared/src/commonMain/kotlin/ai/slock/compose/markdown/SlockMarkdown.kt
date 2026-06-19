@@ -35,6 +35,7 @@ import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.TextLayoutResult
 import com.tencent.kuikly.compose.ui.text.TextStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -44,8 +45,10 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
+import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
 import com.tencent.kuiklybase.markdown.compose.Markdown
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
 import com.tencent.kuiklybase.markdown.model.DefaultMarkdownColors
@@ -58,6 +61,8 @@ import com.tencent.kuiklybase.markdown.model.markdownPadding
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
+import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
+import org.intellij.markdown.parser.MarkdownParser
 import kotlin.time.TimeSource
 
 data class ThreadMarkdownTag(
@@ -226,6 +231,32 @@ internal fun String.shouldUseSlockMarkdownPlainTextFastPath(): Boolean {
 
 private val SlockMarkdownPlainTextFastPathBlockers =
     setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '#', '@', '|')
+
+internal fun String.shouldUseSlockMarkdownInlineTextFastPath(): Boolean {
+    if (isEmpty() || contains("://")) return false
+    if (any { it in SlockMarkdownInlineTextFastPathBlockers }) return false
+    return !hasSlockMarkdownBlockShape()
+}
+
+private val SlockMarkdownInlineTextFastPathBlockers =
+    setOf('\\', '\n', '\r', '[', ']', '<', '>', '|')
+
+private fun String.hasSlockMarkdownBlockShape(): Boolean {
+    val trimmed = trimStart()
+    return SlockMarkdownHeadingPrefixRegex.containsMatchIn(trimmed) ||
+        trimmed.startsWith("> ") ||
+        trimmed.startsWith("- ") ||
+        trimmed.startsWith("* ") ||
+        trimmed.startsWith("+ ") ||
+        trimmed.startsWith("```") ||
+        trimmed.startsWith("~~~") ||
+        SlockMarkdownOrderedListPrefixRegex.containsMatchIn(trimmed) ||
+        SlockMarkdownThematicBreakRegex.containsMatchIn(trimmed)
+}
+
+private val SlockMarkdownHeadingPrefixRegex = Regex("""^#{1,6}\s""")
+private val SlockMarkdownOrderedListPrefixRegex = Regex("""^\d+[.)]\s""")
+private val SlockMarkdownThematicBreakRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})\s*$""")
 
 private fun String.escapeMarkdownHtmlTagText(): String =
     replace("<", "\\<").replace(">", "\\>")
@@ -626,6 +657,57 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     return builder.toAnnotatedString()
 }
 
+private data class SlockMarkdownInlineTextCacheKey(
+    val content: String,
+    val textStyle: TextStyle
+)
+
+private object SlockMarkdownInlineTextRenderCache {
+    private const val MaxEntries = 256
+    private val entries = LinkedHashMap<SlockMarkdownInlineTextCacheKey, AnnotatedString>()
+
+    fun getOrPut(
+        key: SlockMarkdownInlineTextCacheKey,
+        value: () -> AnnotatedString
+    ): Pair<AnnotatedString, Boolean> {
+        entries[key]?.let { cached ->
+            return cached to true
+        }
+        val rendered = value()
+        entries[key] = rendered
+        if (entries.size > MaxEntries) {
+            val firstKey = entries.keys.firstOrNull()
+            if (firstKey != null) {
+                entries.remove(firstKey)
+            }
+        }
+        return rendered to false
+    }
+}
+
+private fun buildSlockMarkdownInlineTextAnnotatedString(
+    content: String,
+    style: TextStyle,
+    annotator: MarkdownAnnotator
+): AnnotatedString {
+    val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+    val textNode =
+        parsedTree.children.firstOrNull { node ->
+            node.type == MarkdownTokenTypes.TEXT || node.type == MarkdownElementTypes.PARAGRAPH
+        } ?: return AnnotatedString(content)
+    val settings =
+        DefaultAnnotatorSettings(
+            linkTextSpanStyle = TextLinkStyles(style = style.toSpanStyle().copy(color = SlockMarkdownLinkBlue)),
+            codeSpanStyle = slockMarkdownInlineCodeTextStyle(style).toSpanStyle(),
+            annotator = annotator
+        )
+    return buildAnnotatedString {
+        pushStyle(style.toSpanStyle())
+        buildMarkdownAnnotatedString(content, textNode, settings)
+        pop()
+    }
+}
+
 @Composable
 fun SlockMarkdownBody(
     body: String,
@@ -671,6 +753,11 @@ fun SlockMarkdownBody(
         } ?: modifier.fillMaxWidth()
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
+        performanceKey?.let { key ->
+            performanceLogger(
+                "thread_markdown_render stage=plain_text key=$key contentLength=${content.length} durationMs=0"
+            )
+        }
         KuiklyText(
             text = content,
             modifier = markdownModifier,
@@ -711,6 +798,47 @@ fun SlockMarkdownBody(
                         )
                     }
                 }
+        )
+    }
+    if (content.shouldUseSlockMarkdownInlineTextFastPath()) {
+        val resolvedStyle = textStyle.withResolvedSlockFontFamily()
+        val renderStartedAt = TimeSource.Monotonic.markNow()
+        val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle)
+        val (annotated, cacheHit) =
+            SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
+                buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
+            }
+        performanceKey?.let { key ->
+            performanceLogger(
+                "thread_markdown_render stage=inline_text key=$key contentLength=${content.length} " +
+                    "cacheHit=$cacheHit durationMs=${renderStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+        }
+        KuiklyText(
+            text = annotated.withSlockMarkdownSpanFonts(resolvedStyle),
+            modifier = markdownModifier,
+            color = resolvedStyle.color,
+            fontSize = resolvedStyle.fontSize,
+            fontStyle = resolvedStyle.fontStyle,
+            fontWeight = resolvedStyle.fontWeight,
+            fontFamily = resolvedStyle.fontFamily,
+            letterSpacing = resolvedStyle.letterSpacing,
+            textDecoration = resolvedStyle.textDecoration,
+            textAlign = resolvedStyle.textAlign,
+            lineHeight = resolvedStyle.lineHeight,
+            overflow = TextOverflow.Clip,
+            softWrap = true,
+            maxLines = Int.MAX_VALUE,
+            minLines = 1,
+            inlineContent = annotator.inlineContent?.invoke().orEmpty(),
+            onTextLayout = {},
+            style = resolvedStyle
+        )
+        return
+    }
+    performanceKey?.let { key ->
+        performanceLogger(
+            "thread_markdown_render stage=markdown_renderer key=$key contentLength=${content.length}"
         )
     }
     val padding = remember {

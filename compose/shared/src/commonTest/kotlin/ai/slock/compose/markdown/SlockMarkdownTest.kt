@@ -137,6 +137,24 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineTextFastPathKeepsSingleParagraphMarkdownOutOfBlockRenderer() {
+        assertTrue("Ping @artin in #KMP".shouldUseSlockMarkdownInlineTextFastPath())
+        assertTrue("Use `code` and **bold** text".shouldUseSlockMarkdownInlineTextFastPath())
+        assertTrue("#KMP is a channel reference, not a heading".shouldUseSlockMarkdownInlineTextFastPath())
+
+        assertFalse("Open https://raft.build".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("# Heading".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("### Heading".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("- list item".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("1. ordered item".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("1) ordered item".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("> quote".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("***".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("first line\nsecond line".shouldUseSlockMarkdownInlineTextFastPath())
+        assertFalse("[link](https://raft.build)".shouldUseSlockMarkdownInlineTextFastPath())
+    }
+
+    @Test
     fun markdownTypographyKeepsSlockFontsForOhosRichText() {
         val typography = slockMarkdownTypography(SlockType.Body)
 
