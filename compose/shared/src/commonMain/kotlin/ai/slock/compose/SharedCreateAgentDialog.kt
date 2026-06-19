@@ -34,6 +34,7 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
@@ -50,6 +51,18 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.core.annotations.Page
+
+private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog_visual"
+
+@Page(CREATE_AGENT_DIALOG_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeCreateAgentDialogVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { CreateAgentDialogVisualContent() }
+    }
+}
 
 internal data class SharedCreateAgentDialogSubmit(
     val name: String,
@@ -58,6 +71,51 @@ internal data class SharedCreateAgentDialogSubmit(
     val runtimeConfig: RuntimeConfig? = null,
     val external: Boolean = false
 )
+
+@Composable
+private fun CreateAgentDialogVisualContent() {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(SlockColor.SurfaceWhite)
+    ) {
+        SharedCreateAgentDialog(
+            submitting = false,
+            errorMessage = null,
+            initialName = "Product-QA-Bot",
+            initialDescription = "Watches release screenshots and reports visual regressions before merge.",
+            suggestedComputer = "computer-mbp",
+            machines =
+                listOf(
+                    SharedCreateAgentMachineOption(
+                        id = "computer-mbp",
+                        name = "Jiachengs-MacBook-Pro",
+                        status = "online",
+                        runtimes = listOf("codex", "claude")
+                    ),
+                    SharedCreateAgentMachineOption(
+                        id = "computer-studio",
+                        name = "Studio Test Rig",
+                        status = "offline",
+                        runtimes = listOf("codex")
+                    )
+                ),
+            runtimeModelsByMachineAndRuntime =
+                mapOf(
+                    ("computer-mbp" to "codex") to
+                        listOf(
+                            SharedCreateAgentRuntimeModelOption("gpt-5-codex", "GPT-5 Codex"),
+                            SharedCreateAgentRuntimeModelOption("gpt-5-mini", "GPT-5 mini")
+                        )
+                ),
+            currentAgentCount = 4,
+            maxAgents = 12,
+            onDismiss = {},
+            onSubmit = {}
+        )
+    }
+}
 
 /**
  * Convert a dialog submit to the data-layer [ai.slock.compose.data.CreateAgentRequest].

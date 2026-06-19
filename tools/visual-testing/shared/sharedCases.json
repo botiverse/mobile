@@ -682,6 +682,43 @@
       }
     },
     {
+      "id": "members.create-agent.dialog",
+      "title": "Members Create Agent Dialog",
+      "surface": "members",
+      "fixture": "fixtures/members.create-agent.dialog.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "prefilled-runtime",
+          "name": "Create Agent Prefilled Runtime",
+          "props": {
+            "name": "Product-QA-Bot",
+            "description": "Watches release screenshots and reports visual regressions before merge.",
+            "machine": "Jiachengs-MacBook-Pro",
+            "runtime": "codex"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/agent/CreateAgentDialog.tsx",
+      "androidCaseHint": "compose_create_agent_dialog_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "channel.members.panel",
       "title": "Channel Members Panel",
       "surface": "channel",
@@ -1645,6 +1682,51 @@
             "SharedCreateChannelDialog"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "members.create-agent.dialog",
+      "title": "Members Create Agent Dialog",
+      "surface": "members",
+      "group": "product-members",
+      "status": "baseline",
+      "notes": "Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Baseline covers the prefilled managed-agent dialog with computer, name, description, runtime, model, advanced toggle, and action buttons.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "CreateAgentDialog",
+            "FormField",
+            "Select",
+            "RuntimeConfigFields"
+          ],
+          "path": "packages/web/src/components/agent/CreateAgentDialog.tsx",
+          "fixture": "fixtures/members.create-agent.dialog.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SharedCreateAgentDialog",
+            "MachinePicker",
+            "AdvancedRuntimeSection",
+            "SlockUnifiedDialog"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedCreateAgentDialog.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersCreateAgentDialog"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SharedCreateAgentDialog"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedCreateAgentDialog.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]

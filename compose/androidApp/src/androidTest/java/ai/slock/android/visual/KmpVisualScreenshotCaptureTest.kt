@@ -177,6 +177,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersCreateAgentDialog() {
+        captureKmpComponentCase(
+            caseId = "members.create-agent.dialog",
+            pageName = "compose_create_agent_dialog_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "channel.members.panel",
