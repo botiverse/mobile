@@ -683,28 +683,6 @@ private fun SharedTasksToolbar(
                     .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (showCreateButton) {
-                    SlockBrutalActionButton(
-                        label = "NEW TASK",
-                        leadingIcon = SlockLucideIconName.Plus,
-                        backgroundColor = SlockColor.AccentPink,
-                        minWidth = 0.dp,
-                        minHeight = 30.dp,
-                        shadowOffset = 2.dp,
-                        textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                        onClick = onCreateClick
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                SharedTasksSegmentedControl(
-                    selectedMode = selectedMode,
-                    onModeSelected = onModeSelected
-                )
-            }
             LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
@@ -752,6 +730,30 @@ private fun SharedTasksToolbar(
                         )
                     }
                 }
+                if (showCreateButton) {
+                    item {
+                        SlockBrutalActionButton(
+                            label = "NEW TASK",
+                            leadingIcon = SlockLucideIconName.Plus,
+                            backgroundColor = SlockColor.AccentPink,
+                            minWidth = 0.dp,
+                            minHeight = 30.dp,
+                            shadowOffset = 2.dp,
+                            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                            onClick = onCreateClick
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(Modifier.weight(1f))
+                SharedTasksSegmentedControl(
+                    selectedMode = selectedMode,
+                    onModeSelected = onModeSelected
+                )
             }
         }
         Box(
