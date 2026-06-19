@@ -379,14 +379,15 @@ internal data class WireThreadLaunchPayload(
                 ?: resolvedSourceId?.let { "thread-$it" }
                 ?: "thread-launch"
         val resolvedTitle =
-            title.ifBlank {
-                if (isReplyThread) ThreadReplyPageTitle else "Thread"
-            }
+            SharedThreadHeaderContextStore
+                .launchContext(
+                    surfaceKind = surfaceKind,
+                    parentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
+                )
+                .title
         val resolvedComposer =
-            buildThreadSurfaceComposerPayload(
+            KuiklyThreadComposerPayload(
                 surfaceKind = surfaceKind,
-                displayName = resolvedTitle,
-                fallbackId = resolvedSourceId ?: resolvedInstanceId,
                 enabled = canSend,
                 showAsTaskToggle = showTaskOpenActions,
                 mentionChannelId = parentChannelId.nonBlank(),
@@ -396,7 +397,7 @@ internal data class WireThreadLaunchPayload(
         return KuiklyThreadScreenPayload(
             instanceId = resolvedInstanceId,
             title = resolvedTitle,
-            subtitle = subtitle,
+            subtitle = null,
             status = "loading",
             surfaceKind = surfaceKind,
             sourceThreadId = resolvedSourceId,
@@ -437,7 +438,7 @@ internal data class WireThreadLaunchPayload(
             emptyTitle = emptyTitle,
             emptyDetail = emptyDetail,
             joinLabel = joinLabel
-        )
+        ).withLaunchHeaderContext()
     }
 }
 

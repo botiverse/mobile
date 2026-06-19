@@ -212,7 +212,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun appendSentPagePatchesTimelineAndPreservesHeaderIdentity() = runBlocking {
+    fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -246,7 +246,7 @@ class SharedThreadStoreTest {
         )
 
         val payload = store.state.value.payload
-        assertEquals("Readable channel", payload.title)
+        assertEquals("general", payload.title)
         assertEquals(listOf("cached body", "sent body"), payload.messages.map { it.body })
         assertEquals("sent body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
         scope.cancel()
@@ -864,6 +864,7 @@ class SharedThreadStoreTest {
                             body = "reply body",
                             id = "reply-1",
                             messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
                             conversation =
                                 conversationSummary("thread-m1").copy(
                                     kind = ConversationKind.Thread,
@@ -929,6 +930,7 @@ class SharedThreadStoreTest {
                             body = "reply body",
                             id = "reply-1",
                             messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
                             conversation =
                                 conversationSummary("thread-m1").copy(
                                     kind = ConversationKind.Thread,
@@ -973,7 +975,21 @@ class SharedThreadStoreTest {
                 parentMessagePreview = "parent body",
                 latestActivityMessageId = MessageId("reply-1")
             ).toHomeMessageOpenRequest()
-        val initialPayload = buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+        val initialPayload =
+            buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+                .copy(
+                    title = "stale launch title",
+                    subtitle = "#stale",
+                    originMessage =
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "stale-user",
+                            authorName = "Stale",
+                            body = "stale launch parent"
+                        ),
+                    originPreview = "stale launch preview",
+                    originStatus = "loaded"
+                )
 
         store.accept(SharedThreadIntent.Start(initialPayload))
 
@@ -990,6 +1006,8 @@ class SharedThreadStoreTest {
         assertEquals("m1", payload.parentMessageId)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("reply-1", payload.focusedMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
         scope.cancel()
@@ -2582,11 +2600,13 @@ class SharedThreadStoreTest {
             id: String = "m1",
             seq: Long = 10,
             messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body)),
+            parentMessage: Message? = null,
             conversation: ConversationSummary = conversationSummary(threadId)
         ): ThreadSnapshot =
             ThreadSnapshot(
                 conversation = conversation,
-                messages = messages
+                messages = messages,
+                parentMessage = parentMessage
             )
 
         private fun conversationSummary(threadId: String = "channel-1"): ConversationSummary =

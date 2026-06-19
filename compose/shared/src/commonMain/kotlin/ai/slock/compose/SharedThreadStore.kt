@@ -1047,8 +1047,6 @@ internal class SharedThreadDataSource(
             is DataResult.Content -> {
                 val payload =
                     loaded.data.copy(
-                        title = replyBase.title,
-                        subtitle = replyBase.subtitle,
                         surfaceKind = replyBase.surfaceKind,
                         streamChannelId = replyBase.streamChannelId,
                         parentChannelId = replyBase.parentChannelId,
@@ -2030,26 +2028,24 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             emptyDetail = base.emptyDetail
         )
     } else {
-    copy(
-        instanceId = base.instanceId.ifBlank { instanceId },
-        title = base.title.ifBlank { title },
-        subtitle = base.subtitle ?: subtitle,
-        sourceThreadId = base.sourceThreadId ?: sourceThreadId,
-        navigationLabel = base.navigationLabel,
-        selectedTab = base.selectedTab,
-        showModeTabs = base.showModeTabs,
-        alignOwnMessagesRight = base.alignOwnMessagesRight,
-        localOffsetMinutes = base.localOffsetMinutes,
-        todayEpochDay = base.todayEpochDay ?: todayEpochDay,
-        nowEpochMillis = base.nowEpochMillis ?: nowEpochMillis,
-        timeFormat = base.timeFormat,
-        canSend = base.canSend,
-        joined = base.joined,
-        membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
-        composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
-        emptyTitle = base.emptyTitle,
-        emptyDetail = base.emptyDetail
-    )
+        copy(
+            instanceId = base.instanceId.ifBlank { instanceId },
+            sourceThreadId = base.sourceThreadId ?: sourceThreadId,
+            navigationLabel = base.navigationLabel,
+            selectedTab = base.selectedTab,
+            showModeTabs = base.showModeTabs,
+            alignOwnMessagesRight = base.alignOwnMessagesRight,
+            localOffsetMinutes = base.localOffsetMinutes,
+            todayEpochDay = base.todayEpochDay ?: todayEpochDay,
+            nowEpochMillis = base.nowEpochMillis ?: nowEpochMillis,
+            timeFormat = base.timeFormat,
+            canSend = base.canSend,
+            joined = base.joined,
+            membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
+            composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
+            emptyTitle = base.emptyTitle,
+            emptyDetail = base.emptyDetail
+        )
     }
 
 private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
@@ -2495,35 +2491,21 @@ private fun List<String>.cleanActionCardIds(): List<String> =
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
-    val nextOriginMessage = patch.originMessage ?: originMessage
-    val nextOriginPreview = patch.originPreview ?: originPreview
-    val nextOriginParentMessageId = patch.originParentMessageId ?: originParentMessageId
-    val nextOriginStatus =
-        when {
-            patch.originStatus != "none" -> patch.originStatus
-            nextOriginMessage != null -> "loaded"
-            nextOriginPreview != null || originStatus != "none" -> originStatus
-            else -> "none"
-        }
-    val nextOriginErrorCode =
-        when {
-            patch.originErrorCode != null -> patch.originErrorCode
-            patch.originStatus != "none" -> null
-            else -> originErrorCode
-        }
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
+        title = patch.title,
+        subtitle = patch.subtitle,
         sourceThreadId = if (patchResolvesReplyThreadStream) patch.sourceThreadId else sourceThreadId,
         streamChannelId = if (patchResolvesReplyThreadStream) patch.streamChannelId else streamChannelId,
         parentChannelId = patch.parentChannelId ?: parentChannelId,
         parentMessageId = patch.parentMessageId ?: parentMessageId,
         status = patch.status,
         messages = patch.messages,
-        originMessage = nextOriginMessage,
-        originPreview = nextOriginPreview,
-        originParentMessageId = nextOriginParentMessageId,
-        originStatus = nextOriginStatus,
-        originErrorCode = nextOriginErrorCode,
+        originMessage = patch.originMessage,
+        originPreview = patch.originPreview,
+        originParentMessageId = patch.originParentMessageId,
+        originStatus = patch.originStatus,
+        originErrorCode = patch.originErrorCode,
         tasks = patch.tasks,
         canLoadMoreBefore = patch.canLoadMoreBefore,
         canLoadMoreAfter = patch.canLoadMoreAfter,
@@ -2866,15 +2848,6 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val resolvedParentMessage =
         parentMessage
             ?: parentId?.let { id -> messages.firstOrNull { message -> message.id.value == id } }
-    val resolvedOrigin =
-        resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId)
-            ?: base.originMessage
-    val resolvedOriginStatus =
-        when {
-            resolvedParentMessage != null -> "loaded"
-            resolvedOrigin != null && base.originStatus == "none" -> "loaded"
-            else -> base.originStatus
-        }
     val surfaceKind =
         when {
             conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
@@ -2897,23 +2870,17 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         messages
             .filterNot { message -> parentId != null && message.id.value == parentId }
             .map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
-    val headerTitle =
-        when (surfaceKind) {
-            KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
-            else -> conversation.name.takeIf { it.isNotBlank() } ?: base.title
-        }
-    val headerSubtitle =
-        when (surfaceKind) {
-            KuiklyThreadSurfaceKind.ReplyThread ->
-                existingThreadChannelHeaderSubtitle(conversation.subtitle)
-                    ?: threadChannelHeaderSubtitle(conversation.name)
-                    ?: base.subtitle
-            else -> conversation.subtitle ?: base.subtitle
-        }
+    val headerContext =
+        SharedThreadHeaderContextStore.conversationContext(
+            surfaceKind = surfaceKind,
+            conversation = conversation,
+            originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
+            parentMessageId = parentId
+        )
     return base.copy(
-        title = headerTitle,
-        subtitle = headerSubtitle,
-        status = if (cachedMessages.isEmpty() && resolvedOrigin == null && tasks.isEmpty()) "empty" else "content",
+        title = headerContext.title,
+        subtitle = headerContext.subtitle,
+        status = if (cachedMessages.isEmpty() && headerContext.originMessage == null && tasks.isEmpty()) "empty" else "content",
         sourceThreadId =
             base.sourceThreadId
                 ?: conversation.thread?.streamChannelId?.value
@@ -2928,10 +2895,12 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         parentMessageId = parentMessageId,
         memberScopedMentions = base.memberScopedMentions || conversation.usesMemberScopedMentions(),
         messages = cachedMessages,
-        originMessage = resolvedOrigin,
-        originParentMessageId = resolvedParentMessage?.id?.value ?: base.originParentMessageId ?: base.parentMessageId,
+        originMessage = headerContext.originMessage,
+        originPreview = headerContext.originPreview,
+        originParentMessageId = headerContext.originParentMessageId,
         focusedMessageId = base.focusedMessageId,
-        originStatus = resolvedOriginStatus,
+        originStatus = headerContext.originStatus,
+        originErrorCode = headerContext.originErrorCode,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
