@@ -709,7 +709,7 @@ fun SlockStructuralHomeShell(
                         item {
                             SlockCollapsibleSectionHeader(
                                 label = labels.directMessages,
-                                count = directMessages.size,
+                                count = displayedDirectMessages.size,
                                 expanded = directMessagesExpanded,
                                 onExpandedChange = { if (sidebarInteractionsEnabled) directMessagesExpanded = it },
                                 sortContentDescription = "Sort ${labels.directMessages}",

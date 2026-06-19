@@ -1718,6 +1718,109 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun togglePinnedMergesExistingPinnedListAndAppendsNewOne() = runBlocking {
+        // #211: a Pin dispatched after the initial sidebar-order load must
+        // preserve any existing server-side pinned list. The store should
+        // start from the loaded snapshot (not an empty default) and append
+        // the new id, then PATCH the merged set so the server does not
+        // silently drop the previous pins.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val existingSnapshot = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-2"),
+            pinnedOrder = listOf("channel-2"),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(
+                // Home payload is returned without sidebarOrder; the store
+                // should fill it in from `loadSidebarOrder`.
+                initial = null
+            ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(existingSnapshot) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(
+                    existingSnapshot.copy(
+                        pinnedChannelIds = listOf("channel-2", "channel-1"),
+                        pinnedOrder = listOf("channel-2", "channel-1")
+                    )
+                )
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        // After Start, the store has merged in the loaded sidebar-order.
+        val initialContent = store.state.value.content as SharedHomeContentState.Content
+        assertEquals(listOf("channel-2"), initialContent.snapshot.sidebarOrder?.pinnedChannelIds)
+
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-2", "channel-1"), after?.pinnedChannelIds, "must include existing pinned channel-2 plus new channel-1")
+        assertEquals(listOf("channel-2", "channel-1"), after?.pinnedOrder)
+        assertEquals(1, updateCalls.size)
+        assertEquals(listOf("channel-2", "channel-1"), updateCalls.first().pinnedChannelIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedFiresFailureCallbackWhenPatchFails() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1"),
+            pinnedSortMode = "manual"
+        )
+        val failureMessages = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(
+                initial = initial,
+                updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
+            ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true)) },
+            pinUpdateFailureCallback = { message -> failureMessages += message }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-1"), after?.pinnedChannelIds, "rollback should restore the previous pinned ids")
+        assertEquals(1, failureMessages.size, "failure callback should fire on PATCH error")
+        assertTrue(failureMessages.first().contains("pinned", ignoreCase = true))
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedFiresFailureCallbackWhenSidebarOrderLoadFails() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val failureMessages = mutableListOf<String>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = null),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_load_failed", retryable = true)) },
+            updateSidebarOrder = { error("PATCH should not be called when load fails") },
+            pinUpdateFailureCallback = { message -> failureMessages += message }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        // No PATCH should be issued and no optimistic state change should leak.
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(null, after)
+        assertEquals(1, failureMessages.size, "failure callback should fire when sidebar-order load fails")
+        scope.cancel()
+    }
+
+    @Test
     fun togglePinnedRollsBackWhenPatchFails() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(
@@ -1812,8 +1915,8 @@ class SharedHomeStoreTest {
     }
 
     private fun sourceWithSidebarOrder(
-        initial: SettingsServerSidebarOrderSnapshot,
-        updateResult: DataResult<SettingsServerSidebarOrderSnapshot>,
+        initial: SettingsServerSidebarOrderSnapshot?,
+        updateResult: DataResult<SettingsServerSidebarOrderSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         updateCalls: MutableList<SettingsServerSidebarOrderUpdateRequest> = mutableListOf()
     ): SharedHomeDataSource =
         SharedHomeDataSource(

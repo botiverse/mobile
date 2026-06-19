@@ -882,7 +882,8 @@ private fun SlockAppShellContent() {
                 dataSource = homeDataSource,
                 diagnosticsLogger = { message -> bridge.log("shared_home $message") },
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
-                updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) }
+                updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
+                pinUpdateFailureCallback = { message -> bridge.toast(message) }
             )
         }
     val homeState by homeViewModel.state.collectAsState()
