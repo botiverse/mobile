@@ -5651,8 +5651,17 @@ private fun ThreadMembersModal(
     onAddMember: () -> Unit,
     onManageMember: (String) -> Unit
 ) {
-    val agents = members.filter { it.kind.equals("agent", ignoreCase = true) }
-    val humans = members.filter { !it.kind.equals("agent", ignoreCase = true) }
+    // Memoize the agents/humans partition so recomposition that does
+    // not change the members list does not re-run the filter. This
+    // pairs with the loadMembers idempotency in SharedThreadStore:
+    // once members are loaded for the current thread, the modal open /
+    // close cycle does not trigger a refetch AND does not redo the
+    // partition work either.
+    val (agents, humans) = remember(members) {
+        val a = members.filter { it.kind.equals("agent", ignoreCase = true) }
+        val h = members.filter { !it.kind.equals("agent", ignoreCase = true) }
+        a to h
+    }
     SlockUnifiedDialog(
         title = "MEMBERS (${membersCount.takeIf { it > 0 } ?: members.size})",
         onDismiss = onDismiss,

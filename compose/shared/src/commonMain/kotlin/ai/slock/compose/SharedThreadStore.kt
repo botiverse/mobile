@@ -1216,8 +1216,22 @@ internal const val SharedThreadRealtimePersistenceBatchDelayMillis = 64L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
-    val highlightedMentions: Set<String> = emptySet()
+    val highlightedMentions: Set<String> = emptySet(),
+    val membersLoadStatus: LoadMembersStatus = LoadMembersStatus.Idle,
+    /**
+     * Key (typically source thread id) the [membersLoadStatus] is bound to.
+     * Switching threads resets the status to Idle for the new key so we
+     * never reuse a previous thread's "Loaded" verdict.
+     */
+    val membersLoadKey: String? = null
 )
+
+/**
+ * Per-thread members load status. Keyed by [SharedThreadState.membersLoadKey]
+ * so that switching to another thread resets the loaded state instead of
+ * re-using the previous thread's "Loaded" status.
+ */
+internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
 internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
@@ -1459,34 +1473,74 @@ internal class SharedThreadStore(
         )
         if (emitted && visiblePayload != null) {
             writeCachedPayloadAfterFrame(_state.value.payload)
-            loadMembers()
+            // Explicit Refresh must always re-fetch members, even if
+            // the thread is already in Loaded state.
+            loadMembers(force = true)
         }
     }
 
-    private suspend fun loadMembers() {
+    /**
+     * Load the current thread's members, with idempotency guards.
+     *
+     * Behaviour:
+     * - No-op when the current source thread is missing.
+     * - No-op when the bound status is [LoadMembersStatus.InFlight] for
+     *   the current thread key (concurrent taps coalesce to one request).
+     * - No-op when the bound status is [LoadMembersStatus.Loaded] for the
+     *   current thread key, unless [force] is true.
+     * - Resets to [LoadMembersStatus.Idle] when the bound key changes
+     *   (switching threads) so a previous thread's "Loaded" verdict
+     *   never leaks into the next thread.
+     */
+    private suspend fun loadMembers(force: Boolean = false) {
         val membersStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
-        if (existing.sourceThreadId.isNullOrBlank()) return
+        val threadKey = existing.sourceThreadId.orEmpty()
+        if (threadKey.isBlank()) return
+        val currentState = _state.value
+        if (currentState.membersLoadKey != threadKey) {
+            // Switched threads: reset status so the previous verdict does not leak.
+            _state.value = currentState.copy(
+                membersLoadKey = threadKey,
+                membersLoadStatus = LoadMembersStatus.Idle
+            )
+        }
+        val resolvedStatus = _state.value.membersLoadStatus
+        if (!force && resolvedStatus == LoadMembersStatus.InFlight) {
+            diagnosticsLogger?.invoke(
+                "thread_members_load_skip threadId=$threadKey reason=in_flight"
+            )
+            return
+        }
+        if (!force && resolvedStatus == LoadMembersStatus.Loaded) {
+            diagnosticsLogger?.invoke(
+                "thread_members_load_skip threadId=$threadKey reason=already_loaded"
+            )
+            return
+        }
         diagnosticsLogger?.invoke(
-            "thread_members_load_start threadId=${existing.sourceThreadId.orEmpty()} " +
+            "thread_members_load_start threadId=$threadKey " +
                 "existingMembers=${existing.members.size} existingCandidates=${existing.memberCandidates.size}"
         )
+        _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.InFlight)
         val enrichedPayload = dataSource.enrichThreadMembers(existing)
         if (enrichedPayload == existing) {
+            _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
             diagnosticsLogger?.invoke(
-                "thread_members_load_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                "thread_members_load_result threadId=$threadKey " +
                     "result=unchanged members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
                     "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
             )
             return
         }
+        reducePayloadPatch(cachePayload = true) { currentPayload -> currentPayload.withMembersPatchFrom(enrichedPayload) }
+        _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
         diagnosticsLogger?.invoke(
-            "thread_members_load_result threadId=${existing.sourceThreadId.orEmpty()} " +
+            "thread_members_load_result threadId=$threadKey " +
                 "result=changed members=${enrichedPayload.members.size} " +
                 "candidates=${enrichedPayload.memberCandidates.size} canAddMembers=${enrichedPayload.canAddMembers} " +
                 "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
         )
-        reducePayloadPatch(cachePayload = true) { currentPayload -> currentPayload.withMembersPatchFrom(enrichedPayload) }
     }
 
     private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {
