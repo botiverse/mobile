@@ -237,7 +237,7 @@ internal data class SlockHomePayload(
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
 
-private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focused }
+private enum class ChannelRowInteractionState { Default, Selected, Hovered, Focused, Pressed }
 
 @Composable
 private fun SlockHomePageContent() {
@@ -433,6 +433,12 @@ fun SlockStructuralHomeShell(
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
     var pinnedExpanded by remember(currentServerId) { mutableStateOf(true) }
+    // #211 review (Cindy): single source of truth for which row is
+    // currently being pressed. Set by the row's onPress callback, cleared
+    // by onPressEnd (after tryAwaitRelease returns) so the visual only
+    // spans the actual pointer-down window. Never overrides a real
+    // Selected highlight — the row picks Pressed only when not Selected.
+    var pressedConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(channelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
     var pinnedSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(pinnedSortMode)) }
@@ -585,11 +591,24 @@ fun SlockStructuralHomeShell(
                                     val pinned = displayedPinned[index]
                                     val isJoint = pinned.kind.equals("joint", ignoreCase = true)
                                     val isDirectMessage = pinned.kind.equals("directmessage", ignoreCase = true)
-                                    val rowInteractionState = if (pinnedSectionSelection.selects(pinned.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default
+                                    val pinnedIsSelected = pinnedSectionSelection.selects(pinned.id)
+                                    // #211 review (Cindy): selected wins over
+                                    // pressed so the user never confuses
+                                    // "I'm pressing" with "this is the
+                                    // current conversation".
+                                    val rowInteractionState = when {
+                                        pinnedIsSelected -> ChannelRowInteractionState.Selected
+                                        pressedConversationId == pinned.id -> ChannelRowInteractionState.Pressed
+                                        else -> ChannelRowInteractionState.Default
+                                    }
                                     val handleLongPress: (Offset) -> Unit = { anchor ->
                                         onChannelLongPress(pinned.id, anchor)
                                         activePinMenuConversationId = pinned.id
                                         pinMenuAnchor = anchor
+                                        // Menu opens: clear press so the
+                                        // visual doesn't stick while the
+                                        // user reads the menu.
+                                        pressedConversationId = null
                                     }
                                     if (isDirectMessage) {
                                         DirectMessageRow(
@@ -604,7 +623,9 @@ fun SlockStructuralHomeShell(
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
                                             interactionState = rowInteractionState,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
-                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null
+                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                            onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = pinned.id }) else null,
+                                            onPressEnd = { if (pressedConversationId == pinned.id) pressedConversationId = null }
                                         )
                                     } else {
                                         ChannelRow(
@@ -616,7 +637,9 @@ fun SlockStructuralHomeShell(
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             interactionState = rowInteractionState,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
-                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null
+                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
+                                            onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = pinned.id }) else null,
+                                            onPressEnd = { if (pressedConversationId == pinned.id) pressedConversationId = null }
                                         )
                                     }
                                 }
@@ -644,19 +667,28 @@ fun SlockStructuralHomeShell(
                         if (channelsExpanded) {
                             items(displayedChannels.size, key = { index -> "channel-${displayedChannels[index].id}" }) { index ->
                                 val channel = displayedChannels[index]
+                                // #211 review (Cindy): selected wins over pressed.
+                                val channelInteractionState = when {
+                                    channelSectionSelection.selects(channel.id) -> ChannelRowInteractionState.Selected
+                                    pressedConversationId == channel.id -> ChannelRowInteractionState.Pressed
+                                    else -> ChannelRowInteractionState.Default
+                                }
                                 ChannelRow(
                                     name = channel.name,
                                     joined = channel.joined,
                                     hasDraft = channel.hasDraft,
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                    interactionState = if (channelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = channelInteractionState,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                         onChannelLongPress(channel.id, anchor)
                                         activePinMenuConversationId = channel.id
                                         pinMenuAnchor = anchor
-                                    }) else null
+                                        pressedConversationId = null
+                                    }) else null,
+                                    onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = channel.id }) else null,
+                                    onPressEnd = { if (pressedConversationId == channel.id) pressedConversationId = null }
                                 )
                             }
                         }
@@ -674,6 +706,11 @@ fun SlockStructuralHomeShell(
                             if (jointChannelsExpanded) {
                                 items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
                                     val channel = displayedJointChannels[index]
+                                    val jointInteractionState = when {
+                                        jointChannelSectionSelection.selects(channel.id) -> ChannelRowInteractionState.Selected
+                                        pressedConversationId == channel.id -> ChannelRowInteractionState.Pressed
+                                        else -> ChannelRowInteractionState.Default
+                                    }
                                     ChannelRow(
                                         name = channel.name,
                                         symbol = "git-branch",
@@ -681,13 +718,16 @@ fun SlockStructuralHomeShell(
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                        interactionState = if (jointChannelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                        interactionState = jointInteractionState,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
                                         onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                             onChannelLongPress(channel.id, anchor)
                                             activePinMenuConversationId = channel.id
                                             pinMenuAnchor = anchor
-                                        }) else null
+                                            pressedConversationId = null
+                                        }) else null,
+                                        onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = channel.id }) else null,
+                                        onPressEnd = { if (pressedConversationId == channel.id) pressedConversationId = null }
                                     )
                                 }
                             }
@@ -712,6 +752,11 @@ fun SlockStructuralHomeShell(
                         if (directMessagesExpanded) {
                             items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
                                 val dm = displayedDirectMessages[index]
+                                val dmInteractionState = when {
+                                    directMessageSectionSelection.selects(dm.id) -> ChannelRowInteractionState.Selected
+                                    pressedConversationId == dm.id -> ChannelRowInteractionState.Pressed
+                                    else -> ChannelRowInteractionState.Default
+                                }
                                 DirectMessageRow(
                                     name = dm.name,
                                     description = dm.description,
@@ -722,13 +767,16 @@ fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
-                                    interactionState = if (directMessageSectionSelection.selects(dm.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
+                                    interactionState = dmInteractionState,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
                                     onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
                                         onChannelLongPress(dm.id, anchor)
                                         activePinMenuConversationId = dm.id
                                         pinMenuAnchor = anchor
-                                    }) else null
+                                        pressedConversationId = null
+                                    }) else null,
+                                    onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = dm.id }) else null,
+                                    onPressEnd = { if (pressedConversationId == dm.id) pressedConversationId = null }
                                 )
                             }
                         }
@@ -1520,29 +1568,50 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
+    val pressed = interactionState == ChannelRowInteractionState.Pressed
+    // #211 review (Cindy): when the row is being pressed but not yet
+    // selected, show a light overlay so the user sees the gesture was
+    // accepted. Pressed wins over the default / hovered / focused
+    // background but never overwrites a real Selected highlight.
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Default -> if (pressed) SlockColor.EmptyStateGray else Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+        ChannelRowInteractionState.Pressed -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
-    val clickModifier = remember(onClick, onLongPress) {
+    val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
                 detectTapGestures(
+                    onPress = {
+                        onPress?.invoke()
+                        tryAwaitRelease()
+                        onPressEnd?.invoke()
+                    },
                     onTap = { onClick?.invoke() },
                     onLongPress = { onLongPress.invoke(rowAnchor) }
                 )
             }
         } else if (onClick != null) {
-            Modifier.clickable(onClick = onClick)
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onPress?.invoke()
+                        tryAwaitRelease()
+                        onPressEnd?.invoke()
+                    },
+                    onTap = { onClick?.invoke() }
+                )
+            }
         } else {
             Modifier
         }
@@ -1633,32 +1702,49 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
+    val pressed = interactionState == ChannelRowInteractionState.Pressed
     val unread = badge != null
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Default -> if (pressed) SlockColor.EmptyStateGray else Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+        ChannelRowInteractionState.Pressed -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
-    val clickModifier = remember(onClick, onLongPress) {
+    val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
                 detectTapGestures(
+                    onPress = {
+                        onPress?.invoke()
+                        tryAwaitRelease()
+                        onPressEnd?.invoke()
+                    },
                     onTap = { onClick?.invoke() },
                     onLongPress = { onLongPress.invoke(rowAnchor) }
                 )
             }
         } else if (onClick != null) {
-            Modifier.clickable(onClick = onClick)
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onPress?.invoke()
+                        tryAwaitRelease()
+                        onPressEnd?.invoke()
+                    },
+                    onTap = { onClick?.invoke() }
+                )
+            }
         } else {
             Modifier
         }
