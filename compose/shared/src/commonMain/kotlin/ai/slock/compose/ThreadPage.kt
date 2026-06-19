@@ -28,6 +28,9 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.SharedMembersIntent
+import ai.slock.compose.data.SharedMembersState
+import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksScope
@@ -130,6 +133,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -306,6 +310,132 @@ internal data class KuiklyThreadScreenPayload(
     val joinLabel: String = "Join channel"
 )
 
+@Serializable
+internal data class WireThreadLaunchPayload(
+    val instanceId: String = "",
+    val title: String = "Thread",
+    val subtitle: String? = null,
+    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val threadId: String? = null,
+    val sourceThreadId: String? = null,
+    val streamChannelId: String? = null,
+    val parentChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val originParentMessageId: String? = null,
+    val selectedTab: String = "chat",
+    val navigationLabel: String = "Back",
+    val showModeTabs: Boolean? = null,
+    val showReplyActions: Boolean? = null,
+    val alignOwnMessagesRight: Boolean = false,
+    val localOffsetMinutes: Int = 0,
+    val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour,
+    val showComposer: Boolean = true,
+    val joined: Boolean = true,
+    val canSend: Boolean = true,
+    val membersCount: Int = 0,
+    val canAddMembers: Boolean = true,
+    val settingsActions: List<WireThreadSettingsActionPayload> = emptyList(),
+    val showMembersAction: Boolean? = null,
+    val showSettingsAction: Boolean? = null,
+    val showOpenInChannelAction: Boolean = false,
+    val showMessageSaveAction: Boolean = true,
+    val showTaskOpenActions: Boolean = true,
+    val showTaskStatusActions: Boolean = true,
+    val emptyTitle: String = "Loading conversation",
+    val emptyDetail: String = "Loading messages from this conversation.",
+    val joinLabel: String = "Join channel"
+) {
+    fun hasRouteIdentity(): Boolean =
+        listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
+            .any { !it.isNullOrBlank() }
+
+    fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
+        val resolvedStreamId = streamChannelId.nonBlank() ?: sourceThreadId.nonBlank() ?: threadId.nonBlank()
+        val resolvedSourceId = sourceThreadId.nonBlank() ?: resolvedStreamId
+        val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val resolvedInstanceId =
+            instanceId.nonBlank()
+                ?: fallbackInstanceId.nonBlank()
+                ?: resolvedSourceId?.let { "thread-$it" }
+                ?: "thread-launch"
+        val resolvedTitle =
+            title.ifBlank {
+                if (isReplyThread) ThreadReplyPageTitle else "Thread"
+            }
+        val resolvedComposer =
+            buildThreadSurfaceComposerPayload(
+                surfaceKind = surfaceKind,
+                displayName = resolvedTitle,
+                fallbackId = resolvedSourceId ?: resolvedInstanceId,
+                enabled = canSend,
+                showAsTaskToggle = showTaskOpenActions,
+                mentionChannelId = parentChannelId.nonBlank(),
+                parentMessageId = parentMessageId.nonBlank(),
+                streamChannelId = resolvedStreamId
+            )
+        return KuiklyThreadScreenPayload(
+            instanceId = resolvedInstanceId,
+            title = resolvedTitle,
+            subtitle = subtitle,
+            status = "loading",
+            surfaceKind = surfaceKind,
+            sourceThreadId = resolvedSourceId,
+            streamChannelId = resolvedStreamId,
+            parentChannelId = parentChannelId.nonBlank(),
+            parentMessageId = parentMessageId.nonBlank(),
+            originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
+            selectedTab = selectedTab,
+            navigationLabel = navigationLabel,
+            showModeTabs = showModeTabs ?: !isReplyThread,
+            showReplyActions = showReplyActions ?: !isReplyThread,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            localOffsetMinutes = localOffsetMinutes,
+            todayEpochDay = todayEpochDay,
+            nowEpochMillis = nowEpochMillis,
+            timeFormat = timeFormat,
+            filesPayload = "{}",
+            composer = resolvedComposer,
+            showComposer = showComposer,
+            joined = joined,
+            canSend = canSend,
+            membersCount = membersCount,
+            canAddMembers = canAddMembers,
+            settingsActions = settingsActions.toThreadSettingsActions(),
+            showMembersAction = showMembersAction ?: !isReplyThread,
+            showSettingsAction = showSettingsAction ?: !isReplyThread,
+            showOpenInChannelAction = showOpenInChannelAction || (isReplyThread && parentMessageId.nonBlank() != null),
+            showMessageSaveAction = showMessageSaveAction,
+            showTaskOpenActions = showTaskOpenActions,
+            showTaskStatusActions = showTaskStatusActions,
+            emptyTitle = emptyTitle,
+            emptyDetail = emptyDetail,
+            joinLabel = joinLabel
+        )
+    }
+}
+
+@Serializable
+internal data class WireThreadSettingsActionPayload(
+    val id: String,
+    val enabled: Boolean = true,
+    val permission: String? = null
+)
+
+private fun List<WireThreadSettingsActionPayload>.toThreadSettingsActions(): List<KuiklyThreadSettingsAction> =
+    mapNotNull { action ->
+        action.id
+            .takeIf { it.isNotBlank() }
+            ?.let { id ->
+                KuiklyThreadSettingsAction(
+                    id = id,
+                    enabled = action.enabled,
+                    permission = action.permission
+                )
+            }
+    }
+
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
         subtitle =
@@ -443,10 +573,16 @@ internal data class KuiklyThreadMemberItem(
 @Serializable
 internal data class KuiklyThreadSettingsAction(
     val id: String,
+    val enabled: Boolean = true,
+    val permission: String? = null
+)
+
+internal data class ThreadSettingsActionUi(
+    val id: String,
     val title: String,
     val subtitle: String = "",
-    val icon: SlockLucideIconName = SlockLucideIconName.Settings,
-    val destructive: Boolean = false
+    val icon: SlockLucideIconName,
+    val destructive: Boolean
 )
 
 private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkdownTag): KuiklyThreadMemberItem? {
@@ -650,6 +786,14 @@ internal data class SharedThreadRealtimeEventSignal(
     val event: RealtimeEvent
 )
 
+internal data class ThreadRouteUiState(
+    val thread: KuiklyThreadScreenPayload,
+    val files: KuiklyThreadFilesPayload,
+    val composer: KuiklyThreadComposerPayload,
+    val tasks: TasksUiState,
+    val membersLoadStatus: LoadMembersStatus
+)
+
 private val KuiklyThreadTab.icon: SlockLucideIconName
     get() =
         when (this) {
@@ -725,30 +869,47 @@ private fun ThreadPageScreen() {
             logger = { message -> bridge.log("thread_create_agent $message") }
         )
     }
+    val routeScope = rememberCoroutineScope()
+    val memberRepository =
+        remember(authStore, networkClient) {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("thread_member_repository $message") }
+            )
+        }
+    val channelRepository =
+        remember(authStore, networkClient) {
+            RealChannelRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("thread_channel_repository $message") }
+            )
+        }
+    val membersStore =
+        remember(authStore, memberRepository, channelRepository, routeScope) {
+            SharedMembersStore(
+                authStore = authStore,
+                memberRepository = memberRepository,
+                channelRepository = channelRepository,
+                scope = routeScope,
+                logger = { message -> bridge.log(message) }
+            )
+        }
     val dataSource =
-        remember {
+        remember(networkClient, authStore, localWriteThrough, memberRepository, channelRepository, createAgentCoordinator) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
-                memberRepository =
-                    RealMemberRepository(
-                        sessionStore = authStore,
-                        networkClient = networkClient,
-                        logger = { message -> bridge.log("thread_member_repository $message") }
-                    ),
+                memberRepository = memberRepository,
                 conversationRepository =
                     RealConversationRepository(
                         sessionStore = authStore,
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
-                channelRepository =
-                    RealChannelRepository(
-                        sessionStore = authStore,
-                        networkClient = networkClient,
-                        warningLogger = { message -> bridge.log("thread_channel_repository $message") }
-                    ),
+                channelRepository = channelRepository,
                 agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
                     SlockIntegrationsActionsPushNetworkApi(networkClient)
@@ -775,6 +936,7 @@ private fun ThreadPageScreen() {
         authStore = authStore,
         tasksDataSource = tasksDataSource,
         createAgentCoordinator = createAgentCoordinator,
+        membersStore = membersStore,
         onBack = {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
         }
@@ -914,29 +1076,7 @@ private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
     )
 
 private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction> =
-    listOf(
-        KuiklyThreadSettingsAction(
-            id = "visibility",
-            title = "Make Private",
-            subtitle = "Restrict this channel to selected members",
-            icon = SlockLucideIconName.Lock,
-            destructive = true
-        ),
-        KuiklyThreadSettingsAction(
-            id = "archive",
-            title = "Archive Channel",
-            subtitle = "Freeze writes and hide from sidebars",
-            icon = SlockLucideIconName.Archive,
-            destructive = true
-        ),
-        KuiklyThreadSettingsAction(
-            id = "delete",
-            title = "Delete Channel",
-            subtitle = "Permanently remove this channel",
-            icon = SlockLucideIconName.Trash,
-            destructive = true
-        )
-    )
+    defaultThreadSettingsChannelActionCapabilities()
 
 @Composable
 private fun ThreadMessageVisualCard(
@@ -1051,6 +1191,7 @@ internal fun SharedThreadRouteContent(
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator,
+    membersStore: SharedMembersStore? = null,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
@@ -1077,22 +1218,31 @@ internal fun SharedThreadRouteContent(
                 dataSource = tasksDataSource,
                 scope = SharedTasksScope.Channel(taskChannelId)
             )
-        }
+    }
     val tasksState by tasksViewModel.state.collectAsState()
-    var composerDraftText by remember(initialPayload.instanceId) { mutableStateOf("") }
-    var composerDraftAsTask by remember(initialPayload.instanceId) { mutableStateOf(false) }
-    var composerSyncNonce by remember(initialPayload.instanceId) { mutableStateOf(0) }
-    var composerSending by remember(initialPayload.instanceId) { mutableStateOf(false) }
-    var composerFailureLabel by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
-    var removedAttachmentIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    val emptyMembersStateFlow = remember { MutableStateFlow(SharedMembersState()) }
+    val membersState by remember(membersStore) {
+        membersStore?.state ?: emptyMembersStateFlow
+    }.collectAsState()
+    val filesRouteKey =
+        initialPayload.sourceThreadId
+            ?: initialPayload.streamChannelId
+            ?: initialPayload.instanceId
+    val filesViewModel: SharedThreadFilesViewModel =
+        viewModel(key = "shared-thread-files-$filesRouteKey") {
+            SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
+        }
+    val filesState by filesViewModel.state.collectAsState()
+    val composerDraftViewModel: SharedThreadComposerDraftViewModel =
+        viewModel(key = "shared-thread-composer-$filesRouteKey") {
+            SharedThreadComposerDraftViewModel()
+        }
+    val composerDraftState by composerDraftViewModel.state.collectAsState()
     var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
     var attachmentOpenStates by remember(initialPayload.instanceId) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
-    }
-    var uploadedAttachments by remember(initialPayload.instanceId) {
-        mutableStateOf<List<SharedThreadComposerAttachment>>(emptyList())
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
@@ -1114,7 +1264,7 @@ internal fun SharedThreadRouteContent(
             true
         } else {
             false
-        }
+    }
 
     LaunchedEffect(initialPayload) {
         val composer = initialPayload.resolveThreadComposer()
@@ -1129,17 +1279,14 @@ internal fun SharedThreadRouteContent(
                     "source" to initialPayload.threadRenderDiagnosticsSource()
                 )
         )
-        composerDraftText = composer.seedText
-        composerDraftAsTask = composer.seedAsTask
-        composerSyncNonce = composer.syncNonce
-        composerSending = false
-        composerFailureLabel = null
-        removedAttachmentIds = emptySet()
+        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.Start(composer))
         pendingActionCardIds = emptySet()
         createAgentDialogState = null
         attachmentOpenStates = emptyMap()
-        uploadedAttachments = emptyList()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+    LaunchedEffect(membersStore, initialPayload.instanceId, initialPayload.sourceThreadId) {
+        membersStore?.dispatch(SharedMembersIntent.EnsureSuggestions)
     }
     LaunchedEffect(realtimeEventSignal?.sequence, initialPayload.instanceId) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
@@ -1171,6 +1318,9 @@ internal fun SharedThreadRouteContent(
         payload.sourceThreadId
             ?: initialPayload.sourceThreadId
             ?: payload.instanceId.ifBlank { initialPayload.instanceId }
+    val renderedPayload = remember(payload) {
+        payload.withSharedShellEventCapabilities()
+    }
     LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
         if (firstRenderLoggedThreadId != threadRouteKey) {
             firstRenderLoggedThreadId = threadRouteKey
@@ -1251,19 +1401,29 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    val routeFilesPayload = remember(payload.filesPayload, payload.instanceId) {
-        parseThreadFilesPayload(payload.filesPayload, payload.instanceId)
+    val routeFilesPayload =
+        remember(payload.filesPayload, payload.instanceId) {
+            payload.filesPayload
+                .trim()
+                .takeIf { it.isNotBlank() && it != "{}" }
+                ?.let { parseThreadFilesPayload(it, payload.instanceId) }
+        }
+    LaunchedEffect(
+        renderedPayload.instanceId,
+        renderedPayload.sourceThreadId,
+        renderedPayload.streamChannelId,
+        renderedPayload.filesPayload
+    ) {
+        filesViewModel.dispatch(
+            SharedThreadFilesIntent.Start(
+                basePayload = renderedPayload,
+                initialPayload = routeFilesPayload
+            )
+        )
     }
-    var filesPayload by remember(payload.instanceId) { mutableStateOf(routeFilesPayload) }
-    var filesRequestInFlight by remember(payload.instanceId) { mutableStateOf(false) }
+    val filesPayload = filesState.payload
     var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
-    LaunchedEffect(payload.instanceId, payload.filesPayload) {
-        val rawFilesPayload = payload.filesPayload.trim()
-        if (rawFilesPayload.isNotBlank() && rawFilesPayload != "{}") {
-            filesPayload = routeFilesPayload
-        }
-    }
     val renderedComposerState =
         remember(
             payload.composer,
@@ -1279,16 +1439,30 @@ internal fun SharedThreadRouteContent(
         ) {
             payload.resolveThreadComposer()
         }
+    val loadedMemberSuggestions =
+        remember(membersState.memberSuggestions) {
+            membersState.memberSuggestions.map { suggestion ->
+                KuiklyComposerMemberItem(
+                    displayName = suggestion.displayName,
+                    handle = suggestion.handle
+                )
+            }
+        }
+    val loadedChannelSuggestions =
+        remember(membersState.channelSuggestions) {
+            membersState.channelSuggestions.map { suggestion ->
+                KuiklyComposerChannelItem(
+                    name = suggestion.name,
+                    subtitle = suggestion.subtitle
+                )
+            }
+        }
     val composerState =
         remember(
             renderedComposerState,
-            composerDraftText,
-            composerDraftAsTask,
-            composerSyncNonce,
-            composerSending,
-            composerFailureLabel,
-            removedAttachmentIds,
-            uploadedAttachments,
+            composerDraftState,
+            loadedMemberSuggestions,
+            loadedChannelSuggestions,
             payload.canSend
         ) {
             val pendingAttachments =
@@ -1300,14 +1474,14 @@ internal fun SharedThreadRouteContent(
                         mimeType = attachment.mimeType,
                         status = attachment.status
                     )
-                } + uploadedAttachments)
+                } + composerDraftState.uploadedAttachments)
                     .distinctBy { attachment -> attachment.id }
-                    .filterNot { attachment -> attachment.id in removedAttachmentIds }
+                    .filterNot { attachment -> attachment.id in composerDraftState.removedAttachmentIds }
             renderedComposerState.copy(
                 instanceId = renderedComposerState.instanceId.ifBlank { payload.instanceId },
-                seedText = composerDraftText,
-                seedAsTask = composerDraftAsTask,
-                syncNonce = composerSyncNonce,
+                seedText = composerDraftState.seedText,
+                seedAsTask = composerDraftState.seedAsTask,
+                syncNonce = composerDraftState.syncNonce,
                 pendingAttachments =
                     pendingAttachments.map { attachment ->
                         KuiklyPendingAttachmentItem(
@@ -1320,19 +1494,25 @@ internal fun SharedThreadRouteContent(
                     },
                 composerMode =
                     when {
-                        composerSending -> "sending"
-                        composerFailureLabel != null -> "failed"
+                        composerDraftState.sending -> "sending"
+                        composerDraftState.failureLabel != null -> "failed"
                         renderedComposerState.composerMode == "failed" -> "failed"
                         else -> renderedComposerState.composerMode
                     },
                 statusLabel =
                     when {
-                        composerSending -> "Sending..."
-                        composerFailureLabel != null -> composerFailureLabel
+                        composerDraftState.sending -> "Sending..."
+                        composerDraftState.failureLabel != null -> composerDraftState.failureLabel
                         renderedComposerState.composerMode == "failed" -> renderedComposerState.statusLabel
                         else -> renderedComposerState.statusLabel
                     },
-                enabled = payload.canSend && !composerSending
+                enabled = payload.canSend && !composerDraftState.sending,
+                memberSuggestions =
+                    loadedMemberSuggestions.takeIf { it.isNotEmpty() }
+                        ?: renderedComposerState.memberSuggestions,
+                channelSuggestions =
+                    loadedChannelSuggestions.takeIf { it.isNotEmpty() }
+                        ?: renderedComposerState.channelSuggestions
             )
         }
     val composerSurface =
@@ -1342,81 +1522,48 @@ internal fun SharedThreadRouteContent(
                 parentChannelId = payload.parentChannelId
             )
         }
-    val renderedPayload = remember(payload) {
-        payload.withSharedShellEventCapabilities()
-    }
+    val routeUiState =
+        remember(renderedPayload, filesPayload, composerState, tasksState, threadState.membersLoadStatus) {
+            ThreadRouteUiState(
+                thread = renderedPayload,
+                files = filesPayload,
+                composer = composerState,
+                tasks = tasksState,
+                membersLoadStatus = threadState.membersLoadStatus
+            )
+        }
+    val renderedThread = routeUiState.thread
+    val renderedFiles = routeUiState.files
+    val renderedComposer = routeUiState.composer
+    val renderedTasks = routeUiState.tasks
     LaunchedEffect(
-        renderedPayload.status,
-        renderedPayload.errorCode,
-        renderedPayload.olderMessagesStatus,
-        renderedPayload.newerMessagesStatus
+        renderedThread.status,
+        renderedThread.errorCode,
+        renderedThread.olderMessagesStatus,
+        renderedThread.newerMessagesStatus
     ) {
         if (
-            renderedPayload.status == "no_permission" ||
-            renderedPayload.status == "error" ||
-            renderedPayload.olderMessagesStatus == "error" ||
-            renderedPayload.newerMessagesStatus == "error"
+            renderedThread.status == "no_permission" ||
+            renderedThread.status == "error" ||
+            renderedThread.olderMessagesStatus == "error" ||
+            renderedThread.newerMessagesStatus == "error"
         ) {
-            routeAuthRequired(renderedPayload.errorCode)
+            routeAuthRequired(renderedThread.errorCode)
         }
     }
-    LaunchedEffect(filesPayload.status, filesPayload.errorCode) {
-        if (filesPayload.status == "no_permission" || filesPayload.status == "error") {
-            routeAuthRequired(filesPayload.errorCode)
+    LaunchedEffect(renderedFiles.status, renderedFiles.errorCode) {
+        if (renderedFiles.status == "no_permission" || renderedFiles.status == "error") {
+            routeAuthRequired(renderedFiles.errorCode)
         }
     }
     fun loadThreadFiles(reason: String, cursor: String? = null) {
-        if (filesRequestInFlight || (cursor != null && filesPayload.loadingMore)) return
-        val requestBasePayload = renderedPayload
-        filesRequestInFlight = true
-        filesPayload =
+        filesViewModel.dispatch(
             if (cursor != null) {
-                filesPayload.copy(loadingMore = true, errorCode = null)
+                SharedThreadFilesIntent.LoadMore(reason)
             } else {
-                filesPayload.copy(status = "loading", loadingMore = false, errorCode = null)
+                SharedThreadFilesIntent.Refresh(reason)
             }
-        coroutineScope.launch {
-            val result =
-                runCatchingPreservingCancellation {
-                    dataSource.fetchFilesPayload(
-                        basePayload = requestBasePayload,
-                        cursor = cursor,
-                        currentPayload = filesPayload
-                    )
-                }.getOrElse {
-                    DataResult.Error(ScreenError(code = "thread_files_network", retryable = true))
-                }
-            if (requestBasePayload.sourceThreadId == renderedPayload.sourceThreadId) {
-                filesPayload =
-                    when (result) {
-                        is DataResult.Content -> result.data
-                        is DataResult.Empty ->
-                            filesPayload.copy(
-                                status = if (filesPayload.items.isEmpty()) "empty" else "content",
-                                hasMore = false,
-                                loadingMore = false,
-                                nextCursor = null,
-                                errorCode = null
-                            )
-                        is DataResult.Error ->
-                            filesPayload.copy(
-                                status = if (filesPayload.items.isEmpty()) "error" else "content",
-                                loadingMore = false,
-                                errorCode = result.error.code
-                            )
-                        is DataResult.NoPermission ->
-                            filesPayload.copy(
-                                status = "no_permission",
-                                loadingMore = false,
-                                errorCode = result.blocker.requiredCapability ?: result.blocker.code
-                            )
-                    }
-            }
-            filesRequestInFlight = false
-            bridge.log(
-                "thread_files_result reason=$reason threadId=${requestBasePayload.sourceThreadId.orEmpty()} cursor=${cursor.orEmpty()} status=${filesPayload.status} items=${filesPayload.items.size} hasMore=${filesPayload.hasMore} error=${filesPayload.errorCode.orEmpty()}"
-            )
-        }
+        )
     }
     fun requestImagePreviewUrl(attachmentId: String) {
         if (attachmentId in imagePreviewUrlCache) return
@@ -1491,8 +1638,8 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.selectedTab) {
-        if (renderedPayload.selectedTab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
+    LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
+        if (renderedThread.selectedTab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
             loadThreadFiles("initial_tab")
         }
     }
@@ -1501,15 +1648,15 @@ internal fun SharedThreadRouteContent(
     // are intentionally excluded so they do not retrigger the render log.
     // See ThreadRenderSignature / Test.
     val renderSignature = remember(
-        renderedPayload.instanceId,
-        renderedPayload.sourceThreadId,
-        renderedPayload.status,
-        renderedPayload.selectedTab,
-        renderedPayload.messages.size,
-        renderedPayload.tasks.size,
-        renderedPayload.showReplyActions
+        renderedThread.instanceId,
+        renderedThread.sourceThreadId,
+        renderedThread.status,
+        renderedThread.selectedTab,
+        renderedThread.messages.size,
+        renderedThread.tasks.size,
+        renderedThread.showReplyActions
     ) {
-        renderedPayload.toRenderSignature()
+        renderedThread.toRenderSignature()
     }
     LaunchedEffect(renderSignature) {
         bridge.log(
@@ -1519,18 +1666,18 @@ internal fun SharedThreadRouteContent(
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
-    LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.status, renderedPayload.messages.size) {
-        if (renderedPayload.status == "content" && renderedPayload.messages.isNotEmpty()) {
+    LaunchedEffect(renderedThread.sourceThreadId, renderedThread.status, renderedThread.messages.size) {
+        if (renderedThread.status == "content" && renderedThread.messages.isNotEmpty()) {
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
         }
     }
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
-            payload = renderedPayload,
-            filesPayload = filesPayload,
+            payload = renderedThread,
+            filesPayload = renderedFiles,
             composerSurface = composerSurface,
-            composerState = composerState,
-            tasksState = tasksState,
+            composerState = renderedComposer,
+            tasksState = renderedTasks,
             onTasksIntent = tasksViewModel::dispatch,
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
@@ -1541,27 +1688,27 @@ internal fun SharedThreadRouteContent(
                 when {
                     action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
                         val imageGroup =
-                            renderedPayload.findThreadImageAttachmentGroup(attachmentId)
-                                ?: filesPayload.findThreadImageAttachmentGroup(attachmentId)
+                            renderedThread.findThreadImageAttachmentGroup(attachmentId)
+                                ?: renderedFiles.findThreadImageAttachmentGroup(attachmentId)
                         if (imageGroup != null) {
                             openImagePreview(imageGroup)
                         } else {
                             val attachment =
-                                renderedPayload.findThreadAttachment(attachmentId)
-                                    ?: filesPayload.findThreadAttachment(attachmentId)
+                                renderedThread.findThreadAttachment(attachmentId)
+                                    ?: renderedFiles.findThreadAttachment(attachmentId)
                                     ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                             openAttachmentExternally(attachment)
                         }
                     }
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
                         val attachment =
-                            renderedPayload.findThreadAttachment(attachmentId)
-                                ?: filesPayload.findThreadAttachment(attachmentId)
+                            renderedThread.findThreadAttachment(attachmentId)
+                                ?: renderedFiles.findThreadAttachment(attachmentId)
                                 ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                         openAttachmentExternally(attachment)
                     }
                 action == "copyMessage" && !itemId.isNullOrBlank() -> {
-                    val body = renderedPayload.messages.firstOrNull { it.id == itemId }?.body.orEmpty()
+                    val body = renderedThread.messages.firstOrNull { it.id == itemId }?.body.orEmpty()
                     if (body.isNotBlank()) {
                         bridge.copyToPasteboard(body)
                         bridge.toast("Copied")
@@ -1569,16 +1716,16 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     val parentMessage =
-                        renderedPayload.messages.firstOrNull { it.id == itemId }
-                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }
+                        renderedThread.messages.firstOrNull { it.id == itemId }
+                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }
                     if (parentMessage == null) {
                         bridge.toast("Unable to open replies")
                         return@ThreadPageContent
                     }
-                    val loadingPayload = renderedPayload.replyThreadLoadingPayload(parentMessage)
+                    val loadingPayload = renderedThread.replyThreadLoadingPayload(parentMessage)
                     onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
-                        when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
+                        when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
                             is DataResult.Content -> onReplaceThreadPayload(result.data)
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -1604,8 +1751,8 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
                     val previousSaved =
-                        renderedPayload.threadActionMessage(itemId)?.isSaved
-                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }?.isSaved
+                        renderedThread.threadActionMessage(itemId)?.isSaved
+                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }?.isSaved
                             ?: false
                     val nextSaved = !previousSaved
                     threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, nextSaved))
@@ -1637,8 +1784,8 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val actionCard =
-                        renderedPayload.messages.firstOrNull { it.id == itemId }?.threadActionCard()
-                            ?: renderedPayload.originMessage?.takeIf { it.id == itemId }?.threadActionCard()
+                        renderedThread.messages.firstOrNull { it.id == itemId }?.threadActionCard()
+                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }?.threadActionCard()
                     if (actionCard == null) {
                         bridge.toast("Action is no longer available")
                         return@ThreadPageContent
@@ -1660,7 +1807,7 @@ internal fun SharedThreadRouteContent(
                     pendingActionCardIds = pendingActionCardIds + itemId
                     coroutineScope.launch {
                         try {
-                            when (val result = dataSource.commitThreadActionCard(renderedPayload, itemId, actionCard)) {
+                            when (val result = dataSource.commitThreadActionCard(renderedThread, itemId, actionCard)) {
                                 is DataResult.Content -> {
                                     threadViewModel.dispatch(
                                         SharedThreadIntent.ApplyActionCard(itemId, result.data)
@@ -1686,7 +1833,7 @@ internal fun SharedThreadRouteContent(
                     if (reactionKey in pendingReactionKeys) {
                         return@ThreadPageContent
                     }
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     val toggleTarget = previousPayload.threadReactionToggleTarget(itemId, tab)
                     if (toggleTarget == null) {
                         return@ThreadPageContent
@@ -1727,15 +1874,15 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "openTask" && !itemId.isNullOrBlank() -> {
-                    val parentMessage = renderedPayload.findTaskParentMessage(itemId)
+                    val parentMessage = renderedThread.findTaskParentMessage(itemId)
                     if (parentMessage == null) {
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
                     }
-                    val loadingPayload = renderedPayload.replyThreadLoadingPayload(parentMessage)
+                    val loadingPayload = renderedThread.replyThreadLoadingPayload(parentMessage)
                     onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
-                        when (val result = dataSource.createOrOpenReplyThread(renderedPayload, parentMessage)) {
+                        when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
                             is DataResult.Content -> onReplaceThreadPayload(result.data)
                             is DataResult.Empty,
                             is DataResult.Error -> {
@@ -1759,7 +1906,7 @@ internal fun SharedThreadRouteContent(
                     if (target == null) {
                         bridge.openUrl(itemId, null)
                     } else {
-                        val loadingPayload = renderedPayload.webLinkLoadingPayload(target)
+                        val loadingPayload = renderedThread.webLinkLoadingPayload(target)
                         onOpenThreadPayload(loadingPayload)
                         coroutineScope.launch {
                             when (val result = dataSource.fetchWebLinkThreadPayload(loadingPayload, target)) {
@@ -1792,7 +1939,7 @@ internal fun SharedThreadRouteContent(
                     bridge.toast("Unable to open ${itemId.take(32)}")
                 }
                 action == "submitAddMember" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     threadViewModel.dispatch(
                         SharedThreadIntent.SetAddMemberStatus(status = "adding", errorCode = null)
                     )
@@ -1829,7 +1976,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "removeMember" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     val member = previousPayload.members.firstOrNull { it.id == itemId }
                     threadViewModel.dispatch(
                         SharedThreadIntent.SetRemoveMemberStatus(
@@ -1882,7 +2029,7 @@ internal fun SharedThreadRouteContent(
                     bridge.toast("Channel visibility updates are not wired yet")
                 }
                 action == "settingsAction" && itemId == "archive" -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     coroutineScope.launch {
                         when (val result = dataSource.archiveChannel(previousPayload)) {
                             is DataResult.Content -> {
@@ -1899,7 +2046,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "settingsAction" && itemId == "delete" -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     coroutineScope.launch {
                         when (val result = dataSource.deleteChannel(previousPayload)) {
                             is DataResult.Content -> {
@@ -1921,7 +2068,7 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unsupported task status")
                         return@ThreadPageContent
                     }
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, status.name))
                     coroutineScope.launch {
@@ -1943,7 +2090,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "markTaskDone" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Done.name))
                     coroutineScope.launch {
@@ -1965,7 +2112,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "reopenTask" && !itemId.isNullOrBlank() -> {
-                    val previousPayload = renderedPayload
+                    val previousPayload = renderedThread
                     val previousStatusLabel = previousPayload.taskStatusLabel(itemId)
                     threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, TaskStatus.Todo.name))
                     coroutineScope.launch {
@@ -1987,7 +2134,7 @@ internal fun SharedThreadRouteContent(
                     }
                 }
                 action == "selectTab" -> {
-                    if (tab == KuiklyThreadTab.Files.wireValue && filesPayload.shouldFetchInitialFiles()) {
+                    if (tab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
                         loadThreadFiles("tab_select")
                     }
                 }
@@ -1995,8 +2142,8 @@ internal fun SharedThreadRouteContent(
                     threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
                 }
                 action == "loadMoreFiles" -> {
-                    val cursor = filesPayload.nextCursor?.takeIf { it.isNotBlank() }
-                    if (cursor != null && filesPayload.hasMore) {
+                    val cursor = renderedFiles.nextCursor?.takeIf { it.isNotBlank() }
+                    if (cursor != null && renderedFiles.hasMore) {
                         loadThreadFiles("load_more", cursor)
                     }
                 }
@@ -2017,33 +2164,37 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                val composerInstanceId = composerState.instanceId.ifBlank { payload.instanceId }
+                val composerInstanceId = renderedComposer.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
-                    if (composerSending) {
+                    if (composerDraftState.sending) {
                         return@ThreadPageContent
                     }
-                    value?.let { composerDraftText = it }
-                    asTask?.let { composerDraftAsTask = it }
-                    composerFailureLabel = null
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.Change(
+                            seedText = value,
+                            seedAsTask = asTask
+                        )
+                    )
                 }
                 "toggleAsTask" -> {
-                    if (composerSending) {
+                    if (composerDraftState.sending) {
                         return@ThreadPageContent
                     }
-                    asTask?.let { composerDraftAsTask = it }
-                    composerFailureLabel = null
+                    composerDraftViewModel.dispatch(
+                        SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
+                    )
                 }
                 "send" -> {
                     val threadId = composerSurface.sendChannelId
-                    val draftText = composerDraftText.trim()
-                    val attachmentIds = composerState.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
-                    if (!payload.canSend || composerSending || threadId == null ||
+                    val draftText = composerDraftState.seedText.trim()
+                    val attachmentIds = renderedComposer.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
+                    if (!payload.canSend || composerDraftState.sending || threadId == null ||
                         (draftText.isBlank() && attachmentIds.isEmpty())
                     ) {
                         return@ThreadPageContent
                     }
-                    val draftAsTask = composerDraftAsTask
+                    val draftAsTask = composerDraftState.seedAsTask
                     val sendStartedAt = TimeSource.Monotonic.markNow()
                     bridge.performanceMarker(
                         phase = "composer_send",
@@ -2057,11 +2208,7 @@ internal fun SharedThreadRouteContent(
                                 "hasText" to draftText.isNotBlank().toString()
                             )
                     )
-                    composerSending = true
-                    composerFailureLabel = null
-                    composerDraftText = ""
-                    composerDraftAsTask = false
-                    composerSyncNonce += 1
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
                     coroutineScope.launch {
                         val sendResponse =
                             runCatchingPreservingCancellation {
@@ -2080,11 +2227,13 @@ internal fun SharedThreadRouteContent(
                                     durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
                                     metadata = mapOf("result" to "exception")
                                 )
-                                composerSending = false
-                                composerDraftText = draftText
-                                composerDraftAsTask = draftAsTask
-                                composerFailureLabel = "Send failed. Try again."
-                                composerSyncNonce += 1
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                                        seedText = draftText,
+                                        seedAsTask = draftAsTask,
+                                        failureLabel = "Send failed. Try again."
+                                    )
+                                )
                                 return@launch
                             }
                         val sentPage =
@@ -2103,14 +2252,16 @@ internal fun SharedThreadRouteContent(
                                                 "code" to (sendResponse.contractCode ?: "unknown")
                                             )
                                     )
-                                    composerSending = false
-                                    composerDraftText = draftText
-                                    composerDraftAsTask = draftAsTask
-                                    composerFailureLabel =
-                                        sendResponse.contractCode
-                                            ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
-                                            ?: "Send failed. Try again."
-                                    composerSyncNonce += 1
+                                    composerDraftViewModel.dispatch(
+                                        SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                                            seedText = draftText,
+                                            seedAsTask = draftAsTask,
+                                            failureLabel =
+                                                sendResponse.contractCode
+                                                    ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                                                    ?: "Send failed. Try again."
+                                        )
+                                    )
                                     return@launch
                                 }
                             }
@@ -2123,11 +2274,13 @@ internal fun SharedThreadRouteContent(
                                 durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
                                 metadata = mapOf("result" to "empty")
                             )
-                            composerSending = false
-                            composerDraftText = draftText
-                            composerDraftAsTask = draftAsTask
-                            composerFailureLabel = "Send failed. Try again."
-                            composerSyncNonce += 1
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                                    seedText = draftText,
+                                    seedAsTask = draftAsTask,
+                                    failureLabel = "Send failed. Try again."
+                                )
+                            )
                             return@launch
                         }
                         threadViewModel.dispatch(SharedThreadIntent.AppendSentPage(sentPage))
@@ -2144,13 +2297,7 @@ internal fun SharedThreadRouteContent(
                                     "messages" to sentPage.messages.size.toString()
                                 )
                         )
-                        uploadedAttachments = emptyList()
-                        removedAttachmentIds = emptySet()
-                        composerDraftText = ""
-                        composerDraftAsTask = false
-                        composerSyncNonce += 1
-                        composerFailureLabel = null
-                        composerSending = false
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend)
                     }
                 }
                 "retryThreadLoad" -> {
@@ -2195,12 +2342,9 @@ internal fun SharedThreadRouteContent(
                                     bridge.toast("Attachment upload failed: empty_upload_result")
                                     return@launch
                                 }
-                                uploadedAttachments =
-                                    (uploadedAttachments + uploaded).distinctBy { attachment -> attachment.id }
-                                removedAttachmentIds =
-                                    removedAttachmentIds - uploaded.map { attachment -> attachment.id }.toSet()
-                                composerFailureLabel = null
-                                composerSyncNonce += 1
+                                composerDraftViewModel.dispatch(
+                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(uploaded)
+                                )
                             }
                             is DataResult.Error ->
                                 bridge.toast("Attachment upload failed: ${uploadResult.error.code}")
@@ -2213,14 +2357,12 @@ internal fun SharedThreadRouteContent(
                 }
                 "removeAttachment" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        removedAttachmentIds = removedAttachmentIds + id
-                        composerSyncNonce += 1
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RemoveAttachment(id))
                     }
                 }
                 "retryAttachments" -> {
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
-                        removedAttachmentIds = removedAttachmentIds - id
-                        composerSyncNonce += 1
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
                     }
                 }
                 "blur" -> {
@@ -2835,6 +2977,7 @@ internal fun parseThreadScreenPayload(
             fallbackPageData.trim().isNotEmpty() -> fallbackPageData.trim()
             else -> "{}"
         }
+    parseThreadLaunchPayload(source, instanceId)?.let { return it }
     return runCatching {
         threadPageJson.decodeFromString(KuiklyThreadScreenPayload.serializer(), source)
             .let { decoded ->
@@ -2852,6 +2995,16 @@ internal fun parseThreadScreenPayload(
         )
     }
 }
+
+private fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =
+    runCatching {
+        threadPageJson
+            .decodeFromString(WireThreadLaunchPayload.serializer(), source)
+            .takeIf { it.hasRouteIdentity() }
+            ?.toInitialPayload(instanceId)
+    }.getOrNull()
+
+private fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }
 
 internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
     this?.user?.let { user ->
@@ -6076,23 +6229,30 @@ private enum class ThreadSettingsDangerAction(
     Delete("delete", "DELETE CHANNEL", SlockLucideIconName.Trash, "Delete Channel", SlockColor.AccentRed)
 }
 
-internal fun defaultThreadSettingsChannelActions(): List<KuiklyThreadSettingsAction> =
+internal fun defaultThreadSettingsChannelActionCapabilities(): List<KuiklyThreadSettingsAction> =
     listOf(
-        KuiklyThreadSettingsAction(
+        KuiklyThreadSettingsAction(id = "visibility"),
+        KuiklyThreadSettingsAction(id = "archive"),
+        KuiklyThreadSettingsAction(id = "delete")
+    )
+
+private fun defaultThreadSettingsChannelActions(): List<ThreadSettingsActionUi> =
+    listOf(
+        ThreadSettingsActionUi(
             id = "visibility",
             title = "Make Private",
             subtitle = "Restrict this channel to selected members",
             icon = SlockLucideIconName.Lock,
             destructive = true
         ),
-        KuiklyThreadSettingsAction(
+        ThreadSettingsActionUi(
             id = "archive",
             title = "Archive Channel",
             subtitle = "Freeze writes and hide from sidebars",
             icon = SlockLucideIconName.Archive,
             destructive = true
         ),
-        KuiklyThreadSettingsAction(
+        ThreadSettingsActionUi(
             id = "delete",
             title = "Delete Channel",
             subtitle = "Permanently remove this channel",
@@ -6101,36 +6261,33 @@ internal fun defaultThreadSettingsChannelActions(): List<KuiklyThreadSettingsAct
         )
     )
 
-internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelActions(): List<KuiklyThreadSettingsAction> {
+internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelActions(
+    useDefaultWhenEmpty: Boolean = true
+): List<ThreadSettingsActionUi> {
     val defaults = defaultThreadSettingsChannelActions()
     val defaultById = defaults.associateBy { it.id }
-    val channelActions =
+    val canonicalActions =
         mapNotNull { action ->
-            when (action.id) {
-                "visibility",
-                "make-private",
-                "make_public" -> action.copy(
-                    id = "visibility",
-                    title = action.title.ifBlank { defaultById.getValue("visibility").title },
-                    destructive = true
-                )
-                "archive" -> action.copy(
-                    id = "archive",
-                    title = action.title.ifBlank { defaultById.getValue("archive").title },
-                    destructive = true
-                )
-                "delete" -> action.copy(
-                    id = "delete",
-                    title = action.title.ifBlank { defaultById.getValue("delete").title },
-                    destructive = true
-                )
-                else -> null
-            }
+            action.canonicalThreadSettingsActionId()?.let { id -> id to action.enabled }
         }
-    if (channelActions.isEmpty()) return defaults
-    val presentIds = channelActions.map { it.id }.toSet()
-    return channelActions + defaults.filter { it.id !in presentIds }
+    if (canonicalActions.isEmpty()) {
+        return if (useDefaultWhenEmpty) defaults else emptyList()
+    }
+    return canonicalActions
+        .filter { (_, enabled) -> enabled }
+        .distinctBy { (id, _) -> id }
+        .map { (id, _) -> defaultById.getValue(id) }
 }
+
+private fun KuiklyThreadSettingsAction.canonicalThreadSettingsActionId(): String? =
+    when (id) {
+        "visibility",
+        "make-private",
+        "make_public" -> "visibility"
+        "archive" -> "archive"
+        "delete" -> "delete"
+        else -> null
+    }
 
 @Composable
 private fun ThreadSettingsModal(

@@ -136,6 +136,7 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
+import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
@@ -850,6 +851,16 @@ private fun SlockAppShellContent() {
         }
     val notificationPreferenceScope = rememberCoroutineScope()
     val appShellCoroutineScope = rememberCoroutineScope()
+    val threadMembersStore =
+        remember(authStore, memberRepository, channelRepository, appShellCoroutineScope) {
+            SharedMembersStore(
+                authStore = authStore,
+                memberRepository = memberRepository,
+                channelRepository = channelRepository,
+                scope = appShellCoroutineScope,
+                logger = { message -> bridge.log("app_shell_$message") }
+            )
+        }
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
@@ -1771,6 +1782,7 @@ private fun SlockAppShellContent() {
                     dataSource = threadDataSource,
                     authStore = authStore,
                     tasksDataSource = tasksDataSource,
+                    membersStore = threadMembersStore,
                     onBack = { popThreadRoute() },
                     onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                     onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
@@ -9188,7 +9200,7 @@ internal fun buildAppShellThreadPayload(
         showSettingsAction = !isReplyThread,
         showTaskOpenActions = supportsChannelTasks,
         showTaskStatusActions = supportsChannelTasks,
-        settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActions(),
+        settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer

@@ -81,8 +81,8 @@ class ThreadRenderSignatureTest {
         val b = payload(
             messages = listOf(message("m1")),
             settingsActions = listOf(
-                KuiklyThreadSettingsAction(id = "leave", title = "Leave"),
-                KuiklyThreadSettingsAction(id = "archive", title = "Archive")
+                KuiklyThreadSettingsAction(id = "leave"),
+                KuiklyThreadSettingsAction(id = "archive")
             )
         )
         assertEquals(a.toRenderSignature(), b.toRenderSignature())
