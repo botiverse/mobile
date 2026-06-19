@@ -438,7 +438,11 @@ fun SlockStructuralHomeShell(
     // by onPressEnd (after tryAwaitRelease returns) so the visual only
     // spans the actual pointer-down window. Never overrides a real
     // Selected highlight — the row picks Pressed only when not Selected.
-    var pressedConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    // #211 React parity (revised): each rendered copy of a pinned
+    // conversation (pinned + original section) needs its own press
+    // key, otherwise pressing the pinned copy would also press the
+    // original copy. Row key format is `<section>:<conversationId>`.
+    var pressedRowKey by remember(currentServerId) { mutableStateOf<String?>(null) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(channelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
     var pinnedSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(pinnedSortMode)) }
@@ -468,15 +472,21 @@ fun SlockStructuralHomeShell(
         }
     }
     val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
+    // #211 React parity (revised by @artin 23:38): pinned rows are
+    // shown alongside the original section copy, not deduped. The user
+    // sees both, can click either, and either copy is independently
+    // pressed / selected. Dedup still applies *inside* the pinned
+    // section itself (handled by `pinnedItemsForSidebar`).
+    @Suppress("UNUSED_VARIABLE")
     val pinnedIdSet = remember(pinnedChannelIds) { pinnedChannelIds.toSet() }
-    val displayedChannels = remember(channels, channelSortModeState, pinnedIdSet) {
-        channels.filter { it.kind != "joint" && it.id !in pinnedIdSet }.sortedForSidebar(channelSortModeState) { it.name }
+    val displayedChannels = remember(channels, channelSortModeState) {
+        channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name }
     }
-    val displayedJointChannels = remember(channels, channelSortModeState, pinnedIdSet) {
-        channels.filter { it.kind == "joint" && it.id !in pinnedIdSet }.sortedForSidebar(channelSortModeState) { it.name }
+    val displayedJointChannels = remember(channels, channelSortModeState) {
+        channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name }
     }
-    val displayedDirectMessages = remember(directMessages, directMessageSortMode, pinnedIdSet) {
-        directMessages.filter { it.id !in pinnedIdSet }.sortedForSidebar(directMessageSortMode) { it.name }
+    val displayedDirectMessages = remember(directMessages, directMessageSortMode) {
+        directMessages.sortedForSidebar(directMessageSortMode) { it.name }
     }
     val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedOrder, pinnedSortModeState) {
         pinnedItemsForSidebar(
@@ -498,6 +508,13 @@ fun SlockStructuralHomeShell(
             savedSelected = savedSelected,
             pinnedChannelIds = pinnedIdSet
         )
+    // #211 React parity (revised by @artin 23:38): pinned row and
+    // its original-section copy both render the same conversationId,
+    // and both must show the Selected highlight at the same time.
+    // Use the conversationId match directly so the per-section
+    // gating in `sectionSelection()` doesn't filter out the second
+    // copy. Pressed state still uses the per-row `pressedRowKey`
+    // so the two copies don't press together.
     val channelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Channel)
     val jointChannelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.JointChannel)
     val directMessageSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.DirectMessage)
@@ -591,14 +608,14 @@ fun SlockStructuralHomeShell(
                                     val pinned = displayedPinned[index]
                                     val isJoint = pinned.kind.equals("joint", ignoreCase = true)
                                     val isDirectMessage = pinned.kind.equals("directmessage", ignoreCase = true)
-                                    val pinnedIsSelected = pinnedSectionSelection.selects(pinned.id)
-                                    // #211 review (Cindy): selected wins over
-                                    // pressed so the user never confuses
-                                    // "I'm pressing" with "this is the
-                                    // current conversation".
+                                    // #211 React parity (revised by @artin 23:38): pinned copy and
+                                    // original-section copy of the same conversation both
+                                    // render Selected when their conversationId matches.
+                                    // Selected wins over pressed so the user never confuses
+                                    // "I'm pressing" with "this is the current conversation".
                                     val rowInteractionState = when {
-                                        pinnedIsSelected -> ChannelRowInteractionState.Selected
-                                        pressedConversationId == pinned.id -> ChannelRowInteractionState.Pressed
+                                        sidebarSelection.conversationId == pinned.id -> ChannelRowInteractionState.Selected
+                                        pressedRowKey == "pinned:${pinned.id}" -> ChannelRowInteractionState.Pressed
                                         else -> ChannelRowInteractionState.Default
                                     }
                                     val handleLongPress: (Offset) -> Unit = { anchor ->
@@ -608,7 +625,7 @@ fun SlockStructuralHomeShell(
                                         // Menu opens: clear press so the
                                         // visual doesn't stick while the
                                         // user reads the menu.
-                                        pressedConversationId = null
+                                        pressedRowKey = null
                                     }
                                     if (isDirectMessage) {
                                         DirectMessageRow(
@@ -624,8 +641,8 @@ fun SlockStructuralHomeShell(
                                             interactionState = rowInteractionState,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
                                             onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                            onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = pinned.id }) else null,
-                                            onPressEnd = { if (pressedConversationId == pinned.id) pressedConversationId = null }
+                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
+                                            onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
                                         )
                                     } else {
                                         ChannelRow(
@@ -638,8 +655,8 @@ fun SlockStructuralHomeShell(
                                             interactionState = rowInteractionState,
                                             onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
                                             onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null,
-                                            onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = pinned.id }) else null,
-                                            onPressEnd = { if (pressedConversationId == pinned.id) pressedConversationId = null }
+                                            onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "pinned:${pinned.id}" }) else null,
+                                            onPressEnd = { if (pressedRowKey == "pinned:${pinned.id}") pressedRowKey = null }
                                         )
                                     }
                                 }
@@ -669,8 +686,8 @@ fun SlockStructuralHomeShell(
                                 val channel = displayedChannels[index]
                                 // #211 review (Cindy): selected wins over pressed.
                                 val channelInteractionState = when {
-                                    channelSectionSelection.selects(channel.id) -> ChannelRowInteractionState.Selected
-                                    pressedConversationId == channel.id -> ChannelRowInteractionState.Pressed
+                                    sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                    pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
                                     else -> ChannelRowInteractionState.Default
                                 }
                                 ChannelRow(
@@ -685,10 +702,10 @@ fun SlockStructuralHomeShell(
                                         onChannelLongPress(channel.id, anchor)
                                         activePinMenuConversationId = channel.id
                                         pinMenuAnchor = anchor
-                                        pressedConversationId = null
+                                        pressedRowKey = null
                                     }) else null,
-                                    onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = channel.id }) else null,
-                                    onPressEnd = { if (pressedConversationId == channel.id) pressedConversationId = null }
+                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                    onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
                                 )
                             }
                         }
@@ -707,8 +724,8 @@ fun SlockStructuralHomeShell(
                                 items(displayedJointChannels.size, key = { index -> "joint-${displayedJointChannels[index].id}" }) { index ->
                                     val channel = displayedJointChannels[index]
                                     val jointInteractionState = when {
-                                        jointChannelSectionSelection.selects(channel.id) -> ChannelRowInteractionState.Selected
-                                        pressedConversationId == channel.id -> ChannelRowInteractionState.Pressed
+                                        sidebarSelection.conversationId == channel.id -> ChannelRowInteractionState.Selected
+                                        pressedRowKey == "channels:${channel.id}" -> ChannelRowInteractionState.Pressed
                                         else -> ChannelRowInteractionState.Default
                                     }
                                     ChannelRow(
@@ -724,10 +741,10 @@ fun SlockStructuralHomeShell(
                                             onChannelLongPress(channel.id, anchor)
                                             activePinMenuConversationId = channel.id
                                             pinMenuAnchor = anchor
-                                            pressedConversationId = null
+                                            pressedRowKey = null
                                         }) else null,
-                                        onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = channel.id }) else null,
-                                        onPressEnd = { if (pressedConversationId == channel.id) pressedConversationId = null }
+                                        onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "channels:${channel.id}" }) else null,
+                                        onPressEnd = { if (pressedRowKey == "channels:${channel.id}") pressedRowKey = null }
                                     )
                                 }
                             }
@@ -753,8 +770,8 @@ fun SlockStructuralHomeShell(
                             items(displayedDirectMessages.size, key = { index -> "dm-${displayedDirectMessages[index].id}" }) { index ->
                                 val dm = displayedDirectMessages[index]
                                 val dmInteractionState = when {
-                                    directMessageSectionSelection.selects(dm.id) -> ChannelRowInteractionState.Selected
-                                    pressedConversationId == dm.id -> ChannelRowInteractionState.Pressed
+                                    sidebarSelection.conversationId == dm.id -> ChannelRowInteractionState.Selected
+                                    pressedRowKey == "dms:${dm.id}" -> ChannelRowInteractionState.Pressed
                                     else -> ChannelRowInteractionState.Default
                                 }
                                 DirectMessageRow(
@@ -773,10 +790,10 @@ fun SlockStructuralHomeShell(
                                         onChannelLongPress(dm.id, anchor)
                                         activePinMenuConversationId = dm.id
                                         pinMenuAnchor = anchor
-                                        pressedConversationId = null
+                                        pressedRowKey = null
                                     }) else null,
-                                    onPress = if (sidebarInteractionsEnabled) ({ pressedConversationId = dm.id }) else null,
-                                    onPressEnd = { if (pressedConversationId == dm.id) pressedConversationId = null }
+                                    onPress = if (sidebarInteractionsEnabled) ({ pressedRowKey = "dms:${dm.id}" }) else null,
+                                    onPressEnd = { if (pressedRowKey == "dms:${dm.id}") pressedRowKey = null }
                                 )
                             }
                         }
