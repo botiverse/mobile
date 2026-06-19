@@ -30,7 +30,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_STORAGE_PAGE = "compose_settings_storage"
 
@@ -65,7 +64,7 @@ internal data class KuiklySettingsStorageRow(
     val clearInProgress: Boolean = false
 )
 
-private val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
+internal val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
     instanceId = "settings-storage-smoke",
     totalSize = "22.5 MB",
     rows = listOf(
@@ -103,6 +102,7 @@ private fun SettingsStorageScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val payload = rememberStoragePayload(
         pager.pageData.params.optString("payload"),
+        pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
     LaunchedEffect(payload) {
@@ -114,13 +114,13 @@ private fun SettingsStorageScreen() {
 }
 
 @Composable
-private fun rememberStoragePayload(payload: String, instanceId: String): KuiklySettingsStoragePayload =
-    remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsStoragePayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { settingsStorageSmokePayload.copy(instanceId = instanceId) }
+private fun rememberStoragePayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsStoragePayload =
+    remember(payload, fallbackPageData, instanceId) {
+        parseSettingsStoragePayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable

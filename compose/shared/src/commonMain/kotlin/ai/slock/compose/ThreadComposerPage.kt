@@ -88,6 +88,19 @@ internal data class KuiklyThreadComposerPayload(
     val hookLabels: List<String> = emptyList()
 )
 
+@Serializable
+internal data class WireThreadComposerLaunchPayload(
+    val instanceId: String = "",
+    val seedText: String = "",
+    val seedAsTask: Boolean = false,
+    val syncNonce: Int = 0,
+    val focusRequestNonce: Int = 0,
+    val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val mentionChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val streamChannelId: String? = null
+)
+
 internal data class ThreadComposerSurface(
     val kind: String = KuiklyThreadSurfaceKind.Channel,
     val channelId: String,
@@ -283,28 +296,50 @@ internal fun parseThreadComposerPayload(
     instanceId: String
 ): KuiklyThreadComposerPayload {
     val primaryPayload = payload.trim()
-    val source =
-        when {
-            primaryPayload.isNotEmpty() -> primaryPayload
-            fallbackPageData.trim().isNotEmpty() -> fallbackPageData.trim()
-            else -> "{}"
-        }
+    if (primaryPayload.isEmpty()) {
+        return parseThreadComposerLaunchPayload(fallbackPageData, instanceId)
+    }
     return runCatching {
         threadComposerJson
-            .decodeFromString(KuiklyThreadComposerPayload.serializer(), source)
+            .decodeFromString(KuiklyThreadComposerPayload.serializer(), primaryPayload)
             .withInstanceIdFallback(instanceId)
     }.getOrElse {
-        if (primaryPayload.isEmpty()) {
-            KuiklyThreadComposerPayload(instanceId = instanceId)
-        } else {
-            KuiklyThreadComposerPayload(
-                instanceId = instanceId,
-                composerMode = "failed",
-                statusLabel = "Composer payload parse failed"
-            )
-        }
+        KuiklyThreadComposerPayload(
+            instanceId = instanceId,
+            composerMode = "failed",
+            statusLabel = "Composer payload parse failed"
+        )
     }
 }
+
+private fun parseThreadComposerLaunchPayload(
+    fallbackPageData: String,
+    instanceId: String
+): KuiklyThreadComposerPayload {
+    val source = fallbackPageData.trim().takeIf { it.isNotEmpty() } ?: "{}"
+    return runCatching {
+        threadComposerJson
+            .decodeFromString(WireThreadComposerLaunchPayload.serializer(), source)
+            .toThreadComposerContentPayload(instanceId)
+    }.getOrElse {
+        KuiklyThreadComposerPayload(instanceId = instanceId)
+    }
+}
+
+private fun WireThreadComposerLaunchPayload.toThreadComposerContentPayload(
+    instanceIdFallback: String
+): KuiklyThreadComposerPayload =
+    KuiklyThreadComposerPayload(
+        instanceId = instanceId.ifBlank { instanceIdFallback },
+        seedText = seedText,
+        seedAsTask = seedAsTask,
+        syncNonce = syncNonce,
+        focusRequestNonce = focusRequestNonce,
+        surfaceKind = surfaceKind,
+        mentionChannelId = mentionChannelId,
+        parentMessageId = parentMessageId,
+        streamChannelId = streamChannelId
+    )
 
 private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: String): KuiklyThreadComposerPayload =
     if (this.instanceId.isBlank() && instanceId.isNotBlank()) {

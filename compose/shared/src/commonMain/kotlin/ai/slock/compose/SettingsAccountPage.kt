@@ -41,7 +41,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
 
@@ -147,6 +146,7 @@ private fun SettingsAccountScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val payload = rememberAccountPayload(
         pager.pageData.params.optString("payload"),
+        pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
     LaunchedEffect(payload) {
@@ -158,13 +158,13 @@ private fun SettingsAccountScreen() {
 }
 
 @Composable
-private fun rememberAccountPayload(payload: String, instanceId: String): KuiklySettingsAccountPayload =
-    remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsAccountPayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { settingsAccountSmokePayload.copy(instanceId = instanceId) }
+private fun rememberAccountPayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsAccountPayload =
+    remember(payload, fallbackPageData, instanceId) {
+        parseSettingsAccountPayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable

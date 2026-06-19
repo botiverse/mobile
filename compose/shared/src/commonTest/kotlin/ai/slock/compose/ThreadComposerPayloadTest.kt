@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -24,18 +25,70 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
-    fun parsesLegacyTopLevelPageDataWhenPayloadWrapperIsMissing() {
+    fun topLevelPageDataUsesLaunchFieldsOnlyWhenPayloadWrapperIsMissing() {
         val payload =
             parseThreadComposerPayload(
                 payload = "",
-                fallbackPageData = """{"instanceId":"host-2","seedText":"legacy","showAsTaskToggle":false}""",
+                fallbackPageData =
+                    """
+                    {
+                      "instanceId": "host-2",
+                      "seedText": "launch draft",
+                      "seedAsTask": true,
+                      "showAsTaskToggle": false,
+                      "placeholder": "Stale placeholder",
+                      "pendingAttachments": [
+                        {"id":"a1","fileName":"stale.txt"}
+                      ],
+                      "memberSuggestions": [
+                        {"displayName":"Stale","handle":"stale"}
+                      ],
+                      "channelSuggestions": [
+                        {"name":"stale-channel"}
+                      ],
+                      "hookLabels": ["stale hook"],
+                      "composerMode": "sending",
+                      "statusLabel": "Stale status"
+                    }
+                    """.trimIndent(),
                 instanceId = "host-2"
             )
 
         assertEquals("host-2", payload.instanceId)
-        assertEquals("legacy", payload.seedText)
-        assertEquals(false, payload.showAsTaskToggle)
+        assertEquals("launch draft", payload.seedText)
+        assertTrue(payload.seedAsTask)
+        assertEquals(true, payload.showAsTaskToggle)
+        assertEquals("Message", payload.placeholder)
+        assertEquals(emptyList(), payload.pendingAttachments)
+        assertEquals(emptyList(), payload.memberSuggestions)
+        assertEquals(emptyList(), payload.channelSuggestions)
+        assertEquals(emptyList(), payload.hookLabels)
+        assertEquals("idle", payload.composerMode)
         assertNull(payload.statusLabel)
+    }
+
+    @Test
+    @OptIn(ExperimentalSerializationApi::class)
+    fun composerLaunchWireSchemaExcludesContentFields() {
+        val descriptor = WireThreadComposerLaunchPayload.serializer().descriptor
+        val names = (0 until descriptor.elementsCount)
+            .map { index -> descriptor.getElementName(index) }
+            .toSet()
+
+        listOf(
+            "placeholder",
+            "enabled",
+            "attachmentActionsEnabled",
+            "showAsTaskToggle",
+            "composerMode",
+            "statusLabel",
+            "pendingAttachments",
+            "memberSuggestions",
+            "channelSuggestions",
+            "hookLabels"
+        ).forEach { forbidden ->
+            assertFalse(forbidden in names, "$forbidden must stay outside compose_thread_composer launch pageData")
+        }
     }
 
     @Test

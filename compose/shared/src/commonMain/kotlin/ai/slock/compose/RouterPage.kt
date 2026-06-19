@@ -37,6 +37,10 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.data.KeyValueRouterPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+private val routerPreviewJson = Json { encodeDefaults = true }
 
 @Page("router", supportInLocal = true)
 internal class ComposeRoutePager : BasePager() {
@@ -155,13 +159,21 @@ internal fun ComposeRouteImpl() {
         }
 
         Button({
-            jumpPage(localPager, SETTINGS_ACCOUNT_PAGE)
+            jumpPage(
+                pager = localPager,
+                inputText = SETTINGS_ACCOUNT_PAGE,
+                payload = routerPreviewJson.encodeToString(settingsAccountSmokePayload)
+            )
         }) {
             Text("Settings Account 预览")
         }
 
         Button({
-            jumpPage(localPager, SETTINGS_BILLING_PAGE)
+            jumpPage(
+                pager = localPager,
+                inputText = SETTINGS_BILLING_PAGE,
+                payload = routerPreviewJson.encodeToString(settingsBillingSmokePayload)
+            )
         }) {
             Text("Settings Billing 预览")
         }
@@ -181,12 +193,13 @@ internal fun ComposeRouteImpl() {
     }
 }
 
-fun jumpPage(pager: Pager, inputText: String) {
+fun jumpPage(pager: Pager, inputText: String, payload: String? = null) {
     val params = urlParams("pageName=$inputText")
     val pageData = JSONObject()
     params.forEach {
         pageData.put(it.key, it.value)
     }
+    payload?.takeIf { it.isNotBlank() }?.let { pageData.put("payload", it) }
     val pageName = pageData.optString("pageName")
     pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
 }

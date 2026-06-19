@@ -33,7 +33,6 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_BILLING_PAGE = "compose_settings_billing"
 
@@ -91,7 +90,7 @@ internal data class KuiklySettingsBillingPlan(
     val comingSoon: Boolean = false
 )
 
-private val settingsBillingSmokePayload =
+internal val settingsBillingSmokePayload =
     KuiklySettingsBillingPayload(
         instanceId = "settings-billing-smoke",
         currentPlan =
@@ -146,6 +145,7 @@ private fun SettingsBillingScreen() {
     val payload =
         rememberBillingPayload(
             pager.pageData.params.optString("payload"),
+            pager.pageData.params.toString(),
             pager.pageData.params.optString("instanceId")
         )
     LaunchedEffect(payload) {
@@ -159,13 +159,13 @@ private fun SettingsBillingScreen() {
 }
 
 @Composable
-private fun rememberBillingPayload(payload: String, instanceId: String): KuiklySettingsBillingPayload =
-    remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsBillingPayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { settingsBillingSmokePayload.copy(instanceId = instanceId) }
+private fun rememberBillingPayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsBillingPayload =
+    remember(payload, fallbackPageData, instanceId) {
+        parseSettingsBillingPayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable

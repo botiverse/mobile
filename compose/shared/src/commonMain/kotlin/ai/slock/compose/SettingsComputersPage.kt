@@ -33,7 +33,6 @@ import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
 const val SETTINGS_COMPUTER_DETAIL_PAGE = "compose_settings_computer_detail"
@@ -123,6 +122,7 @@ private fun SettingsComputersScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val payload = rememberComputersPayload(
         pager.pageData.params.optString("payload"),
+        pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
     LaunchedEffect(payload) {
@@ -139,6 +139,7 @@ private fun SettingsComputerDetailScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val payload = rememberComputerDetailPayload(
         pager.pageData.params.optString("payload"),
+        pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
     LaunchedEffect(payload) {
@@ -150,23 +151,23 @@ private fun SettingsComputerDetailScreen() {
 }
 
 @Composable
-private fun rememberComputersPayload(payload: String, instanceId: String): KuiklySettingsComputersPayload =
-    androidx.compose.runtime.remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsComputersPayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsComputersPayload(instanceId = instanceId, status = "error") }
+private fun rememberComputersPayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsComputersPayload =
+    androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
+        parseSettingsComputersPayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable
-private fun rememberComputerDetailPayload(payload: String, instanceId: String): KuiklySettingsComputerDetailPayload =
-    androidx.compose.runtime.remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsComputerDetailPayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsComputerDetailPayload(instanceId = instanceId) }
+private fun rememberComputerDetailPayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsComputerDetailPayload =
+    androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
+        parseSettingsComputerDetailPayload(payload, fallbackPageData, instanceId)
     }
 
 @Composable
