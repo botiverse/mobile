@@ -5189,6 +5189,9 @@ private fun SharedHomeScreen(
                         onOpenConversation(conversation)
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
+                },
+                onChannelLongPress = { channelId ->
+                    bridge.toast("Long press: $channelId")
                 }
             )
         }
