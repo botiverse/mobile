@@ -84,6 +84,7 @@ import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
+import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CoroutineScope
@@ -847,6 +848,71 @@ class SharedThreadStoreTest {
         assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("repository body", payload.messages.single().body)
+    }
+
+    @Test
+    fun fetchReplyThreadPayloadResolvesThreadChannelBeforeLoadingMessages() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "reply body",
+                            id = "reply-1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                originMessage = contentPayload("parent body").messages.single(),
+                composer =
+                    buildThreadSurfaceComposerPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        displayName = ThreadReplyPageTitle,
+                        fallbackId = "m1",
+                        enabled = true,
+                        mentionChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        streamChannelId = "channel-1"
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base) as DataResult.Content).data
+
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("reply body", payload.messages.single().body)
+        assertEquals("parent body", payload.originMessage?.body)
     }
 
     @Test
@@ -2435,10 +2501,11 @@ class SharedThreadStoreTest {
             body: String = "repository body",
             id: String = "m1",
             seq: Long = 10,
-            messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body))
+            messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body)),
+            conversation: ConversationSummary = conversationSummary(threadId)
         ): ThreadSnapshot =
             ThreadSnapshot(
-                conversation = conversationSummary(threadId),
+                conversation = conversation,
                 messages = messages
             )
 

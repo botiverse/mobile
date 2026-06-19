@@ -449,8 +449,15 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         persistResult: Boolean = true
     ): DataResult<KuiklyThreadScreenPayload> {
+        val resolvedBasePayload =
+            when (val resolved = resolveReplyThreadStream(basePayload)) {
+                is DataResult.Content -> resolved.data
+                is DataResult.Empty -> return resolved
+                is DataResult.Error -> return resolved
+                is DataResult.NoPermission -> return resolved
+            }
         val threadId =
-            basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+            resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
                 ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val session =
             readSession()
@@ -461,7 +468,7 @@ internal class SharedThreadDataSource(
                     session = session,
                     fallbackCode = "thread_network",
                     call = { repository -> repository.getThread(ThreadId(threadId), limit = SharedThreadPaging.initialPageSize) },
-                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(basePayload, session.user.id) }
+                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(resolvedBasePayload, session.user.id) }
                 )
             } else {
                 val response =
@@ -480,7 +487,7 @@ internal class SharedThreadDataSource(
                     }
                 DataResult.Content(
                     buildSharedThreadPayloadFromMessagesPage(
-                        basePayload = basePayload,
+                        basePayload = resolvedBasePayload,
                         page = page,
                         session = session
                     ).withCachedSenderProfiles(session)
@@ -498,6 +505,34 @@ internal class SharedThreadDataSource(
             writeCachedPayload(payload)
         }
         return DataResult.Content(payload)
+    }
+
+    private suspend fun resolveReplyThreadStream(
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val repository = conversationRepository ?: return DataResult.Content(basePayload)
+        if (!basePayload.needsReplyThreadStreamResolution()) {
+            return DataResult.Content(basePayload)
+        }
+        val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Content(basePayload)
+        val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Content(basePayload)
+        val actionResult =
+            try {
+                repository.createOrOpenThread(ChannelId(parentChannelId), MessageId(parentMessageId))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+            }
+        return when (actionResult) {
+            is DataResult.Content -> DataResult.Content(basePayload.withResolvedReplyThreadAction(actionResult.data))
+            is DataResult.Empty -> actionResult
+            is DataResult.Error -> actionResult
+            is DataResult.NoPermission -> actionResult
+        }
     }
 
     suspend fun fetchWebLinkThreadPayload(
@@ -1978,6 +2013,25 @@ private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
         "hasOriginPreview=${!originPreview.isNullOrBlank()}"
 
 private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+    if (hasResolvedReplyThreadStreamFrom(base)) {
+        copy(
+            title = base.title.ifBlank { title },
+            subtitle = base.subtitle ?: subtitle,
+            navigationLabel = base.navigationLabel,
+            selectedTab = base.selectedTab,
+            showModeTabs = base.showModeTabs,
+            alignOwnMessagesRight = base.alignOwnMessagesRight,
+            localOffsetMinutes = base.localOffsetMinutes,
+            todayEpochDay = base.todayEpochDay ?: todayEpochDay,
+            nowEpochMillis = base.nowEpochMillis ?: nowEpochMillis,
+            timeFormat = base.timeFormat,
+            canSend = base.canSend,
+            joined = base.joined,
+            membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
+            emptyTitle = base.emptyTitle,
+            emptyDetail = base.emptyDetail
+        )
+    } else {
     copy(
         instanceId = base.instanceId.ifBlank { instanceId },
         title = base.title.ifBlank { title },
@@ -1998,6 +2052,55 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
         emptyTitle = base.emptyTitle,
         emptyDetail = base.emptyDetail
     )
+    }
+
+private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
+    val source = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
+    val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }
+        ?: originParentMessageId?.takeIf { it.isNotBlank() }
+        ?: return false
+    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        source == parentChannel &&
+        parentMessage.isNotBlank()
+}
+
+private fun KuiklyThreadScreenPayload.hasResolvedReplyThreadStreamFrom(base: KuiklyThreadScreenPayload): Boolean {
+    val source = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
+    val baseSource = base.sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
+    val baseParentChannel = base.parentChannelId?.takeIf { it.isNotBlank() } ?: return false
+    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        baseSource == baseParentChannel &&
+        source != baseSource
+}
+
+private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
+    action: ThreadActionResult
+): KuiklyThreadScreenPayload {
+    val threadChannelId = action.threadChannelId.value.takeIf { it.isNotBlank() } ?: return this
+    val resolvedParentMessageId =
+        action.parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ?: parentMessageId
+            ?: originParentMessageId
+    return copy(
+        instanceId = "shared-shell-thread-$threadChannelId",
+        sourceThreadId = threadChannelId,
+        streamChannelId = threadChannelId,
+        parentMessageId = resolvedParentMessageId,
+        originParentMessageId = resolvedParentMessageId ?: originParentMessageId,
+        originMessage =
+            originMessage?.copy(
+                threadChannelId = threadChannelId,
+                replyCount = maxOf(originMessage.replyCount, action.replyCount)
+            ),
+        composer =
+            composer.copy(
+                parentMessageId = resolvedParentMessageId ?: composer.parentMessageId,
+                streamChannelId = threadChannelId
+            )
+    )
+}
 
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload
@@ -2373,6 +2476,7 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .distinct()
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
     val nextOriginMessage = patch.originMessage ?: originMessage
     val nextOriginPreview = patch.originPreview ?: originPreview
     val nextOriginParentMessageId = patch.originParentMessageId ?: originParentMessageId
@@ -2390,6 +2494,11 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
             else -> originErrorCode
         }
     return copy(
+        instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
+        sourceThreadId = if (patchResolvesReplyThreadStream) patch.sourceThreadId else sourceThreadId,
+        streamChannelId = if (patchResolvesReplyThreadStream) patch.streamChannelId else streamChannelId,
+        parentChannelId = patch.parentChannelId ?: parentChannelId,
+        parentMessageId = patch.parentMessageId ?: parentMessageId,
         status = patch.status,
         messages = patch.messages,
         originMessage = nextOriginMessage,
