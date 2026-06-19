@@ -23,6 +23,7 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   renderRevision: number = 0;
 
   createArkUIView(): ComponentContent<KuiklyRenderBaseView> {
+    // ComponentContent is mounted once; prop updates below only mutate observed render state.
     const uiContext = this.getUIContext() as UIContext;
     return new ComponentContent<KuiklyRenderBaseView>(
       uiContext,
@@ -34,7 +35,9 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
   setProp(propKey: string, propValue: KRAny | KuiklyRenderCallback): boolean {
     switch (propKey) {
       case kName:
-        this.updateIconName(propValue as string);
+        if (this.updateIconName(propValue as string)) {
+          this.bumpRenderRevision();
+        }
         return true;
       case kColor:
         this.updateIconColor(propValue as string);
@@ -88,38 +91,42 @@ export class SlockLucideIconView extends KuiklyRenderBaseView {
     this.renderRevision = this.renderRevision >= 1000000 ? 1 : this.renderRevision + 1;
   }
 
-  private updateIconName(value: string): void {
+  private updateIconName(value: string): boolean {
     const nextName = normalizeIconName(value);
     if (this.iconName === nextName) {
-      return;
+      return false;
     }
     this.iconName = nextName;
+    return true;
   }
 
-  private updateIconColor(value: string): void {
+  private updateIconColor(value: string): boolean {
     const nextColor = normalizeColor(value);
     if (this.iconColor === nextColor) {
-      return;
+      return false;
     }
     this.iconColor = nextColor;
+    return true;
   }
 
-  private updateIconFill(value: string): void {
+  private updateIconFill(value: string): boolean {
     const nextFillEnabled = hasColorValue(value);
     const nextFill = nextFillEnabled ? normalizeColor(value) : '#00000000';
     if (this.iconFillEnabled === nextFillEnabled && this.iconFill === nextFill) {
-      return;
+      return false;
     }
     this.iconFillEnabled = nextFillEnabled;
     this.iconFill = nextFill;
+    return true;
   }
 
-  private updateStrokeWidth(value: KRAny | KuiklyRenderCallback): void {
+  private updateStrokeWidth(value: KRAny | KuiklyRenderCallback): boolean {
     const nextStrokeWidth = normalizeStrokeWidth(value);
     if (this.iconStrokeWidth === nextStrokeWidth) {
-      return;
+      return false;
     }
     this.iconStrokeWidth = nextStrokeWidth;
+    return true;
   }
 
   private updateRenderSize(width: number, height: number): boolean {
