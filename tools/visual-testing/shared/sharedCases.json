@@ -1024,6 +1024,525 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       }
+    },
+    {
+      "id": "settings.account.page",
+      "title": "Settings Account Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.account.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "account-page",
+          "name": "Account Page",
+          "props": {
+            "tab": "account"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.account.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AccountSection",
+      "androidCaseHint": "compose_settings_page_visual:account",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.server.profile",
+      "title": "Settings Server Profile",
+      "surface": "settings",
+      "fixture": "fixtures/settings.server.profile.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "server-profile",
+          "name": "Server Profile",
+          "props": {
+            "tab": "server",
+            "section": "profile"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.server.profile']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#ProfileSection",
+      "androidCaseHint": "compose_settings_page_visual:server-profile",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.server.danger",
+      "title": "Settings Server Danger",
+      "surface": "settings",
+      "fixture": "fixtures/settings.server.danger.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "server-danger",
+          "name": "Danger Zone",
+          "props": {
+            "tab": "server",
+            "section": "danger"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.server.danger']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
+      "androidCaseHint": "compose_settings_page_visual:server-danger",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.admins",
+      "title": "Settings Administration Admins",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.admins.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "admins",
+          "name": "Owners & Admins",
+          "props": {
+            "tab": "administration",
+            "section": "admins"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.admins']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AdminsSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-admins",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.invites",
+      "title": "Settings Administration Invites",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.invites.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "invites",
+          "name": "Pending Invites",
+          "props": {
+            "tab": "administration",
+            "section": "invites"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.invites']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#InvitesSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-invites",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.join-links",
+      "title": "Settings Administration Join Links",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.join-links.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "join-links",
+          "name": "Join Links",
+          "props": {
+            "tab": "administration",
+            "section": "joinLinks"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.join-links']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#JoinLinksSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-join-links",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.pre-join-agreement",
+      "title": "Settings Administration Pre-join Agreement",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.pre-join-agreement.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "pre-join-agreement",
+          "name": "Pre-join Agreement",
+          "props": {
+            "tab": "administration",
+            "section": "preJoinAgreement"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.pre-join-agreement']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#PreJoinAgreementSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-pre-join-agreement",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.onboarding",
+      "title": "Settings Administration Onboarding",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.onboarding.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "onboarding",
+          "name": "Onboarding",
+          "props": {
+            "tab": "administration",
+            "section": "onboarding"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.onboarding']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#OnboardingAgentSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-onboarding",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.member-permissions",
+      "title": "Settings Administration Member Permissions",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.member-permissions.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "member-permissions",
+          "name": "Member Permissions",
+          "props": {
+            "tab": "administration",
+            "section": "memberPermissions"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.member-permissions']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#MemberPermissionsSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-member-permissions",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.administration.translation",
+      "title": "Settings Administration Translation",
+      "surface": "settings",
+      "fixture": "fixtures/settings.administration.translation.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "translation",
+          "name": "Translation",
+          "props": {
+            "tab": "administration",
+            "section": "translation"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.administration.translation']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#ServerTranslationSection",
+      "androidCaseHint": "compose_settings_page_visual:administration-translation",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.billing.page",
+      "title": "Settings Billing Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.billing.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "billing-page",
+          "name": "Plan & Billing",
+          "props": {
+            "tab": "billing"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.billing.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#BillingTabContent",
+      "androidCaseHint": "compose_settings_page_visual:billing",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.language-region.page",
+      "title": "Settings Language & Region Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.language-region.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "language-region-page",
+          "name": "Language & Region",
+          "props": {
+            "tab": "language-region"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.language-region.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#LanguageRegionSection",
+      "androidCaseHint": "compose_settings_page_visual:language-region",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.appearance.page",
+      "title": "Settings Appearance Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.appearance.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "appearance-page",
+          "name": "Appearance",
+          "props": {
+            "tab": "appearance"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.appearance.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
+      "androidCaseHint": "pending:first-class-kmp-appearance-page",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.notifications.page",
+      "title": "Settings Notifications Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.notifications.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "notifications-page",
+          "name": "Notifications",
+          "props": {
+            "tab": "notifications"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.notifications.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#NotificationsTabContent",
+      "androidCaseHint": "compose_settings_page_visual:notifications",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.connected-apps.page",
+      "title": "Settings Connected Apps Page",
+      "surface": "settings",
+      "fixture": "fixtures/settings.connected-apps.page.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "connected-apps-page",
+          "name": "Connected Apps",
+          "props": {
+            "tab": "integrations"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.connected-apps.page']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#IntegrationsSection",
+      "androidCaseHint": "compose_settings_page_visual:connected-apps",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
     }
   ],
   "componentMatrix": [
@@ -2057,6 +2576,634 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "settings.account.page",
+      "title": "Settings Account Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AccountSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.account.page.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountPage",
+          "route": "compose_settings_page_visual:account"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.server.profile",
+      "title": "Settings Server Profile",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ProfileSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.server.profile.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerProfile",
+          "route": "compose_settings_page_visual:server-profile"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.server.danger",
+      "title": "Settings Server Danger",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "DangerZoneSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.server.danger.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerDanger",
+          "route": "compose_settings_page_visual:server-danger"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.admins",
+      "title": "Settings Administration Admins",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AdminsSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.admins.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationAdmins",
+          "route": "compose_settings_page_visual:administration-admins"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.invites",
+      "title": "Settings Administration Invites",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "InvitesSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.invites.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationInvites",
+          "route": "compose_settings_page_visual:administration-invites"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.join-links",
+      "title": "Settings Administration Join Links",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "JoinLinksSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.join-links.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationJoinLinks",
+          "route": "compose_settings_page_visual:administration-join-links"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.pre-join-agreement",
+      "title": "Settings Administration Pre-join Agreement",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "PreJoinAgreementSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.pre-join-agreement.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationPreJoinAgreement",
+          "route": "compose_settings_page_visual:administration-pre-join-agreement"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.onboarding",
+      "title": "Settings Administration Onboarding",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "OnboardingAgentSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.onboarding.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationOnboarding",
+          "route": "compose_settings_page_visual:administration-onboarding"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.member-permissions",
+      "title": "Settings Administration Member Permissions",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MemberPermissionsSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.member-permissions.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationMemberPermissions",
+          "route": "compose_settings_page_visual:administration-member-permissions"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.administration.translation",
+      "title": "Settings Administration Translation",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "ServerTranslationSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.administration.translation.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAdministrationTranslation",
+          "route": "compose_settings_page_visual:administration-translation"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.billing.page",
+      "title": "Settings Billing Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "BillingTabContent"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.billing.page.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsBillingPage",
+          "route": "compose_settings_page_visual:billing"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.language-region.page",
+      "title": "Settings Language & Region Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "LanguageRegionSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.language-region.page.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsLanguageRegionPage",
+          "route": "compose_settings_page_visual:language-region"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.appearance.page",
+      "title": "Settings Appearance Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "pending",
+      "notes": "React SettingsPanel sub-page documented, but Android/Harmony provider is pending until a real KMP page exists.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AppearanceSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.appearance.page.json"
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "No first-class KMP Appearance settings page yet; do not count a placeholder or Mobile fallback as parity."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.notifications.page",
+      "title": "Settings Notifications Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "NotificationsTabContent"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.notifications.page.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsNotificationsPage",
+          "route": "compose_settings_page_visual:notifications"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.connected-apps.page",
+      "title": "Settings Connected Apps Page",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "IntegrationsSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.connected-apps.page.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsConnectedAppsPage",
+          "route": "compose_settings_page_visual:connected-apps"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsHomePage",
+            "SettingsDetailShell"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
         }
       ]
     }

@@ -154,6 +154,8 @@ import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
+import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
+import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
 import ai.slock.compose.data.SettingsConnectedAppBuiltInSnapshot
 import ai.slock.compose.data.SettingsConnectedAppClientSnapshot
@@ -170,7 +172,9 @@ import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsDiagnosticsFeedbackDraft
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionOptionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
+import ai.slock.compose.data.SettingsPlanUsageSnapshot
 import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
 import ai.slock.compose.data.SettingsLanguageRegionSnapshot
 import ai.slock.compose.data.SettingsServerAdminSnapshot
@@ -9795,6 +9799,12 @@ private fun SettingsRowVisualContent() {
 
 @Composable
 private fun SettingsPageVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val variant =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.optString("variant", "account").ifBlank { "account" }
+        }
+    val spec = settingsVisualSpec(variant)
     Box(
         modifier =
             Modifier
@@ -9803,28 +9813,587 @@ private fun SettingsPageVisualContent() {
                 .padding(top = 48.dp)
     ) {
         SettingsDetailShell(
-            title = "Account",
-            subtitle = "Profile, email, password, connected accounts",
-            iconName = SlockLucideIconName.User,
+            title = spec.title,
+            subtitle = spec.subtitle,
+            iconName = spec.iconName,
             onBack = {}
         ) {
-            SettingsAccountContent(
-                payload =
-                    settingsAccountSmokePayload.copy(
-                        instanceId = "visual-settings-account-page",
-                        profile =
-                            settingsAccountSmokePayload.profile.copy(
-                                email = "artin@slock.test",
-                                verified = true
-                            ),
-                        connectedAccounts = emptyList()
-                    ),
-                applyTopSafeArea = false,
-                onEvent = { _, _ -> }
-            )
+            SettingsVisualPageBody(spec)
         }
     }
 }
+
+private data class SettingsVisualSpec(
+    val variant: String,
+    val title: String,
+    val subtitle: String,
+    val iconName: SlockLucideIconName
+)
+
+private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
+    when (variant) {
+        "server-profile" ->
+            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
+        "server-danger" ->
+            SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
+        "administration-admins" ->
+            SettingsVisualSpec(variant, "Administration", "Owners and admins", SlockLucideIconName.Shield)
+        "administration-invites" ->
+            SettingsVisualSpec(variant, "Administration", "Pending human invites", SlockLucideIconName.MailPlus)
+        "administration-join-links" ->
+            SettingsVisualSpec(variant, "Administration", "Reusable join links", SlockLucideIconName.Link2)
+        "administration-pre-join-agreement" ->
+            SettingsVisualSpec(variant, "Administration", "Pre-join agreement", SlockLucideIconName.FileCheck)
+        "administration-onboarding" ->
+            SettingsVisualSpec(variant, "Administration", "Onboarding agent and greeting", SlockLucideIconName.Bot)
+        "administration-member-permissions" ->
+            SettingsVisualSpec(variant, "Administration", "Member directory permissions", SlockLucideIconName.UsersRound)
+        "administration-translation" ->
+            SettingsVisualSpec(variant, "Administration", "Server translation controls", SlockLucideIconName.Languages)
+        "billing" ->
+            SettingsVisualSpec(variant, "Plan & Billing", "Plan and workspace usage", SlockLucideIconName.CreditCard)
+        "language-region" ->
+            SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
+        "notifications" ->
+            SettingsVisualSpec(variant, "Notifications", "Push notification preferences", SlockLucideIconName.Bell)
+        "connected-apps" ->
+            SettingsVisualSpec(variant, "Connected Apps", "Marketplace, installed apps, and OAuth clients", SlockLucideIconName.Blocks)
+        else ->
+            SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
+    }
+
+@Composable
+private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
+    when (spec.variant) {
+        "server-profile",
+        "server-danger",
+        "administration-admins",
+        "administration-invites",
+        "administration-join-links",
+        "administration-pre-join-agreement",
+        "administration-onboarding",
+        "administration-member-permissions",
+        "administration-translation" -> SettingsVisualServerFocusedContent(spec.variant)
+        "billing" -> SettingsVisualBillingContent()
+        "language-region" -> SettingsVisualLanguageRegionContent()
+        "notifications" -> SettingsVisualNotificationsContent()
+        "connected-apps" -> SettingsVisualConnectedAppsContent()
+        else -> SettingsVisualAccountContent()
+    }
+}
+
+@Composable
+private fun SettingsVisualAccountContent() {
+    SettingsAccountContent(
+        payload =
+            settingsAccountSmokePayload.copy(
+                instanceId = "visual-settings-account-page",
+                profile =
+                    settingsAccountSmokePayload.profile.copy(
+                        displayName = "Artin",
+                        handle = "artin",
+                        email = "artin@slock.test",
+                        verified = true,
+                        roleLabel = "Owner"
+                    ),
+                connectedAccounts = emptyList()
+            ),
+        applyTopSafeArea = false,
+        onEvent = { _, _ -> }
+    )
+}
+
+@Composable
+private fun SettingsVisualServerFocusedContent(variant: String) {
+    val snapshot = remember { settingsVisualServerSnapshot() }
+    val sectionsByKey = snapshot.sections.associateBy { it.key }
+    var profileName by remember { mutableStateOf(snapshot.profile.name) }
+    var inviteEmail by remember { mutableStateOf("new.member@slock.test") }
+    var joinLinkMaxUses by remember { mutableStateOf("25") }
+    var joinLinkExpiresAt by remember { mutableStateOf("2026-07-01T09:00:00Z") }
+    var agreementEnabled by remember { mutableStateOf(snapshot.agreement?.enabled ?: true) }
+    var agreementTitle by remember { mutableStateOf(snapshot.agreement?.title.orEmpty()) }
+    var agreementBody by remember { mutableStateOf(snapshot.agreement?.bodyMarkdown.orEmpty()) }
+    var onboardingAgentId by remember { mutableStateOf(snapshot.onboarding?.onboardingAgentId.orEmpty()) }
+    var onboardingGreetingEnabled by remember { mutableStateOf(snapshot.onboarding?.agentAllChannelGreetingEnabled ?: true) }
+    var hideHumansFromMembers by remember { mutableStateOf(snapshot.profile.hideHumansFromMembers) }
+    var deleteConfirmationSlug by remember { mutableStateOf("") }
+    val serverPayload =
+        ScreenLoadState.Content(snapshot).toServerPayload(
+            session = homeSearchVisualSession,
+            refreshing = false,
+            actionState = null,
+            timeContext = null
+        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(serverPayload.copy(sections = emptyList())) }
+        when (variant) {
+            "server-profile" ->
+                item {
+                    SettingsServerProfileFormCard(
+                        profile = snapshot.profile,
+                        draftName = profileName,
+                        fallbackName = snapshot.profile.name,
+                        fallbackSlug = snapshot.profile.slug,
+                        role = "owner",
+                        actionState = null,
+                        onNameChange = { profileName = it },
+                        onSubmit = {}
+                    )
+                }
+            "server-danger" ->
+                item {
+                    SettingsServerDangerZoneCard(
+                        serverName = snapshot.profile.name,
+                        expectedServerSlug = snapshot.profile.slug,
+                        role = "owner",
+                        dangerSection = sectionsByKey["danger"],
+                        confirmationSlug = deleteConfirmationSlug,
+                        actionState = null,
+                        onConfirmationSlugChange = { deleteConfirmationSlug = it },
+                        onLeave = {},
+                        onDelete = {}
+                    )
+                }
+            "administration-admins" ->
+                item {
+                    SettingsServerAdminsCard(
+                        members = snapshot.admins,
+                        section = sectionsByKey["admins"],
+                        actorRole = "owner",
+                        actionState = null,
+                        onAction = { _, _ -> }
+                    )
+                }
+            "administration-invites" ->
+                item {
+                    SettingsServerInvitesCard(
+                        invites = snapshot.pendingInvites,
+                        section = sectionsByKey["pending_invites"],
+                        email = inviteEmail,
+                        actionState = null,
+                        timeContext = null,
+                        onEmailChange = { inviteEmail = it },
+                        onSubmit = {},
+                        onAction = { _, _ -> }
+                    )
+                }
+            "administration-join-links" ->
+                item {
+                    SettingsServerJoinLinksCard(
+                        links = snapshot.joinLinks,
+                        section = sectionsByKey["join_links"],
+                        maxUses = joinLinkMaxUses,
+                        expiresAt = joinLinkExpiresAt,
+                        actionState = null,
+                        timeContext = null,
+                        onMaxUsesChange = { joinLinkMaxUses = it },
+                        onExpiresAtChange = { joinLinkExpiresAt = it },
+                        onCreate = {},
+                        onAction = { _, _ -> }
+                    )
+                }
+            "administration-pre-join-agreement" ->
+                item {
+                    SettingsServerAgreementCard(
+                        agreement = snapshot.agreement,
+                        section = sectionsByKey["pre_join_agreement"],
+                        enabled = agreementEnabled,
+                        title = agreementTitle,
+                        bodyMarkdown = agreementBody,
+                        actionState = null,
+                        onEnabledChange = { agreementEnabled = it },
+                        onTitleChange = { agreementTitle = it },
+                        onBodyChange = { agreementBody = it },
+                        onSubmit = {}
+                    )
+                }
+            "administration-onboarding" ->
+                item {
+                    SettingsServerOnboardingCard(
+                        onboarding = snapshot.onboarding,
+                        section = sectionsByKey["onboarding_agent"],
+                        selectedAgentId = onboardingAgentId,
+                        greetingEnabled = onboardingGreetingEnabled,
+                        actionState = null,
+                        onAgentSelected = { onboardingAgentId = it },
+                        onGreetingEnabledChange = { onboardingGreetingEnabled = it },
+                        onSubmit = {}
+                    )
+                }
+            "administration-member-permissions" ->
+                item {
+                    SettingsServerMemberPermissionsCard(
+                        profile = snapshot.profile,
+                        section = sectionsByKey["member_permissions"],
+                        hideHumansFromMembers = hideHumansFromMembers,
+                        actionState = null,
+                        onHideHumansFromMembersChange = { hideHumansFromMembers = it },
+                        onSubmit = {}
+                    )
+                }
+            else ->
+                item {
+                    SharedSettingsSectionCard(
+                        section =
+                            KuiklySharedSettingsSection(
+                                title = "Translation",
+                                rows = snapshot.translation.toTranslationRows(sectionsByKey["translation"], null)
+                            ),
+                        onAction = { _, _ -> }
+                    )
+                }
+        }
+        item { Spacer(Modifier.height(SlockSpacing.Lg)) }
+    }
+}
+
+@Composable
+private fun SettingsVisualBillingContent() {
+    SettingsBillingContent(
+        payload =
+            ScreenLoadState.Content(settingsVisualBillingSnapshot())
+                .toBillingPayload(homeSearchVisualSession, timeContext = null),
+        bottomContentPadding = SlockSpacing.Lg,
+        onEvent = { _, _ -> }
+    )
+}
+
+@Composable
+private fun SettingsVisualLanguageRegionContent() {
+    SharedSettingsSectionContent(
+        payload =
+            ScreenLoadState.Content(settingsVisualLanguageRegionSnapshot())
+                .toLanguageRegionPayload(actionState = null, refreshing = false),
+        onAction = { _, _ -> }
+    )
+}
+
+@Composable
+private fun SettingsVisualNotificationsContent() {
+    val payload =
+        ScreenLoadState.Content(settingsVisualMobileSnapshot())
+            .toMobilePayload(actionState = null, refreshing = false)
+            .copy(
+                title = "Notifications",
+                heroLabel = "Notification preferences",
+                heroIconName = SlockLucideIconName.Bell,
+                sections =
+                    ScreenLoadState.Content(settingsVisualMobileSnapshot())
+                        .toMobilePayload(actionState = null, refreshing = false)
+                        .sections.take(1)
+            )
+    SharedSettingsSectionContent(payload = payload, onAction = { _, _ -> })
+}
+
+@Composable
+private fun SettingsVisualConnectedAppsContent() {
+    SettingsConnectedAppsContent(
+        state = ScreenLoadState.Content(settingsVisualConnectedAppsSnapshot()),
+        selectedTab = "marketplace",
+        onSelectedTabChange = {},
+        editingId = "",
+        name = "Slack Bridge",
+        clientId = "client_slack_bridge",
+        description = "Post server events to an external tool.",
+        homepageUrl = "https://example.com",
+        returnUrl = "https://example.com/oauth/callback",
+        manifestUrl = "https://example.com/manifest.json",
+        publishCategory = "productivity",
+        publishDataAccess = "Messages and channel metadata",
+        actionState = null,
+        bottomContentPadding = SlockSpacing.Lg,
+        onNameChange = {},
+        onClientIdChange = {},
+        onDescriptionChange = {},
+        onHomepageUrlChange = {},
+        onReturnUrlChange = {},
+        onManifestUrlChange = {},
+        onPublishCategoryChange = {},
+        onPublishDataAccessChange = {},
+        onStartEdit = {},
+        onCancelEdit = {},
+        onRegister = {},
+        onUpdate = {},
+        onDelete = {},
+        onPublish = {},
+        onInstall = {},
+        onUninstall = {},
+        onRefresh = {}
+    )
+}
+
+private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
+    SettingsServerSnapshot(
+        profile =
+            ai.slock.compose.data.SettingsServerProfileSnapshot(
+                name = "Raft Design",
+                slug = "raft-design",
+                hideHumansFromMembers = true,
+                canSave = true
+            ),
+        sections =
+            listOf(
+                SettingsServerSectionSnapshot("admins", "Owners & Admins", "Control who can manage this workspace."),
+                SettingsServerSectionSnapshot("pending_invites", "Pending Invites", "Invite humans by email and revoke pending invites."),
+                SettingsServerSectionSnapshot("join_links", "Join Links", "Reusable links for onboarding larger teams."),
+                SettingsServerSectionSnapshot("pre_join_agreement", "Pre-join Agreement", "Require humans to accept a workspace agreement before joining."),
+                SettingsServerSectionSnapshot("onboarding_agent", "Onboarding", "Choose which agent greets new humans."),
+                SettingsServerSectionSnapshot("member_permissions", "Member Permissions", "Limit what member-role users can see."),
+                SettingsServerSectionSnapshot("translation", "Translation", "Enable server-level message translation."),
+                SettingsServerSectionSnapshot("danger", "Danger Zone", "Leave or delete this workspace.")
+            ),
+        admins =
+            listOf(
+                SettingsServerAdminSnapshot("user_artin", "Artin", "Owner · artin@slock.test", "owner"),
+                SettingsServerAdminSnapshot("user_cindy", "Cindy", "Admin · onboarding", "admin"),
+                SettingsServerAdminSnapshot("user_qa", "QA Tester", "Member · validation", "member")
+            ),
+        usageRows =
+            listOf(
+                SettingsPlanUsageSnapshot("Agents", "8 / 20"),
+                SettingsPlanUsageSnapshot("Computers", "4 / 10")
+            ),
+        pendingInvites =
+            listOf(
+                SettingsServerInviteSnapshot("invite_1", "designer@slock.test", "Artin", "2026-06-18T09:30:00Z"),
+                SettingsServerInviteSnapshot("invite_2", "qa@slock.test", "Cindy", "2026-06-19T02:15:00Z")
+            ),
+        joinLinks =
+            listOf(
+                SettingsServerJoinLinkSnapshot(
+                    id = "link_1",
+                    label = "Design review link",
+                    url = "https://app.slock.ai/join/design",
+                    maxUsesLabel = "25 max",
+                    usageLabel = "8 used",
+                    expiresAtLabel = "2026-07-01T09:00:00Z"
+                )
+            ),
+        agreement =
+            SettingsServerAgreementSnapshot(
+                enabled = true,
+                title = "Raft Design workspace agreement",
+                bodyMarkdown = "Please keep feedback actionable and avoid sharing credentials in public channels.",
+                statusLabel = "Required",
+                detail = "New humans must accept this agreement before joining.",
+                canSave = true
+            ),
+        onboarding =
+            SettingsServerOnboardingSnapshot(
+                setupModalReminderOptOut = false,
+                onboardingAgentId = "agent_cindy",
+                agentAllChannelGreetingEnabled = true,
+                agents =
+                    listOf(
+                        SettingsServerOnboardingAgentSnapshot("agent_cindy", "cindy", "Cindy"),
+                        SettingsServerOnboardingAgentSnapshot("agent_api", "api-integration", "API Integration")
+                    ),
+                statusLabel = "Cindy",
+                detail = "Cindy greets new humans and explains the server.",
+                canSave = true
+            ),
+        translation =
+            SettingsServerTranslationSnapshot(
+                translationEnabled = true,
+                translationAvailable = true,
+                canManageTranslation = true,
+                statusLabel = "Enabled",
+                detail = "Server messages can be translated on demand."
+            )
+    )
+
+private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot =
+    SettingsBillingSnapshot(
+        currentPlan =
+            SettingsBillingCurrentPlanSnapshot(
+                planName = "Pro",
+                usageRows =
+                    listOf(
+                        SettingsPlanUsageSnapshot("Agents", "8 / 20"),
+                        SettingsPlanUsageSnapshot("Computers", "4 / 10"),
+                        SettingsPlanUsageSnapshot("Channels", "34")
+                    ),
+                trialActive = false
+            ),
+        plans =
+            listOf(
+                SettingsBillingPlanSnapshot("Free", "$0/mo", listOf("3 agents", "1 computer")),
+                SettingsBillingPlanSnapshot("Pro", "$20/mo", listOf("20 agents", "10 computers", "Priority support"), current = true),
+                SettingsBillingPlanSnapshot("Enterprise", "Custom", listOf("SAML", "Audit logs"), comingSoon = true)
+            )
+    )
+
+private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapshot =
+    SettingsLanguageRegionSnapshot(
+        serverTranslation =
+            ai.slock.compose.data.SettingsMobileToggleSnapshot(
+                enabled = true,
+                available = true,
+                statusLabel = "Enabled",
+                detail = "Allow translation on messages in this server."
+            ),
+        autoTranslation =
+            ai.slock.compose.data.SettingsMobileToggleSnapshot(
+                enabled = false,
+                available = true,
+                statusLabel = "Manual",
+                detail = "Only translate when requested."
+            ),
+        browserLanguage =
+            settingsVisualSelection(
+                selectedKey = "zh-CN",
+                selectedLabel = "Chinese (Simplified)",
+                statusLabel = "Chinese",
+                detail = "Stored on this account."
+            ),
+        timezone =
+            settingsVisualSelection(
+                selectedKey = "Asia/Shanghai",
+                selectedLabel = "Asia/Shanghai",
+                statusLabel = "GMT+8",
+                detail = "Used when formatting timestamps."
+            ),
+        timeFormat =
+            settingsVisualSelection(
+                selectedKey = "24h",
+                selectedLabel = "24-hour",
+                statusLabel = "24h",
+                detail = "Use 14:30 instead of 2:30 PM."
+            )
+    )
+
+private fun settingsVisualMobileSnapshot(): SettingsMobileSnapshot =
+    SettingsMobileSnapshot(
+        pushNotifications =
+            ai.slock.compose.data.SettingsMobileToggleSnapshot(
+                enabled = true,
+                available = true,
+                statusLabel = "On",
+                detail = "Receive push notifications for mentions and assigned tasks."
+            ),
+        muteServer =
+            ai.slock.compose.data.SettingsMobileToggleSnapshot(
+                enabled = false,
+                available = true,
+                statusLabel = "Unmuted",
+                detail = "This server can send push notifications."
+            ),
+        sendTestEnabled = true,
+        notificationPermission =
+            ai.slock.compose.data.SettingsMobileActionSnapshot(
+                available = true,
+                statusLabel = "Allowed",
+                detail = "System notification permission is granted."
+            ),
+        notificationSettings =
+            ai.slock.compose.data.SettingsMobileActionSnapshot(
+                available = true,
+                statusLabel = "Open",
+                detail = "Open OS notification settings."
+            ),
+        testNotification =
+            ai.slock.compose.data.SettingsMobileActionSnapshot(
+                available = true,
+                statusLabel = "Ready",
+                detail = "Send a test push notification."
+            )
+    )
+
+private fun settingsVisualConnectedAppsSnapshot(): SettingsConnectedAppsSnapshot =
+    SettingsConnectedAppsSnapshot(
+        marketplace =
+            listOf(
+                SettingsConnectedAppMarketplaceSnapshot(
+                    id = "market_slack",
+                    clientId = "client_slack_bridge",
+                    name = "Slack Bridge",
+                    category = "Productivity",
+                    developer = "Raft Labs",
+                    description = "Mirror Slock activity into Slack channels.",
+                    homepageUrl = "https://example.com/slack",
+                    homepageDomain = "example.com",
+                    installed = false,
+                    dataAccessSummary = "Messages and channel metadata"
+                ),
+                SettingsConnectedAppMarketplaceSnapshot(
+                    id = "market_github",
+                    clientId = "client_github_issues",
+                    name = "GitHub Issues",
+                    category = "Development",
+                    developer = "Raft Labs",
+                    description = "Create issues from tasks and feedback.",
+                    installed = true,
+                    dataAccessSummary = "Tasks and feedback"
+                )
+            ),
+        builtIn =
+            listOf(
+                SettingsConnectedAppBuiltInSnapshot(
+                    id = "builtin_github",
+                    clientId = "github",
+                    name = "GitHub",
+                    description = "Built-in source control integration.",
+                    homepageUrl = "https://github.com",
+                    homepageDomain = "github.com"
+                )
+            ),
+        installed =
+            listOf(
+                SettingsConnectedAppInstalledSnapshot(
+                    id = "install_github",
+                    clientId = "github",
+                    name = "GitHub Issues",
+                    developer = "Raft Labs",
+                    description = "Installed for Raft Design.",
+                    homepageDomain = "github.com",
+                    callbackDomain = "github.com",
+                    origin = "marketplace",
+                    editable = false
+                )
+            ),
+        registered =
+            listOf(
+                SettingsConnectedAppClientSnapshot(
+                    id = "client_1",
+                    serverId = "srv_design",
+                    clientId = "client_slack_bridge",
+                    appType = "oauth",
+                    publishStatus = "draft",
+                    category = "productivity",
+                    dataAccessSummary = "Messages and channel metadata",
+                    name = "Slack Bridge",
+                    description = "Server-local OAuth client.",
+                    homepageUrl = "https://example.com",
+                    homepageDomain = "example.com",
+                    returnUrl = "https://example.com/oauth/callback",
+                    callbackDomain = "example.com",
+                    agentManifestUrl = "https://example.com/manifest.json"
+                )
+            ),
+        oneTimeClientSecret = SettingsConnectedAppSecretSnapshot("client_slack_bridge", "client_secret_visible_once")
+    )
+
+private fun settingsVisualSelection(
+    selectedKey: String,
+    selectedLabel: String,
+    statusLabel: String,
+    detail: String
+): SettingsMobileSelectionSnapshot =
+    SettingsMobileSelectionSnapshot(
+        selectedKey = selectedKey,
+        selectedLabel = selectedLabel,
+        statusLabel = statusLabel,
+        detail = detail,
+        options =
+            listOf(
+                SettingsMobileSelectionOptionSnapshot(selectedKey, selectedLabel),
+                SettingsMobileSelectionOptionSnapshot("system", "System default")
+            )
+    )
 
 private val homeSearchVisualServer = ServerSummary(
     id = ServerId("srv_design"),

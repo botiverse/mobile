@@ -276,6 +276,76 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsAccountPage() {
+        captureKmpSettingsPageCase("settings.account.page", "account")
+    }
+
+    @Test
+    fun captureSettingsServerProfile() {
+        captureKmpSettingsPageCase("settings.server.profile", "server-profile")
+    }
+
+    @Test
+    fun captureSettingsServerDanger() {
+        captureKmpSettingsPageCase("settings.server.danger", "server-danger")
+    }
+
+    @Test
+    fun captureSettingsAdministrationAdmins() {
+        captureKmpSettingsPageCase("settings.administration.admins", "administration-admins")
+    }
+
+    @Test
+    fun captureSettingsAdministrationInvites() {
+        captureKmpSettingsPageCase("settings.administration.invites", "administration-invites")
+    }
+
+    @Test
+    fun captureSettingsAdministrationJoinLinks() {
+        captureKmpSettingsPageCase("settings.administration.join-links", "administration-join-links")
+    }
+
+    @Test
+    fun captureSettingsAdministrationPreJoinAgreement() {
+        captureKmpSettingsPageCase("settings.administration.pre-join-agreement", "administration-pre-join-agreement")
+    }
+
+    @Test
+    fun captureSettingsAdministrationOnboarding() {
+        captureKmpSettingsPageCase("settings.administration.onboarding", "administration-onboarding")
+    }
+
+    @Test
+    fun captureSettingsAdministrationMemberPermissions() {
+        captureKmpSettingsPageCase("settings.administration.member-permissions", "administration-member-permissions")
+    }
+
+    @Test
+    fun captureSettingsAdministrationTranslation() {
+        captureKmpSettingsPageCase("settings.administration.translation", "administration-translation")
+    }
+
+    @Test
+    fun captureSettingsBillingPage() {
+        captureKmpSettingsPageCase("settings.billing.page", "billing")
+    }
+
+    @Test
+    fun captureSettingsLanguageRegionPage() {
+        captureKmpSettingsPageCase("settings.language-region.page", "language-region")
+    }
+
+    @Test
+    fun captureSettingsNotificationsPage() {
+        captureKmpSettingsPageCase("settings.notifications.page", "notifications")
+    }
+
+    @Test
+    fun captureSettingsConnectedAppsPage() {
+        captureKmpSettingsPageCase("settings.connected-apps.page", "connected-apps")
+    }
+
+    @Test
     fun captureAuthLoginInputs() {
         captureKmpComponentCase(
             caseId = "auth.login.inputs",
@@ -292,6 +362,18 @@ class KmpVisualScreenshotCaptureTest {
             pageName = "compose_auth_register_inputs",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
+        )
+    }
+
+    private fun captureKmpSettingsPageCase(
+        caseId: String,
+        variant: String
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
+            pageName = "compose_settings_page_visual",
+            pageData = JSONObject().put("variant", variant),
+            crop = FULL_VIEWPORT_CROP
         )
     }
 
