@@ -277,6 +277,7 @@ internal fun SharedCreateAgentDialog(
     requiredComputer: String? = null,
     machines: List<SharedCreateAgentMachineOption> = emptyList(),
     machinesLoading: Boolean = false,
+    machinesErrorMessage: String? = null,
     runtimeModelsByMachineAndRuntime: Map<Pair<String, String>, List<SharedCreateAgentRuntimeModelOption>> = emptyMap(),
     currentAgentCount: Int = 0,
     maxAgents: Int = -1,
@@ -407,6 +408,7 @@ internal fun SharedCreateAgentDialog(
                         MachinePicker(
                             machines = machines,
                             machinesLoading = machinesLoading,
+                            machinesErrorMessage = machinesErrorMessage,
                             selectedMachineId = selectedMachineId,
                             requiredComputer = requiredComputer,
                             suggestedComputer = suggestedComputer,
@@ -619,6 +621,7 @@ private fun PlanLimitBanner(currentAgentCount: Int, maxAgents: Int) {
 private fun MachinePicker(
     machines: List<SharedCreateAgentMachineOption>,
     machinesLoading: Boolean,
+    machinesErrorMessage: String?,
     selectedMachineId: String?,
     requiredComputer: String?,
     suggestedComputer: String?,
@@ -633,6 +636,19 @@ private fun MachinePicker(
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray
             )
+            !machinesErrorMessage.isNullOrBlank() -> Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(SlockStroke.Thin, SlockColor.AccentRed.copy(alpha = 0.5f))
+                    .background(SlockColor.SurfaceCream)
+                    .padding(SlockSpacing.Sm)
+            ) {
+                Text(
+                    text = machinesErrorMessage,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.AccentRed
+                )
+            }
             machines.isEmpty() -> Box(
                 modifier = Modifier
                     .fillMaxWidth()

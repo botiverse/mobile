@@ -524,7 +524,10 @@ private data class ThreadCreateAgentActionDialogState(
     val messageId: String,
     val card: ThreadActionCard,
     val submitting: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val machines: List<SharedCreateAgentMachineOption> = emptyList(),
+    val machinesLoading: Boolean = false,
+    val machinesErrorCode: String? = null
 )
 
 private data class ThreadImageAttachmentGroup(
@@ -1296,6 +1299,56 @@ internal fun SharedThreadRouteContent(
             true
         } else {
             false
+        }
+
+    fun updateCreateAgentMachineState(
+        messageId: String,
+        transform: (ThreadCreateAgentActionDialogState) -> ThreadCreateAgentActionDialogState
+    ) {
+        val current = createAgentDialogState ?: return
+        if (current.messageId == messageId) {
+            createAgentDialogState = transform(current)
+        }
+    }
+
+    fun loadCreateAgentMachines(dialogState: ThreadCreateAgentActionDialogState) {
+        if (dialogState.machinesLoading || dialogState.machines.isNotEmpty()) {
+            return
+        }
+        createAgentDialogState = dialogState.copy(machinesLoading = true, machinesErrorCode = null)
+        coroutineScope.launch {
+            val serverId = authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
+            if (serverId == null) {
+                updateCreateAgentMachineState(dialogState.messageId) {
+                    it.copy(machinesLoading = false, machinesErrorCode = "server_id_missing")
+                }
+                return@launch
+            }
+            when (val result = createAgentCoordinator.loadMachines(serverId)) {
+                is DataResult.Content -> {
+                    updateCreateAgentMachineState(dialogState.messageId) {
+                        it.copy(machines = result.data, machinesLoading = false, machinesErrorCode = null)
+                    }
+                }
+                is DataResult.Empty -> {
+                    updateCreateAgentMachineState(dialogState.messageId) {
+                        it.copy(machines = emptyList(), machinesLoading = false, machinesErrorCode = null)
+                    }
+                }
+                is DataResult.Error -> {
+                    updateCreateAgentMachineState(dialogState.messageId) {
+                        it.copy(machinesLoading = false, machinesErrorCode = result.error.code)
+                    }
+                    routeAuthRequired(result.error.code)
+                }
+                is DataResult.NoPermission -> {
+                    updateCreateAgentMachineState(dialogState.messageId) {
+                        it.copy(machinesLoading = false, machinesErrorCode = result.blocker.code)
+                    }
+                    routeAuthRequired(result)
+                }
+            }
+        }
     }
 
     LaunchedEffect(initialPayload) {
@@ -1840,13 +1893,15 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     if (actionCard.type.equals("agent:create", ignoreCase = true)) {
-                        createAgentDialogState =
+                        val dialogState =
                             ThreadCreateAgentActionDialogState(
                                 messageId = itemId,
                                 card = actionCard,
                                 submitting = false,
                                 errorCode = null
                             )
+                        createAgentDialogState = dialogState
+                        loadCreateAgentMachines(dialogState)
                         return@ThreadPageContent
                     }
                     pendingActionCardIds = pendingActionCardIds + itemId
@@ -2443,6 +2498,9 @@ internal fun SharedThreadRouteContent(
                 draftHint = dialogState.card.draftHint,
                 suggestedComputer = dialogState.card.suggestedComputer,
                 requiredComputer = dialogState.card.requiredComputer,
+                machines = dialogState.machines,
+                machinesLoading = dialogState.machinesLoading,
+                machinesErrorMessage = dialogState.machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
                 onDismiss = {
                     if (!dialogState.submitting) {
                         createAgentDialogState = null
@@ -4857,6 +4915,16 @@ private fun threadCreateAgentDialogErrorCopy(code: String): String =
         "action_mark_executed_contract_mismatch" -> "Agent was created, but the action card could not be marked done. Try refreshing this thread."
         "agent_create_empty" -> "Agent was not created."
         else -> "Unable to create agent: $code"
+    }
+
+private fun threadCreateAgentMachinesErrorCopy(code: String): String =
+    when (code) {
+        "server_id_missing" -> "Select a server before loading computers."
+        "auth_required",
+        "auth_session_missing",
+        "auth_session_expired" -> "Sign in again to load computers."
+        "server_forbidden" -> "You do not have permission to view computers."
+        else -> "Failed to load computers: $code"
     }
 
 @Composable
