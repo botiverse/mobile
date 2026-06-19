@@ -1597,7 +1597,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceCream
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
@@ -1652,10 +1652,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                         y = pos.y + size.height / 2f
                     )
                 }
-                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (selected || pressed) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
     ) {
-        if (selected) {
+        if (selected || pressed) {
             Box(
                 modifier =
                     Modifier
@@ -1730,7 +1730,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceCream
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
@@ -1785,10 +1785,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         y = pos.y + size.height / 2f
                     )
                 }
-                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (selected || pressed) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
     ) {
-        if (selected) {
+        if (selected || pressed) {
             Box(
                 modifier =
                     Modifier
