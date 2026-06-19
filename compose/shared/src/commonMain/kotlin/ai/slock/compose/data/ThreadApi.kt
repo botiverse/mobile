@@ -3,12 +3,15 @@ package ai.slock.compose.data
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val threadApiJson = Json {
     ignoreUnknownKeys = true
@@ -51,11 +54,16 @@ internal interface SlockThreadApi {
 }
 
 internal class SlockThreadApiClient(
-    private val transport: SharedThreadNetworkApi
+    private val transport: SharedThreadNetworkApi,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockThreadApi {
     override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): ThreadApiResult<ThreadMessagesPage> =
         transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq)
-            .mapThreadBody("thread_messages_contract_mismatch", ChannelMessagesResponseDto.serializer()) { wire ->
+            .mapThreadBody(
+                contractCode = "thread_messages_contract_mismatch",
+                serializer = ChannelMessagesResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
                 ThreadMessagesPage(
                     messages = wire.messages,
                     canLoadMoreBefore = wire.historyLimited,
@@ -66,8 +74,9 @@ internal class SlockThreadApiClient(
     override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): ThreadApiResult<ThreadMessagesPage> =
         transport.messageSync(channelId = channelId, sinceSeq = sinceSeq, limit = limit)
             .mapThreadBody(
-                "thread_sync_contract_mismatch",
-                ListSerializer(WireMessage.serializer())
+                contractCode = "thread_sync_contract_mismatch",
+                serializer = ListSerializer(WireMessage.serializer()),
+                diagnosticsLogger = diagnosticsLogger
             ) { wire ->
                 ThreadMessagesPage(
                     messages = wire,
@@ -87,7 +96,11 @@ internal class SlockThreadApiClient(
             body = body,
             asTask = asTask,
             attachmentIds = attachmentIds
-        ).mapThreadBody("thread_send_contract_mismatch", WireMessage.serializer()) { wire ->
+        ).mapThreadBody(
+            contractCode = "thread_send_contract_mismatch",
+            serializer = WireMessage.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire ->
             if (wire.id.isBlank() || wire.content.isBlank()) return@mapThreadBody null
             ThreadMessagesPage(
                 messages = listOf(wire),
@@ -99,8 +112,9 @@ internal class SlockThreadApiClient(
     override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> =
         transport.attachmentUrl(attachmentId, disposition)
             .mapThreadBody(
-                "thread_attachment_url_contract_mismatch",
-                ThreadAttachmentUrlResponseDto.serializer()
+                contractCode = "thread_attachment_url_contract_mismatch",
+                serializer = ThreadAttachmentUrlResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
             ) { wire ->
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
@@ -117,13 +131,21 @@ internal class SlockThreadApiClient(
 
     override suspend fun addReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> =
         transport.addReaction(messageId, emoji)
-            .mapThreadBody("thread_reaction_contract_mismatch", MessageMutationResponseDto.serializer()) { wire ->
+            .mapThreadBody(
+                contractCode = "thread_reaction_contract_mismatch",
+                serializer = MessageMutationResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
                 wire.toMessageMutationSummary()
             }
 
     override suspend fun removeReaction(messageId: String, emoji: String): ThreadApiResult<MessageMutationSummary> =
         transport.removeReaction(messageId, emoji)
-            .mapThreadBody("thread_reaction_contract_mismatch", MessageMutationResponseDto.serializer()) { wire ->
+            .mapThreadBody(
+                contractCode = "thread_reaction_contract_mismatch",
+                serializer = MessageMutationResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
                 wire.toMessageMutationSummary()
             }
 
@@ -132,7 +154,11 @@ internal class SlockThreadApiClient(
 
     override suspend fun createOrOpenThread(channelId: String, parentMessageId: String): ThreadApiResult<ThreadActionResult> =
         transport.createOrOpenThread(channelId, parentMessageId)
-            .mapThreadBody("thread_create_contract_mismatch", CreateOrOpenThreadResponseDto.serializer()) { wire ->
+            .mapThreadBody(
+                contractCode = "thread_create_contract_mismatch",
+                serializer = CreateOrOpenThreadResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
                 val tid = wire.threadChannelId.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadActionResult(
                     threadChannelId = ChannelId(tid),
@@ -271,7 +297,7 @@ internal data class ThreadAttachmentOpenTarget(
 private fun HomeNetworkResponse.toThreadApiFailure(): ThreadApiResult.Failure =
     ThreadApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
-private inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
+private inline fun <Wire, T> HomeNetworkResponse.mapThreadBodySync(
     contractCode: String,
     serializer: KSerializer<Wire>,
     crossinline transform: (Wire) -> T?,
@@ -287,6 +313,39 @@ private inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     val value = transform(wire)
         ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
     return ThreadApiResult.Success(value)
+}
+
+private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
+    contractCode: String,
+    serializer: KSerializer<Wire>,
+    diagnosticsLogger: (String) -> Unit = {},
+    crossinline transform: (Wire) -> T?,
+): ThreadApiResult<T> {
+    val source = contractCode.removeSuffix("_contract_mismatch")
+    val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
+    diagnosticsLogger(
+        "thread_network_body_received source=$source code=$code " +
+            "responseBytes=$responseBytes hasBody=${bodyText != null}"
+    )
+    val parseStartedAt = TimeSource.Monotonic.markNow()
+    diagnosticsLogger("thread_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    val result =
+        withContext(Dispatchers.Default) {
+            mapThreadBodySync(contractCode, serializer, transform)
+        }
+    val resultLabel =
+        when (result) {
+            is ThreadApiResult.Success -> "success"
+            is ThreadApiResult.Failure -> "failure:${result.contractCode ?: result.code}"
+        }
+    val messageCount = (result as? ThreadApiResult.Success<*>)?.data.let { data ->
+        (data as? ThreadMessagesPage)?.messageCount ?: 0
+    }
+    diagnosticsLogger(
+        "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+    )
+    return result
 }
 
 private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =

@@ -15,8 +15,10 @@ import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.topLevelThreadId
 import ai.slock.compose.network.MultipartFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -553,6 +555,22 @@ class RealConversationRepository(
         )
     }
 
+    private suspend fun <T> executeConversation(
+        emptyReason: EmptyReason,
+        block: suspend () -> HomeNetworkResponse,
+        emptyWhen: (T) -> Boolean = { false },
+        source: String? = null,
+        mapper: (String) -> T
+    ): DataResult<T> =
+        executeConversationWithDiagnostics(
+            emptyReason = emptyReason,
+            block = block,
+            emptyWhen = emptyWhen,
+            source = source,
+            diagnosticsLogger = warningLogger,
+            mapper = mapper
+        )
+
     private suspend fun currentContext(): NetworkServerContext? {
         val session = sessionStore.readSession() ?: return null
         val selectedId = session.currentServerId ?: return null
@@ -818,11 +836,12 @@ private fun AttachmentUploadFile.toMultipartFile(): MultipartFile =
         sizeBytes = sizeBytes
     )
 
-private suspend fun <T> executeConversation(
+private suspend fun <T> executeConversationWithDiagnostics(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
     source: String? = null,
+    diagnosticsLogger: (String) -> Unit = {},
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -832,15 +851,31 @@ private suspend fun <T> executeConversation(
         if (!response.isSuccessful) return response.toConversationDataError()
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
-        val result = mapper(body)
-        if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        val sourceLabel = source ?: "conversation"
+        val responseBytes = body.encodeToByteArray().size
+        diagnosticsLogger(
+            "conversation_network_body_received source=$sourceLabel code=${response.code} " +
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+        )
+        val parseStartedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger("conversation_parse_start source=$sourceLabel responseBytes=$responseBytes dispatcher=Default")
+        val result =
+            withContext(Dispatchers.Default) {
+                mapper(body)
+            }
+        val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        diagnosticsLogger(
+            "conversation_parse_result source=$sourceLabel result=${dataResult.conversationDiagnosticsResult()} " +
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+        )
+        dataResult
     } catch (cancellation: kotlinx.coroutines.CancellationException) {
         throw cancellation
     } catch (exception: Exception) {
         if (source != null) {
-            @Suppress("UNUSED_VARIABLE")
-            val message =
+            diagnosticsLogger(
                 "parse_failed source=$source stage=response_or_mapper status=${statusCode ?: "unknown"} exception=${exception::class.simpleName}"
+            )
         }
         DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
     }

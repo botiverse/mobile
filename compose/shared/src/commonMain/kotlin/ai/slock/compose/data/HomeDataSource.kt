@@ -14,12 +14,15 @@ import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val homeApiJson = Json { ignoreUnknownKeys = true }
 
@@ -345,9 +348,25 @@ internal class SlockHomeApiClient(
                 )
                 throw throwable
             }
-        val result = response.decodeHomeBody(
-            contractCode = contractCode,
-            serializer = serializer
+        diagnosticsLogger(
+            "home_network_body_received source=home_$category code=${response.code} " +
+                "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} hasBody=${response.bodyText != null}"
+        )
+        val parseStartedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger(
+            "home_parse_start source=home_$category " +
+                "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} dispatcher=Default"
+        )
+        val result =
+            withContext(Dispatchers.Default) {
+                response.decodeHomeBody(
+                    contractCode = contractCode,
+                    serializer = serializer
+                )
+            }
+        diagnosticsLogger(
+            "home_parse_result source=home_$category ${result.homeDiagnosticsSummary()} " +
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
         )
         diagnosticsLogger(
             "home_endpoint category=$category code=${response.code} ${result.homeDiagnosticsSummary()}"

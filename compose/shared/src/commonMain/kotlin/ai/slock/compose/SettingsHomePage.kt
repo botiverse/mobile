@@ -817,7 +817,8 @@ private fun SlockAppShellContent() {
                     SlockIntegrationsActionsPushNetworkApi(appShellNetworkClient)
                 ),
                 savedStatusRepository = savedRepository,
-                createAgentCoordinator = createAgentCoordinator
+                createAgentCoordinator = createAgentCoordinator,
+                diagnosticsLogger = { message -> bridge.log("shared_thread_api $message") }
             )
         }
     val searchRepository =

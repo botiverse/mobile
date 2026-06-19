@@ -920,7 +920,8 @@ private fun ThreadPageScreen() {
                         networkClient = networkClient,
                         warningLogger = { message -> bridge.log("thread_saved_repository $message") }
                     ),
-                createAgentCoordinator = createAgentCoordinator
+                createAgentCoordinator = createAgentCoordinator,
+                diagnosticsLogger = { message -> bridge.log("thread_api $message") }
             )
         }
     val tasksDataSource =

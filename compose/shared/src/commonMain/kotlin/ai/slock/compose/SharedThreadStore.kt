@@ -132,9 +132,10 @@ internal class SharedThreadDataSource(
         agentsApiClient: SlockAgentsApiClient? = null,
         actionCardsApiClient: SlockIntegrationsActionsPushApiClient? = null,
         savedStatusRepository: SavedStatusRepository? = null,
-        createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator? = null
+        createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator? = null,
+        diagnosticsLogger: (String) -> Unit = {}
     ) : this(
-        api = SlockThreadApiClient(networkApi),
+        api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
         localWriteThrough = localWriteThrough,
         memberRepository = memberRepository,

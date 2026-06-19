@@ -7,6 +7,7 @@ import ai.slock.compose.model.TaskStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
 class ThreadApiTest {
@@ -71,6 +72,27 @@ class ThreadApiTest {
         val result = api.messageSync("channel-1", sinceSeq = 1)
 
         assertEquals(1, assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messageCount)
+    }
+
+    @Test
+    fun messageSyncEmitsOffUiParseDiagnostics() = runBlocking {
+        val logs = mutableListOf<String>()
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""),
+                diagnosticsLogger = logs::add
+            )
+
+        val result = api.messageSync("channel-1", sinceSeq = 1)
+
+        assertEquals(1, assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data.messageCount)
+        assertTrue(logs.any { it.contains("thread_parse_start source=thread_sync") && it.contains("dispatcher=Default") })
+        assertTrue(
+            logs.any {
+                it.contains("thread_parse_result source=thread_sync result=success messages=1") &&
+                    it.contains("dispatcher=Default")
+            }
+        )
     }
 
     @Test

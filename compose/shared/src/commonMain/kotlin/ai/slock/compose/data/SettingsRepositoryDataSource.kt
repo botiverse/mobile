@@ -2,6 +2,8 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -9,6 +11,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlin.time.TimeSource
 
 private val settingsRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -1086,8 +1089,8 @@ class RealSettingsRepository(
             workspaces
         }
 
-    private suspend fun settingsComputerAgents(machineId: String): DataResult<List<SettingsComputerAgentSnapshot>> =
-        executeSettings(
+    private suspend fun settingsComputerAgents(machineId: String): DataResult<List<SettingsComputerAgentSnapshot>> {
+        val result = executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { networkClient.settingsAgents(DataRequestPriority.Visible) },
             source = "settings_machine_agents",
@@ -1095,12 +1098,14 @@ class RealSettingsRepository(
             mapper = { bodyText ->
                 val agents = parseSharedSettingsComputerAgents(bodyText = bodyText, machineId = machineId)
                     ?: throw IllegalStateException("Settings agents response missing agent list")
-                if (agents.isEmpty()) {
-                    warningLogger("empty_items source=settings_machine_agents stage=list_extract contract=agents_array")
-                }
                 agents
             }
         )
+        if ((result as? DataResult.Content)?.data?.isEmpty() == true) {
+            warningLogger("empty_items source=settings_machine_agents stage=list_extract contract=agents_array")
+        }
+        return result
+    }
 
     private suspend fun enrichComputerAgents(
         serverId: String,
@@ -1700,16 +1705,48 @@ class RealSettingsRepository(
                     ?: settingsContractMismatch("settings_server_notification_settings_contract_mismatch")
             }
         )
+
+    private suspend fun <T> executeTypedSettings(
+        source: String,
+        contractCode: String,
+        block: suspend () -> HomeNetworkResponse,
+        mapper: (String) -> T
+    ): DataResult<T> =
+        executeTypedSettingsWithDiagnostics(
+            source = source,
+            contractCode = contractCode,
+            block = block,
+            diagnosticsLogger = warningLogger,
+            mapper = mapper
+        )
+
+    private suspend fun <T> executeSettings(
+        emptyReason: EmptyReason,
+        block: suspend () -> HomeNetworkResponse,
+        emptyWhen: (T) -> Boolean = { false },
+        source: String? = null,
+        warningLogger: (String) -> Unit = this.warningLogger,
+        mapper: (String) -> T
+    ): DataResult<T> =
+        executeSettingsWithDiagnostics(
+            emptyReason = emptyReason,
+            block = block,
+            emptyWhen = emptyWhen,
+            source = source,
+            warningLogger = warningLogger,
+            mapper = mapper
+        )
 }
 
 private data class SettingsContractMismatch(val code: String) : IllegalArgumentException(code)
 
 private fun settingsContractMismatch(code: String): Nothing = throw SettingsContractMismatch(code)
 
-private suspend fun <T> executeTypedSettings(
+private suspend fun <T> executeTypedSettingsWithDiagnostics(
     source: String,
     contractCode: String,
     block: suspend () -> HomeNetworkResponse,
+    diagnosticsLogger: (String) -> Unit = {},
     mapper: (String) -> T
 ): DataResult<T> {
     var statusCode: Int? = null
@@ -1724,7 +1761,23 @@ private suspend fun <T> executeTypedSettings(
         }
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        DataResult.Content(mapper(body))
+        val responseBytes = body.encodeToByteArray().size
+        diagnosticsLogger(
+            "settings_network_body_received source=$source code=${response.code} " +
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+        )
+        val parseStartedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger("settings_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+        val result =
+            withContext(Dispatchers.Default) {
+                mapper(body)
+            }
+        val dataResult = DataResult.Content(result)
+        diagnosticsLogger(
+            "settings_parse_result source=$source ${dataResult.settingsDiagnosticsResult()} " +
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+        )
+        dataResult
     } catch (exception: SettingsContractMismatch) {
         val code =
             if (exception.code.endsWith("_contract_mismatch")) exception.code else contractCode
@@ -1737,7 +1790,7 @@ private suspend fun <T> executeTypedSettings(
     }
 }
 
-private suspend fun <T> executeSettings(
+private suspend fun <T> executeSettingsWithDiagnostics(
     emptyReason: EmptyReason,
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
@@ -1752,8 +1805,24 @@ private suspend fun <T> executeSettings(
         if (!response.isSuccessful) return response.toSettingsDataError()
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
-        val result = mapper(body)
-        if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        val sourceLabel = source ?: "settings"
+        val responseBytes = body.encodeToByteArray().size
+        warningLogger(
+            "settings_network_body_received source=$sourceLabel code=${response.code} " +
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+        )
+        val parseStartedAt = TimeSource.Monotonic.markNow()
+        warningLogger("settings_parse_start source=$sourceLabel responseBytes=$responseBytes dispatcher=Default")
+        val result =
+            withContext(Dispatchers.Default) {
+                mapper(body)
+            }
+        val dataResult = if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+        warningLogger(
+            "settings_parse_result source=$sourceLabel ${dataResult.settingsDiagnosticsResult()} " +
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+        )
+        dataResult
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (exception: Exception) {
@@ -1765,6 +1834,14 @@ private suspend fun <T> executeSettings(
         DataResult.Error(ScreenError(code = "network_parse_failed", retryable = true))
     }
 }
+
+private fun DataResult<*>.settingsDiagnosticsResult(): String =
+    when (this) {
+        is DataResult.Content -> "result=content"
+        is DataResult.Empty -> "result=empty:${reason.name}"
+        is DataResult.Error -> "result=error:${error.code}"
+        is DataResult.NoPermission -> "result=no_permission:${blocker.code}"
+    }
 
 private fun <T> HomeNetworkResponse.toSettingsDataError(): DataResult<T> =
     when (code) {

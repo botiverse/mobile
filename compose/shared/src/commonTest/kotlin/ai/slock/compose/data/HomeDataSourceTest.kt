@@ -119,6 +119,13 @@ class HomeDataSourceTest {
             logs,
             "home_endpoint category=channels code=200 result=error code=home_channels_contract_mismatch"
         )
+        assertTrue(logs.any { it.contains("home_parse_start source=home_channels") && it.contains("dispatcher=Default") })
+        assertTrue(
+            logs.any {
+                it.contains("home_parse_result source=home_channels result=error code=home_channels_contract_mismatch") &&
+                    it.contains("dispatcher=Default")
+            }
+        )
         assertContains(
             logs,
             "home_bootstrap_result result=error code=home_channels_contract_mismatch stage=payload"

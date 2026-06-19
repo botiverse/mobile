@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class ConversationRepositoryDataSourceTest {
     @Test
@@ -126,6 +127,38 @@ class ConversationRepositoryDataSourceTest {
 
         assertIs<DataResult.Error>(result)
         assertEquals("network_parse_failed", result.error.code)
+    }
+
+    @Test
+    fun getThreadEmitsOffUiParseDiagnostics() = runBlocking {
+        val logs = mutableListOf<String>()
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
+                        "GET channels/channel-1/threads" to """{"threads":[]}""",
+                        "GET channels/threads/followed" to """{"threads":[]}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
+
+        val result = repository.getThread(ThreadId("channel-1"))
+
+        assertEquals("parent-1", assertIs<DataResult.Content<ThreadSnapshot>>(result).data.messages.single().id.value)
+        assertTrue(
+            logs.any {
+                it.contains("conversation_parse_start source=messages_channel") &&
+                    it.contains("dispatcher=Default")
+            }
+        )
+        assertTrue(
+            logs.any {
+                it.contains("conversation_parse_result source=messages_channel result=content") &&
+                    it.contains("dispatcher=Default")
+            }
+        )
     }
 
     @Test
