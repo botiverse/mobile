@@ -842,12 +842,12 @@ internal fun tasksToolbarRows(
 private val TasksToolbarControl.estimatedTasksToolbarWidth: Dp
     get() =
         when (this) {
-            TasksToolbarControl.ChannelFilter -> 96.dp
-            TasksToolbarControl.CreatorFilter -> 94.dp
-            TasksToolbarControl.AssigneeFilter -> 100.dp
-            TasksToolbarControl.ClearAll -> 96.dp
-            TasksToolbarControl.NewTask -> 104.dp
-            TasksToolbarControl.ViewSwitch -> 132.dp
+            TasksToolbarControl.ChannelFilter -> 188.dp
+            TasksToolbarControl.CreatorFilter -> 188.dp
+            TasksToolbarControl.AssigneeFilter -> 200.dp
+            TasksToolbarControl.ClearAll -> 180.dp
+            TasksToolbarControl.NewTask -> 208.dp
+            TasksToolbarControl.ViewSwitch -> 264.dp
         }
 
 /** Vertical board column. Header is always visible (so collapsed columns can re-expand). */

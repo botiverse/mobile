@@ -60,10 +60,30 @@ class SharedTasksPageTest {
                 listOf(TasksToolbarControl.ViewSwitch)
             ),
             tasksToolbarRows(
-                maxWidth = 332.dp,
+                maxWidth = 728.dp,
                 showChannelFilter = true,
                 showClearAll = false,
                 showCreateButton = false
+            )
+        )
+    }
+
+    @Test
+    fun tasksToolbarWrapsViewSwitchWhenCreateButtonWouldOverlapIt() {
+        assertEquals(
+            listOf(
+                listOf(
+                    TasksToolbarControl.CreatorFilter,
+                    TasksToolbarControl.AssigneeFilter,
+                    TasksToolbarControl.NewTask
+                ),
+                listOf(TasksToolbarControl.ViewSwitch)
+            ),
+            tasksToolbarRows(
+                maxWidth = 728.dp,
+                showChannelFilter = false,
+                showClearAll = false,
+                showCreateButton = true
             )
         )
     }
