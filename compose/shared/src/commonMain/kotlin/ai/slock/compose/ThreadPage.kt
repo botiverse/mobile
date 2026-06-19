@@ -56,6 +56,8 @@ import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -1321,6 +1323,14 @@ internal fun SharedThreadRouteContent(
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
         )
+        if (signal.event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
+            membersStore?.dispatch(
+                SharedMembersIntent.RefreshSuggestions(
+                    mentionChannelId = memberSuggestionScopeChannelId,
+                    memberScopedMentions = memberSuggestionScopedMentions
+                )
+            )
+        }
     }
     LaunchedEffect(payload.sourceThreadId, payload.tasks) {
         if (payload.tasks.isNotEmpty()) {
@@ -3038,6 +3048,19 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
 
 private fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
     memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+
+internal fun RealtimeEvent.refreshesThreadMemberSuggestions(mentionChannelId: String?): Boolean =
+    when (this) {
+        is RealtimeRefreshRequired ->
+            when (scope) {
+                RealtimeRefreshScope.ChannelMembers ->
+                    mentionChannelId != null &&
+                        (channelId == null || channelId.value == mentionChannelId)
+                RealtimeRefreshScope.ServerMembers -> true
+                else -> false
+            }
+        else -> false
+    }
 
 internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
     this?.user?.let { user ->

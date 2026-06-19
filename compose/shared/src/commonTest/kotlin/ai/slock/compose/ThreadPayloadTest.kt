@@ -9,6 +9,8 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -329,6 +331,44 @@ class ThreadPayloadTest {
 
         assertEquals(true, payload.memberScopedMentions)
         assertEquals("joint-1", payload.resolveThreadComposer().streamChannelId)
+    }
+
+    @Test
+    fun memberSuggestionRealtimeRefreshOnlyTracksRelevantMemberScopes() {
+        assertTrue(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.ChannelMembers,
+                reason = "channel:members-updated",
+                channelId = ChannelId("thread-1")
+            ).refreshesThreadMemberSuggestions("thread-1")
+        )
+        assertFalse(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.ChannelMembers,
+                reason = "channel:members-updated",
+                channelId = ChannelId("other")
+            ).refreshesThreadMemberSuggestions("thread-1")
+        )
+        assertFalse(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.ChannelMembers,
+                reason = "channel:members-updated",
+                channelId = ChannelId("thread-1")
+            ).refreshesThreadMemberSuggestions(null)
+        )
+        assertTrue(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.ServerMembers,
+                reason = "server:member-updated"
+            ).refreshesThreadMemberSuggestions("thread-1")
+        )
+        assertFalse(
+            RealtimeRefreshRequired(
+                scope = RealtimeRefreshScope.Home,
+                reason = "channel:updated",
+                channelId = ChannelId("thread-1")
+            ).refreshesThreadMemberSuggestions("thread-1")
+        )
     }
 
     @Test
