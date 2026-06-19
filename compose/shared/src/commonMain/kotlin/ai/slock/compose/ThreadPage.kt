@@ -2661,18 +2661,16 @@ internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
     return SlockThreadWebLinkTarget(channelId = channelId, messageId = messageId)
 }
 
-private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {
+internal fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadWebLinkTarget): KuiklyThreadScreenPayload {
     val composer =
-        buildThreadSurfaceComposerPayload(
+        KuiklyThreadComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.Channel,
-            displayName = "Thread",
-            fallbackId = target.channelId,
             enabled = canSend,
             streamChannelId = target.channelId
         )
     return copy(
         instanceId = "shared-shell-thread-${target.channelId}",
-        title = "Thread",
+        title = SharedThreadHeaderContextStore.launchContext(KuiklyThreadSurfaceKind.Channel, null).title,
         subtitle = null,
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.Channel,
@@ -2690,7 +2688,7 @@ private fun KuiklyThreadScreenPayload.webLinkLoadingPayload(target: SlockThreadW
         errorCode = null,
         filesPayload = "{}",
         composer = composer
-    )
+    ).withLaunchHeaderContext()
 }
 
 private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {

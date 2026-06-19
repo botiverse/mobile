@@ -34,4 +34,24 @@ class SlockThreadWebLinkTargetTest {
         assertNull("https://example.com/channel/channel-123?msg=message-456".toSlockThreadWebLinkTarget())
         assertNull("mailto:team@example.com".toSlockThreadWebLinkTarget())
     }
+
+    @Test
+    fun webLinkLoadingPayloadUsesChannelLaunchHeader() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                title = "Thread",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                canSend = false
+            ).webLinkLoadingPayload(SlockThreadWebLinkTarget(channelId = "channel-123", messageId = "message-456"))
+
+        assertEquals("Channel", payload.title)
+        assertEquals(null, payload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("channel-123", payload.sourceThreadId)
+        assertEquals("channel-123", payload.streamChannelId)
+        assertEquals(null, payload.originParentMessageId)
+        assertEquals("none", payload.originStatus)
+        assertEquals("Message #Channel", payload.resolveThreadComposer().placeholder)
+        assertEquals(false, payload.resolveThreadComposer().enabled)
+    }
 }
