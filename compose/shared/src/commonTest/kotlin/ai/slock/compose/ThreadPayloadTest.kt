@@ -216,7 +216,6 @@ class ThreadPayloadTest {
                 KuiklyThreadSettingsAction(
                     id = "leave",
                     title = "Leave Channel",
-                    icon = SlockLucideIconName.LogOut,
                     destructive = true
                 )
             ).normalizedThreadSettingsChannelActions()
