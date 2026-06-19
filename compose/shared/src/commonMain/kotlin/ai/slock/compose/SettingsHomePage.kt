@@ -1361,6 +1361,14 @@ private fun SlockAppShellContent() {
         )
         selectedHomeConversationId = conversation.threadId.value
         val payload = appShellThreadPayload(conversation, anchorMessageId)
+        bridge.log(
+            "home_open_thread_payload source=$source threadId=${conversation.threadId.value} " +
+                "sourceThreadId=${payload.sourceThreadId.orEmpty()} surface=${payload.surfaceKind} " +
+                "parentChannelId=${payload.parentChannelId.orEmpty()} parentMessageId=${payload.parentMessageId.orEmpty()} " +
+                "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${payload.originParentMessageId.orEmpty()} " +
+                "originStatus=${payload.originStatus} hasOriginMessage=${payload.originMessage != null} " +
+                "hasOriginPreview=${!payload.originPreview.isNullOrBlank()}"
+        )
         if (pushCurrent) {
             activeThreadPayload?.let { threadBackStack = threadBackStack + it }
         }
@@ -9327,6 +9335,12 @@ internal fun buildAppShellThreadPayload(
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val originParentMessageId =
+        if (isReplyThread) {
+            parentMessageId
+        } else {
+            anchorMessageId?.takeIf { it.isNotBlank() }
+        }
     val canSend = conversation.joined && conversation.permissions.canSend
     val originMessage = conversation.toAppShellOriginMessage()
     val supportsChannelTasks =
@@ -9359,7 +9373,7 @@ internal fun buildAppShellThreadPayload(
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
-        originParentMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
+        originParentMessageId = originParentMessageId,
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = !isReplyThread,

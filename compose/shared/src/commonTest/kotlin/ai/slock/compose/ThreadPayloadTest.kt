@@ -612,12 +612,14 @@ class ThreadPayloadTest {
                 parentMessagePreview = "Parent message preview",
                 parentMessageSenderId = "user-1",
                 parentMessageSenderKind = MemberKind.Human,
+                latestActivityMessageId = MessageId("reply-message-1"),
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequest()
         val conversation = request.conversation
 
         val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
+        assertEquals("reply-message-1", request.anchorMessageId)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals(ThreadReplyPageTitle, payload.title)
@@ -638,6 +640,58 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
+    }
+
+    @Test
+    fun contentPatchKeepsSeededReplyOriginWhenPatchHasOnlyReplies() {
+        val origin =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "user-1",
+                authorName = "Artin",
+                body = "Parent message preview"
+            )
+        val reply =
+            KuiklyThreadMessageItem(
+                id = "reply-message-1",
+                authorId = "agent-1",
+                authorName = "Android-Developer-4",
+                body = "Latest reply"
+            )
+        val current =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-channel-1-message-1",
+                title = ThreadReplyPageTitle,
+                status = "loading",
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                originParentMessageId = "message-1",
+                originMessage = origin,
+                originPreview = "Parent message preview",
+                originStatus = "loaded"
+            )
+        val patch =
+            current.copy(
+                status = "content",
+                messages = listOf(reply),
+                originMessage = null,
+                originPreview = null,
+                originParentMessageId = null,
+                originStatus = "none"
+            )
+
+        val payload = current.withContentPatchFrom(patch)
+
+        assertEquals("content", payload.status)
+        assertEquals(listOf("reply-message-1"), payload.messages.map { it.id })
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals("message-1", payload.originMessage?.id)
+        assertEquals("Parent message preview", payload.originMessage?.body)
+        assertEquals("Parent message preview", payload.originPreview)
     }
 
     @Test

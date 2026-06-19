@@ -1414,7 +1414,8 @@ internal class SharedThreadStore(
         val current = _state.value.payload.takeIf { it.sourceThreadId == threadId && it.hasRenderableThreadContent() }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
-                "status=${initialPayload.status} messages=${initialPayload.messages.size}"
+                "status=${initialPayload.status} messages=${initialPayload.messages.size} " +
+                initialPayload.originDiagnostics()
         )
         val visiblePayload =
             cached
@@ -1424,6 +1425,10 @@ internal class SharedThreadStore(
                 } else {
                     initialPayload.copy(status = "loading", errorCode = null)
                 }
+        diagnosticsLogger?.invoke(
+            "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
+                "messages=${visiblePayload.messages.size} " + visiblePayload.originDiagnostics()
+        )
         reduceState(
             SharedThreadState(
                 payload = visiblePayload,
@@ -1448,7 +1453,12 @@ internal class SharedThreadStore(
             )
             if (persistentCached != null && _state.value.payload.sourceThreadId == threadId) {
                 reducePayloadPatch { currentPayload ->
-                    currentPayload.withContentPatchFrom(persistentCached.withRouteContext(initialPayload))
+                    val patch = persistentCached.withRouteContext(initialPayload)
+                    diagnosticsLogger?.invoke(
+                        "thread_persistent_cache_patch threadId=$threadId status=${patch.status} " +
+                            "messages=${patch.messages.size} " + patch.originDiagnostics()
+                    )
+                    currentPayload.withContentPatchFrom(patch)
                 }
             }
         } else {
@@ -1474,6 +1484,10 @@ internal class SharedThreadStore(
             } else {
                 basePayload.copy(status = "loading", errorCode = null)
             }
+        diagnosticsLogger?.invoke(
+            "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
+                "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
+        )
         reducePayloadPatch { currentPayload -> currentPayload.withContentPatchFrom(loadingBase) }
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
@@ -1502,7 +1516,8 @@ internal class SharedThreadStore(
         diagnosticsLogger?.invoke(
             "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
                 "result=${result.threadDiagnosticsResult()} messages=${nextPayload.messages.size} " +
-                "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+                "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds} " +
+                nextPayload.originDiagnostics()
         )
         if (emitted && visiblePayload != null) {
             writeCachedPayloadAfterFrame(_state.value.payload)
@@ -1907,6 +1922,12 @@ private fun DataResult<*>.threadDiagnosticsResult(): String =
         is DataResult.NoPermission -> "no_permission:${blocker.code}"
     }
 
+private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
+    "surface=$surfaceKind parentChannelId=${parentChannelId.orEmpty()} " +
+        "parentMessageId=${parentMessageId.orEmpty()} originParentMessageId=${originParentMessageId.orEmpty()} " +
+        "originStatus=$originStatus hasOriginMessage=${originMessage != null} " +
+        "hasOriginPreview=${!originPreview.isNullOrBlank()}"
+
 private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(
         instanceId = base.instanceId.ifBlank { instanceId },
@@ -2292,15 +2313,31 @@ private fun List<String>.cleanActionCardIds(): List<String> =
         .filter { it.isNotBlank() }
         .distinct()
 
-internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
-    copy(
+internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+    val nextOriginMessage = patch.originMessage ?: originMessage
+    val nextOriginPreview = patch.originPreview ?: originPreview
+    val nextOriginParentMessageId = patch.originParentMessageId ?: originParentMessageId
+    val nextOriginStatus =
+        when {
+            patch.originStatus != "none" -> patch.originStatus
+            nextOriginMessage != null -> "loaded"
+            nextOriginPreview != null || originStatus != "none" -> originStatus
+            else -> "none"
+        }
+    val nextOriginErrorCode =
+        when {
+            patch.originErrorCode != null -> patch.originErrorCode
+            patch.originStatus != "none" -> null
+            else -> originErrorCode
+        }
+    return copy(
         status = patch.status,
         messages = patch.messages,
-        originMessage = patch.originMessage,
-        originPreview = patch.originPreview,
-        originParentMessageId = patch.originParentMessageId,
-        originStatus = patch.originStatus,
-        originErrorCode = patch.originErrorCode,
+        originMessage = nextOriginMessage,
+        originPreview = nextOriginPreview,
+        originParentMessageId = nextOriginParentMessageId,
+        originStatus = nextOriginStatus,
+        originErrorCode = nextOriginErrorCode,
         tasks = patch.tasks,
         canLoadMoreBefore = patch.canLoadMoreBefore,
         canLoadMoreAfter = patch.canLoadMoreAfter,
@@ -2332,6 +2369,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showTaskStatusActions = patch.showTaskStatusActions,
         joinLabel = patch.joinLabel
     )
+}
 
 internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(
