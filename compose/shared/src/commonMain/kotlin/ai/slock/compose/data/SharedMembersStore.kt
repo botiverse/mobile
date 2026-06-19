@@ -6,9 +6,12 @@ import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 enum class SharedMembersLoadStatus {
@@ -28,6 +31,24 @@ data class SharedMembersChannelSuggestion(
     val subtitle: String? = null
 )
 
+data class SharedMembersMentionScope(
+    val serverId: String,
+    val mentionChannelId: String? = null,
+    val memberScopedMentions: Boolean = false
+)
+
+data class SharedMembersMemberSuggestionSlice(
+    val suggestions: List<SharedMembersMemberSuggestion> = emptyList(),
+    val status: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
+    val errorCode: String? = null
+)
+
+data class SharedMembersChannelSuggestionSlice(
+    val suggestions: List<SharedMembersChannelSuggestion> = emptyList(),
+    val status: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
+    val errorCode: String? = null
+)
+
 data class SharedMembersState(
     val serverId: String? = null,
     val mentionChannelId: String? = null,
@@ -37,8 +58,30 @@ data class SharedMembersState(
     val memberStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val channelStatus: SharedMembersLoadStatus = SharedMembersLoadStatus.Idle,
     val memberErrorCode: String? = null,
-    val channelErrorCode: String? = null
+    val channelErrorCode: String? = null,
+    val memberSuggestionSlices: Map<SharedMembersMentionScope, SharedMembersMemberSuggestionSlice> = emptyMap()
 )
+
+fun SharedMembersState.selectMemberSuggestionSlice(
+    mentionChannelId: String? = null,
+    memberScopedMentions: Boolean = false
+): SharedMembersMemberSuggestionSlice {
+    val normalizedServerId = serverId.normalizedId() ?: return SharedMembersMemberSuggestionSlice()
+    return memberSuggestionSlices[
+        SharedMembersMentionScope(
+            serverId = normalizedServerId,
+            mentionChannelId = mentionChannelId.normalizedId(),
+            memberScopedMentions = memberScopedMentions
+        )
+    ] ?: SharedMembersMemberSuggestionSlice()
+}
+
+fun SharedMembersState.selectChannelSuggestionSlice(): SharedMembersChannelSuggestionSlice =
+    SharedMembersChannelSuggestionSlice(
+        suggestions = channelSuggestions,
+        status = channelStatus,
+        errorCode = channelErrorCode
+    )
 
 sealed interface SharedMembersIntent {
     data class EnsureSuggestions(
@@ -63,6 +106,24 @@ class SharedMembersStore(
 ) {
     private val _state = MutableStateFlow(SharedMembersState())
     val state: StateFlow<SharedMembersState> = _state.asStateFlow()
+
+    fun memberSuggestionSliceFlow(
+        mentionChannelId: String? = null,
+        memberScopedMentions: Boolean = false
+    ): Flow<SharedMembersMemberSuggestionSlice> =
+        state
+            .map { state ->
+                state.selectMemberSuggestionSlice(
+                    mentionChannelId = mentionChannelId,
+                    memberScopedMentions = memberScopedMentions
+                )
+            }
+            .distinctUntilChanged()
+
+    fun channelSuggestionSliceFlow(): Flow<SharedMembersChannelSuggestionSlice> =
+        state
+            .map { state -> state.selectChannelSuggestionSlice() }
+            .distinctUntilChanged()
 
     fun dispatch(intent: SharedMembersIntent) {
         when (intent) {
@@ -113,17 +174,27 @@ class SharedMembersStore(
             _state.value = SharedMembersState()
             return
         }
-        val normalizedMentionChannelId = mentionChannelId?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedMentionChannelId = mentionChannelId.normalizedId()
+        val memberScope =
+            SharedMembersMentionScope(
+                serverId = normalizedServerId,
+                mentionChannelId = normalizedMentionChannelId,
+                memberScopedMentions = memberScopedMentions
+            )
         bindScope(
             serverId = normalizedServerId,
             mentionChannelId = normalizedMentionChannelId,
             memberScopedMentions = memberScopedMentions
         )
         val current = _state.value
+        val memberSlice = current.selectMemberSuggestionSlice(
+            mentionChannelId = normalizedMentionChannelId,
+            memberScopedMentions = memberScopedMentions
+        )
         val shouldLoadMembers =
             force ||
-                (current.memberStatus != SharedMembersLoadStatus.Loaded &&
-                    current.memberStatus != SharedMembersLoadStatus.InFlight)
+                (memberSlice.status != SharedMembersLoadStatus.Loaded &&
+                    memberSlice.status != SharedMembersLoadStatus.InFlight)
         val shouldLoadChannels =
             force ||
                 (current.channelStatus != SharedMembersLoadStatus.Loaded &&
@@ -132,15 +203,23 @@ class SharedMembersStore(
             logger("shared_members_suggestions_skip serverId=$normalizedServerId reason=loaded_or_inflight")
             return
         }
-        _state.value =
-            _state.value.copy(
-                memberStatus =
-                    if (shouldLoadMembers) SharedMembersLoadStatus.InFlight else _state.value.memberStatus,
-                channelStatus =
-                    if (shouldLoadChannels) SharedMembersLoadStatus.InFlight else _state.value.channelStatus,
-                memberErrorCode = if (shouldLoadMembers) null else _state.value.memberErrorCode,
-                channelErrorCode = if (shouldLoadChannels) null else _state.value.channelErrorCode
+        if (shouldLoadMembers) {
+            setMemberSuggestionSlice(
+                scope = memberScope,
+                slice =
+                    memberSlice.copy(
+                        status = SharedMembersLoadStatus.InFlight,
+                        errorCode = null
+                    )
             )
+        }
+        if (shouldLoadChannels) {
+            _state.value =
+                _state.value.copy(
+                    channelStatus = SharedMembersLoadStatus.InFlight,
+                    channelErrorCode = null
+                )
+        }
         if (shouldLoadMembers) {
             loadMemberSuggestions(
                 serverId = normalizedServerId,
@@ -159,13 +238,28 @@ class SharedMembersStore(
         memberScopedMentions: Boolean
     ) {
         val current = _state.value
+        val memberScope =
+            SharedMembersMentionScope(
+                serverId = serverId,
+                mentionChannelId = mentionChannelId,
+                memberScopedMentions = memberScopedMentions
+            )
+        val memberSlice =
+            if (current.serverId == serverId) {
+                current.memberSuggestionSlices[memberScope] ?: SharedMembersMemberSuggestionSlice()
+            } else {
+                SharedMembersMemberSuggestionSlice()
+            }
         when {
             current.serverId != serverId ->
                 _state.value =
                     SharedMembersState(
                         serverId = serverId,
                         mentionChannelId = mentionChannelId,
-                        memberScopedMentions = memberScopedMentions
+                        memberScopedMentions = memberScopedMentions,
+                        memberSuggestions = memberSlice.suggestions,
+                        memberStatus = memberSlice.status,
+                        memberErrorCode = memberSlice.errorCode
                     )
             current.mentionChannelId != mentionChannelId ||
                 current.memberScopedMentions != memberScopedMentions ->
@@ -173,11 +267,32 @@ class SharedMembersStore(
                     current.copy(
                         mentionChannelId = mentionChannelId,
                         memberScopedMentions = memberScopedMentions,
-                        memberSuggestions = emptyList(),
-                        memberStatus = SharedMembersLoadStatus.Idle,
-                        memberErrorCode = null
+                        memberSuggestions = memberSlice.suggestions,
+                        memberStatus = memberSlice.status,
+                        memberErrorCode = memberSlice.errorCode
                     )
         }
+    }
+
+    private fun setMemberSuggestionSlice(
+        scope: SharedMembersMentionScope,
+        slice: SharedMembersMemberSuggestionSlice
+    ) {
+        val current = _state.value
+        if (current.serverId != scope.serverId) return
+        val nextSlices = current.memberSuggestionSlices + (scope to slice)
+        val next =
+            if (current.activeMemberScope() == scope) {
+                current.copy(
+                    memberSuggestions = slice.suggestions,
+                    memberStatus = slice.status,
+                    memberErrorCode = slice.errorCode,
+                    memberSuggestionSlices = nextSlices
+                )
+            } else {
+                current.copy(memberSuggestionSlices = nextSlices)
+            }
+        _state.value = next
     }
 
     private suspend fun loadMemberSuggestions(
@@ -185,6 +300,12 @@ class SharedMembersStore(
         mentionChannelId: String?,
         memberScopedMentions: Boolean
     ) {
+        val memberScope =
+            SharedMembersMentionScope(
+                serverId = serverId,
+                mentionChannelId = mentionChannelId,
+                memberScopedMentions = memberScopedMentions
+            )
         if (memberScopedMentions) {
             loadScopedMemberSuggestions(
                 serverId = serverId,
@@ -198,32 +319,34 @@ class SharedMembersStore(
                 memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
             }.getOrElse { throwable ->
                 logger("shared_members_suggestions_members_result serverId=$serverId result=exception message=${throwable.message.orEmpty()}")
-                if (_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) {
-                    _state.value =
-                        _state.value.copy(
-                            memberStatus = SharedMembersLoadStatus.Error,
-                            memberErrorCode = "members_exception"
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = "members_exception"
                         )
-                }
+                )
                 return
             }
-        if (!_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) return
+        if (_state.value.serverId != serverId) return
         when (result) {
             is DataResult.Content -> {
                 val channelMembers =
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
                             serverId = serverId,
-                            mentionChannelId = channelId,
-                            memberScopedMentions = memberScopedMentions
+                            mentionChannelId = channelId
                         )
                     }.orEmpty()
-                if (!_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) return
-                _state.value =
-                    _state.value.copy(
-                        memberSuggestions = (result.data.members + channelMembers).toSharedMembersMemberSuggestions(),
-                        memberStatus = SharedMembersLoadStatus.Loaded,
-                        memberErrorCode = null
+                if (_state.value.serverId != serverId) return
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            suggestions = (result.data.members + channelMembers).toSharedMembersMemberSuggestions(),
+                            status = SharedMembersLoadStatus.Loaded
+                        )
                     )
             }
             is DataResult.Empty -> {
@@ -231,30 +354,37 @@ class SharedMembersStore(
                     mentionChannelId?.let { channelId ->
                         loadChannelMembersBestEffort(
                             serverId = serverId,
-                            mentionChannelId = channelId,
-                            memberScopedMentions = memberScopedMentions
+                            mentionChannelId = channelId
                         )
                     }.orEmpty()
-                if (!_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) return
-                _state.value =
-                    _state.value.copy(
-                        memberSuggestions = channelMembers.toSharedMembersMemberSuggestions(),
-                        memberStatus = SharedMembersLoadStatus.Loaded,
-                        memberErrorCode = null
+                if (_state.value.serverId != serverId) return
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            suggestions = channelMembers.toSharedMembersMemberSuggestions(),
+                            status = SharedMembersLoadStatus.Loaded
+                        )
                     )
             }
             is DataResult.Error -> {
-                _state.value =
-                    _state.value.copy(
-                        memberStatus = SharedMembersLoadStatus.Error,
-                        memberErrorCode = result.error.code
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = result.error.code
+                        )
                     )
             }
             is DataResult.NoPermission -> {
-                _state.value =
-                    _state.value.copy(
-                        memberStatus = SharedMembersLoadStatus.Error,
-                        memberErrorCode = result.blocker.code
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = result.blocker.code
+                        )
                     )
             }
         }
@@ -265,15 +395,17 @@ class SharedMembersStore(
         mentionChannelId: String?,
         memberScopedMentions: Boolean
     ) {
+        val memberScope =
+            SharedMembersMentionScope(
+                serverId = serverId,
+                mentionChannelId = mentionChannelId,
+                memberScopedMentions = memberScopedMentions
+            )
         if (mentionChannelId == null) {
-            if (_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) {
-                _state.value =
-                    _state.value.copy(
-                        memberSuggestions = emptyList(),
-                        memberStatus = SharedMembersLoadStatus.Loaded,
-                        memberErrorCode = null
-                    )
-            }
+            setMemberSuggestionSlice(
+                scope = memberScope,
+                slice = SharedMembersMemberSuggestionSlice(status = SharedMembersLoadStatus.Loaded)
+            )
             return
         }
         val result =
@@ -284,45 +416,52 @@ class SharedMembersStore(
                     "shared_members_suggestions_channel_members_result serverId=$serverId " +
                         "channelId=$mentionChannelId result=exception message=${throwable.message.orEmpty()}"
                 )
-                if (_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) {
-                    _state.value =
-                        _state.value.copy(
-                            memberStatus = SharedMembersLoadStatus.Error,
-                            memberErrorCode = "channel_members_exception"
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = "channel_members_exception"
                         )
-                }
+                )
                 return
             }
-        if (!_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) return
+        if (_state.value.serverId != serverId) return
         when (result) {
             is DataResult.Content -> {
-                _state.value =
-                    _state.value.copy(
-                        memberSuggestions = result.data.members.toSharedMembersMemberSuggestions(),
-                        memberStatus = SharedMembersLoadStatus.Loaded,
-                        memberErrorCode = null
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            suggestions = result.data.members.toSharedMembersMemberSuggestions(),
+                            status = SharedMembersLoadStatus.Loaded
+                        )
                     )
             }
             is DataResult.Empty -> {
-                _state.value =
-                    _state.value.copy(
-                        memberSuggestions = emptyList(),
-                        memberStatus = SharedMembersLoadStatus.Loaded,
-                        memberErrorCode = null
-                    )
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice = SharedMembersMemberSuggestionSlice(status = SharedMembersLoadStatus.Loaded)
+                )
             }
             is DataResult.Error -> {
-                _state.value =
-                    _state.value.copy(
-                        memberStatus = SharedMembersLoadStatus.Error,
-                        memberErrorCode = result.error.code
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = result.error.code
+                        )
                     )
             }
             is DataResult.NoPermission -> {
-                _state.value =
-                    _state.value.copy(
-                        memberStatus = SharedMembersLoadStatus.Error,
-                        memberErrorCode = result.blocker.code
+                setMemberSuggestionSlice(
+                    scope = memberScope,
+                    slice =
+                        SharedMembersMemberSuggestionSlice(
+                            status = SharedMembersLoadStatus.Error,
+                            errorCode = result.blocker.code
+                        )
                     )
             }
         }
@@ -330,8 +469,7 @@ class SharedMembersStore(
 
     private suspend fun loadChannelMembersBestEffort(
         serverId: String,
-        mentionChannelId: String,
-        memberScopedMentions: Boolean
+        mentionChannelId: String
     ): List<MemberProfile> {
         val result =
             runCatchingPreservingCancellation {
@@ -343,7 +481,7 @@ class SharedMembersStore(
                 )
                 return emptyList()
             }
-        if (!_state.value.matchesScope(serverId, mentionChannelId, memberScopedMentions)) return emptyList()
+        if (_state.value.serverId != serverId) return emptyList()
         return when (result) {
             is DataResult.Content -> result.data.members
             is DataResult.Empty -> emptyList()
@@ -415,14 +553,17 @@ class SharedMembersStore(
     }
 }
 
-private fun SharedMembersState.matchesScope(
-    serverId: String,
-    mentionChannelId: String?,
-    memberScopedMentions: Boolean
-): Boolean =
-    this.serverId == serverId &&
-        this.mentionChannelId == mentionChannelId &&
-        this.memberScopedMentions == memberScopedMentions
+private fun SharedMembersState.activeMemberScope(): SharedMembersMentionScope? {
+    val normalizedServerId = serverId.normalizedId() ?: return null
+    return SharedMembersMentionScope(
+        serverId = normalizedServerId,
+        mentionChannelId = mentionChannelId.normalizedId(),
+        memberScopedMentions = memberScopedMentions
+    )
+}
+
+private fun String?.normalizedId(): String? =
+    this?.trim()?.takeIf { it.isNotBlank() }
 
 private fun List<MemberProfile>.toSharedMembersMemberSuggestions(): List<SharedMembersMemberSuggestion> {
     val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()

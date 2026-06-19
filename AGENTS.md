@@ -395,6 +395,12 @@ Core constraints every agent must follow:
 - **Store layer**: owns the reducer, concurrency/debounce/stale-token, in-flight
   idempotency guard, no-op equality gate, and typed result/error mapping.
   Same snapshot must not re-emit; local patches must not cause full-page refresh.
+- **Selector boundary**: UI must not subscribe to an entire shared store state when
+  it only needs one route/channel/thread/member slice. Expose stable selectors or
+  slice flows keyed by the exact scope the UI consumes, and put `distinctUntilChanged`
+  / equality no-op gates on selector output. Realtime/cache updates may update the
+  store globally, but unrelated slices must not cause the current page/composer to
+  recompute or receive another candidate/status emission.
 - **Repository layer**: exposes typed domain results (`DataResult<T>` / `DomainError`).
   Never leaks raw HTTP response, token, headers, or platform-specific payloads upward.
 - **Success path**: patch only the affected entity slice. Do not replace the whole

@@ -4,6 +4,8 @@ import ai.slock.compose.model.*
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -123,6 +125,57 @@ class SharedMembersStoreTest {
         assertEquals(SharedMembersLoadStatus.Loaded, store.state.value.memberStatus)
         assertEquals(listOf(SharedMembersMemberSuggestion("Artin", "artin")), store.state.value.memberSuggestions)
         assertEquals(listOf(SharedMembersChannelSuggestion("general", "team")), store.state.value.channelSuggestions)
+    }
+
+    @Test
+    fun memberSuggestionSelectorIgnoresUnrelatedScopeChanges() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        memberRepository.channelMembersByChannel["thread-channel-1"] =
+            listOf(MemberProfile(MemberId("remote-1"), "Remote User", "@remote", MemberKind.Human))
+        memberRepository.channelMembersByChannel["dm-1"] =
+            listOf(MemberProfile(MemberId("u2"), "Artin", "@artin", MemberKind.Human))
+        val channelRepository = FakeChannelRepository()
+        val store = store(memberRepository, channelRepository)
+        val selectedThreadSlices = mutableListOf<SharedMembersMemberSuggestionSlice>()
+        val selectorJob =
+            launch(Dispatchers.Unconfined) {
+                store.memberSuggestionSliceFlow("thread-channel-1").collect { slice ->
+                    selectedThreadSlices += slice
+                }
+            }
+
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "thread-channel-1"
+        )
+        val sizeAfterThreadLoad = selectedThreadSlices.size
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion("Cindy", "cindy"),
+                SharedMembersMemberSuggestion("Remote User", "remote")
+            ),
+            selectedThreadSlices.last().suggestions
+        )
+
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "dm-1",
+            memberScopedMentions = true
+        )
+
+        assertEquals(sizeAfterThreadLoad, selectedThreadSlices.size)
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion("Cindy", "cindy"),
+                SharedMembersMemberSuggestion("Remote User", "remote")
+            ),
+            store.state.value.selectMemberSuggestionSlice("thread-channel-1").suggestions
+        )
+        assertEquals(
+            listOf(SharedMembersMemberSuggestion("Artin", "artin")),
+            store.state.value.selectMemberSuggestionSlice("dm-1", memberScopedMentions = true).suggestions
+        )
+        selectorJob.cancel()
     }
 
     @Test
