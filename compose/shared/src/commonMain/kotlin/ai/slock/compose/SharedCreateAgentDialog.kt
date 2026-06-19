@@ -37,9 +37,11 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -52,6 +54,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 
 private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog_visual"
+private val CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp
 
 @Page(CREATE_AGENT_DIALOG_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeCreateAgentDialogVisualPage : ai.slock.compose.base.BasePager() {
@@ -378,132 +381,155 @@ internal fun SharedCreateAgentDialog(
         onDismiss = onDismiss
     ) {
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
-                Text(
-                    text = hint,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
-                            .padding(SlockSpacing.Xs)
-                )
-            }
-            if (atLimit) {
-                PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents)
-            }
-            if (showMachinePicker) {
-                MachinePicker(
-                    machines = machines,
-                    machinesLoading = machinesLoading,
-                    selectedMachineId = selectedMachineId,
-                    requiredComputer = requiredComputer,
-                    suggestedComputer = suggestedComputer,
-                    enabled = !submitting,
-                    onSelect = { id ->
-                        if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
-                            selectedMachineId = id
-                            resetRuntimeForMachine(id)
-                        }
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
+                    item {
+                        Text(
+                            text = hint,
+                            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray,
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+                                    .padding(SlockSpacing.Xs)
+                        )
                     }
-                )
-            }
-            SlockBrutalTextField(
-                label = "Name",
-                required = true,
-                value = name,
-                onValueChange = { name = it },
-                placeholder = "e.g. Noel",
-                enabled = !submitting,
-                autoFocus = true
-            )
-            if (inlineNameError != null) {
-                Text(
-                    text = inlineNameError,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
-                )
-            }
-            SlockBrutalTextField(
-                label = "Description",
-                optional = true,
-                value = description,
-                onValueChange = {
-                    if (it.length <= DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH) {
-                        description = it
+                }
+                if (atLimit) {
+                    item { PlanLimitBanner(currentAgentCount = currentAgentCount, maxAgents = maxAgents) }
+                }
+                if (showMachinePicker) {
+                    item {
+                        MachinePicker(
+                            machines = machines,
+                            machinesLoading = machinesLoading,
+                            selectedMachineId = selectedMachineId,
+                            requiredComputer = requiredComputer,
+                            suggestedComputer = suggestedComputer,
+                            enabled = !submitting,
+                            onSelect = { id ->
+                                if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
+                                    selectedMachineId = id
+                                    resetRuntimeForMachine(id)
+                                }
+                            }
+                        )
                     }
-                },
-                placeholder = "Leave blank for a general-purpose agent, or describe a role...",
-                enabled = !submitting,
-                maxLines = 3,
-                fieldMinHeight = 82.dp
-            )
-            if (descriptionTooLong) {
-                Text(
-                    text = "Description must be at most $DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH characters.",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
-                )
-            } else {
-                Text(
-                    text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.align(Alignment.End)
-                )
-            }
-            if (!external) {
-                AdvancedRuntimeSection(
-                    runtime = runtime,
-                    onRuntimeChange = { newRuntime ->
-                        runtime = newRuntime
-                        if (!customModelMode) {
-                            model = getDefaultModel(newRuntime)
-                        }
-                    },
-                    model = model,
-                    onModelChange = { selectedModel ->
-                        model = selectedModel
-                        customModelMode = false
-                    },
-                    customModelMode = customModelMode,
-                    onCustomModelModeChange = { enabled ->
-                        customModelMode = enabled
-                    },
-                    customModelName = customModelName,
-                    onCustomModelNameChange = { customModelName = it },
-                    runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
-                    enabled = !submitting,
-                    providerMode = providerMode,
-                    onProviderModeChange = { providerMode = it },
-                    providerApiUrl = providerApiUrl,
-                    onProviderApiUrlChange = { providerApiUrl = it },
-                    providerApiKey = providerApiKey,
-                    onProviderApiKeyChange = { providerApiKey = it },
-                    fastMode = fastMode,
-                    onFastModeChange = { fastMode = it },
-                    reasoningEffort = reasoningEffort,
-                    onReasoningEffortChange = { reasoningEffort = it },
-                    envVarEntries = envVarEntries,
-                    onEnvVarEntriesChange = { envVarEntries = it },
-                    command = command,
-                    onCommandChange = { command = it },
-                    advancedOpen = advancedOpen,
-                    onAdvancedOpenChange = { advancedOpen = it }
-                )
-            }
-            errorMessage?.takeIf { it.isNotBlank() }?.let { error ->
-                Text(
-                    text = error,
-                    style =
-                        SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
+                }
+                item {
+                    SlockBrutalTextField(
+                        label = "Name",
+                        required = true,
+                        value = name,
+                        onValueChange = { name = it },
+                        placeholder = "e.g. Noel",
+                        enabled = !submitting,
+                        autoFocus = true
+                    )
+                }
+                if (inlineNameError != null) {
+                    item {
+                        Text(
+                            text = inlineNameError,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
                             color = SlockColor.AccentRed
-                        ),
-                    color = SlockColor.AccentRed
-                )
+                        )
+                    }
+                }
+                item {
+                    SlockBrutalTextField(
+                        label = "Description",
+                        optional = true,
+                        value = description,
+                        onValueChange = {
+                            if (it.length <= DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH) {
+                                description = it
+                            }
+                        },
+                        placeholder = "Leave blank for a general-purpose agent, or describe a role...",
+                        enabled = !submitting,
+                        maxLines = 3,
+                        fieldMinHeight = 82.dp
+                    )
+                }
+                item {
+                    if (descriptionTooLong) {
+                        Text(
+                            text = "Description must be at most $DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH characters.",
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                            color = SlockColor.AccentRed
+                        )
+                    } else {
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
+                                style = SlockType.Caption,
+                                color = SlockColor.TextMutedGray
+                            )
+                        }
+                    }
+                }
+                if (!external) {
+                    item {
+                        AdvancedRuntimeSection(
+                            runtime = runtime,
+                            onRuntimeChange = { newRuntime ->
+                                runtime = newRuntime
+                                if (!customModelMode) {
+                                    model = getDefaultModel(newRuntime)
+                                }
+                            },
+                            model = model,
+                            onModelChange = { selectedModel ->
+                                model = selectedModel
+                                customModelMode = false
+                            },
+                            customModelMode = customModelMode,
+                            onCustomModelModeChange = { enabled ->
+                                customModelMode = enabled
+                            },
+                            customModelName = customModelName,
+                            onCustomModelNameChange = { customModelName = it },
+                            runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
+                            enabled = !submitting,
+                            providerMode = providerMode,
+                            onProviderModeChange = { providerMode = it },
+                            providerApiUrl = providerApiUrl,
+                            onProviderApiUrlChange = { providerApiUrl = it },
+                            providerApiKey = providerApiKey,
+                            onProviderApiKeyChange = { providerApiKey = it },
+                            fastMode = fastMode,
+                            onFastModeChange = { fastMode = it },
+                            reasoningEffort = reasoningEffort,
+                            onReasoningEffortChange = { reasoningEffort = it },
+                            envVarEntries = envVarEntries,
+                            onEnvVarEntriesChange = { envVarEntries = it },
+                            command = command,
+                            onCommandChange = { command = it },
+                            advancedOpen = advancedOpen,
+                            onAdvancedOpenChange = { advancedOpen = it }
+                        )
+                    }
+                }
+                errorMessage?.takeIf { it.isNotBlank() }?.let { error ->
+                    item {
+                        Text(
+                            text = error,
+                            style =
+                                SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                                    fontSize = 12.sp,
+                                    lineHeight = 16.sp,
+                                    color = SlockColor.AccentRed
+                                ),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
