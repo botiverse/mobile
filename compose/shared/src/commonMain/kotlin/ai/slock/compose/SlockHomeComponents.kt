@@ -18,6 +18,9 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.hoverable
+import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
+import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
@@ -1586,24 +1589,37 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 
 @Composable
 private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+    // #211 review (Cindy / @Android-Developer-2 01:27): hover is
+    // detected locally so the visual layer can react without the shell
+    // having to track per-row hover. Selected still wins: a currently
+    // selected row keeps its pink highlight on hover.
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
     val pressed = interactionState == ChannelRowInteractionState.Pressed
     // #211 review (Cindy): when the row is being pressed but not yet
     // selected, show a light overlay so the user sees the gesture was
     // accepted. Pressed wins over the default / hovered / focused
     // background but never overwrites a real Selected highlight.
-    val rowBackground = when (interactionState) {
+    val effectiveInteractionState = when {
+        selected -> ChannelRowInteractionState.Selected
+        pressed -> ChannelRowInteractionState.Pressed
+        isHovered -> ChannelRowInteractionState.Hovered
+        else -> interactionState
+    }
+    val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Pressed -> Color.Transparent
     }
-    val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed -> Color.Transparent
-        ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+    val borderColor = when (effectiveInteractionState) {
+        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
+    val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
@@ -1653,8 +1669,9 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
+                .then(hoverableModifier)
     ) {
-        if (selected) {
+        if (selected || pressed) {
             Box(
                 modifier =
                     Modifier
@@ -1719,12 +1736,20 @@ private fun DimmedUnreadCount(text: String) {
 
 @Composable
 private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
     val pressed = interactionState == ChannelRowInteractionState.Pressed
     val unread = badge != null
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
-    val rowBackground = when (interactionState) {
+    val effectiveInteractionState = when {
+        selected -> ChannelRowInteractionState.Selected
+        pressed -> ChannelRowInteractionState.Pressed
+        isHovered -> ChannelRowInteractionState.Hovered
+        else -> interactionState
+    }
+    val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
@@ -1732,10 +1757,11 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Pressed -> Color.Transparent
     }
     val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed -> Color.Transparent
-        ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
+    val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
@@ -1785,8 +1811,9 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
+                .then(hoverableModifier)
     ) {
-        if (selected) {
+        if (selected || pressed) {
             Box(
                 modifier =
                     Modifier

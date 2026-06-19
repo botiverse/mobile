@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -44,6 +45,26 @@ class SharedTasksPageTest {
                 description = "DM and agent task boards are intentionally excluded from this server-wide view."
             ),
             sharedTasksEmptyStateCopy(hasAnyFilter = false, isChannelMode = false)
+        )
+    }
+
+    @Test
+    fun tasksToolbarKeepsThreeFiltersTogetherWhenTheyFit() {
+        assertEquals(
+            listOf(
+                listOf(
+                    TasksToolbarControl.ChannelFilter,
+                    TasksToolbarControl.CreatorFilter,
+                    TasksToolbarControl.AssigneeFilter
+                ),
+                listOf(TasksToolbarControl.ViewSwitch)
+            ),
+            tasksToolbarRows(
+                maxWidth = 332.dp,
+                showChannelFilter = true,
+                showClearAll = false,
+                showCreateButton = false
+            )
         )
     }
 }
