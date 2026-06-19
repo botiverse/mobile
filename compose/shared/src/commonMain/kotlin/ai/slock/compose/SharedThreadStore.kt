@@ -1266,6 +1266,12 @@ internal data class SharedThreadState(
  */
 internal enum class LoadMembersStatus { Idle, InFlight, Loaded, Error }
 
+private data class ThreadReadAllMarker(
+    val channelId: String,
+    val latestMessageId: String,
+    val latestSeq: Long?
+)
+
 internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
@@ -1322,6 +1328,9 @@ internal class SharedThreadStore(
     private var loadJob: Job? = null
     private var realtimePersistenceJob: Job? = null
     private val pendingRealtimePersistenceEvents = mutableListOf<RealtimeEvent>()
+    private var readAllInFlightMarker: ThreadReadAllMarker? = null
+    private var pendingReadAllMarker: ThreadReadAllMarker? = null
+    private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
 
     fun dispatch(intent: SharedThreadIntent) {
         when (intent) {
@@ -1405,6 +1414,9 @@ internal class SharedThreadStore(
         realtimePersistenceJob?.cancel()
         realtimePersistenceJob = null
         pendingRealtimePersistenceEvents.clear()
+        readAllInFlightMarker = null
+        pendingReadAllMarker = null
+        lastCompletedReadAllMarker = null
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
@@ -1672,14 +1684,51 @@ internal class SharedThreadStore(
     }
 
     private suspend fun markVisibleReadAll() {
-        val channelId = _state.value.payload.cacheThreadId() ?: return
-        val startedAt = TimeSource.Monotonic.markNow()
-        diagnosticsLogger?.invoke("thread_read_all_start channelId=$channelId")
-        val result = dataSource.markChannelReadAll(channelId)
-        diagnosticsLogger?.invoke(
-            "thread_read_all_result channelId=$channelId result=${result.threadDiagnosticsResult()} " +
-                "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-        )
+        val marker = _state.value.payload.readAllMarker() ?: return
+        if (marker == lastCompletedReadAllMarker) {
+            diagnosticsLogger?.invoke(
+                "thread_read_all_skip channelId=${marker.channelId} reason=already_marked latest=${marker.latestMessageId}"
+            )
+            return
+        }
+        if (readAllInFlightMarker != null) {
+            pendingReadAllMarker = marker
+            diagnosticsLogger?.invoke(
+                "thread_read_all_skip channelId=${marker.channelId} reason=in_flight latest=${marker.latestMessageId}"
+            )
+            return
+        }
+
+        var nextMarker: ThreadReadAllMarker? = marker
+        while (nextMarker != null) {
+            val current = nextMarker
+            pendingReadAllMarker = null
+            readAllInFlightMarker = current
+            val startedAt = TimeSource.Monotonic.markNow()
+            diagnosticsLogger?.invoke(
+                "thread_read_all_start channelId=${current.channelId} latest=${current.latestMessageId}"
+            )
+            try {
+                val result = dataSource.markChannelReadAll(current.channelId)
+                if (result is DataResult.Content) {
+                    lastCompletedReadAllMarker = current
+                }
+                diagnosticsLogger?.invoke(
+                    "thread_read_all_result channelId=${current.channelId} result=${result.threadDiagnosticsResult()} " +
+                        "latest=${current.latestMessageId} durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                )
+            } finally {
+                readAllInFlightMarker = null
+            }
+            val pending = pendingReadAllMarker
+            nextMarker =
+                if (pending != null && pending != current && pending != lastCompletedReadAllMarker) {
+                    pending
+                } else {
+                    pendingReadAllMarker = null
+                    null
+                }
+        }
     }
 
     private suspend fun loadOlder() {
@@ -2097,6 +2146,16 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
+
+private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {
+    val channelId = cacheThreadId() ?: return null
+    val latest = messages.lastOrNull() ?: return null
+    return ThreadReadAllMarker(
+        channelId = channelId,
+        latestMessageId = latest.id,
+        latestSeq = latest.seq
+    )
+}
 
 private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
     event: RealtimeEvent,

@@ -3,6 +3,7 @@
 Date: 2026-06-19
 Task: #185 follow-up for closed #146
 Audited commit: `e4b01c3e`
+Implemented follow-up: task #185 P0 fix on 2026-06-20.
 
 ## Scope
 
@@ -20,9 +21,24 @@ Current scan counts:
 The audit intentionally prioritizes hot UI paths over exhaustive low-risk
 logging effects.
 
-## Current Findings
+## Original Findings From 2026-06-19 Audit
 
-### P0: Thread bottom-anchor feedback loop still exists
+## Implemented P0 Follow-Up
+
+The 2026-06-20 #185 implementation moved both P0 findings below from audit
+items into code:
+
+- Thread bottom-anchor scroll observation now equality-gates hot `snapshotFlow`
+  emissions with `distinctUntilChanged`, guards boolean writes, and removes the
+  self-written `allowBottomAutoAnchor` flag from the anchor effect key.
+- Thread read-all now uses a latest visible message marker and Store-owned
+  in-flight / pending / completed guards so repeated visible-read intents for
+  the same marker no-op, while realtime bursts coalesce to the latest marker.
+- `AGENTS.md` now records the first-principles rule: hot Compose effects use
+  stable signatures and equality gates; hot UI-to-IO intents are marker-based
+  and single-flight in the Store.
+
+### Original P0: Thread bottom-anchor feedback loop
 
 Files:
 
@@ -84,7 +100,7 @@ Acceptance proof:
 - Dragging away from bottom should set auto-anchor false once.
 - Returning to bottom should set auto-anchor true once.
 
-### P0: `MarkVisibleReadAll` still dispatches per message-count change
+### Original P0: `MarkVisibleReadAll` dispatched per message-count change
 
 Files:
 

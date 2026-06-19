@@ -395,6 +395,16 @@ Core constraints every agent must follow:
 - **Store layer**: owns the reducer, concurrency/debounce/stale-token, in-flight
   idempotency guard, no-op equality gate, and typed result/error mapping.
   Same snapshot must not re-emit; local patches must not cause full-page refresh.
+- **Effect boundary**: hot `LaunchedEffect` / `snapshotFlow` work must be keyed by
+  stable render-axis signatures, not whole payload/list objects or mutable flags
+  that the effect itself writes. Every `snapshotFlow` used for scrolling, paging,
+  visibility, or read markers must apply `distinctUntilChanged` (or an equivalent
+  equality gate), and every boolean/state assignment inside the collector must
+  be guarded by `if (old != new)`.
+- **IO intent idempotency**: any intent that reaches Repository/DataSource/host IO
+  from a hot UI path must be single-flight and marker-based in the Store. Repeated
+  visibility/read/paging/refresh intents for the same route/entity marker must
+  no-op or coalesce to the latest marker instead of issuing parallel requests.
 - **Selector boundary**: UI must not subscribe to an entire shared store state when
   it only needs one route/channel/thread/member slice. Expose stable selectors or
   slice flows keyed by the exact scope the UI consumes, and put `distinctUntilChanged`

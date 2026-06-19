@@ -141,6 +141,7 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -1752,8 +1753,18 @@ internal fun SharedThreadRouteContent(
                 "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
-    LaunchedEffect(renderedThread.sourceThreadId, renderedThread.status, renderedThread.messages.size) {
-        if (renderedThread.status == "content" && renderedThread.messages.isNotEmpty()) {
+    val visibleReadAllMarkerKey =
+        remember(
+            renderedThread.sourceThreadId,
+            renderedThread.status,
+            renderedThread.messages.size,
+            renderedThread.messages.lastOrNull()?.id,
+            renderedThread.messages.lastOrNull()?.seq
+        ) {
+            renderedThread.visibleReadAllMarkerKey()
+        }
+    LaunchedEffect(visibleReadAllMarkerKey) {
+        if (visibleReadAllMarkerKey != null) {
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
         }
     }
@@ -3680,13 +3691,19 @@ private fun ThreadMessagesList(
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
-        }.collect { (isScrollInProgress, isAtBottom) ->
-            if (isScrollInProgress && !isAtBottom) {
-                allowBottomAutoAnchor = false
-            } else if (isAtBottom) {
-                allowBottomAutoAnchor = true
-            }
         }
+            .distinctUntilChanged()
+            .collect { (isScrollInProgress, isAtBottom) ->
+                val nextAllow =
+                    when {
+                        isScrollInProgress && !isAtBottom -> false
+                        isAtBottom -> true
+                        else -> allowBottomAutoAnchor
+                    }
+                if (allowBottomAutoAnchor != nextAllow) {
+                    allowBottomAutoAnchor = nextAllow
+                }
+            }
     }
     LaunchedEffect(
         payload.instanceId,
@@ -3703,9 +3720,12 @@ private fun ThreadMessagesList(
         }
         val boundaryIndex = payload.threadHistoryBoundaryListItemIndex()
         snapshotFlow { listState.isThreadOlderAutoLoadThreshold(boundaryIndex) }
+            .distinctUntilChanged()
             .collect { shouldLoad ->
                 if (shouldLoad) {
-                    allowBottomAutoAnchor = false
+                    if (allowBottomAutoAnchor) {
+                        allowBottomAutoAnchor = false
+                    }
                     onThreadEvent("loadOlder", null, null, null)
                 }
             }
@@ -3733,7 +3753,7 @@ private fun ThreadMessagesList(
         }
         previousOlderMessagesStatus = payload.olderMessagesStatus
     }
-    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
+    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
         if (latestItemIndex < 0) return@LaunchedEffect
         if (!initialBottomAnchorReady) {
             repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
@@ -3759,7 +3779,9 @@ private fun ThreadMessagesList(
         }
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
         if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-            allowBottomAutoAnchor = false
+            if (allowBottomAutoAnchor) {
+                allowBottomAutoAnchor = false
+            }
             return@LaunchedEffect
         }
         if (!listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
@@ -4198,6 +4220,19 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
         append(latest.replyCount)
         append(':')
         append(latest.unreadReplyCount)
+    }
+}
+
+internal fun KuiklyThreadScreenPayload.visibleReadAllMarkerKey(): String? {
+    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
+    if (status != "content") return null
+    val latest = messages.lastOrNull() ?: return null
+    return buildString {
+        append(threadId)
+        append(':')
+        append(latest.seq?.toString() ?: "no-seq")
+        append(':')
+        append(latest.id)
     }
 }
 

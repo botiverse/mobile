@@ -147,6 +147,31 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun visibleReadAllMarkerKey_tracksLatestMessageOnly() {
+        val a =
+            payload(
+                messages = listOf(message("m1")),
+                members = listOf(KuiklyThreadMemberItem(id = "u1", displayName = "User 1"))
+            )
+                .copy(status = "content", sourceThreadId = "channel-1")
+        val b =
+            payload(
+                messages = listOf(message("m1")),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(id = "u1", displayName = "User 1"),
+                        KuiklyThreadMemberItem(id = "u2", displayName = "User 2")
+                    )
+            ).copy(status = "content", sourceThreadId = "channel-1")
+        val c =
+            payload(messages = listOf(message("m1"), message("m2")))
+                .copy(status = "content", sourceThreadId = "channel-1")
+
+        assertEquals(a.visibleReadAllMarkerKey(), b.visibleReadAllMarkerKey())
+        assertNotEquals(a.visibleReadAllMarkerKey(), c.visibleReadAllMarkerKey())
+    }
+
+    @Test
     fun actionCardSignature_equivalentMetadataKeepsSignatureEqual() {
         val metadata =
             mapOf(

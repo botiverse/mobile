@@ -1378,8 +1378,68 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         store.accept(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(SharedThreadIntent.MarkVisibleReadAll)
 
         assertEquals(listOf("channel-1"), api.readAllChannels)
+        scope.cancel()
+    }
+
+    @Test
+    fun visibleReadAllCoalescesInFlightBurstToLatestMarker() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(failChannelMessages = true).also {
+                it.failReadAll = false
+                it.readAllDelayMillis = 50L
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = 11L,
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "realtime body 2"
+                    )
+                )
+            )
+        )
+        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m3"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = 12L,
+                        author = member("u3", "Cindy"),
+                        timestampLabel = "2026-05-19T16:02:00Z",
+                        body = "realtime body 3"
+                    )
+                )
+            )
+        )
+        store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
+
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 120L)
+
+        assertEquals(listOf("channel-1", "channel-1"), api.readAllChannels)
+        assertEquals(1, api.maxConcurrentReadAllCalls)
         scope.cancel()
     }
 
@@ -1824,7 +1884,10 @@ class SharedThreadStoreTest {
     ) : SharedThreadNetworkApi {
         var channelMessageCalls: Int = 0
         var failReadAll: Boolean = false
+        var readAllDelayMillis: Long = 0L
         val readAllChannels: MutableList<String> = mutableListOf()
+        var activeReadAllCalls: Int = 0
+        var maxConcurrentReadAllCalls: Int = 0
         val beforeSeqs: MutableList<Long> = mutableListOf()
         val syncSinceSeqs: MutableList<Long> = mutableListOf()
         val channelMessageLimits: MutableList<Int> = mutableListOf()
@@ -1871,11 +1934,20 @@ class SharedThreadStoreTest {
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
 
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse {
+            activeReadAllCalls += 1
+            maxConcurrentReadAllCalls = maxOf(maxConcurrentReadAllCalls, activeReadAllCalls)
             readAllChannels += channelId
-            return if (failReadAll) {
-                HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = "read_failed")
-            } else {
-                HomeNetworkResponse(code = 200, bodyText = "{}")
+            try {
+                if (readAllDelayMillis > 0L) {
+                    delay(readAllDelayMillis)
+                }
+                return if (failReadAll) {
+                    HomeNetworkResponse(code = 500, bodyText = null, errorBodyText = "read_failed")
+                } else {
+                    HomeNetworkResponse(code = 200, bodyText = "{}")
+                }
+            } finally {
+                activeReadAllCalls -= 1
             }
         }
 
