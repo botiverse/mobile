@@ -286,6 +286,7 @@ internal data class KuiklyThreadScreenPayload(
     val originMessage: KuiklyThreadMessageItem? = null,
     val originPreview: String? = null,
     val originParentMessageId: String? = null,
+    val focusedMessageId: String? = null,
     val originStatus: String = "none",
     val originErrorCode: String? = null,
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
@@ -333,6 +334,7 @@ internal data class WireThreadLaunchPayload(
     val parentMessageId: String? = null,
     val memberScopedMentions: Boolean = false,
     val originParentMessageId: String? = null,
+    val focusedMessageId: String? = null,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean? = null,
@@ -402,7 +404,13 @@ internal data class WireThreadLaunchPayload(
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
             memberScopedMentions = memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
-            originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
+            originParentMessageId =
+                if (isReplyThread) {
+                    originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
+                } else {
+                    null
+                },
+            focusedMessageId = focusedMessageId.nonBlank(),
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
             showModeTabs = showModeTabs ?: !isReplyThread,
@@ -461,7 +469,9 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
             } else {
                 existingThreadChannelHeaderSubtitle(subtitle)
             },
-        showOpenInChannelAction = showOpenInChannelAction || originParentMessageId?.isNotBlank() == true,
+        showOpenInChannelAction =
+            showOpenInChannelAction ||
+                (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && originParentMessageId?.isNotBlank() == true),
         showSettingsAction = showSettingsAction && showModeTabs,
         showMembersAction = showMembersAction && showModeTabs
     )

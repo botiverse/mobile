@@ -1458,7 +1458,10 @@ internal class SharedThreadStore(
         dataSource.cachePayload(initialPayload)
         val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached = threadId?.let(dataSource::cachedPayload)?.withRouteContext(initialPayload)
-        val current = _state.value.payload.takeIf { it.sourceThreadId == threadId && it.hasRenderableThreadContent() }
+        val current =
+            _state.value.payload.takeIf {
+                it.matchesRouteIdentity(initialPayload) && it.hasRenderableThreadContent()
+            }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
                 "status=${initialPayload.status} messages=${initialPayload.messages.size} " +
@@ -1487,10 +1490,7 @@ internal class SharedThreadStore(
         if (threadId == null || _state.value.payload.sourceThreadId == threadId) {
             reduceState(_state.value.copy(highlightedMentions = session.threadSelfMentionNames()))
         }
-        if (threadId == null) {
-            return
-        }
-        if (cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
+        if (threadId != null && cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
             val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
             val persistentCached = dataSource.readCachedPayload(initialPayload)
             diagnosticsLogger?.invoke(
@@ -1498,7 +1498,7 @@ internal class SharedThreadStore(
                     "messages=${persistentCached?.messages?.size ?: 0} " +
                     "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
             )
-            if (persistentCached != null && _state.value.payload.sourceThreadId == threadId) {
+            if (persistentCached != null && _state.value.payload.matchesRouteIdentity(initialPayload)) {
                 reducePayloadPatch { currentPayload ->
                     val patch = persistentCached.withRouteContext(initialPayload)
                     diagnosticsLogger?.invoke(
@@ -1510,7 +1510,7 @@ internal class SharedThreadStore(
             }
         } else {
             diagnosticsLogger?.invoke(
-                "thread_persistent_cache_result threadId=$threadId hit=false messages=0 durationMs=0 reason=skipped_memory"
+                "thread_persistent_cache_result threadId=${threadId.orEmpty()} hit=false messages=0 durationMs=0 reason=skipped_memory"
             )
         }
         refresh(initialPayload)
@@ -2015,8 +2015,6 @@ private fun KuiklyThreadScreenPayload.originDiagnostics(): String =
 private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     if (hasResolvedReplyThreadStreamFrom(base)) {
         copy(
-            title = base.title.ifBlank { title },
-            subtitle = base.subtitle ?: subtitle,
             navigationLabel = base.navigationLabel,
             selectedTab = base.selectedTab,
             showModeTabs = base.showModeTabs,
@@ -2253,6 +2251,22 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
+
+private fun KuiklyThreadScreenPayload.matchesRouteIdentity(other: KuiklyThreadScreenPayload): Boolean {
+    val source = sourceThreadId?.takeIf { it.isNotBlank() }
+    val otherSource = other.sourceThreadId?.takeIf { it.isNotBlank() }
+    if (source != null || otherSource != null) {
+        return source != null && source == otherSource
+    }
+    val parent = parentChannelId?.takeIf { it.isNotBlank() } to parentMessageId?.takeIf { it.isNotBlank() }
+    val otherParent = other.parentChannelId?.takeIf { it.isNotBlank() } to other.parentMessageId?.takeIf { it.isNotBlank() }
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || other.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        return parent.first != null &&
+            parent.second != null &&
+            parent == otherParent
+    }
+    return instanceId.isNotBlank() && instanceId == other.instanceId
+}
 
 private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {
     val channelId = cacheThreadId() ?: return null
@@ -2836,11 +2850,19 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     base: KuiklyThreadScreenPayload,
     currentUserId: String?
 ): KuiklyThreadScreenPayload {
+    val routeIsReplyThread =
+        base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+            conversation.kind == ConversationKind.Thread ||
+            conversation.thread != null
     val parentId =
-        parentMessage?.id?.value
-            ?: base.parentMessageId?.takeIf { it.isNotBlank() }
-            ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
-            ?: conversation.thread?.parentMessageId?.value
+        if (routeIsReplyThread) {
+            parentMessage?.id?.value
+                ?: base.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentMessageId?.value
+        } else {
+            null
+        }
     val resolvedParentMessage =
         parentMessage
             ?: parentId?.let { id -> messages.firstOrNull { message -> message.id.value == id } }
@@ -2856,7 +2878,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val surfaceKind =
         when {
             conversation.kind == ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
-            resolvedParentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank() ->
+            routeIsReplyThread &&
+                (resolvedParentMessage != null || !base.parentMessageId.isNullOrBlank() || !base.originParentMessageId.isNullOrBlank()) ->
                 KuiklyThreadSurfaceKind.ReplyThread
             else -> base.surfaceKind
         }
@@ -2882,9 +2905,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val headerSubtitle =
         when (surfaceKind) {
             KuiklyThreadSurfaceKind.ReplyThread ->
-                base.subtitle
-                    ?: existingThreadChannelHeaderSubtitle(conversation.subtitle)
+                existingThreadChannelHeaderSubtitle(conversation.subtitle)
                     ?: threadChannelHeaderSubtitle(conversation.name)
+                    ?: base.subtitle
             else -> conversation.subtitle ?: base.subtitle
         }
     return base.copy(
@@ -2907,6 +2930,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         messages = cachedMessages,
         originMessage = resolvedOrigin,
         originParentMessageId = resolvedParentMessage?.id?.value ?: base.originParentMessageId ?: base.parentMessageId,
+        focusedMessageId = base.focusedMessageId,
         originStatus = resolvedOriginStatus,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,

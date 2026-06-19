@@ -38,6 +38,7 @@ import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
 import ai.slock.compose.data.InMemorySlockAuthSessionStore
+import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.OpenDirectMessageResult
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MemberSnapshot
@@ -68,6 +69,7 @@ import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -913,6 +915,84 @@ class SharedThreadStoreTest {
         assertEquals("thread-m1", payload.composer.streamChannelId)
         assertEquals("reply body", payload.messages.single().body)
         assertEquals("parent body", payload.originMessage?.body)
+    }
+
+    @Test
+    fun startWithUnresolvedActivityReplyThreadCreatesStreamBeforeLoadingReplies() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "reply body",
+                            id = "reply-1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    name = "general",
+                                    subtitle = "#general",
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    ),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-m1"),
+                            changed = false,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 2
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val request =
+            InboxItem(
+                key = "thread:m1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-compat"),
+                channelName = "thread stream hint",
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("m1"),
+                parentMessagePreview = "parent body",
+                latestActivityMessageId = MessageId("reply-1")
+            ).toHomeMessageOpenRequest()
+        val initialPayload = buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+
+        store.accept(SharedThreadIntent.Start(initialPayload))
+
+        val payload = store.state.value.payload
+        assertEquals(null, initialPayload.sourceThreadId)
+        assertEquals(null, initialPayload.streamChannelId)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("reply-1", payload.focusedMessageId)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        scope.cancel()
     }
 
     @Test

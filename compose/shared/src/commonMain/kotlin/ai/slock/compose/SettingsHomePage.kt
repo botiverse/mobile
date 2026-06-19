@@ -9994,7 +9994,7 @@ internal fun buildAppShellThreadPayload(
         if (isReplyThread) {
             parentMessageId
         } else {
-            anchorMessageId?.takeIf { it.isNotBlank() }
+            null
         }
     val canSend = conversation.joined && conversation.permissions.canSend
     val originMessage = conversation.toAppShellOriginMessage()
@@ -10029,6 +10029,7 @@ internal fun buildAppShellThreadPayload(
         parentMessageId = parentMessageId,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
+        focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",
         navigationLabel = "Back",
         showModeTabs = !isReplyThread,
@@ -10217,6 +10218,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         showOpenInChannelAction = true,
         originMessage = parentMessage,
         originParentMessageId = parentMessage?.id,
+        focusedMessageId = parentMessage?.id,
         originStatus = if (parentMessage != null) "loaded" else "idle",
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
