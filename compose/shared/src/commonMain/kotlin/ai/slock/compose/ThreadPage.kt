@@ -170,7 +170,7 @@ private object ThreadRowProbeNextSessionId {
  * flag is meant to be removed / feature-flagged off once the
  * composition-vs-payload contract is verified.
  */
-internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = true
+internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -3321,7 +3321,20 @@ private fun ThreadMessagesList(
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
         return
     }
-    val listState = rememberLazyListState()
+    // Bottom-anchor signature: only the fields the anchor logic actually
+    // reads. The previous remember keys listed `payload.messages` (the
+    // list reference) which invalidated the cache on any list
+    // replacement, even when the content was equivalent. Now the cache
+    // is keyed on the content fields the underlying functions read.
+    val latestItemIndex = remember(
+        payload.originStatus,
+        payload.messages.size
+    ) {
+        payload.latestMessageListItemIndex()
+    }
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = threadInitialFirstVisibleItemIndex(latestItemIndex)
+    )
     val coroutineScope = rememberCoroutineScope()
     // Phase 1 (#172) instrumentation: per-Thread session marker that
     // uniquely identifies this Thread entry. Combined with the row-level
@@ -3339,17 +3352,6 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(payload.instanceId) { mutableStateOf(false) }
     var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
-    // Bottom-anchor signature: only the fields the anchor logic actually
-    // reads. The previous remember keys listed `payload.messages` (the
-    // list reference) which invalidated the cache on any list
-    // replacement, even when the content was equivalent. Now the cache
-    // is keyed on the content fields the underlying functions read.
-    val latestItemIndex = remember(
-        payload.originStatus,
-        payload.messages.size
-    ) {
-        payload.latestMessageListItemIndex()
-    }
     val latestMessageLayoutKey = remember(
         payload.originStatus,
         payload.canLoadMoreBefore,
@@ -3442,8 +3444,12 @@ private fun ThreadMessagesList(
         if (latestItemIndex < 0) return@LaunchedEffect
         if (!initialBottomAnchorReady) {
             repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
-                listState.awaitThreadMessagesLayoutStability(latestItemIndex)
-                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                listState.awaitThreadMessagesLayoutFrame()
+                if (listState.isThreadItemVisible(latestItemIndex)) {
+                    listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                } else if (attempt >= ThreadBottomAnchorMinimumAttempts) {
+                    listState.scrollToItem(latestItemIndex)
+                }
                 delay(ThreadLayoutStabilityFrameDelayMs)
                 if (attempt >= ThreadBottomAnchorMinimumAttempts &&
                     listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -3555,6 +3561,11 @@ private fun ThreadMessagesList(
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
+                val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
+                val actionCardSignature =
+                    remember(message.id, message.metadata) { message.threadActionCardSignature() }
+                val actionCard =
+                    remember(actionCardSignature) { message.threadActionCard() }
                 // Phase 1 (#172) instrumentation: one-shot per-row log gated
                 // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
                 // not a hot path. Fires on first composition of this row
@@ -3564,8 +3575,8 @@ private fun ThreadMessagesList(
                         diagnosticsLogger(
                             "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
                                 "index=$index id=${message.id} messageType=${message.messageType} " +
-                                "bodyLength=${message.body.length} isSystem=${message.isSystemMessage()} " +
-                                "hasActionCard=${message.threadActionCard() != null} " +
+                                "bodyLength=${message.body.length} isSystem=${isSystemMessage} " +
+                                "hasActionCard=${actionCard != null} " +
                                 "attachmentCount=${message.attachments.size} " +
                                 "threadId=${payload.sourceThreadId.orEmpty()} " +
                                 "messagesTotal=${payload.messages.size}"
@@ -3573,9 +3584,9 @@ private fun ThreadMessagesList(
                     }
                 }
                 val linkedTask = linkedTasksByMessageId[message.id]
-                val displayMessage = message.withLinkedTask(linkedTask)
+                val displayMessage = remember(message, linkedTask) { message.withLinkedTask(linkedTask) }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                if (message.isSystemMessage() && message.threadActionCard() == null) {
+                if (isSystemMessage && actionCard == null) {
                     ThreadSystemMessageRow(
                         message = displayMessage,
                         highlightedMentions = highlightedMentions,
@@ -3597,6 +3608,7 @@ private fun ThreadMessagesList(
                 } else {
                     ThreadMessageCard(
                         message = displayMessage,
+                        actionCard = actionCard,
                         highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
@@ -3747,8 +3759,22 @@ internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0)
         .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
 
+internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
+    latestItemIndex.coerceAtLeast(0)
+
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
+
+internal data class ThreadMessageActionCardSignature(
+    val messageId: String,
+    val metadata: Map<String, String>
+)
+
+internal fun KuiklyThreadMessageItem.threadActionCardSignature(): ThreadMessageActionCardSignature =
+    ThreadMessageActionCardSignature(
+        messageId = id,
+        metadata = metadata
+    )
 
 internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
     actionCardFromMessageMetadata(metadata)
@@ -3845,6 +3871,25 @@ private fun LazyListState.isThreadOlderAutoLoadThreshold(boundaryIndex: Int): Bo
     if (layoutInfo.totalItemsCount <= boundaryIndex) return false
     val firstVisibleIndex = layoutInfo.visibleItemsInfo.firstOrNull()?.index ?: return false
     return firstVisibleIndex <= boundaryIndex + ThreadOlderAutoLoadVisibleItemThreshold
+}
+
+private suspend fun LazyListState.awaitThreadMessagesLayoutFrame(): Boolean {
+    repeat(ThreadLayoutStabilityMaxFrames) {
+        val layoutInfo = layoutInfo
+        if (layoutInfo.totalItemsCount > 0 &&
+            layoutInfo.visibleItemsInfo.isNotEmpty() &&
+            layoutInfo.viewportEndOffset > layoutInfo.viewportStartOffset
+        ) {
+            return true
+        }
+        delay(ThreadLayoutStabilityFrameDelayMs)
+    }
+    return false
+}
+
+private fun LazyListState.isThreadItemVisible(index: Int): Boolean {
+    if (index < 0) return false
+    return layoutInfo.visibleItemsInfo.any { it.index == index }
 }
 
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
@@ -4086,6 +4131,7 @@ private fun ThreadHistoryStatusRow(
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    actionCard: ThreadActionCard? = message.threadActionCard(),
     highlightedMentions: Set<String> = emptySet(),
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
@@ -4110,7 +4156,6 @@ private fun ThreadMessageCard(
     onOpenMarkdownUrl: (String) -> Unit,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
-    val actionCard = message.threadActionCard()
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start

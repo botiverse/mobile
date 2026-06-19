@@ -9,6 +9,9 @@ import ai.slock.compose.withResolvedSlockFontFamily
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -612,7 +615,28 @@ fun SlockMarkdownBody(
     onOpenUrl: (String) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null
 ) {
-    val content = body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+    val content = remember(body) {
+        body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+    }
+    val currentOnOpenTag by rememberUpdatedState(onOpenTag)
+    val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
+    val colors = slockMarkdownColors()
+    val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
+    val annotator = remember(content, highlightedMentions) {
+        slockMarkdownAnnotator(
+            content,
+            highlightedMentions = highlightedMentions,
+            onOpenTag = { tag -> currentOnOpenTag(tag) },
+            resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) }
+        )
+    }
+    val padding = remember {
+        markdownPadding(
+            block = 0.dp,
+            paragraphVerPadding = PaddingValues(vertical = 0.dp),
+            codeBlock = PaddingValues(SlockSpacing.Sm)
+        )
+    }
     CompositionLocalProvider(
         LocalTextProvider provides SlockMarkdownTextProvider,
         LocalUriHandler provides
@@ -629,20 +653,11 @@ fun SlockMarkdownBody(
     ) {
         Markdown(
             content = content,
-            colors = slockMarkdownColors(),
-            typography = slockMarkdownTypography(textStyle),
+            colors = colors,
+            typography = typography,
             textProvider = SlockMarkdownTextProvider,
-            annotator = slockMarkdownAnnotator(
-                content,
-                highlightedMentions = highlightedMentions,
-                onOpenTag = onOpenTag,
-                resolveTagLabel = resolveTagLabel
-            ),
-            padding = markdownPadding(
-                block = 0.dp,
-                paragraphVerPadding = PaddingValues(vertical = 0.dp),
-                codeBlock = PaddingValues(SlockSpacing.Sm)
-            ),
+            annotator = annotator,
+            padding = padding,
             modifier = modifier.fillMaxWidth()
         )
     }

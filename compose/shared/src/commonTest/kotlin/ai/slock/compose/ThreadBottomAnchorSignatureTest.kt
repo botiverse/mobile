@@ -29,7 +29,8 @@ class ThreadBottomAnchorSignatureTest {
         replyCount: Int = 0,
         unreadReplyCount: Int = 0,
         taskId: String? = null,
-        attachments: List<KuiklyThreadAttachmentItem> = emptyList()
+        attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
+        metadata: Map<String, String> = emptyMap()
     ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
         id = id,
         authorId = "user-$id",
@@ -38,7 +39,8 @@ class ThreadBottomAnchorSignatureTest {
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         taskId = taskId,
-        attachments = attachments
+        attachments = attachments,
+        metadata = metadata
     )
 
     private fun payload(
@@ -131,9 +133,56 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun initialFirstVisibleIndex_usesLatestItemInsteadOfTop() {
+        assertEquals(0, threadInitialFirstVisibleItemIndex(-1))
+        assertEquals(0, threadInitialFirstVisibleItemIndex(0))
+        assertEquals(29, threadInitialFirstVisibleItemIndex(29))
+    }
+
+    @Test
     fun latestMessageListItemIndex_appendingMessage_changesIndex() {
         val a = payload(messages = listOf(message("m1")), originStatus = "content")
         val b = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
         assertNotEquals(a.latestMessageListItemIndexPublic(), b.latestMessageListItemIndexPublic())
+    }
+
+    @Test
+    fun actionCardSignature_equivalentMetadataKeepsSignatureEqual() {
+        val metadata =
+            mapOf(
+                "actionCard.kind" to "action-card",
+                "actionCard.type" to "channel:create",
+                "actionCard.state" to "prepared"
+            )
+        val a = message("m1", metadata = metadata)
+        val b = message("m1", metadata = metadata.toMap())
+        assertEquals(a.threadActionCardSignature(), b.threadActionCardSignature())
+        assertEquals(a.threadActionCard(), b.threadActionCard())
+    }
+
+    @Test
+    fun actionCardSignature_stateChangeChangesSignature() {
+        val prepared =
+            message(
+                "m1",
+                metadata =
+                    mapOf(
+                        "actionCard.kind" to "action-card",
+                        "actionCard.type" to "channel:create",
+                        "actionCard.state" to "prepared"
+                    )
+            )
+        val executed =
+            message(
+                "m1",
+                metadata =
+                    mapOf(
+                        "actionCard.kind" to "action-card",
+                        "actionCard.type" to "channel:create",
+                        "actionCard.state" to "executed"
+                    )
+            )
+        assertNotEquals(prepared.threadActionCardSignature(), executed.threadActionCardSignature())
+        assertNotEquals(prepared.threadActionCard(), executed.threadActionCard())
     }
 }
