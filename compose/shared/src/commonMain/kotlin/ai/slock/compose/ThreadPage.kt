@@ -28,6 +28,10 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.SharedComputersIntent
+import ai.slock.compose.data.SharedComputersLoadStatus
+import ai.slock.compose.data.SharedComputersPickerSlice
+import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestionSlice
 import ai.slock.compose.data.SharedMembersMemberSuggestionSlice
@@ -523,10 +527,7 @@ private data class ThreadCreateAgentActionDialogState(
     val messageId: String,
     val card: ThreadActionCard,
     val submitting: Boolean = false,
-    val errorCode: String? = null,
-    val machines: List<SharedCreateAgentMachineOption> = emptyList(),
-    val machinesLoading: Boolean = false,
-    val machinesErrorCode: String? = null
+    val errorCode: String? = null
 )
 
 private data class ThreadImageAttachmentGroup(
@@ -872,6 +873,7 @@ private fun ThreadPageScreen() {
     val computersApiClient = remember(networkClient) {
         SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
     }
+    val routeScope = rememberCoroutineScope()
     val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
         ai.slock.compose.data.SharedCreateAgentCoordinator(
             agentsApiClient = agentsApiClient,
@@ -879,7 +881,6 @@ private fun ThreadPageScreen() {
             logger = { message -> bridge.log("thread_create_agent $message") }
         )
     }
-    val routeScope = rememberCoroutineScope()
     val memberRepository =
         remember(authStore, networkClient) {
             RealMemberRepository(
@@ -904,6 +905,14 @@ private fun ThreadPageScreen() {
                 channelRepository = channelRepository,
                 scope = routeScope,
                 logger = { message -> bridge.log(message) }
+            )
+        }
+    val computersStore =
+        remember(computersApiClient, routeScope) {
+            SharedComputersStore(
+                computersApiClient = computersApiClient,
+                scope = routeScope,
+                logger = { message -> bridge.log("thread_$message") }
             )
         }
     val dataSource =
@@ -946,7 +955,7 @@ private fun ThreadPageScreen() {
         dataSource = dataSource,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
-        createAgentCoordinator = createAgentCoordinator,
+        computersStore = computersStore,
         membersStore = membersStore,
         onBack = {
             pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
@@ -1201,7 +1210,7 @@ internal fun SharedThreadRouteContent(
     dataSource: SharedThreadDataSource,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
-    createAgentCoordinator: ai.slock.compose.data.SharedCreateAgentCoordinator,
+    computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
@@ -1275,6 +1284,12 @@ internal fun SharedThreadRouteContent(
     var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
     var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    var createAgentComputerServerId by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
+    var createAgentComputerServerResolved by remember(initialPayload.instanceId) { mutableStateOf(false) }
+    val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
+    val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
+        computersStore?.computerPickerSliceFlow(createAgentComputerServerId) ?: emptyComputerPickerSliceFlow
+    }.collectAsState(SharedComputersPickerSlice())
     var attachmentOpenStates by remember(initialPayload.instanceId) {
         mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
     }
@@ -1300,54 +1315,28 @@ internal fun SharedThreadRouteContent(
             false
         }
 
-    fun updateCreateAgentMachineState(
-        messageId: String,
-        transform: (ThreadCreateAgentActionDialogState) -> ThreadCreateAgentActionDialogState
-    ) {
-        val current = createAgentDialogState ?: return
-        if (current.messageId == messageId) {
-            createAgentDialogState = transform(current)
-        }
+    LaunchedEffect(authStore, initialPayload.instanceId) {
+        createAgentComputerServerId = authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
+        createAgentComputerServerResolved = true
     }
 
-    fun loadCreateAgentMachines(dialogState: ThreadCreateAgentActionDialogState) {
-        if (dialogState.machinesLoading || dialogState.machines.isNotEmpty()) {
-            return
-        }
-        createAgentDialogState = dialogState.copy(machinesLoading = true, machinesErrorCode = null)
-        coroutineScope.launch {
-            val serverId = authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }
-            if (serverId == null) {
-                updateCreateAgentMachineState(dialogState.messageId) {
-                    it.copy(machinesLoading = false, machinesErrorCode = "server_id_missing")
-                }
-                return@launch
-            }
-            when (val result = createAgentCoordinator.loadMachines(serverId)) {
-                is DataResult.Content -> {
-                    updateCreateAgentMachineState(dialogState.messageId) {
-                        it.copy(machines = result.data, machinesLoading = false, machinesErrorCode = null)
-                    }
-                }
-                is DataResult.Empty -> {
-                    updateCreateAgentMachineState(dialogState.messageId) {
-                        it.copy(machines = emptyList(), machinesLoading = false, machinesErrorCode = null)
-                    }
-                }
-                is DataResult.Error -> {
-                    updateCreateAgentMachineState(dialogState.messageId) {
-                        it.copy(machinesLoading = false, machinesErrorCode = result.error.code)
-                    }
-                    routeAuthRequired(result.error.code)
-                }
-                is DataResult.NoPermission -> {
-                    updateCreateAgentMachineState(dialogState.messageId) {
-                        it.copy(machinesLoading = false, machinesErrorCode = result.blocker.code)
-                    }
-                    routeAuthRequired(result)
-                }
-            }
-        }
+    LaunchedEffect(
+        computersStore,
+        createAgentDialogState?.messageId,
+        createAgentComputerServerId,
+        createAgentComputerServerResolved
+    ) {
+        if (createAgentDialogState == null) return@LaunchedEffect
+        if (!createAgentComputerServerResolved) return@LaunchedEffect
+        val serverId = createAgentComputerServerId
+        if (serverId.isNullOrBlank()) return@LaunchedEffect
+        computersStore?.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
+    }
+
+    LaunchedEffect(createAgentDialogState?.messageId, computerPickerSlice.errorCode) {
+        if (createAgentDialogState == null) return@LaunchedEffect
+        val code = computerPickerSlice.errorCode ?: return@LaunchedEffect
+        routeAuthRequired(code)
     }
 
     LaunchedEffect(initialPayload) {
@@ -1898,9 +1887,8 @@ internal fun SharedThreadRouteContent(
                                 card = actionCard,
                                 submitting = false,
                                 errorCode = null
-                            )
+                        )
                         createAgentDialogState = dialogState
-                        loadCreateAgentMachines(dialogState)
                         return@ThreadPageContent
                     }
                     pendingActionCardIds = pendingActionCardIds + itemId
@@ -2489,6 +2477,14 @@ internal fun SharedThreadRouteContent(
             )
         }
         createAgentDialogState?.let { dialogState ->
+            val machinesErrorCode =
+                when {
+                    computersStore != null &&
+                        createAgentComputerServerResolved &&
+                        createAgentComputerServerId.isNullOrBlank() -> "server_id_missing"
+                    computerPickerSlice.status == SharedComputersLoadStatus.Error -> computerPickerSlice.errorCode
+                    else -> null
+                }
             SharedCreateAgentDialog(
                 submitting = dialogState.submitting,
                 errorMessage = dialogState.errorCode?.let(::threadCreateAgentDialogErrorCopy),
@@ -2497,9 +2493,12 @@ internal fun SharedThreadRouteContent(
                 draftHint = dialogState.card.draftHint,
                 suggestedComputer = dialogState.card.suggestedComputer,
                 requiredComputer = dialogState.card.requiredComputer,
-                machines = dialogState.machines,
-                machinesLoading = dialogState.machinesLoading,
-                machinesErrorMessage = dialogState.machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
+                machines = computerPickerSlice.machines,
+                machinesLoading =
+                    computersStore != null &&
+                        (!createAgentComputerServerResolved ||
+                            computerPickerSlice.status == SharedComputersLoadStatus.InFlight),
+                machinesErrorMessage = machinesErrorCode?.let(::threadCreateAgentMachinesErrorCopy),
                 onDismiss = {
                     if (!dialogState.submitting) {
                         createAgentDialogState = null

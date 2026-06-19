@@ -72,6 +72,7 @@ import ai.slock.compose.data.SharedAuthGateIntent
 import ai.slock.compose.data.SharedAuthGateState
 import ai.slock.compose.data.SharedAuthGateViewModel
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksViewModel
@@ -876,6 +877,14 @@ private fun SlockAppShellContent() {
                 authStore = authStore,
                 memberRepository = memberRepository,
                 channelRepository = channelRepository,
+                scope = appShellCoroutineScope,
+                logger = { message -> bridge.log("app_shell_$message") }
+            )
+        }
+    val threadComputersStore =
+        remember(computersApiClient, appShellCoroutineScope) {
+            SharedComputersStore(
+                computersApiClient = computersApiClient,
                 scope = appShellCoroutineScope,
                 logger = { message -> bridge.log("app_shell_$message") }
             )
@@ -1854,6 +1863,7 @@ private fun SlockAppShellContent() {
                     dataSource = threadDataSource,
                     authStore = authStore,
                     tasksDataSource = tasksDataSource,
+                    computersStore = threadComputersStore,
                     membersStore = threadMembersStore,
                     onBack = { popThreadRoute() },
                     onOpenThreadPayload = { payload -> openThreadPayload(payload) },
@@ -1899,8 +1909,6 @@ private fun SlockAppShellContent() {
                             }
                         }
                     },
-                    createAgentCoordinator = threadDataSource.createAgentCoordinatorOrNull
-                        ?: error("threadDataSource must be constructed with a SharedCreateAgentCoordinator"),
                     realtimeEventSignal = threadRealtimeEventSignal
                 )
             }
