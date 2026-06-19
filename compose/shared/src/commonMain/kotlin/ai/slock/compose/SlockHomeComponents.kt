@@ -36,8 +36,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.pullToRefreshItem
-import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -443,7 +441,6 @@ fun SlockStructuralHomeShell(
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var pinMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
-    var pullRefreshActive by remember { mutableStateOf(false) }
     LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
@@ -509,11 +506,10 @@ fun SlockStructuralHomeShell(
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
             pinnedExpanded = pinnedExpanded,
-            contentRefreshEnabled = contentRefreshEnabled
+            contentRefreshEnabled = contentRefreshEnabled && indicatorRefreshing
         )
     val listState = rememberLazyListState()
-    val pullToRefreshState = rememberPullToRefreshState(indicatorRefreshing)
-    val sidebarInteractionsEnabled = !(indicatorRefreshing || pullRefreshActive)
+    val sidebarInteractionsEnabled = !indicatorRefreshing
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val bottomSafeArea = if (showBottomBar) slockBottomSafeAreaPadding() else 0.dp
@@ -545,23 +541,13 @@ fun SlockStructuralHomeShell(
                         beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                     ) {
                         if (contentRefreshEnabled) {
-                            pullToRefreshItem(
-                                state = pullToRefreshState,
-                                onRefresh = {
-                                    if (!contentRefreshing) {
-                                        onContentRefresh()
-                                    }
-                                },
-                                scrollState = listState,
-                                refreshThreshold = 64.dp
-                            ) { pullProgress, isRefreshing, _ ->
-                                LaunchedEffect(pullProgress, isRefreshing, indicatorRefreshing) {
-                                    pullRefreshActive = pullProgress > 0.01f || isRefreshing || indicatorRefreshing
+                            if (indicatorRefreshing) {
+                                item(key = "slock_refresh_indicator") {
+                                    HomePullRefreshIndicator(
+                                        pullProgress = 1f,
+                                        refreshing = true
+                                    )
                                 }
-                                HomePullRefreshIndicator(
-                                    pullProgress = pullProgress,
-                                    refreshing = isRefreshing || indicatorRefreshing
-                                )
                             }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Md)) }
