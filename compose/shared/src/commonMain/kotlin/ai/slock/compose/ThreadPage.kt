@@ -3305,10 +3305,14 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(payload.instanceId) { mutableStateOf(false) }
     var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
+    // Bottom-anchor signature: only the fields the anchor logic actually
+    // reads. The previous remember keys listed `payload.messages` (the
+    // list reference) which invalidated the cache on any list
+    // replacement, even when the content was equivalent. Now the cache
+    // is keyed on the content fields the underlying functions read.
     val latestItemIndex = remember(
         payload.originStatus,
-        payload.messages.size,
-        payload.messages
+        payload.messages.size
     ) {
         payload.latestMessageListItemIndex()
     }
@@ -3316,7 +3320,13 @@ private fun ThreadMessagesList(
         payload.originStatus,
         payload.canLoadMoreBefore,
         payload.canLoadMoreAfter,
-        payload.messages
+        payload.messages.size,
+        payload.messages.lastOrNull()?.id,
+        payload.messages.lastOrNull()?.body?.length,
+        payload.messages.lastOrNull()?.attachments?.size,
+        payload.messages.lastOrNull()?.taskId,
+        payload.messages.lastOrNull()?.replyCount,
+        payload.messages.lastOrNull()?.unreadReplyCount
     ) {
         payload.latestMessageLayoutKey()
     }
@@ -3714,12 +3724,12 @@ private fun KuiklyThreadScreenPayload.threadMessageListItemIndex(messageId: Stri
     return firstMessageListItemIndex() + messageIndex
 }
 
-private fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
+internal fun KuiklyThreadScreenPayload.latestMessageListItemIndex(): Int {
     if (messages.isEmpty()) return -1
     return firstMessageListItemIndex() + messages.lastIndex
 }
 
-private fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
+internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     val latest = messages.lastOrNull()
         ?: return "empty:$originStatus:$canLoadMoreBefore:$canLoadMoreAfter"
     return buildString {
