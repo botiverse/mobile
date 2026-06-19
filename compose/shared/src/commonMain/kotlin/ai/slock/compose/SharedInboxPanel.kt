@@ -757,9 +757,9 @@ private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): SlockLucid
     }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
-    val streamChannelId = threadChannelId ?: channelId
+    val streamChannelId = if (kind == InboxItemKind.Thread) threadChannelId else threadChannelId ?: channelId
     val parentId = parentMessageId
-    val parentChannel = parentChannelId ?: if (kind == InboxItemKind.Thread) channelId else null
+    val parentChannel = parentChannelId
     val stableThreadIdentity =
         if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
             threadIdentity(parentChannel, parentId)
@@ -767,8 +767,8 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
             null
         }
     return ConversationSummary(
-        threadId = stableThreadIdentity ?: topLevelThreadId(streamChannelId),
-        channelId = parentChannel ?: channelId,
+        threadId = stableThreadIdentity ?: topLevelThreadId(channelId),
+        channelId = if (kind == InboxItemKind.Thread) parentChannel else channelId,
         thread =
             if (kind == InboxItemKind.Thread && parentChannel != null && parentId != null) {
                 ThreadConversation(
@@ -813,7 +813,13 @@ internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversation = toConversationSummary(),
         anchorMessageId =
-            (latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId ?: parentMessageId)
+            (
+                if (unreadCount > 0) {
+                    firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId
+                } else {
+                    latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId ?: parentMessageId
+                }
+            )
                 ?.value
                 ?.takeIf { it.isNotBlank() }
     )

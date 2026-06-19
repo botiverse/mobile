@@ -6,6 +6,7 @@ import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
+import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.compose.model.threadIdentity
 import kotlin.test.Test
@@ -103,10 +104,29 @@ class SharedInboxPanelTest {
                 lastMessageId = MessageId("last-message"),
                 latestActivityMessageId = MessageId("activity-message"),
                 firstUnreadMessageId = MessageId("first-unread")
-            ).toHomeMessageOpenRequest()
+        ).toHomeMessageOpenRequest()
 
         assertEquals(MessageId("activity-message"), request.conversation.lastMessageId)
         assertEquals("activity-message", request.anchorMessageId)
+    }
+
+    @Test
+    fun threadItemWithoutExplicitParentDoesNotInferParentFromChannelId() {
+        val conversation =
+            InboxItem(
+                key = "thread:thread-channel-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview"
+            ).toConversationSummary()
+
+        assertEquals(ConversationKind.Thread, conversation.kind)
+        assertEquals(ThreadId("thread-channel-1"), conversation.threadId)
+        assertEquals(null, conversation.channelId)
+        assertEquals(null, conversation.thread)
     }
 
     @Test

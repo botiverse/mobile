@@ -27,10 +27,13 @@ private fun String?.isMemberScopedThreadChannelType(): Boolean =
         else -> false
     }
 
-internal fun ConversationSummary.threadStreamChannelId(): String =
+internal fun ConversationSummary.threadStreamChannelId(): String? =
     thread?.streamChannelId?.value
-        ?: channelId?.value
-        ?: threadId.value
+        ?: if (kind == ConversationKind.Thread) {
+            null
+        } else {
+            channelId?.value ?: threadId.value
+        }
 
 internal fun ConversationSummary.threadParentChannelId(): String? =
     thread?.parentChannelId?.value

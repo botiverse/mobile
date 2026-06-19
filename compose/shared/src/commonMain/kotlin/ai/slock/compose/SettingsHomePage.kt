@@ -10138,12 +10138,6 @@ private suspend fun openAppShellTaskThread(
     onOpenThreadPayload(loadingPayload)
     val channelId = task.channelId
     val parentMessage = task.toAppShellTaskParentMessage()
-    val containingThreadPayload =
-        buildAppShellTaskContainingThreadPayload(task, timeContext, alignOwnMessagesRight)
-    if (containingThreadPayload != null) {
-        onReplaceThreadPayload(containingThreadPayload)
-        return
-    }
     if (channelId != null && parentMessage != null) {
         val channelPayload =
             buildAppShellThreadPayload(
@@ -10177,13 +10171,8 @@ private suspend fun openAppShellTaskThread(
         }
     }
 
-    val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
-    if (threadId != null) {
-        onReplaceThreadPayload(loadingPayload.copy(sourceThreadId = threadId))
-    } else {
-        onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
-        onFailure()
-    }
+    onReplaceThreadPayload(loadingPayload.copy(status = "error", errorCode = "thread_task_open_failed"))
+    onFailure()
 }
 
 internal fun buildAppShellTaskContainingThreadPayload(
@@ -10191,36 +10180,7 @@ internal fun buildAppShellTaskContainingThreadPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false
 ): KuiklyThreadScreenPayload? {
-    if (!task.isThreadTask) return null
-    val threadChannelId = task.threadId?.value?.takeIf { it.isNotBlank() } ?: return null
-    val parentMessage = task.toAppShellTaskParentMessage()
-    val parentMessageId = task.parentMessageId?.value ?: task.messageId?.value ?: parentMessage?.id
-    return buildAppShellThreadPayload(
-        ConversationSummary(
-            threadId = ThreadId(threadChannelId),
-            channelId = ChannelId(threadChannelId),
-            kind = ConversationKind.Thread,
-            name = task.channelName?.takeIf { it.isNotBlank() } ?: task.tasksDisplayTitleForAppShell(),
-            joined = true,
-            permissions = ConversationPermissions(canSend = true, canAttach = true, canCreateTask = true)
-        ),
-        timeContext,
-        alignOwnMessagesRight
-    ).copy(
-        instanceId = "shared-shell-task-thread-$threadChannelId",
-        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        streamChannelId = threadChannelId,
-        parentChannelId = task.channelId?.value,
-        parentMessageId = parentMessageId,
-        showModeTabs = false,
-        showReplyActions = false,
-        showOpenInChannelAction = true,
-        originMessage = parentMessage,
-        originParentMessageId = parentMessageId,
-        originStatus = if (parentMessage != null) "loaded" else "missing",
-        emptyTitle = "Opening task",
-        emptyDetail = "Loading the task conversation."
-    )
+    return null
 }
 
 internal fun buildAppShellTaskThreadLoadingPayload(
@@ -10228,7 +10188,6 @@ internal fun buildAppShellTaskThreadLoadingPayload(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean = false
 ): KuiklyThreadScreenPayload {
-    val threadId = task.threadId?.value?.takeIf { it.isNotBlank() }
     val parentMessage = task.toAppShellTaskParentMessage()
     val composer =
         buildThreadSurfaceComposerPayload(
@@ -10238,16 +10197,16 @@ internal fun buildAppShellTaskThreadLoadingPayload(
             enabled = true,
             mentionChannelId = task.channelId?.value,
             parentMessageId = parentMessage?.id,
-            streamChannelId = threadId
+            streamChannelId = null
         )
     return KuiklyThreadScreenPayload(
-        instanceId = "shared-shell-task-thread-${threadId ?: task.id.value}",
+        instanceId = "shared-shell-task-thread-${task.id.value}",
         title = ThreadReplyPageTitle,
         subtitle = threadChannelHeaderSubtitle(task.channelName),
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        sourceThreadId = threadId,
-        streamChannelId = threadId,
+        sourceThreadId = null,
+        streamChannelId = null,
         parentChannelId = task.channelId?.value,
         parentMessageId = parentMessage?.id,
         selectedTab = "chat",

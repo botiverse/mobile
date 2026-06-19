@@ -363,9 +363,14 @@ internal data class WireThreadLaunchPayload(
             .any { !it.isNullOrBlank() }
 
     fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
-        val resolvedStreamId = streamChannelId.nonBlank() ?: sourceThreadId.nonBlank() ?: threadId.nonBlank()
-        val resolvedSourceId = sourceThreadId.nonBlank() ?: resolvedStreamId
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val sourceStreamCandidate =
+            sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
+        val resolvedStreamId =
+            streamChannelId.nonBlank()
+                ?: sourceStreamCandidate
+                ?: if (isReplyThread) null else threadId.nonBlank()
+        val resolvedSourceId = sourceStreamCandidate ?: resolvedStreamId
         val resolvedInstanceId =
             instanceId.nonBlank()
                 ?: fallbackInstanceId.nonBlank()

@@ -719,12 +719,12 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun appShellActivityThreadItemFallsBackToParentChannelWhenThreadStreamIsMissing() {
+    fun appShellActivityThreadItemKeepsStreamUnresolvedWhenThreadStreamIsMissing() {
         val request =
             InboxItem(
                 key = "thread:message-1",
                 kind = InboxItemKind.Thread,
-                channelId = ChannelId("channel-1"),
+                channelId = ChannelId("thread-channel-compat"),
                 channelName = "general",
                 parentChannelId = ChannelId("channel-1"),
                 parentChannelName = "general",
@@ -742,11 +742,12 @@ class ThreadPayloadTest {
         assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("channel-1", payload.sourceThreadId)
-        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(null, payload.sourceThreadId)
+        assertEquals(null, payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(null, conversation.thread?.streamChannelId)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
@@ -833,7 +834,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadTaskBuildsContainingThreadPayloadInsteadOfReplyThreadPayload() {
+    fun threadTaskHintDoesNotBuildContainingThreadPayload() {
         val payload =
             buildAppShellTaskContainingThreadPayload(
                 TaskSummary(
@@ -852,25 +853,37 @@ class ThreadPayloadTest {
                 alignOwnMessagesRight = true
             )
 
-        requireNotNull(payload)
-        assertEquals("shared-shell-task-thread-thread-channel-1", payload.instanceId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals("#bug triage", payload.subtitle)
-        assertEquals("loading", payload.status)
-        assertEquals("thread-channel-1", payload.sourceThreadId)
-        assertEquals("message-1", payload.originParentMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("thread-channel-1", payload.streamChannelId)
+        assertEquals(null, payload)
+    }
+
+    @Test
+    fun taskThreadLoadingPayloadIgnoresLegacyThreadIdStreamHintUntilCreateOpen() {
+        val payload =
+            buildAppShellTaskThreadLoadingPayload(
+                TaskSummary(
+                    id = TaskId("task-1"),
+                    title = "Fix slow route",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 42,
+                    messageId = MessageId("message-1"),
+                    parentMessageId = MessageId("message-1"),
+                    channelId = ChannelId("parent-channel-1"),
+                    threadId = ThreadId("thread-channel-1"),
+                    channelName = "bug triage",
+                    updatedAtLabel = "now"
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true
+            )
+
+        assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
+        assertEquals(null, payload.sourceThreadId)
+        assertEquals(null, payload.streamChannelId)
+        assertEquals(null, payload.resolveThreadComposer().streamChannelId)
         assertEquals("parent-channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals("loaded", payload.originStatus)
-        assertEquals("message-1", payload.originMessage?.id)
-        assertEquals("Fix slow route", payload.originMessage?.body)
-        assertEquals(false, payload.showReplyActions)
-        assertEquals(true, payload.showOpenInChannelAction)
-        assertEquals(true, payload.alignOwnMessagesRight)
-        assertEquals(false, payload.showMembersAction)
-        assertEquals(false, payload.showSettingsAction)
     }
 
     @Test

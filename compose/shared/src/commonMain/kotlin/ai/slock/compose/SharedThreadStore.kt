@@ -2055,23 +2055,27 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
     }
 
 private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
-    val source = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
     val parentMessage = parentMessageId?.takeIf { it.isNotBlank() }
         ?: originParentMessageId?.takeIf { it.isNotBlank() }
         ?: return false
+    val streamCandidate =
+        streamChannelId?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.takeIf { it.isNotBlank() }
     return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-        source == parentChannel &&
-        parentMessage.isNotBlank()
+        parentMessage.isNotBlank() &&
+        (streamCandidate == null || streamCandidate == parentChannel)
 }
 
 private fun KuiklyThreadScreenPayload.hasResolvedReplyThreadStreamFrom(base: KuiklyThreadScreenPayload): Boolean {
     val source = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
-    val baseSource = base.sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
-    val baseParentChannel = base.parentChannelId?.takeIf { it.isNotBlank() } ?: return false
+    val baseSource =
+        base.streamChannelId?.takeIf { it.isNotBlank() }
+            ?: base.sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: base.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return false
     return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
         base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-        baseSource == baseParentChannel &&
         source != baseSource
 }
 
@@ -2859,8 +2863,11 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val streamChannelId =
         base.streamChannelId
             ?: conversation.thread?.streamChannelId?.value
-            ?: conversation.channelId?.value
-            ?: conversation.threadId.value
+            ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                null
+            } else {
+                conversation.channelId?.value ?: conversation.threadId.value
+            }
     val parentChannelId = base.parentChannelId ?: conversation.thread?.parentChannelId?.value
     val parentMessageId = base.parentMessageId ?: resolvedParentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
     val cachedMessages =
@@ -2887,8 +2894,11 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         sourceThreadId =
             base.sourceThreadId
                 ?: conversation.thread?.streamChannelId?.value
-                ?: conversation.channelId?.value
-                ?: conversation.threadId.value,
+                ?: if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+                    null
+                } else {
+                    conversation.channelId?.value ?: conversation.threadId.value
+                },
         surfaceKind = surfaceKind,
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,

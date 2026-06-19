@@ -355,7 +355,13 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
         } else {
             composer.surfaceKind
         }
-    val resolvedStreamChannelId = composer.streamChannelId ?: streamChannelId ?: sourceThreadId
+    val sourceStreamCandidate =
+        sourceThreadId?.takeUnless {
+            surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                parentChannelId != null &&
+                it == parentChannelId
+        }
+    val resolvedStreamChannelId = composer.streamChannelId ?: streamChannelId ?: sourceStreamCandidate
     val resolvedParentMessageId = composer.parentMessageId ?: parentMessageId ?: originParentMessageId
     val resolvedMentionChannelId = composer.mentionChannelId ?: parentChannelId
     val resolvedPlaceholder =
