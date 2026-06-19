@@ -124,6 +124,19 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun plainTextFastPathOnlyAcceptsBodiesWithoutMarkdownWork() {
+        assertTrue("Short plain reply.".shouldUseSlockMarkdownPlainTextFastPath())
+        assertTrue("中文普通消息 123".shouldUseSlockMarkdownPlainTextFastPath())
+
+        assertFalse("Ping @artin".shouldUseSlockMarkdownPlainTextFastPath())
+        assertFalse("See #KMP".shouldUseSlockMarkdownPlainTextFastPath())
+        assertFalse("Use `code`".shouldUseSlockMarkdownPlainTextFastPath())
+        assertFalse("Open https://raft.build".shouldUseSlockMarkdownPlainTextFastPath())
+        assertFalse("first line\nsecond line".shouldUseSlockMarkdownPlainTextFastPath())
+        assertFalse("**bold**".shouldUseSlockMarkdownPlainTextFastPath())
+    }
+
+    @Test
     fun markdownTypographyKeepsSlockFontsForOhosRichText() {
         val typography = slockMarkdownTypography(SlockType.Body)
 

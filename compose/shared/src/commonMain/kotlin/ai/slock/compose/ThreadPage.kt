@@ -179,6 +179,7 @@ private object ThreadRowProbeNextSessionId {
  * composition-vs-payload contract is verified.
  */
 internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
+internal const val DEBUG_THREAD_MARKDOWN_PERFORMANCE_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -4569,7 +4570,9 @@ private fun ThreadMessageCard(
                                     resolveTagLabel = resolveMarkdownTagLabel,
                                     onOpenTag = onOpenMarkdownTag,
                                     onOpenUrl = onOpenMarkdownUrl,
-                                    performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                    performanceKey =
+                                        threadMessagePerformanceKey(message.id, messageIndex)
+                                            .takeIf { DEBUG_THREAD_MARKDOWN_PERFORMANCE_LOG },
                                     performanceLogger = diagnosticsLogger
                                 )
                             }

@@ -219,6 +219,14 @@ private val ThreadMarkdownHtmlTagRegex =
 private val ThreadMarkdownAutolinkRegex =
     Regex("""<https?://[^>\s]+>""")
 
+internal fun String.shouldUseSlockMarkdownPlainTextFastPath(): Boolean {
+    if (isEmpty() || contains("://")) return false
+    return none { it in SlockMarkdownPlainTextFastPathBlockers }
+}
+
+private val SlockMarkdownPlainTextFastPathBlockers =
+    setOf('\\', '\n', '\r', '`', '*', '_', '~', '[', ']', '<', '>', '#', '@', '|')
+
 private fun String.escapeMarkdownHtmlTagText(): String =
     replace("<", "\\<").replace(">", "\\>")
 
@@ -645,6 +653,44 @@ fun SlockMarkdownBody(
                 }
         }
     }
+    var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
+    val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
+    val markdownModifier =
+        performanceKey?.let { key ->
+            modifier
+                .fillMaxWidth()
+                .onGloballyPositioned {
+                    if (!layoutLogged) {
+                        layoutLogged = true
+                        performanceLogger(
+                            "thread_markdown_layout key=$key contentLength=${content.length} " +
+                                "durationMs=${layoutStartedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    }
+                }
+        } ?: modifier.fillMaxWidth()
+    if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
+        val resolvedStyle = textStyle.withResolvedSlockFontFamily()
+        KuiklyText(
+            text = content,
+            modifier = markdownModifier,
+            color = resolvedStyle.color,
+            fontSize = resolvedStyle.fontSize,
+            fontStyle = resolvedStyle.fontStyle,
+            fontWeight = resolvedStyle.fontWeight,
+            fontFamily = resolvedStyle.fontFamily,
+            letterSpacing = resolvedStyle.letterSpacing,
+            textDecoration = resolvedStyle.textDecoration,
+            textAlign = resolvedStyle.textAlign,
+            lineHeight = resolvedStyle.lineHeight,
+            overflow = TextOverflow.Clip,
+            softWrap = true,
+            maxLines = Int.MAX_VALUE,
+            minLines = 1,
+            style = resolvedStyle
+        )
+        return
+    }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = slockMarkdownColors()
@@ -674,22 +720,6 @@ fun SlockMarkdownBody(
             codeBlock = PaddingValues(SlockSpacing.Sm)
         )
     }
-    var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
-    val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
-    val markdownModifier =
-        performanceKey?.let { key ->
-            modifier
-                .fillMaxWidth()
-                .onGloballyPositioned {
-                    if (!layoutLogged) {
-                        layoutLogged = true
-                        performanceLogger(
-                            "thread_markdown_layout key=$key contentLength=${content.length} " +
-                                "durationMs=${layoutStartedAt.elapsedNow().inWholeMilliseconds}"
-                        )
-                    }
-                }
-        } ?: modifier.fillMaxWidth()
     CompositionLocalProvider(
         LocalTextProvider provides SlockMarkdownTextProvider,
         LocalUriHandler provides
