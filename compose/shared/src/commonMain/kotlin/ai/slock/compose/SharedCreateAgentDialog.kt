@@ -290,7 +290,6 @@ internal fun SharedCreateAgentDialog(
     var providerMode by remember(initialProviderMode) { mutableStateOf(initialProviderMode) }
     var providerApiUrl by remember(initialProviderApiUrl) { mutableStateOf(initialProviderApiUrl) }
     var providerApiKey by remember(initialProviderApiKey) { mutableStateOf(initialProviderApiKey) }
-    var showApiKey by remember { mutableStateOf(false) }
     var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
     var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
     var command by remember(initialCommand) { mutableStateOf(initialCommand) }
@@ -482,8 +481,6 @@ internal fun SharedCreateAgentDialog(
                     onProviderApiUrlChange = { providerApiUrl = it },
                     providerApiKey = providerApiKey,
                     onProviderApiKeyChange = { providerApiKey = it },
-                    showApiKey = showApiKey,
-                    onShowApiKeyChange = { showApiKey = it },
                     fastMode = fastMode,
                     onFastModeChange = { fastMode = it },
                     reasoningEffort = reasoningEffort,
@@ -672,8 +669,6 @@ private fun AdvancedRuntimeSection(
     onProviderApiUrlChange: (String) -> Unit,
     providerApiKey: String,
     onProviderApiKeyChange: (String) -> Unit,
-    showApiKey: Boolean,
-    onShowApiKeyChange: (Boolean) -> Unit,
     fastMode: Boolean,
     onFastModeChange: (Boolean) -> Unit,
     reasoningEffort: String?,
@@ -750,31 +745,13 @@ private fun AdvancedRuntimeSection(
                     value = providerApiKey,
                     // Task #43 QA-4 fix (artin's instruction: same component
                     // shape as the login page password field): use a
-                    // native password-typed text field via
-                    // `password = !showApiKey`. The showApiKey flag only
-                    // toggles the visual transformation; the underlying
-                    // value is never overwritten with bullet characters.
-                    password = !showApiKey,
+                    // native password-typed text field. Keep the underlying
+                    // value intact; do not mirror masked bullets into state.
+                    password = true,
                     onValueChange = { onProviderApiKeyChange(it) },
-                    placeholder = if (showApiKey) "sk-ant-..." else "",
+                    placeholder = "sk-ant-...",
                     enabled = enabled
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onShowApiKeyChange(!showApiKey) }.padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = if (showApiKey) "\u25be" else "\u25b8",
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
-                    )
-                    Text(
-                        text = if (showApiKey) "Hide" else "Show",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
                 if (providerKeyInvalid) {
                     Text(
                         text = "Provider API key is required for custom provider",

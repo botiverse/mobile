@@ -8,8 +8,6 @@ import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import ai.slock.compose.TextField
-import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
-import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import ai.slock.compose.toSlockDpOffset
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
@@ -22,6 +20,9 @@ import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
+import com.tencent.kuikly.compose.ui.text.input.KeyboardType
+import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
@@ -415,7 +416,13 @@ internal fun SlockBrutalTextField(
             maxLines = maxLines,
             textStyle = textStyle,
             fieldMinHeight = fieldMinHeight,
-            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None
+            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions =
+                if (password) {
+                    KeyboardOptions(keyboardType = KeyboardType.Password)
+                } else {
+                    KeyboardOptions.Default
+                }
         )
     }
 }
