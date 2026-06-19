@@ -144,6 +144,33 @@ private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
+
+/**
+ * Phase 1 (#172) instrumentation helper: monotonic counter that yields
+ * a fresh session id for each Thread entry. Keeping this as a separate
+ * object (instead of a static field on a Composable scope) avoids any
+ * recomposition surprises.
+ */
+private object ThreadRowProbeNextSessionId {
+    private var counter: Int = 0
+    fun value(): String {
+        counter += 1
+        return "threadRowProbeSession-${counter}"
+    }
+}
+
+/**
+ * Phase 1 instrumentation flag for #172 (Thread virtual rendering v1).
+ *
+ * When true, each `ThreadMessageCard` / `ThreadSystemMessageRow`
+ * composition emits a single `thread_row_compose` log via the shared
+ * bridge, gated by a per-row `LaunchedEffect(message.id, sessionMarker)`
+ * so the log fires exactly once per row per Thread entry (no scroll
+ * spam). This isolates the proof to a one-shot diagnostic path; the
+ * flag is meant to be removed / feature-flagged off once the
+ * composition-vs-payload contract is verified.
+ */
+internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = true
 internal const val ThreadReplyPageTitle = "Thread"
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
@@ -3296,6 +3323,14 @@ private fun ThreadMessagesList(
     }
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
+    // Phase 1 (#172) instrumentation: per-Thread session marker that
+    // uniquely identifies this Thread entry. Combined with the row-level
+    // `LaunchedEffect(message.id, sessionMarker)` inside `items()`, this
+    // yields exactly one log per row per Thread session, scoped to a
+    // single session so later Threads do not see stale logs.
+    val threadRowProbeSessionMarker = remember(payload.sourceThreadId, payload.instanceId) {
+        ThreadRowProbeNextSessionId.value()
+    }
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
@@ -3520,6 +3555,23 @@ private fun ThreadMessagesList(
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
+                // Phase 1 (#172) instrumentation: one-shot per-row log gated
+                // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
+                // not a hot path. Fires on first composition of this row
+                // per Thread sessionMarker; does not re-fire on scroll.
+                if (DEBUG_THREAD_VIRTUAL_RENDER_LOG) {
+                    androidx.compose.runtime.LaunchedEffect(message.id, threadRowProbeSessionMarker) {
+                        diagnosticsLogger(
+                            "thread_row_compose sessionMarker=${threadRowProbeSessionMarker} " +
+                                "index=$index id=${message.id} messageType=${message.messageType} " +
+                                "bodyLength=${message.body.length} isSystem=${message.isSystemMessage()} " +
+                                "hasActionCard=${message.threadActionCard() != null} " +
+                                "attachmentCount=${message.attachments.size} " +
+                                "threadId=${payload.sourceThreadId.orEmpty()} " +
+                                "messagesTotal=${payload.messages.size}"
+                        )
+                    }
+                }
                 val linkedTask = linkedTasksByMessageId[message.id]
                 val displayMessage = message.withLinkedTask(linkedTask)
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
