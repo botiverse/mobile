@@ -68,7 +68,7 @@ import kotlinx.coroutines.launch
 internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
-    onOpenConversation: (ConversationSummary) -> Unit,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = true,
@@ -162,7 +162,7 @@ internal fun SharedHomeActivityScreen(
         refreshing = refreshing || state is SharedActivityPanelState.Loading,
         onRefresh = { refreshNonce += 1 },
         onFilterSelected = { selectedFilter = it },
-        onOpenConversation = onOpenConversation,
+        onOpenMessage = onOpenMessage,
         onClose = onClose,
         onMarkAllRead = {
             scope.launch {
@@ -184,7 +184,7 @@ internal fun SharedHomeActivityScreen(
 internal fun SharedHomeActivityPanel(
     snapshot: InboxSnapshot,
     selectedFilter: InboxFilter = InboxFilter.All,
-    onOpenConversation: (ConversationSummary) -> Unit = {},
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit = {},
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     includeTopSafeArea: Boolean = false,
@@ -198,7 +198,7 @@ internal fun SharedHomeActivityPanel(
         refreshing = false,
         onRefresh = {},
         onFilterSelected = {},
-        onOpenConversation = onOpenConversation,
+        onOpenMessage = onOpenMessage,
         onClose = onClose,
         onMarkAllRead = {},
         bottomContentPadding = bottomContentPadding,
@@ -221,7 +221,7 @@ private fun SharedActivityPanelContent(
     refreshing: Boolean,
     onRefresh: () -> Unit,
     onFilterSelected: (InboxFilter) -> Unit,
-    onOpenConversation: (ConversationSummary) -> Unit,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)?,
     onMarkAllRead: () -> Unit,
     bottomContentPadding: Dp,
@@ -276,7 +276,7 @@ private fun SharedActivityPanelContent(
                 } else {
                     SharedActivityList(
                         snapshot = state.snapshot,
-                        onOpenConversation = onOpenConversation,
+                        onOpenMessage = onOpenMessage,
                         bottomContentPadding = bottomContentPadding,
                         timeContext = timeContext
                     )
@@ -375,7 +375,7 @@ private fun SharedActivityFilterBar(
 @Composable
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
-    onOpenConversation: (ConversationSummary) -> Unit,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     bottomContentPadding: Dp,
     timeContext: SlockTimeContext?
 ) {
@@ -389,7 +389,7 @@ private fun SharedActivityList(
                 item = item,
                 modifier = Modifier.padding(horizontal = 16.dp),
                 timeContext = timeContext,
-                onClick = { onOpenConversation(item.toConversationSummary()) }
+                onClick = { onOpenMessage(item.toHomeMessageOpenRequest()) }
             )
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -808,3 +808,17 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
         lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
     )
 }
+
+internal data class HomeMessageOpenRequest(
+    val conversation: ConversationSummary,
+    val anchorMessageId: String?
+)
+
+internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
+    HomeMessageOpenRequest(
+        conversation = toConversationSummary(),
+        anchorMessageId =
+            (latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId ?: parentMessageId)
+                ?.value
+                ?.takeIf { it.isNotBlank() }
+    )

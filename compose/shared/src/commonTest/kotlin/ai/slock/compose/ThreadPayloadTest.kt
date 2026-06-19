@@ -364,7 +364,7 @@ class ThreadPayloadTest {
 
     @Test
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
-        val conversation =
+        val request =
             InboxItem(
                 key = "thread:message-1",
                 kind = InboxItemKind.Thread,
@@ -376,9 +376,10 @@ class ThreadPayloadTest {
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityPreview = "Latest reply"
-            ).toAppShellConversationSummary()
+            ).toHomeMessageOpenRequest()
+        val conversation = request.conversation
 
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
@@ -389,6 +390,7 @@ class ThreadPayloadTest {
         assertEquals("thread-channel-1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
@@ -397,7 +399,7 @@ class ThreadPayloadTest {
 
     @Test
     fun appShellActivityThreadItemFallsBackToParentChannelWhenThreadStreamIsMissing() {
-        val conversation =
+        val request =
             InboxItem(
                 key = "thread:message-1",
                 kind = InboxItemKind.Thread,
@@ -409,9 +411,10 @@ class ThreadPayloadTest {
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
                 latestActivityPreview = "Latest reply"
-            ).toAppShellConversationSummary()
+            ).toHomeMessageOpenRequest()
+        val conversation = request.conversation
 
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
@@ -422,6 +425,7 @@ class ThreadPayloadTest {
         assertEquals("channel-1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
+        assertEquals("message-1", payload.originParentMessageId)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
@@ -429,22 +433,25 @@ class ThreadPayloadTest {
 
     @Test
     fun appShellActivityChannelItemKeepsChannelChrome() {
-        val conversation =
+        val request =
             InboxItem(
                 key = "channel:general",
                 kind = InboxItemKind.Channel,
                 channelId = ChannelId("channel-1"),
                 channelName = "general",
                 lastMessagePreview = "Latest channel message",
+                lastMessageId = MessageId("latest-channel-message"),
                 unreadCount = 2
-            ).toAppShellConversationSummary()
+            ).toHomeMessageOpenRequest()
+        val conversation = request.conversation
 
-        val payload = buildAppShellThreadPayload(conversation)
+        val payload = buildAppShellThreadPayload(conversation, anchorMessageId = request.anchorMessageId)
 
         assertEquals(ThreadId("channel-1"), conversation.threadId)
         assertEquals(ConversationKind.Channel, conversation.kind)
         assertEquals("general", payload.title)
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("latest-channel-message", payload.originParentMessageId)
         assertEquals(true, payload.showModeTabs)
         assertEquals(true, payload.showMembersAction)
         assertEquals(true, payload.showSettingsAction)

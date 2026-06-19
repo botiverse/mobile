@@ -205,7 +205,6 @@ import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadId
-import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -215,8 +214,6 @@ import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.slockEpochMillisUtcIso
 import ai.slock.compose.model.slockStartOfDayUtcIso
-import ai.slock.compose.model.threadIdentity
-import ai.slock.compose.model.topLevelThreadId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -1314,6 +1311,15 @@ private fun SlockAppShellContent() {
         }
     }
 
+    fun openHomeMessage(request: HomeMessageOpenRequest, source: String, pushCurrent: Boolean = true) {
+        openHomeConversation(
+            conversation = request.conversation,
+            source = source,
+            anchorMessageId = request.anchorMessageId,
+            pushCurrent = pushCurrent
+        )
+    }
+
     fun appShellParentMessageContextLoadingPayload(messageId: String): KuiklyThreadScreenPayload =
         KuiklyThreadScreenPayload(
             instanceId = "shared-shell-parent-message-$messageId",
@@ -1935,8 +1941,8 @@ private fun SlockAppShellContent() {
                                     bridge = bridge,
                                     authStore = authStore,
                                     onClose = { selectedHomeDestination = null },
-                                    onOpenConversation = { conversation ->
-                                        openHomeConversation(conversation, "home_activity")
+                                    onOpenMessage = { request ->
+                                        openHomeMessage(request, "home_activity")
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     timeContext = threadTimeContext,
@@ -1951,7 +1957,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeDestination = null
                                     },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toAppShellConversationSummary(), "home_search", item.lastMessageId?.value, pushCurrent = true)
+                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_search", pushCurrent = true)
                                     },
                                     onOpenEntity = { entity ->
                                         selectedHomeDestination = null
@@ -1980,7 +1986,7 @@ private fun SlockAppShellContent() {
                                     onIntent = homeSearchSavedViewModel::dispatch,
                                     onClose = { selectedHomeDestination = null },
                                     onOpenItem = { item ->
-                                        openHomeConversation(item.toAppShellConversationSummary(), "home_saved", item.lastMessageId?.value, pushCurrent = true)
+                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_saved", pushCurrent = true)
                                     },
                                     bottomContentPadding = shellScope.bottomTabBarContentInset,
                                     timeContext = threadTimeContext,
@@ -7450,50 +7456,6 @@ private fun String.searchAvatarSeed(): String =
         .trim('-')
         .ifBlank { "default" }
 
-internal fun InboxItem.toAppShellConversationSummary(): ConversationSummary {
-    val itemParentChannelId = parentChannelId
-    val itemParentMessageId = parentMessageId
-    val threadId =
-        if (kind == InboxItemKind.Thread && itemParentChannelId != null && itemParentMessageId != null) {
-            threadIdentity(itemParentChannelId, itemParentMessageId)
-        } else {
-            topLevelThreadId(threadChannelId ?: channelId)
-        }
-    return ConversationSummary(
-        threadId = threadId,
-        channelId = itemParentChannelId ?: channelId,
-        thread =
-            if (kind == InboxItemKind.Thread && itemParentChannelId != null && itemParentMessageId != null) {
-                ThreadConversation(
-                    parentChannelId = itemParentChannelId,
-                    parentMessageId = itemParentMessageId,
-                    streamChannelId = threadChannelId
-                )
-            } else {
-                null
-            },
-        kind =
-            when (kind) {
-                InboxItemKind.DirectMessage -> ConversationKind.DirectMessage
-                InboxItemKind.Thread -> ConversationKind.Thread
-                InboxItemKind.System -> ConversationKind.System
-                else -> parentChannelKind ?: ConversationKind.Channel
-            },
-        name =
-            when (kind) {
-                InboxItemKind.Thread -> parentChannelName ?: channelName
-                else -> channelName
-            },
-        subtitle = parentMessagePreview ?: lastMessagePreview ?: latestActivityPreview,
-        unreadCount = unreadCount,
-        lastMessageId = latestActivityMessageId ?: lastMessageId,
-        firstUnreadMessageId = firstUnreadMessageId,
-        lastMessagePreview = latestActivityPreview ?: lastMessagePreview,
-        lastMessageAt = latestActivityAt ?: lastMessageAt,
-        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
-    )
-}
-
 @Composable
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
@@ -8601,7 +8563,7 @@ private fun HomeActivityVisualContent() {
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeActivityPanel(
             snapshot = homeActivityVisualSnapshot,
-            onOpenConversation = {},
+            onOpenMessage = {},
             onClose = {},
             modifier = Modifier.fillMaxSize()
         )

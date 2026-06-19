@@ -76,6 +76,43 @@ class SharedInboxPanelTest {
         assertEquals(MessageId("message-1"), conversation.thread?.parentMessageId)
     }
 
+    @Test
+    fun homeOpenRequestUsesLatestActivityMessageAsAnchor() {
+        val request =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                lastMessageId = MessageId("last-message"),
+                latestActivityMessageId = MessageId("activity-message"),
+                firstUnreadMessageId = MessageId("first-unread")
+            ).toHomeMessageOpenRequest()
+
+        assertEquals(MessageId("activity-message"), request.conversation.lastMessageId)
+        assertEquals("activity-message", request.anchorMessageId)
+    }
+
+    @Test
+    fun homeOpenRequestFallsBackToThreadParentAsAnchor() {
+        val request =
+            InboxItem(
+                key = "thread:thread-channel-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview"
+            ).toHomeMessageOpenRequest()
+
+        assertEquals(ConversationKind.Thread, request.conversation.kind)
+        assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversation.threadId)
+        assertEquals("message-1", request.anchorMessageId)
+    }
+
     private fun activityItem(
         latestActivityAt: String? = null,
         lastMessageAt: String? = null
