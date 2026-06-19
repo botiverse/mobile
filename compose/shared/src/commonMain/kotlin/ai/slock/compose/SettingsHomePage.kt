@@ -9982,8 +9982,7 @@ internal fun buildAppShellThreadPayload(
     conversation: ConversationSummary,
     timeContext: AppShellThreadTimeContext? = null,
     alignOwnMessagesRight: Boolean = false,
-    anchorMessageId: String? = null,
-    replyThreadTitle: String = ThreadReplyPageTitle
+    anchorMessageId: String? = null
 ): KuiklyThreadScreenPayload {
     val surfaceKind = conversation.threadSurfaceKind()
     val streamChannelId = conversation.threadStreamChannelId()
@@ -9997,15 +9996,12 @@ internal fun buildAppShellThreadPayload(
             null
         }
     val canSend = conversation.joined && conversation.permissions.canSend
-    val originMessage = conversation.toAppShellOriginMessage()
     val supportsChannelTasks =
         conversation.permissions.canCreateTask &&
             !conversation.channelType.equals("joint", ignoreCase = true)
     val composer =
-        buildThreadSurfaceComposerPayload(
+        KuiklyThreadComposerPayload(
             surfaceKind = surfaceKind,
-            displayName = if (isReplyThread) replyThreadTitle else conversation.name,
-            fallbackId = conversation.threadId.value,
             enabled = canSend,
             showAsTaskToggle = supportsChannelTasks,
             mentionChannelId = parentChannelId,
@@ -10014,13 +10010,8 @@ internal fun buildAppShellThreadPayload(
         )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
-        title = if (isReplyThread) replyThreadTitle else conversation.name.ifBlank { replyThreadTitle },
-        subtitle =
-            if (isReplyThread) {
-                threadChannelHeaderSubtitle(conversation.name)
-            } else {
-                conversation.subtitle?.takeIf { it.isNotBlank() }
-            },
+        title = SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId).title,
+        subtitle = null,
         status = "loading",
         surfaceKind = surfaceKind,
         sourceThreadId = streamChannelId,
@@ -10036,8 +10027,6 @@ internal fun buildAppShellThreadPayload(
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = isReplyThread && parentMessageId != null,
-        originMessage = originMessage,
-        originPreview = conversation.originMessagePreview,
         joined = conversation.joined,
         canSend = canSend,
         membersCount = conversation.memberCount ?: 0,
@@ -10049,43 +10038,11 @@ internal fun buildAppShellThreadPayload(
         showSettingsAction = !isReplyThread,
         showTaskOpenActions = supportsChannelTasks,
         showTaskStatusActions = supportsChannelTasks,
-        originStatus =
-            when {
-                originMessage != null -> "loaded"
-                isReplyThread && conversation.originMessageExpected -> "missing"
-                else -> "none"
-            },
         settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
-    )
-}
-
-private fun ConversationSummary.toAppShellOriginMessage(): KuiklyThreadMessageItem? {
-    val parentId = threadParentMessageId()?.takeIf { it.isNotBlank() } ?: return null
-    val body = originMessagePreview?.takeIf { it.isNotBlank() } ?: return null
-    val senderKind = originMessageSenderKind ?: MemberKind.Human
-    val senderId = originMessageSenderId?.takeIf { it.isNotBlank() } ?: "unknown"
-    val senderName = lastMessageSenderName
-        ?.takeIf { lastMessageId?.value == parentId && it.isNotBlank() }
-        ?: senderId.takeUnless { it == "unknown" }
-        ?: "Unknown"
-    return KuiklyThreadMessageItem(
-        id = parentId,
-        authorId = senderId,
-        authorName = senderName,
-        authorKind =
-            when (senderKind) {
-                MemberKind.Agent -> "agent"
-                MemberKind.System -> "system"
-                else -> "human"
-            },
-        avatarLabel = senderName.take(1).uppercase(),
-        timestampLabel = lastMessageAt?.takeIf { lastMessageId?.value == parentId } ?: "",
-        body = body,
-        threadChannelId = threadStreamChannelId(),
-    )
+    ).withLaunchHeaderContext()
 }
 
 private fun KuiklyThreadScreenPayload.withDiagnosticsFeedbackDraft(
@@ -10191,10 +10148,8 @@ internal fun buildAppShellTaskThreadLoadingPayload(
 ): KuiklyThreadScreenPayload {
     val parentMessage = task.toAppShellTaskParentMessage()
     val composer =
-        buildThreadSurfaceComposerPayload(
+        KuiklyThreadComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-            displayName = task.channelName.orEmpty(),
-            fallbackId = task.id.value,
             enabled = true,
             mentionChannelId = task.channelId?.value,
             parentMessageId = parentMessage?.id,
@@ -10202,8 +10157,8 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         )
     return KuiklyThreadScreenPayload(
         instanceId = "shared-shell-task-thread-${task.id.value}",
-        title = ThreadReplyPageTitle,
-        subtitle = threadChannelHeaderSubtitle(task.channelName),
+        title = SharedThreadHeaderContextStore.launchContext(KuiklyThreadSurfaceKind.ReplyThread, parentMessage?.id).title,
+        subtitle = null,
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
         sourceThreadId = null,
@@ -10216,10 +10171,9 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         showReplyActions = false,
         alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = true,
-        originMessage = parentMessage,
         originParentMessageId = parentMessage?.id,
         focusedMessageId = parentMessage?.id,
-        originStatus = if (parentMessage != null) "loaded" else "idle",
+        originStatus = if (parentMessage != null) "loading" else "none",
         localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
@@ -10229,7 +10183,7 @@ internal fun buildAppShellTaskThreadLoadingPayload(
         emptyTitle = "Opening task",
         emptyDetail = "Loading the task conversation.",
         composer = composer
-    )
+    ).withLaunchHeaderContext()
 }
 
 private fun TaskSummary.toAppShellTaskParentMessage(): KuiklyThreadMessageItem? {

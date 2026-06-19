@@ -212,7 +212,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun appendSentPagePatchesTimelineAndPreservesHeaderIdentity() = runBlocking {
+    fun appendSentPagePatchesTimelineAndPreservesStoreHeaderIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -246,7 +246,7 @@ class SharedThreadStoreTest {
         )
 
         val payload = store.state.value.payload
-        assertEquals("Readable channel", payload.title)
+        assertEquals("general", payload.title)
         assertEquals(listOf("cached body", "sent body"), payload.messages.map { it.body })
         assertEquals("sent body", localStore.readThread(ThreadId("channel-1"))?.messages?.last()?.body)
         scope.cancel()
@@ -864,6 +864,7 @@ class SharedThreadStoreTest {
                             body = "reply body",
                             id = "reply-1",
                             messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
                             conversation =
                                 conversationSummary("thread-m1").copy(
                                     kind = ConversationKind.Thread,
@@ -918,6 +919,212 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchReplyThreadPayloadVerifiesStreamHintBeforeEmitting() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResultsById =
+                    mapOf(
+                        ThreadId("wrong-thread") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "wrong-thread",
+                                    body = "wrong reply body",
+                                    id = "wrong-reply",
+                                    conversation =
+                                        conversationSummary("wrong-thread").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("wrong-thread"),
+                                            name = "wrong",
+                                            subtitle = "#wrong",
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("other-channel"),
+                                                    parentMessageId = MessageId("other-message"),
+                                                    streamChannelId = ChannelId("wrong-thread")
+                                                )
+                                        )
+                                )
+                            ),
+                        ThreadId("thread-m1") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    body = "reply body",
+                                    id = "reply-1",
+                                    messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                                    parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                                    conversation =
+                                        conversationSummary("thread-m1").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("thread-m1"),
+                                            name = "general",
+                                            subtitle = "#general",
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("channel-1"),
+                                                    parentMessageId = MessageId("m1"),
+                                                    streamChannelId = ChannelId("thread-m1")
+                                                )
+                                        )
+                                )
+                            )
+                    ),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-m1"),
+                            changed = false,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 2
+                        )
+                    )
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "wrong-thread",
+                streamChannelId = "wrong-thread",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1"
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+    }
+
+    @Test
+    fun startSkipsMismatchedReplyThreadMemoryCacheBeforeResolvedFetch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = replyHintRepository()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        dataSource.cachePayload(wrongReplyCachedPayload())
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedPayloads += state.payload }
+        }
+
+        store.accept(SharedThreadIntent.Start(replyRouteWithWrongHint()))
+
+        val payload = store.state.value.payload
+        assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
+        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun startSkipsMismatchedReplyThreadPersistentCacheBeforeResolvedFetch() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(wrongReplyThreadSnapshot())
+        val repository = replyHintRepository()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                conversationRepository = repository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedPayloads += state.payload }
+        }
+
+        store.accept(SharedThreadIntent.Start(replyRouteWithWrongHint()))
+
+        val payload = store.state.value.payload
+        assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
+        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun startSkipsMismatchedReplyThreadCacheWhenResolutionFails() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(wrongReplyThreadSnapshot())
+        val repository =
+            replyHintRepository(
+                createThreadResult =
+                    DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                conversationRepository = repository
+            )
+        dataSource.cachePayload(wrongReplyCachedPayload())
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedPayloads += state.payload }
+        }
+
+        store.accept(SharedThreadIntent.Start(replyRouteWithWrongHint()))
+
+        val payload = store.state.value.payload
+        assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
+        assertEquals(listOf(ThreadId("wrong-thread")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals("error", payload.status)
+        assertEquals("thread_reply_network", payload.errorCode)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(null, payload.originMessage)
+        observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
     fun startWithUnresolvedActivityReplyThreadCreatesStreamBeforeLoadingReplies() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -929,6 +1136,7 @@ class SharedThreadStoreTest {
                             body = "reply body",
                             id = "reply-1",
                             messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
                             conversation =
                                 conversationSummary("thread-m1").copy(
                                     kind = ConversationKind.Thread,
@@ -973,7 +1181,21 @@ class SharedThreadStoreTest {
                 parentMessagePreview = "parent body",
                 latestActivityMessageId = MessageId("reply-1")
             ).toHomeMessageOpenRequest()
-        val initialPayload = buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+        val initialPayload =
+            buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+                .copy(
+                    title = "stale launch title",
+                    subtitle = "#stale",
+                    originMessage =
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "stale-user",
+                            authorName = "Stale",
+                            body = "stale launch parent"
+                        ),
+                    originPreview = "stale launch preview",
+                    originStatus = "loaded"
+                )
 
         store.accept(SharedThreadIntent.Start(initialPayload))
 
@@ -990,6 +1212,8 @@ class SharedThreadStoreTest {
         assertEquals("m1", payload.parentMessageId)
         assertEquals("m1", payload.originParentMessageId)
         assertEquals("reply-1", payload.focusedMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
         scope.cancel()
@@ -1853,6 +2077,17 @@ class SharedThreadStoreTest {
                                 listOf(
                                     message(threadId = "thread-m1", id = "m1", seq = 10, body = "parent body"),
                                     message(threadId = "thread-m1", id = "reply-1", seq = 11, body = "reply body")
+                                ),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
                                 )
                         )
                     )
@@ -1895,7 +2130,18 @@ class SharedThreadStoreTest {
                         threadId = "thread-m1",
                         body = "reply body",
                         id = "reply-1",
-                        seq = 11
+                        seq = 11,
+                        conversation =
+                            conversationSummary("thread-m1").copy(
+                                kind = ConversationKind.Thread,
+                                channelId = ChannelId("thread-m1"),
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m1"),
+                                        streamChannelId = ChannelId("thread-m1")
+                                    )
+                            )
                     )
                 ),
             createThreadResult =
@@ -2416,6 +2662,7 @@ class SharedThreadStoreTest {
 
     private class FakeConversationRepository(
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
+        var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
         var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
@@ -2445,7 +2692,7 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             getThreadRequests += threadId
             getThreadLimits += limit
-            return threadResult
+            return threadResultsById[threadId] ?: threadResult
         }
 
         override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
@@ -2526,6 +2773,20 @@ class SharedThreadStoreTest {
             canSend = true
         )
 
+    private fun replyRouteWithWrongHint(): KuiklyThreadScreenPayload =
+        basePayload().copy(
+            instanceId = "shared-shell-thread-wrong-thread",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = "wrong-thread",
+            streamChannelId = "wrong-thread",
+            parentChannelId = "channel-1",
+            parentMessageId = "m1",
+            originParentMessageId = "m1",
+            title = ThreadReplyPageTitle,
+            subtitle = "#general",
+            showModeTabs = false
+        )
+
     private fun contentPayload(body: String): KuiklyThreadScreenPayload =
         buildSharedThreadPayloadFromMessagesPage(
             basePayload = basePayload(),
@@ -2537,6 +2798,107 @@ class SharedThreadStoreTest {
                 ),
             session = sampleSession()
         )
+
+    private fun wrongReplyCachedPayload(): KuiklyThreadScreenPayload =
+        KuiklyThreadScreenPayload(
+            instanceId = "shared-shell-thread-wrong-thread",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = "wrong-thread",
+            streamChannelId = "wrong-thread",
+            parentChannelId = "other-channel",
+            parentMessageId = "other-message",
+            originParentMessageId = "other-message",
+            title = ThreadReplyPageTitle,
+            subtitle = "#wrong",
+            status = "content",
+            messages =
+                listOf(
+                    KuiklyThreadMessageItem(
+                        id = "wrong-reply",
+                        authorId = "u1",
+                        authorName = "Artin",
+                        body = "wrong cached body"
+                    )
+                ),
+            originMessage =
+                KuiklyThreadMessageItem(
+                    id = "other-message",
+                    authorId = "u1",
+                    authorName = "Artin",
+                    body = "wrong parent"
+                ),
+            originStatus = "loaded"
+        )
+
+    private fun wrongReplyThreadSnapshot(): ThreadSnapshot =
+        threadSnapshot(
+            threadId = "wrong-thread",
+            body = "wrong cached body",
+            id = "wrong-reply",
+            messages = listOf(message(threadId = "wrong-thread", id = "wrong-reply", seq = 2, body = "wrong cached body")),
+            parentMessage = message(threadId = "other-channel", id = "other-message", seq = 1, body = "wrong parent"),
+            conversation =
+                conversationSummary("wrong-thread").copy(
+                    kind = ConversationKind.Thread,
+                    channelId = ChannelId("wrong-thread"),
+                    name = "wrong",
+                    subtitle = "#wrong",
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("other-channel"),
+                            parentMessageId = MessageId("other-message"),
+                            streamChannelId = ChannelId("wrong-thread")
+                        )
+                )
+        )
+
+    private fun canonicalReplyThreadSnapshot(): ThreadSnapshot =
+        threadSnapshot(
+            threadId = "thread-m1",
+            body = "reply body",
+            id = "reply-1",
+            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+            conversation =
+                conversationSummary("thread-m1").copy(
+                    kind = ConversationKind.Thread,
+                    channelId = ChannelId("thread-m1"),
+                    name = "general",
+                    subtitle = "#general",
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("m1"),
+                            streamChannelId = ChannelId("thread-m1")
+                        )
+                )
+        )
+
+    private fun replyHintRepository(
+        createThreadResult: DataResult<ThreadActionResult> =
+            DataResult.Content(
+                ThreadActionResult(
+                    threadChannelId = ChannelId("thread-m1"),
+                    changed = false,
+                    parentMessageId = MessageId("m1"),
+                    replyCount = 2
+                )
+            )
+    ): FakeConversationRepository =
+        FakeConversationRepository(
+            threadResultsById =
+                mapOf(
+                    ThreadId("wrong-thread") to DataResult.Content(wrongReplyThreadSnapshot()),
+                    ThreadId("thread-m1") to DataResult.Content(canonicalReplyThreadSnapshot())
+                ),
+            createThreadResult = createThreadResult
+        )
+
+    private fun KuiklyThreadScreenPayload.containsWrongReplyCacheContent(): Boolean =
+        title == "wrong" ||
+            subtitle == "#wrong" ||
+            originMessage?.body == "wrong parent" ||
+            messages.any { message -> message.body == "wrong cached body" }
 
     private fun taskPayload(): KuiklyThreadScreenPayload {
         val message =
@@ -2582,11 +2944,13 @@ class SharedThreadStoreTest {
             id: String = "m1",
             seq: Long = 10,
             messages: List<Message> = listOf(message(threadId = threadId, id = id, seq = seq, body = body)),
+            parentMessage: Message? = null,
             conversation: ConversationSummary = conversationSummary(threadId)
         ): ThreadSnapshot =
             ThreadSnapshot(
                 conversation = conversation,
-                messages = messages
+                messages = messages,
+                parentMessage = parentMessage
             )
 
         private fun conversationSummary(threadId: String = "channel-1"): ConversationSummary =
