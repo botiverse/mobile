@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.AddChannelMemberRequest
+import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.ComposeLocalDataStore
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.AgentActivitySnapshot
@@ -304,6 +305,52 @@ class SharedThreadStoreTest {
         assertEquals(2, payload.membersCount)
         assertEquals(listOf("u1", "agent-1"), payload.members.map { it.id })
         assertEquals(listOf("agent-2"), payload.memberCandidates.map { it.id })
+        scope.cancel()
+    }
+
+    @Test
+    fun loadMembersRetriesAfterTransientFailure() = runBlocking {
+        // Verifies the loadMembers idempotency contract: a transient
+        // failure on the first call must NOT set status=Loaded, so the
+        // next modal open / explicit LoadMembers re-fetches.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val flakyMemberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin")),
+                channelMembers = listOf(member("u1", "Artin")),
+                failChannelMembersFirstCalls = 1
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = flakyMemberRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        // Start -> refresh path -> loadMembers(force = true) -> first
+        // getChannelMembers returns Error. Status becomes Error.
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val callsAfterStart = flakyMemberRepository.channelMemberCalls
+        assertEquals(1, callsAfterStart, "Start should have triggered exactly one enrichment attempt")
+        // Explicit LoadMembers should retry, not skip.
+        store.accept(SharedThreadIntent.LoadMembers)
+        val callsAfterRetry = flakyMemberRepository.channelMemberCalls
+        assertEquals(
+            2,
+            callsAfterRetry,
+            "After transient failure, the next LoadMembers must re-fetch (status should be Error, not Loaded)"
+        )
+        // And on the second attempt the request succeeded, so the
+        // payload should now have the channel member.
+        assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
+        // A third LoadMembers should now be a no-op (Loaded).
+        store.accept(SharedThreadIntent.LoadMembers)
+        assertEquals(
+            2,
+            flakyMemberRepository.channelMemberCalls,
+            "After successful retry, status should be Loaded and no further fetch should happen"
+        )
         scope.cancel()
     }
 
@@ -1980,10 +2027,17 @@ class SharedThreadStoreTest {
 
     private class FakeMemberRepository(
         private val serverMembers: List<MemberProfile> = emptyList(),
-        private var channelMembers: List<MemberProfile> = emptyList()
+        private var channelMembers: List<MemberProfile> = emptyList(),
+        /**
+         * Number of initial `getChannelMembers` calls that should
+         * return a transient Error before subsequent calls succeed.
+         * Used to verify the loadMembers retry contract.
+         */
+        private val failChannelMembersFirstCalls: Int = 0
     ) : MemberRepository {
         val serverMemberRequests: MutableList<ServerId> = mutableListOf()
         val channelMemberRequests: MutableList<ChannelId> = mutableListOf()
+        val channelMemberCalls: Int get() = channelMemberRequests.size
         val addRequests: MutableList<AddChannelMemberRequest> = mutableListOf()
         val removeRequests: MutableList<RemoveChannelMemberRequest> = mutableListOf()
 
@@ -2005,6 +2059,10 @@ class SharedThreadStoreTest {
             channelId: ChannelId
         ): DataResult<ChannelMemberSnapshot> {
             channelMemberRequests += channelId
+            val callIndex = channelMemberRequests.size
+            if (failChannelMembersFirstCalls > 0 && callIndex <= failChannelMembersFirstCalls) {
+                return DataResult.Error(ScreenError(code = "transient_network", retryable = true))
+            }
             return DataResult.Content(
                 ChannelMemberSnapshot(
                     channelId = channelId,

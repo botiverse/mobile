@@ -535,18 +535,45 @@ internal class SharedThreadDataSource(
         return payload.withCachedSenderProfiles(session)
     }
 
-    suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        val repository = memberRepository ?: return payload
-        val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return payload
+    /**
+     * Outcome of an attempt to enrich the current thread payload with
+     * fresh member / candidate data. The tri-state lets the caller
+     * distinguish a real "no change" success from a transient failure
+     * (network / repository exception, NoPermission, Error) so that
+     * idempotent LoadMembers can decide whether to enter Loaded or
+     * Error.
+     */
+    internal sealed class MembersEnrichOutcome {
+        data class Updated(val payload: KuiklyThreadScreenPayload) : MembersEnrichOutcome()
+        data object Unchanged : MembersEnrichOutcome()
+        data class Failed(val reason: String) : MembersEnrichOutcome()
+    }
+
+    suspend fun enrichThreadMembers(payload: KuiklyThreadScreenPayload): MembersEnrichOutcome {
+        val repository = memberRepository ?: return MembersEnrichOutcome.Unchanged
+        val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: return MembersEnrichOutcome.Unchanged
         val channelMembers =
             try {
                 repository.getChannelMembers(DataRequestPriority.Visible, ChannelId(threadId))
             } catch (cancellation: CancellationException) {
                 throw cancellation
-            } catch (_: Throwable) {
-                return payload
+            } catch (t: Throwable) {
+                return MembersEnrichOutcome.Failed("getChannelMembers threw: ${t::class.simpleName}")
             }
-        if (channelMembers !is DataResult.Content) return payload
+        if (channelMembers !is DataResult.Content) {
+            // Reached only for Empty / NoPermission / Error. Treat
+            // Empty as success-no-data (Loaded), NoPermission / Error
+            // as transient failure so the next modal open can retry.
+            return when (val result = channelMembers) {
+                is DataResult.Empty -> MembersEnrichOutcome.Unchanged
+                is DataResult.NoPermission ->
+                    MembersEnrichOutcome.Failed("getChannelMembers: NoPermission")
+                is DataResult.Error ->
+                    MembersEnrichOutcome.Failed("getChannelMembers: Error(${result.error.code})")
+                is DataResult.Content -> error("unreachable: filtered by !is DataResult.Content above")
+            }
+        }
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val homeAvatarByMemberId =
             serverId
@@ -587,11 +614,13 @@ internal class SharedThreadDataSource(
                     .filterNot { it.memberKey in memberKeys }
                     .map { it.withHomeAvatarFallback(homeAvatarByMemberId[it.id.value]).toKuiklyThreadMemberItem() }
             }
-        return payload.copy(
-            membersCount = members.size,
-            members = members.map { it.toKuiklyThreadMemberItem() },
-            memberCandidates = candidates,
-            canAddMembers = channelMembers.data.canAddMembers
+        return MembersEnrichOutcome.Updated(
+            payload.copy(
+                membersCount = members.size,
+                members = members.map { it.toKuiklyThreadMemberItem() },
+                memberCandidates = candidates,
+                canAddMembers = channelMembers.data.canAddMembers
+            )
         )
     }
 
@@ -725,8 +754,11 @@ internal class SharedThreadDataSource(
     }
 
     private suspend fun refreshMembersAfterMutation(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
-        val nextPayload = enrichThreadMembers(payload)
-        return nextPayload
+        return when (val outcome = enrichThreadMembers(payload)) {
+            is SharedThreadDataSource.MembersEnrichOutcome.Updated -> outcome.payload
+            is SharedThreadDataSource.MembersEnrichOutcome.Unchanged,
+            is SharedThreadDataSource.MembersEnrichOutcome.Failed -> payload
+        }
     }
 
     suspend fun fetchOlderThreadPayload(
@@ -1523,24 +1555,39 @@ internal class SharedThreadStore(
                 "existingMembers=${existing.members.size} existingCandidates=${existing.memberCandidates.size}"
         )
         _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.InFlight)
-        val enrichedPayload = dataSource.enrichThreadMembers(existing)
-        if (enrichedPayload == existing) {
-            _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
-            diagnosticsLogger?.invoke(
-                "thread_members_load_result threadId=$threadKey " +
-                    "result=unchanged members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
-                    "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
-            )
-            return
+        when (val outcome = dataSource.enrichThreadMembers(existing)) {
+            is SharedThreadDataSource.MembersEnrichOutcome.Updated -> {
+                reducePayloadPatch(cachePayload = true) { currentPayload ->
+                    currentPayload.withMembersPatchFrom(outcome.payload)
+                }
+                _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                diagnosticsLogger?.invoke(
+                    "thread_members_load_result threadId=$threadKey " +
+                        "result=changed members=${outcome.payload.members.size} " +
+                        "candidates=${outcome.payload.memberCandidates.size} canAddMembers=${outcome.payload.canAddMembers} " +
+                        "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+            }
+            is SharedThreadDataSource.MembersEnrichOutcome.Unchanged -> {
+                _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
+                diagnosticsLogger?.invoke(
+                    "thread_members_load_result threadId=$threadKey " +
+                        "result=unchanged members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
+                        "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+            }
+            is SharedThreadDataSource.MembersEnrichOutcome.Failed -> {
+                // Transient failure: keep status as Error so the next
+                // modal open (or Refresh) can retry. Do not reduce payload.
+                _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Error)
+                diagnosticsLogger?.invoke(
+                    "thread_members_load_result threadId=$threadKey " +
+                        "result=failed reason=${outcome.reason} " +
+                        "members=${existing.members.size} candidates=${existing.memberCandidates.size} " +
+                        "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
+                )
+            }
         }
-        reducePayloadPatch(cachePayload = true) { currentPayload -> currentPayload.withMembersPatchFrom(enrichedPayload) }
-        _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
-        diagnosticsLogger?.invoke(
-            "thread_members_load_result threadId=$threadKey " +
-                "result=changed members=${enrichedPayload.members.size} " +
-                "candidates=${enrichedPayload.memberCandidates.size} canAddMembers=${enrichedPayload.canAddMembers} " +
-                "durationMs=${membersStartedAt.elapsedNow().inWholeMilliseconds}"
-        )
     }
 
     private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {
