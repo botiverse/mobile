@@ -2147,10 +2147,15 @@ private fun SettingsAppShellContent(
     }
 
     var serverInviteEmail by remember { mutableStateOf("") }
+    var serverProfileName by remember { mutableStateOf("") }
     var serverDeleteConfirmation by remember { mutableStateOf("") }
-    val currentServerName =
-        settingsState.server.currentContent()?.profile?.name ?: session?.currentServerSummary()?.name.orEmpty()
+    val currentServerProfile = settingsState.server.currentContent()?.profile
+    val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
+    val currentServerSlug = currentServerProfile?.slug ?: session?.currentServerSummary()?.slug.orEmpty()
     LaunchedEffect(currentServerName) {
+        serverProfileName = currentServerName
+    }
+    LaunchedEffect(currentServerSlug) {
         serverDeleteConfirmation = ""
     }
 
@@ -2335,7 +2340,11 @@ private fun SettingsAppShellContent(
                     ),
                     inviteEmail = serverInviteEmail,
                     onInviteEmailChange = { serverInviteEmail = it },
-                    expectedServerName = currentServerName,
+                    profileName = serverProfileName,
+                    onProfileNameChange = { serverProfileName = it },
+                    serverSnapshot = settingsState.server.currentContent(),
+                    serverRole = session?.currentServerSummary()?.role.orEmpty(),
+                    expectedServerSlug = currentServerSlug,
                     deleteConfirmationName = serverDeleteConfirmation,
                     onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
                     actionState = settingsState.actionState,
@@ -2343,7 +2352,7 @@ private fun SettingsAppShellContent(
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
-                            settingsState.server.currentContent()?.profile?.name?.takeIf { it.isNotBlank() }?.let {
+                            itemId?.trim()?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(it)))
                             }
                         SERVER_ACTION_INVITE_CREATE ->
@@ -2399,7 +2408,7 @@ private fun SettingsAppShellContent(
                                 onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_LEAVE))
                             }
                         SERVER_ACTION_DELETE ->
-                            itemId?.trim()?.takeIf { it == currentServerName && it.isNotBlank() }?.let {
+                            itemId?.trim()?.takeIf { it == currentServerSlug && it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest(it)))
                             }
                         else -> onSettingsAction(action, itemId)
@@ -2511,7 +2520,11 @@ private fun SharedSettingsServerContent(
     payload: KuiklySharedSettingsPayload,
     inviteEmail: String,
     onInviteEmailChange: (String) -> Unit,
-    expectedServerName: String,
+    profileName: String,
+    onProfileNameChange: (String) -> Unit,
+    serverSnapshot: SettingsServerSnapshot?,
+    serverRole: String,
+    expectedServerSlug: String,
     deleteConfirmationName: String,
     onDeleteConfirmationNameChange: (String) -> Unit,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
@@ -2523,7 +2536,25 @@ private fun SharedSettingsServerContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item { SharedSettingsHero(payload) }
+        item {
+            SettingsServerProfileFormCard(
+                profile = serverSnapshot?.profile,
+                draftName = profileName,
+                fallbackName = payload.heroLabel,
+                fallbackSlug = expectedServerSlug,
+                role = serverRole,
+                actionState = actionState,
+                onNameChange = onProfileNameChange,
+                onSubmit = { onAction(SERVER_ACTION_PROFILE_SAVE, profileName.trim()) }
+            )
+        }
         payload.sections.forEach { section ->
+            if (section.title == "Profile") {
+                return@forEach
+            }
+            if (section.title == "Danger Zone") {
+                return@forEach
+            }
             item { SharedSettingsSectionCard(section, onAction) }
             if (section.title == "Pending Invites") {
                 item {
@@ -2535,19 +2566,237 @@ private fun SharedSettingsServerContent(
                     )
                 }
             }
-            if (section.title == "Plan and danger") {
-                item {
-                    SettingsServerDeleteFormCard(
-                        expectedServerName = expectedServerName,
-                        confirmationName = deleteConfirmationName,
-                        actionState = actionState,
-                        onConfirmationNameChange = onDeleteConfirmationNameChange,
-                        onSubmit = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) }
-                    )
-                }
-            }
+        }
+        item {
+            SettingsServerDangerZoneCard(
+                serverName = serverSnapshot?.profile?.name ?: payload.heroLabel,
+                expectedServerSlug = expectedServerSlug,
+                role = serverRole,
+                dangerSection = serverSnapshot?.sections?.firstOrNull { it.key == "danger" },
+                confirmationSlug = deleteConfirmationName,
+                actionState = actionState,
+                onConfirmationSlugChange = onDeleteConfirmationNameChange,
+                onLeave = { onAction(SERVER_ACTION_LEAVE, null) },
+                onDelete = { onAction(SERVER_ACTION_DELETE, deleteConfirmationName.trim()) }
+            )
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsServerProfileFormCard(
+    profile: ai.slock.compose.data.SettingsServerProfileSnapshot?,
+    draftName: String,
+    fallbackName: String,
+    fallbackSlug: String,
+    role: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onNameChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val currentName = profile?.name ?: fallbackName
+    val currentSlug = profile?.slug?.takeIf { it.isNotBlank() } ?: fallbackSlug
+    val canSave = profile?.canSave == true
+    val busy = actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.inProgress
+    val trimmedName = draftName.trim()
+    val dirty = trimmedName.isNotBlank() && trimmedName != currentName
+    val enabled = canSave && dirty && !busy
+    val status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) "Save Profile" else "Read only")
+    SettingsFormSectionCard(iconName = "building-2", title = "Profile") {
+        SlockBrutalTextField(
+            label = "Name",
+            value = if (canSave) draftName else currentName,
+            placeholder = currentName.ifBlank { "Workspace name" },
+            onValueChange = onNameChange,
+            required = true,
+            enabled = canSave && !busy
+        )
+        SettingsReadonlyField(
+            label = "Slug",
+            value = currentSlug.ifBlank { "Not provided" }
+        )
+        SettingsReadonlyField(
+            label = "Your role",
+            value = role.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
+        )
+        if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
+            Text(
+                actionState.errorCode,
+                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed
+            )
+        }
+        if (canSave) {
+            SlockBrutalActionButton(
+                label = status,
+                onClick = onSubmit,
+                enabled = enabled,
+                leadingIcon = "save",
+                backgroundColor = SlockColor.BrandYellow
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsReadonlyField(
+    label: String,
+    value: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+        SlockBrutalSectionLabel(label = label)
+        Text(
+            value,
+            style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 10.dp),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerSectionHeader(
+    iconName: String,
+    title: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
+        Text(title, style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    }
+}
+
+@Composable
+private fun SettingsServerDangerZoneCard(
+    serverName: String,
+    expectedServerSlug: String,
+    role: String,
+    dangerSection: SettingsServerSectionSnapshot?,
+    confirmationSlug: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onConfirmationSlugChange: (String) -> Unit,
+    onLeave: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val normalizedRole = role.lowercase()
+    val canLeave = normalizedRole == "admin" || normalizedRole == "member"
+    val canDelete = normalizedRole == "owner" || dangerSection?.state?.name == "Available"
+    if (!canLeave && !canDelete) {
+        return
+    }
+    val leaveConfirmed = actionState.isServerConfirmation(SERVER_ACTION_LEAVE)
+    val deleteBusy = actionState?.action == SERVER_ACTION_DELETE && actionState.inProgress
+    val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
+    val trimmedSlug = confirmationSlug.trim()
+    val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedSlug == expectedServerSlug
+    SettingsFormSectionCard(iconName = "triangle-alert", title = "Danger Zone") {
+        if (canLeave) {
+            SettingsServerDangerActionRow(
+                title = "Leave Server",
+                detail = "You will lose access to ${serverName.ifBlank { "this server" }} and all of its channels. You can be re-invited later.",
+                buttonLabel = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave Server"),
+                buttonIcon = "log-out",
+                buttonColor = SlockColor.AccentOrange,
+                enabled = !leaveBusy,
+                onClick = onLeave
+            )
+            if (leaveConfirmed) {
+                Text(
+                    "Tap Leave Server again to confirm.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+        }
+        if (canDelete) {
+            SettingsServerDangerActionRow(
+                title = "Delete Server",
+                detail = "Permanently remove ${serverName.ifBlank { "this server" }} and all of its data. This cannot be undone.",
+                buttonLabel = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
+                buttonIcon = "trash-2",
+                buttonColor = SlockColor.AccentRed,
+                enabled = false,
+                onClick = {}
+            )
+            Text(
+                "Type ${expectedServerSlug.ifBlank { "the server slug" }} to confirm:",
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+            SlockBrutalTextField(
+                label = "Confirm server slug",
+                value = confirmationSlug,
+                placeholder = expectedServerSlug.ifBlank { "server-slug" },
+                onValueChange = onConfirmationSlugChange,
+                required = true,
+                enabled = !deleteBusy
+            )
+            if (actionState?.action == SERVER_ACTION_DELETE && actionState.errorCode != null) {
+                Text(
+                    actionState.errorCode,
+                    style = SlockType.Caption.copy(color = SlockColor.AccentRed),
+                    color = SlockColor.AccentRed
+                )
+            }
+            SlockBrutalActionButton(
+                label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
+                onClick = onDelete,
+                enabled = deleteEnabled,
+                leadingIcon = "trash-2",
+                backgroundColor = SlockColor.AccentRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsFormSectionCard(
+    iconName: String,
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SettingsServerSectionHeader(iconName = iconName, title = title)
+        content()
+    }
+}
+
+@Composable
+private fun SettingsServerDangerActionRow(
+    title: String,
+    detail: String,
+    buttonLabel: String,
+    buttonIcon: String,
+    buttonColor: Color,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+            Text(detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+        }
+        SlockBrutalActionButton(
+            label = buttonLabel,
+            onClick = onClick,
+            enabled = enabled,
+            leadingIcon = buttonIcon,
+            backgroundColor = buttonColor,
+            minWidth = 108.dp
+        )
     }
 }
 
@@ -2561,11 +2810,7 @@ private fun SettingsServerInviteFormCard(
     val trimmedEmail = email.trim()
     val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
     val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(stringResource(MR.strings.settings_invite_by_email), style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    SettingsFormSectionCard(iconName = "mail-plus", title = stringResource(MR.strings.settings_invite_by_email)) {
         SlockBrutalTextField(
             label = "Email",
             value = email,
@@ -2580,45 +2825,6 @@ private fun SettingsServerInviteFormCard(
             enabled = enabled,
             leadingIcon = "mail-plus",
             backgroundColor = SlockColor.BrandYellow
-        )
-    }
-}
-
-@Composable
-private fun SettingsServerDeleteFormCard(
-    expectedServerName: String,
-    confirmationName: String,
-    actionState: ai.slock.compose.data.SharedSettingsActionState?,
-    onConfirmationNameChange: (String) -> Unit,
-    onSubmit: () -> Unit
-) {
-    val trimmedName = confirmationName.trim()
-    val busy = actionState?.action == SERVER_ACTION_DELETE && actionState.inProgress
-    val enabled = !busy && expectedServerName.isNotBlank() && trimmedName == expectedServerName
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(stringResource(MR.strings.settings_delete_server), style = SlockType.SectionLabel.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
-        Text(
-            "Type ${expectedServerName.ifBlank { "the server name" }} to permanently delete this server.",
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
-        )
-        SlockBrutalTextField(
-            label = "Confirm server name",
-            value = confirmationName,
-            placeholder = expectedServerName.ifBlank { "Server name" },
-            onValueChange = onConfirmationNameChange,
-            required = true,
-            enabled = !busy
-        )
-        SlockBrutalActionButton(
-            label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete server"),
-            onClick = onSubmit,
-            enabled = enabled,
-            leadingIcon = "trash-2",
-            backgroundColor = SlockColor.AccentRed
         )
     }
 }
@@ -3288,9 +3494,9 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                     rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
                 ),
                 KuiklySharedSettingsSection(
-                    title = "Plan and danger",
+                    title = "Plan",
                     rows =
-                        snapshot.toPlanAndDangerRows(sectionsByKey["billing"], sectionsByKey["danger"], plan, actionState)
+                        snapshot.toPlanRows(sectionsByKey["billing"], plan)
                 )
             )
     )
@@ -3465,11 +3671,9 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
         } ?: section.toPlaceholderRow("sidebarOrder", "list-tree", "Sidebar Order", "No sidebar order settings are available.")
     )
 
-private fun SettingsServerSnapshot?.toPlanAndDangerRows(
+private fun SettingsServerSnapshot?.toPlanRows(
     billingSection: SettingsServerSectionSnapshot?,
-    dangerSection: SettingsServerSectionSnapshot?,
-    fallbackPlan: String,
-    actionState: ai.slock.compose.data.SharedSettingsActionState?
+    fallbackPlan: String
 ): List<KuiklySharedSettingsRow> =
     listOf(
         KuiklySharedSettingsRow(
@@ -3478,22 +3682,6 @@ private fun SettingsServerSnapshot?.toPlanAndDangerRows(
             title = "Plan",
             detail = billingSection?.detail ?: "Current workspace billing and usage summary.",
             status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
-            enabled = false
-        ),
-        KuiklySharedSettingsRow(
-            key = SERVER_ACTION_LEAVE,
-            iconName = "log-out",
-            title = "Leave server",
-            detail = "Leave this workspace after confirmation.",
-            status = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave"),
-            enabled = actionState?.inProgress != true
-        ),
-        KuiklySharedSettingsRow(
-            key = "danger",
-            iconName = "triangle-alert",
-            title = dangerSection?.title ?: "Danger actions",
-            detail = dangerSection?.detail ?: "Delete server requires typing the exact server name below.",
-            status = dangerSection?.state?.name ?: "Confirmation required",
             enabled = false
         )
     )

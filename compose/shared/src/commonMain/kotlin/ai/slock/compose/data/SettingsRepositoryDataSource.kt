@@ -655,7 +655,8 @@ class RealSettingsRepository(
                 PermissionBlocker(code = "server_owner_required", requiredCapability = "delete_server")
             )
         }
-        if (request.confirmationName.trim() != server.name) {
+        val expectedSlug = server.slug?.trim().orEmpty()
+        if (expectedSlug.isBlank() || request.confirmationName.trim() != expectedSlug) {
             return DataResult.Error(ScreenError(code = "server_delete_confirmation_mismatch", retryable = false))
         }
         return settingsDeleteServer(server.id)

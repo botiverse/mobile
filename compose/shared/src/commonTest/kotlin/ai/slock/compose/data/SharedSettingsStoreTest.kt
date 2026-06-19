@@ -199,7 +199,7 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.RevokeServerInvite("invite-1"))
         store.accept(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(false)))
         store.accept(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest("admin-1", "member")))
-        store.accept(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
+        store.accept(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
 
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals("Saved", store.state.value.actionState?.let { if (it.errorCode == null && !it.inProgress) "Saved" else it.errorCode })
@@ -217,7 +217,7 @@ class SharedSettingsStoreTest {
                 "server",
                 "updateServerMemberRole:admin-1:member",
                 "server",
-                "deleteServer:Slock Android",
+                "deleteServer:slock",
                 "server"
             ),
             repository.calls
@@ -315,11 +315,11 @@ class SharedSettingsStoreTest {
             )
 
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Server))
-        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
+        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
         block.awaitStarted()
-        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("Slock Android")))
+        store.dispatch(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest("slock")))
 
-        assertEquals(listOf("server", "deleteServer:Slock Android"), repository.calls)
+        assertEquals(listOf("server", "deleteServer:slock"), repository.calls)
         assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = true), store.state.value.actionState)
 
         block.release()
@@ -327,7 +327,7 @@ class SharedSettingsStoreTest {
 
         val server = assertIs<ScreenLoadState.Content<SettingsServerSnapshot>>(store.state.value.server).data
         assertEquals(initialServer.profile.name, server.profile.name)
-        assertEquals(listOf("server", "deleteServer:Slock Android"), repository.calls)
+        assertEquals(listOf("server", "deleteServer:slock"), repository.calls)
         assertEquals(SharedSettingsActionState(SERVER_ACTION_DELETE, inProgress = false, errorCode = "settings_server_delete_failed"), store.state.value.actionState)
         assertEquals("settings_server_delete_failed", store.state.value.routeErrorCode)
         scope.cancel()

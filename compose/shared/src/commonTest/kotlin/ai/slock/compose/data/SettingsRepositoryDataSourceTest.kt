@@ -420,6 +420,25 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun serverDeleteRequiresSlugConfirmationBeforeNetworkDelete() = runBlocking {
+        val rejectedNetwork = FakeSettingsNetworkClient()
+        val rejected =
+            RealSettingsRepository(sampleStore(), rejectedNetwork)
+                .deleteServer(SettingsServerDeleteRequest("Slock Android"))
+        val acceptedNetwork = FakeSettingsNetworkClient()
+        val accepted =
+            RealSettingsRepository(sampleStore(), acceptedNetwork)
+                .deleteServer(SettingsServerDeleteRequest("slock-android"))
+
+        assertTrue(rejected is DataResult.Error)
+        assertEquals("server_delete_confirmation_mismatch", rejected.error.code)
+        assertEquals(null, rejectedNetwork.deletedServerId)
+        assertTrue(accepted is DataResult.Content)
+        assertEquals(true, accepted.data.success)
+        assertEquals("server-1", acceptedNetwork.deletedServerId)
+    }
+
+    @Test
     fun computerDetailCombinesMachineWorkspacesAndAgents() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
@@ -591,6 +610,8 @@ class SettingsRepositoryDataSourceTest {
             private set
         var deletedMemberId: String? = null
             private set
+        var deletedServerId: String? = null
+            private set
         var deletedWorkspaceDirectoryName: String? = null
             private set
         var updatedMemberRoleMemberId: String? = null
@@ -729,8 +750,10 @@ class SettingsRepositoryDataSourceTest {
                     leaveServerCallCount += 1
                     response(leaveServerJson)
                 }
-                normalized.matches(Regex("""servers/[^/]+""")) && method == "DELETE" ->
+                normalized.matches(Regex("""servers/[^/]+""")) && method == "DELETE" -> {
+                    deletedServerId = normalized.split("/")[1]
                     response("""{"ok":true}""")
+                }
                 else -> error("Unhandled request $method $normalized")
             }
         }
