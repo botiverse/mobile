@@ -911,6 +911,7 @@ private fun SlockAppShellContent() {
             )
         }
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
+    var activeThreadResolvedAuxiliaryThreadId by remember { mutableStateOf<String?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
     var pendingAuthReturnThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var authGateMessage by remember { mutableStateOf<String?>(null) }
@@ -1016,6 +1017,11 @@ private fun SlockAppShellContent() {
     var skipRealtimeDisposeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
+    fun setActiveThreadPayload(payload: KuiklyThreadScreenPayload?) {
+        activeThreadResolvedAuxiliaryThreadId = null
+        activeThreadPayload = payload
+    }
+
     fun resetAppShellSessionState(clearReturnThread: Boolean = false) {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
@@ -1025,7 +1031,7 @@ private fun SlockAppShellContent() {
         selectedSettingsComputerId = null
         selectedHomeDestination = null
         selectedHomeConversationId = null
-        activeThreadPayload = null
+        setActiveThreadPayload(null)
         threadBackStack = emptyList()
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
@@ -1167,7 +1173,7 @@ private fun SlockAppShellContent() {
         val threadBackStackSizeBefore = threadBackStack.size
         val hadActiveThread = activeThreadPayload != null
         if (threadBackStack.isNotEmpty()) {
-            activeThreadPayload = threadBackStack.last()
+            setActiveThreadPayload(threadBackStack.last())
             threadBackStack = threadBackStack.dropLast(1)
             bridge.log(
                 "app_back_pop_thread result=thread_stack routeBefore=$routeBefore " +
@@ -1186,7 +1192,7 @@ private fun SlockAppShellContent() {
         }
         val popped = navController.popBackStack()
         if (popped) {
-            activeThreadPayload = null
+            setActiveThreadPayload(null)
             threadBackStack = emptyList()
         }
         bridge.log(
@@ -1203,7 +1209,7 @@ private fun SlockAppShellContent() {
                 threadBackStack = threadBackStack + currentPayload
             }
         }
-        activeThreadPayload = payload
+        setActiveThreadPayload(payload)
         if (navController.currentRoute != AppShellRouteThread) {
             navController.navigate(AppShellRouteThread)
         }
@@ -1388,7 +1394,7 @@ private fun SlockAppShellContent() {
         if (pushCurrent) {
             activeThreadPayload?.let { threadBackStack = threadBackStack + it }
         }
-        activeThreadPayload = payload
+        setActiveThreadPayload(payload)
         if (navController.currentRoute != AppShellRouteThread) {
             navController.navigate(AppShellRouteThread)
         }
@@ -1639,8 +1645,8 @@ private fun SlockAppShellContent() {
         }
     }
 
-    LaunchedEffect(activeThreadPayload?.sourceThreadId) {
-        activeThreadPayload?.sourceThreadId
+    LaunchedEffect(activeThreadResolvedAuxiliaryThreadId) {
+        activeThreadResolvedAuxiliaryThreadId
             ?.takeIf { it.isNotBlank() }
             ?.let { bridge.realtimeJoinChannel(it) }
     }
@@ -1871,7 +1877,7 @@ private fun SlockAppShellContent() {
                     onAuthRequired = { requireSessionReauth(payload) },
                     onOpenParentThread = {
                         if (threadBackStack.isNotEmpty()) {
-                            activeThreadPayload = threadBackStack.last()
+                            setActiveThreadPayload(threadBackStack.last())
                             threadBackStack = threadBackStack.dropLast(1)
                             true
                         } else {
@@ -1909,7 +1915,10 @@ private fun SlockAppShellContent() {
                             }
                         }
                     },
-                    realtimeEventSignal = threadRealtimeEventSignal
+                    realtimeEventSignal = threadRealtimeEventSignal,
+                    onResolvedAuxiliaryThreadIdChanged = { resolvedThreadId ->
+                        activeThreadResolvedAuxiliaryThreadId = resolvedThreadId
+                    }
                 )
             }
         }
@@ -2102,7 +2111,7 @@ private fun SlockAppShellContent() {
                                         } else {
                                             selectedTab = "members"
                                             selectedHomeConversationId = null
-                                            activeThreadPayload = null
+                                            setActiveThreadPayload(null)
                                             threadBackStack = emptyList()
                                         }
                                     },

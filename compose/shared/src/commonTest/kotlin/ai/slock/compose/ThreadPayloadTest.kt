@@ -1618,6 +1618,65 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun resolvedAuxiliaryThreadIdRejectsUnprovenReplyThreadHintUntilContent() {
+        val launchPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "activity-thread",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "wrong-thread",
+                streamChannelId = "wrong-thread",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                status = "loading"
+            )
+
+        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId(launchPayload))
+        assertEquals(
+            "thread-m1",
+            launchPayload
+                .copy(
+                    sourceThreadId = "thread-m1",
+                    streamChannelId = "thread-m1",
+                    status = "content"
+                )
+                .resolvedAuxiliaryThreadId(launchPayload)
+        )
+        assertEquals(
+            "wrong-thread",
+            launchPayload
+                .copy(status = "content")
+                .resolvedAuxiliaryThreadId(launchPayload)
+        )
+    }
+
+    @Test
+    fun threadTasksJoinUsesResolvedAuxiliaryThreadId() {
+        val launchPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "activity-thread",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "wrong-thread",
+                streamChannelId = "wrong-thread",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                status = "loading"
+            )
+        val resolvedPayload =
+            launchPayload.copy(
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                status = "content"
+            )
+        val resolvedTaskChannelId = resolvedPayload.resolvedAuxiliaryThreadId(launchPayload)?.let(::ChannelId)
+
+        assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("wrong-thread")))
+        assertTrue(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
+        assertFalse(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = ChannelId("wrong-thread")))
+    }
+
+    @Test
     fun hidesRawUuidTaskAssigneeUntilMemberNameCanBeResolved() {
         val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
         val base =
