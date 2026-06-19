@@ -5,9 +5,17 @@ import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.data.AgentActivityEntry
+import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentDetailSummary
+import ai.slock.compose.data.AgentDmSummary
 import ai.slock.compose.data.AgentLifecycleActionResult
+import ai.slock.compose.data.AgentReminderSummary
 import ai.slock.compose.data.AgentResetMode
+import ai.slock.compose.data.AgentSkillGroup
+import ai.slock.compose.data.AgentSkillPathGroup
+import ai.slock.compose.data.AgentSkillSummary
+import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
 import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
@@ -84,6 +92,7 @@ import kotlinx.serialization.Serializable
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
+private const val MEMBERS_AGENT_DETAIL_VISUAL_PAGE = "compose_members_agent_detail_visual"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
 
 private val MembersPageInset = SlockSpacing.Md
@@ -231,6 +240,14 @@ internal class ComposeMembersPage : ai.slock.compose.base.BasePager() {
     }
 }
 
+@Page(MEMBERS_AGENT_DETAIL_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeMembersAgentDetailVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { MembersAgentDetailVisualContent() }
+    }
+}
+
 @Serializable
 data class KuiklyMembersPayload(
     val instanceId: String = "",
@@ -302,6 +319,99 @@ private val membersSmokePayload = KuiklyMembersPayload(
             description = "Android",
             avatarLabel = "J",
             presence = ai.slock.compose.model.Presence.Away
+        )
+    )
+)
+
+private val membersAgentDetailVisualMember = MemberProfile(
+    id = MemberId("agent-product-ux"),
+    displayName = "Product UX Designer",
+    handle = "@Product-UX-Designer",
+    kind = MemberKind.Agent,
+    description = "Turns product feedback, screenshots, and release notes into actionable UX specs.",
+    roleDescription = "Product / UX agent",
+    avatar = AvatarReference.Pixel("paint"),
+    avatarLabel = "P",
+    presence = Presence.Active,
+    agentStatus = AgentStatus.Working,
+    permissionBadges = listOf("computer:MacBook Pro", "runtime:Codex")
+)
+
+private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    summary = AgentDetailSummary(
+        id = membersAgentDetailVisualMember.id.value,
+        name = "Product-UX-Designer",
+        displayName = membersAgentDetailVisualMember.displayName,
+        status = "working",
+        runtime = "codex",
+        model = "gpt-5-codex",
+        reasoning = "medium",
+        executionMode = "byoc",
+        machineId = "computer-mbp",
+        machineName = "Jiachengs-MacBook-Pro",
+        daemonVersion = "0.61.1",
+        creatorId = "artin",
+        creatorType = "user",
+        envVarNames = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER"),
+        createdAgents = listOf(
+            AgentCreatedSummary(
+                id = "agent-visual-qa",
+                name = "visual-qa",
+                displayName = "Visual QA",
+                runtime = "codex",
+                status = "idle"
+            )
+        ),
+        activity = "working",
+        activityDetail = "Reviewing Agent detail fixtures"
+    ),
+    directMessages = listOf(
+        AgentDmSummary(
+            id = "dm-agent-product-ux-artin",
+            peerId = "artin",
+            peerName = "artin",
+            lastMessageAt = "2026-06-19T12:24:00Z",
+            lastMessagePreview = "201继续推进"
+        )
+    ),
+    reminders = listOf(
+        AgentReminderSummary(
+            id = "reminder-product-ux-memory",
+            title = "Roll 1-6; if 3, tidy Product-UX memory/files",
+            fireAt = "2026-06-19T18:30:00Z",
+            recurrenceDescription = "daily"
+        )
+    ),
+    activity = listOf(
+        AgentActivityEntry(
+            id = "activity-agent-detail-fixture",
+            type = "status",
+            title = "Agent detail visual fixture",
+            body = "Rebuilt from current main with real Members detail components.",
+            timestamp = "2026-06-19T12:28:00Z",
+            details = listOf("runtime" to "codex", "surface" to "members.agent-detail.profile"),
+            statusActivity = "working",
+            statusDetail = "Capturing deterministic profile state"
+        )
+    ),
+    skills = AgentSkillsSnapshot(
+        agentId = membersAgentDetailVisualMember.id,
+        groups = listOf(
+            AgentSkillGroup(
+                title = "Product review",
+                count = 2,
+                paths = listOf(
+                    AgentSkillPathGroup(
+                        path = "notes/product",
+                        count = 2,
+                        skills = listOf(
+                            AgentSkillSummary("feature-map", "React/KMP parity maps"),
+                            AgentSkillSummary("visual-testing", "Cross-platform fixture ownership")
+                        )
+                    )
+                )
+            )
         )
     )
 )
@@ -530,6 +640,42 @@ internal fun MembersPageContent() {
             }
         },
         inviteHumanLoadJoinLink = { loadInviteJoinLink() }
+    )
+}
+
+@Composable
+private fun MembersAgentDetailVisualContent() {
+    MembersDetailContent(
+        member = membersAgentDetailVisualMember,
+        agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
+        canViewPrivateAgentSurfaces = { _, _ -> true },
+        canManageAgent = { _, _ -> true },
+        onBack = {},
+        onOpenDirectMessage = {},
+        onCopyMemberId = {},
+        onOpenUrl = {},
+        onUpdateAgentProfile = { DataResult.Content(membersAgentDetailVisualMember) },
+        onAgentLifecycleAction = { _, action ->
+            DataResult.Content(
+                AgentLifecycleActionResult(
+                    agentId = membersAgentDetailVisualMember.id,
+                    action = action.actionKey,
+                    success = true
+                )
+            )
+        },
+        agentWorkspaceTreeLoader = null,
+        agentWorkspaceChildrenLoader = null,
+        agentWorkspaceFileLoader = null,
+        onCopyAgentDiagnostics = {},
+        onReportAgentIssue = null,
+        onUnavailableAction = {},
+        timeContext = SlockTimeContext(
+            localOffsetMinutes = 480,
+            todayEpochDay = 20623,
+            nowEpochMillis = 1781872200000,
+            timeFormat = SlockTimeFormat24Hour
+        )
     )
 }
 

@@ -5,6 +5,9 @@ import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -23,12 +26,21 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     private var tint: Color = Color.Black
     private var fillTint: Color? = null
     private var strokeWidthOverride: Float? = null
+    private var renderedVectorKey: IconVectorKey? = null
+    private var renderedVector: ImageVector? by mutableStateOf<ImageVector?>(null)
+    private var renderedTint: Color by mutableStateOf(Color.Black)
 
     init {
         addView(
                 composeView,
                 LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
+        composeView.setContent {
+            val vector = renderedVector
+            if (vector != null) {
+                LucideVectorIcon(vector = vector, tint = renderedTint)
+            }
+        }
         renderIcon()
     }
 
@@ -101,11 +113,14 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
 
     private fun renderIcon() {
         val resolvedFillTint = fillTint
-        val vector = vectorFor(iconName, strokeWidthOverride, resolvedFillTint != null)
-        composeView.setContent {
-            if (vector != null) {
-                LucideVectorIcon(vector = vector, tint = resolvedFillTint ?: tint)
-            }
+        val vectorKey = IconVectorKey(iconName, strokeWidthOverride, resolvedFillTint != null)
+        if (renderedVectorKey != vectorKey) {
+            renderedVectorKey = vectorKey
+            renderedVector = vectorFor(iconName, strokeWidthOverride, resolvedFillTint != null)
+        }
+        val nextTint = resolvedFillTint ?: tint
+        if (renderedTint != nextTint) {
+            renderedTint = nextTint
         }
     }
 
@@ -182,6 +197,12 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
                     .replace(Regex("([a-z0-9])([A-Z])"), "$1-$2")
                     .replace("_", "-")
                     .lowercase()
+
+    private data class IconVectorKey(
+            val name: String,
+            val strokeWidth: Float?,
+            val fillEnabled: Boolean,
+    )
 
     companion object {
         const val VIEW_NAME = "SlockLucideIconView"

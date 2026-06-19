@@ -795,6 +795,43 @@
       }
     },
     {
+      "id": "members.agent-detail.profile",
+      "title": "Members Agent Detail Profile",
+      "surface": "members",
+      "fixture": "fixtures/members.agent-detail.profile.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "profile-management",
+          "name": "Profile With Management Actions",
+          "props": {
+            "agent": "Product-UX-Designer",
+            "tab": "profile",
+            "canManage": true,
+            "canViewPrivateSurfaces": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='members.agent-detail.profile']",
+        "crop": "element",
+        "contract": "page-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+      "androidCaseHint": "compose_members_agent_detail_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "channel.members.panel",
       "title": "Channel Members Panel",
       "surface": "channel",
@@ -1850,6 +1887,51 @@
             "Shared channel members panel"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "members.agent-detail.profile",
+      "title": "Members Agent Detail Profile",
+      "surface": "members",
+      "group": "product-members",
+      "status": "baseline",
+      "notes": "Real React AgentDetailPanel profile tab vs Android rendering of the shared Members detail profile surface. Fixture pins a manageable Codex agent with machine, runtime config, skills, DMs, reminders, and activity summary data; additional private tabs can be split into separate cases.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AgentDetailPanel",
+            "AgentDetailHeader",
+            "AgentProfileInfo",
+            "AgentSkills"
+          ],
+          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "MembersDetailContent",
+            "MembersDetailHeader",
+            "MembersAgentProfileTab",
+            "MembersAgentLifecycleSection"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailProfile"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "MembersDetailContent"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "reason": "Needs Harmony real-device/provider capture."
         }
       ]
