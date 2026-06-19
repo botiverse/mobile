@@ -100,7 +100,10 @@ class SharedSettingsStoreContract(
          */
         private fun SharedSettingsIntent.actionKeyOrNull(): MviActionKey? =
             when (this) {
-                is SharedSettingsIntent.UpdateProfile -> MviActionKey("saveProfile")
+                is SharedSettingsIntent.UpdateProfile -> MviActionKey(ACCOUNT_ACTION_PROFILE_SAVE)
+                SharedSettingsIntent.RequestAccountAvatarUpload -> MviActionKey(ACCOUNT_ACTION_AVATAR_UPLOAD)
+                is SharedSettingsIntent.ChangeAccountPassword -> MviActionKey(ACCOUNT_ACTION_PASSWORD_CHANGE)
+                is SharedSettingsIntent.ConnectAccountProvider -> MviActionKey("${ACCOUNT_ACTION_PROVIDER_CONNECT}:${request.providerId}")
                 is SharedSettingsIntent.UpdateServerProfile -> MviActionKey(request.serverProfileActionKey)
                 is SharedSettingsIntent.CreateServerInvite -> MviActionKey(SERVER_ACTION_INVITE_CREATE)
                 is SharedSettingsIntent.RevokeServerInvite -> MviActionKey("${SERVER_ACTION_INVITE_REVOKE}:$inviteId")

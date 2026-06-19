@@ -36,6 +36,19 @@ internal class BridgeSettingsPlatformCapabilities(
         bridge.openUrl(url)
     }
 
+    override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
+        val response = bridge.threadAttachmentUpload(channelId = "settings-account-avatar", imageOnly = true)
+        val code = response?.optInt("code", 0) ?: 0
+        if (code == 204) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        if (code !in 200..299) {
+            val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "settings_account_avatar_picker_failed" }
+            return DataResult.Error(ScreenError(errorCode, retryable = true))
+        }
+        val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+            ?: return DataResult.Error(ScreenError("settings_account_avatar_picker_empty", retryable = true))
+        return DataResult.Content(file)
+    }
+
     override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "loadStorage"))
         if (response?.optString("status") != "ok") {

@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,6 +30,19 @@ private suspend fun SlockNetworkClient.updateSettingsAccount(
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "auth/me", method = "PATCH", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsAccountAuthProviders(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "auth/providers")
+
+private suspend fun SlockNetworkClient.settingsAccountAuthIdentities(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "auth/identities")
+
+private suspend fun SlockNetworkClient.startSettingsAccountProviderLink(
+    priority: DataRequestPriority,
+    providerId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "auth/${providerId.sanitizeAccountProviderId()}/link/start", method = "POST", bodyText = bodyText)
 
 private suspend fun SlockNetworkClient.settingsConnectedAppClients(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "integrations/clients")
@@ -261,7 +275,8 @@ class RealSettingsRepository(
 
     override suspend fun getAccount(): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
-        return executeSettings(
+        val accountResult =
+            executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = { networkClient.settingsAccount(DataRequestPriority.Visible) },
             mapper = { bodyText ->
@@ -271,11 +286,13 @@ class RealSettingsRepository(
                 ) ?: throw IllegalStateException("Account settings response missing user")
             }
         )
+        return accountResult.withConnectedAccountProviders(session.user.email)
     }
 
     override suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> {
         val session = sessionStore.readSession() ?: return authRequired()
-        return executeSettings(
+        val accountResult =
+            executeSettings(
             emptyReason = EmptyReason.NoSettingsAvailable,
             block = {
                 networkClient.updateSettingsAccount(
@@ -290,6 +307,91 @@ class RealSettingsRepository(
                 ) ?: throw IllegalStateException("Account settings response missing user")
             }
         )
+        return accountResult.withConnectedAccountProviders(session.user.email)
+    }
+
+    override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> {
+        val session = sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.updateSettingsAccount(
+                    DataRequestPriority.Foreground,
+                    buildSharedAccountPasswordChangeBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedAccountSettingsSnapshot(
+                    bodyText = bodyText,
+                    fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
+                ) ?: throw IllegalStateException("Account settings response missing user")
+            }
+        ).withConnectedAccountProviders(session.user.email)
+    }
+
+    override suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot> {
+        val session = sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.uploadAccountAvatar(
+                    DataRequestPriority.Foreground,
+                    request.file.toAccountAvatarMultipartFile()
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedAccountSettingsSnapshot(
+                    bodyText = bodyText,
+                    fallbackRole = session.servers.firstOrNull { it.id == session.currentServerId }?.role
+                ) ?: throw IllegalStateException("Account avatar response missing user")
+            }
+        ).withConnectedAccountProviders(session.user.email)
+    }
+
+    override suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> {
+        sessionStore.readSession() ?: return authRequired()
+        val providerId = request.providerId.sanitizeAccountProviderId().takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError("account_provider_invalid", retryable = false))
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            block = {
+                networkClient.startSettingsAccountProviderLink(
+                    DataRequestPriority.Foreground,
+                    providerId,
+                    buildSharedAccountProviderLinkStartBody(request.copy(providerId = providerId))
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedAccountProviderLinkStartResult(providerId, bodyText)
+                    ?: throw IllegalStateException("Account provider link response missing url")
+            }
+        )
+    }
+
+    private suspend fun DataResult<AccountSettingsSnapshot>.withConnectedAccountProviders(
+        fallbackEmail: String
+    ): DataResult<AccountSettingsSnapshot> {
+        if (this !is DataResult.Content) return this
+        val providers = networkClient.settingsAccountAuthProviders(DataRequestPriority.Visible)
+        val identities = networkClient.settingsAccountAuthIdentities(DataRequestPriority.Visible)
+        if (!providers.isSuccessful || !identities.isSuccessful) {
+            warningLogger(
+                "settings_account_connected_accounts_unavailable " +
+                    "providers=${providers.code} identities=${identities.code}"
+            )
+            return this
+        }
+        val accounts =
+            parseSharedAccountConnectedAccounts(
+                providersBodyText = providers.bodyText.orEmpty(),
+                identitiesBodyText = identities.bodyText.orEmpty(),
+                fallbackEmail = fallbackEmail
+            )
+        if (accounts == null) {
+            warningLogger("settings_account_connected_accounts_parse_failed")
+            return this
+        }
+        return DataResult.Content(data.copy(connectedAccounts = accounts))
     }
 
     override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {
@@ -2301,6 +2403,17 @@ data class AccountProfileUpdateRequestBody(
     val email: String
 )
 
+@Serializable
+data class AccountPasswordChangeRequestBody(
+    val currentPassword: String,
+    val newPassword: String
+)
+
+@Serializable
+data class AccountProviderLinkStartRequestBody(
+    val returnTo: String? = null
+)
+
 fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): String =
     settingsRepositoryJson.encodeToString(
         AccountProfileUpdateRequestBody(
@@ -2309,6 +2422,36 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
             email = request.email
         )
     )
+
+fun buildSharedAccountPasswordChangeBody(request: AccountPasswordChangeRequest): String =
+    settingsRepositoryJson.encodeToString(
+        AccountPasswordChangeRequestBody(
+            currentPassword = request.currentPassword,
+            newPassword = request.newPassword
+        )
+    )
+
+fun buildSharedAccountProviderLinkStartBody(request: AccountProviderLinkStartRequest): String =
+    settingsRepositoryJson.encodeToString(
+        AccountProviderLinkStartRequestBody(
+            returnTo = request.returnTo.takeIf { it.isNotBlank() }
+        )
+    )
+
+private fun AttachmentUploadFile.toAccountAvatarMultipartFile(): MultipartFile =
+    MultipartFile(
+        name = "avatar",
+        fileName = fileName,
+        mimeType = mimeType ?: "application/octet-stream",
+        bytes = bytes,
+        fileRef = fileRef,
+        sizeBytes = sizeBytes
+    )
+
+private fun String.sanitizeAccountProviderId(): String =
+    trim()
+        .lowercase()
+        .filter { it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }
 
 fun buildSharedSettingsConnectedAppRegisterBody(request: SettingsConnectedAppRegisterRequest): String =
     buildJsonObject {

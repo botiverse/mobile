@@ -474,7 +474,9 @@ data class SettingsConnectedAppSecretSnapshot(
 data class AccountSettingsSnapshot(
     val profile: AccountProfileSnapshot,
     val connectedAccounts: List<ConnectedAccountSnapshot>,
-    val canEditProfile: Boolean = true
+    val canEditProfile: Boolean = true,
+    val canUploadAvatar: Boolean = true,
+    val canChangePassword: Boolean = true
 )
 
 data class AccountProfileSnapshot(
@@ -489,9 +491,11 @@ data class AccountProfileSnapshot(
 )
 
 data class ConnectedAccountSnapshot(
+    val providerId: String,
     val provider: String,
     val identifier: String,
-    val status: ConnectedAccountStatus
+    val status: ConnectedAccountStatus,
+    val canConnect: Boolean = status == ConnectedAccountStatus.NotConnected
 )
 
 enum class ConnectedAccountStatus {

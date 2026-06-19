@@ -193,6 +193,8 @@ class SlockApiClient(
     suspend fun sendMessage(priority: SlockRequestPriority, body: String): KmpHttpResponse = post(priority, "messages", body)
     suspend fun uploadAttachments(priority: SlockRequestPriority, channelId: String, files: List<MultipartFile>): KmpHttpResponse =
         multipart(priority, "attachments/upload", MultipartFormData(fields = mapOf("channelId" to channelId), files = files))
+    suspend fun uploadAccountAvatar(priority: SlockRequestPriority, file: MultipartFile): KmpHttpResponse =
+        multipart(priority, "auth/me/avatar", MultipartFormData(files = listOf(file)))
     suspend fun attachmentUrl(
         priority: SlockRequestPriority,
         attachmentId: String,

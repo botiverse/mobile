@@ -373,11 +373,13 @@ object MockSeedData {
         ),
         connectedAccounts = listOf(
             ConnectedAccountSnapshot(
+                providerId = "google",
                 provider = "Google",
                 identifier = "artin@raft.build",
                 status = ConnectedAccountStatus.Connected
             ),
             ConnectedAccountSnapshot(
+                providerId = "github",
                 provider = "GitHub",
                 identifier = "github.com/artin",
                 status = ConnectedAccountStatus.Connected,

@@ -191,6 +191,9 @@ sealed interface SharedSettingsIntent {
     data object OpenNotificationSettings : SharedSettingsIntent
     data object SendTestNotification : SharedSettingsIntent
     data class UpdateProfile(val request: AccountProfileUpdateRequest) : SharedSettingsIntent
+    data object RequestAccountAvatarUpload : SharedSettingsIntent
+    data class ChangeAccountPassword(val request: AccountPasswordChangeRequest) : SharedSettingsIntent
+    data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
     data class RegisterConnectedApp(val request: SettingsConnectedAppRegisterRequest) : SharedSettingsIntent
     data class UpdateConnectedApp(val request: SettingsConnectedAppUpdateRequest) : SharedSettingsIntent
     data class DeleteConnectedApp(val clientRecordId: String) : SharedSettingsIntent
@@ -260,6 +263,7 @@ sealed interface SharedSettingsIntent {
 
 sealed interface SharedSettingsEffect {
     data object Logout : SharedSettingsEffect
+    data class OpenUrl(val url: String) : SharedSettingsEffect
     data object RequestNotificationPermission : SharedSettingsEffect
     data object OpenNotificationSettings : SharedSettingsEffect
     data object SendTestNotification : SharedSettingsEffect
@@ -273,6 +277,9 @@ sealed interface SharedSettingsEffect {
 }
 
 interface SharedSettingsPlatformCapabilities {
+    suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> =
+        DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -309,6 +316,22 @@ class SharedSettingsDataSource(
 
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
         settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
+        settingsRepository?.changeAccountPassword(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun uploadAccountAvatar(): DataResult<AccountSettingsSnapshot> {
+        val repository = settingsRepository ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (val picked = platformCapabilities.pickAccountAvatarFile()) {
+            is DataResult.Content -> repository.uploadAccountAvatar(AccountAvatarUploadRequest(picked.data))
+            is DataResult.Empty -> DataResult.Empty(picked.reason)
+            is DataResult.Error -> DataResult.Error(picked.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+        }
+    }
+
+    suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
+        settingsRepository?.startAccountProviderLink(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -781,8 +804,24 @@ class SharedSettingsStore(
                         effect = SharedSettingsEffect.SendTestNotification
                     )
             is SharedSettingsIntent.UpdateProfile -> {
-                runAction("saveProfile") {
-                    dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
+                runAction(ACCOUNT_ACTION_PROFILE_SAVE) {
+                    dataSource.updateProfile(intent.request).applyAccountActionResult(ACCOUNT_ACTION_PROFILE_SAVE)
+                }
+            }
+            SharedSettingsIntent.RequestAccountAvatarUpload -> {
+                runAction(ACCOUNT_ACTION_AVATAR_UPLOAD) {
+                    dataSource.uploadAccountAvatar().applyAccountActionResult(ACCOUNT_ACTION_AVATAR_UPLOAD)
+                }
+            }
+            is SharedSettingsIntent.ChangeAccountPassword -> {
+                runAction(ACCOUNT_ACTION_PASSWORD_CHANGE) {
+                    dataSource.changeAccountPassword(intent.request).applyAccountActionResult(ACCOUNT_ACTION_PASSWORD_CHANGE)
+                }
+            }
+            is SharedSettingsIntent.ConnectAccountProvider -> {
+                runAction(ACCOUNT_ACTION_PROVIDER_CONNECT, intent.request.providerId) {
+                    dataSource.startAccountProviderLink(intent.request)
+                        .applyAccountProviderLinkResult(intent.request.providerId)
                 }
             }
             is SharedSettingsIntent.RegisterConnectedApp -> {
@@ -1248,6 +1287,22 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<AccountProviderLinkStartResult>.applyAccountProviderLinkResult(providerId: String) {
+        val resultState = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                actionState =
+                    SharedSettingsActionState(
+                        action = ACCOUNT_ACTION_PROVIDER_CONNECT,
+                        itemId = providerId,
+                        inProgress = false,
+                        errorCode = resultState.routeErrorCode()
+                    ),
+                routeErrorCode = resultState.routeErrorCode(),
+                effect = (this as? DataResult.Content)?.data?.url?.let(SharedSettingsEffect::OpenUrl)
+            )
+    }
+
     private fun DataResult<SettingsConnectedAppsSnapshot>.applyConnectedAppsActionResult(
         action: String,
         itemId: String? = null
@@ -1474,6 +1529,9 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.OpenNotificationSettings,
             SharedSettingsIntent.SendTestNotification,
             is SharedSettingsIntent.UpdateProfile,
+            SharedSettingsIntent.RequestAccountAvatarUpload,
+            is SharedSettingsIntent.ChangeAccountPassword,
+            is SharedSettingsIntent.ConnectAccountProvider,
             is SharedSettingsIntent.RegisterConnectedApp,
             is SharedSettingsIntent.UpdateConnectedApp,
             is SharedSettingsIntent.DeleteConnectedApp,
@@ -1590,6 +1648,10 @@ internal const val CONNECTED_APPS_ACTION_DELETE = "connectedAppsDelete"
 internal const val CONNECTED_APPS_ACTION_PUBLISH = "connectedAppsPublish"
 internal const val CONNECTED_APPS_ACTION_INSTALL = "connectedAppsInstall"
 internal const val CONNECTED_APPS_ACTION_UNINSTALL = "connectedAppsUninstall"
+internal const val ACCOUNT_ACTION_PROFILE_SAVE = "saveProfile"
+internal const val ACCOUNT_ACTION_AVATAR_UPLOAD = "accountAvatarUpload"
+internal const val ACCOUNT_ACTION_PASSWORD_CHANGE = "accountPasswordChange"
+internal const val ACCOUNT_ACTION_PROVIDER_CONNECT = "accountProviderConnect"
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
 internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"
@@ -1769,8 +1831,17 @@ private fun StoredAuthSession.toAccountSettingsSnapshot(): AccountSettingsSnapsh
                 avatarLabel = user.bestDisplayName.take(2).uppercase(),
                 verified = user.emailVerified == true,
                 roleLabel = currentServer()?.role
+        ),
+        connectedAccounts =
+            listOf(
+                ConnectedAccountSnapshot(
+                    providerId = "password",
+                    provider = "Email password",
+                    identifier = user.email,
+                    status = ConnectedAccountStatus.Connected,
+                    canConnect = false
+                )
             ),
-        connectedAccounts = emptyList(),
         canEditProfile = false
     )
 

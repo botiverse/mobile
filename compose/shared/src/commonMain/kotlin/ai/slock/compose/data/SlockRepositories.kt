@@ -33,6 +33,9 @@ interface ServerRepository {
 interface SettingsRepository {
     suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult>
     suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun registerConnectedApp(
         request: SettingsConnectedAppRegisterRequest
@@ -403,6 +406,25 @@ data class AccountProfileUpdateRequest(
     val displayName: String,
     val handle: String,
     val email: String
+)
+
+data class AccountPasswordChangeRequest(
+    val currentPassword: String,
+    val newPassword: String
+)
+
+data class AccountAvatarUploadRequest(
+    val file: AttachmentUploadFile
+)
+
+data class AccountProviderLinkStartRequest(
+    val providerId: String,
+    val returnTo: String = ""
+)
+
+data class AccountProviderLinkStartResult(
+    val providerId: String,
+    val url: String
 )
 
 data class SettingsConnectedAppRegisterRequest(

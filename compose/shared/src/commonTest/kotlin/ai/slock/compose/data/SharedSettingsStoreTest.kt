@@ -99,6 +99,51 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun accountPasswordAvatarAndProviderIntentsUseTypedBoundaries() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                accountResult = DataResult.Content(accountSnapshot())
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        platformCapabilities =
+                            FakeSettingsCapabilities(
+                                avatarFileResult =
+                                    DataResult.Content(
+                                        AttachmentUploadFile(
+                                            id = "avatar-1",
+                                            fileName = "avatar.png",
+                                            mimeType = "image/png",
+                                            bytes = "image".encodeToByteArray()
+                                        )
+                                    )
+                            )
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.ChangeAccountPassword(AccountPasswordChangeRequest("old-password", "new-password")))
+        store.accept(SharedSettingsIntent.RequestAccountAvatarUpload)
+        store.accept(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest("google")))
+
+        assertEquals(
+            listOf(
+                "changePassword:12",
+                "uploadAvatar:avatar.png",
+                "startProviderLink:google"
+            ),
+            repository.calls
+        )
+        assertEquals(SharedSettingsEffect.OpenUrl("https://raft.build/auth/google/link"), store.state.value.effect)
+        scope.cancel()
+    }
+
+    @Test
     fun connectedAppsLoadAndRegisterUseTypedRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val block = BlockingCall()
@@ -1200,10 +1245,16 @@ class SharedSettingsStoreTest {
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var renameComputerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var deleteComputerResult: DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
-        var rotateComputerKeyResult: DataResult<SettingsComputerKeyRotationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        var rotateComputerKeyResult: DataResult<SettingsComputerKeyRotationResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var providerLinkStartResult: DataResult<AccountProviderLinkStartResult> = DataResult.Content(
+            AccountProviderLinkStartResult(providerId = "google", url = "https://raft.build/auth/google/link")
+        )
     ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
         var updateProfileBlock: BlockingCall? = null
+        var changePasswordBlock: BlockingCall? = null
+        var uploadAvatarBlock: BlockingCall? = null
+        var providerLinkBlock: BlockingCall? = null
         var registerConnectedAppBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
@@ -1230,6 +1281,26 @@ class SharedSettingsStoreTest {
             calls += "updateProfile:${request.displayName}"
             updateProfileBlock?.consume()
             return accountResult
+        }
+
+        override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> {
+            calls += "changePassword:${request.newPassword.length}"
+            changePasswordBlock?.consume()
+            return accountResult
+        }
+
+        override suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot> {
+            calls += "uploadAvatar:${request.file.fileName}"
+            uploadAvatarBlock?.consume()
+            return accountResult
+        }
+
+        override suspend fun startAccountProviderLink(
+            request: AccountProviderLinkStartRequest
+        ): DataResult<AccountProviderLinkStartResult> {
+            calls += "startProviderLink:${request.providerId}"
+            providerLinkBlock?.consume()
+            return providerLinkStartResult
         }
 
         override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {
@@ -1729,7 +1800,9 @@ class SharedSettingsStoreTest {
                             )
                         )
                 )
-            )
+            ),
+        private val avatarFileResult: DataResult<AttachmentUploadFile> =
+            DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable"))
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
 
@@ -1751,6 +1824,11 @@ class SharedSettingsStoreTest {
         override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
             calls += "diagnostics"
             return diagnosticsResult
+        }
+
+        override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
+            calls += "pickAccountAvatarFile"
+            return avatarFileResult
         }
 
         private fun storageSnapshot(feedback: String? = null): SharedSettingsStorageSnapshot =

@@ -40,6 +40,12 @@ interface SlockNetworkClient {
         files: List<MultipartFile>
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun uploadAccountAvatar(
+        priority: DataRequestPriority,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
 }
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =

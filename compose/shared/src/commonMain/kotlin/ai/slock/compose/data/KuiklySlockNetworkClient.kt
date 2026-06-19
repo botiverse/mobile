@@ -116,6 +116,57 @@ class KuiklySlockNetworkClient(
             response
         }
 
+    override suspend fun uploadAccountAvatar(
+        priority: DataRequestPriority,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        requestScheduler.run(
+            priority = priority.toNetworkPriority(),
+            key = "auth/me/avatar",
+            reason = "multipart"
+        ) {
+            val startedAt = TimeSource.Monotonic.markNow()
+            val boundary = "slock-account-avatar"
+            val response =
+                authMiddleware.request { auth ->
+                    val headers =
+                        authHeaders(
+                            auth = auth,
+                            contentType = "multipart/form-data; boundary=$boundary"
+                        )
+                    if (file.fileRef != null && file.bytes.isEmpty()) {
+                        return@request networkModule.requestMultipartRaw(
+                            url = absoluteUrl("auth/me/avatar"),
+                            method = "POST",
+                            headers = headers,
+                            fields = emptyMap(),
+                            files = listOf(file)
+                        )
+                    }
+                    networkModule.requestRaw(
+                        url = absoluteUrl("auth/me/avatar"),
+                        method = "POST",
+                        headers = headers,
+                        bodyBytes =
+                            buildMultipartBody(
+                                boundary = boundary,
+                                fields = emptyMap(),
+                                files = listOf(file)
+                            ),
+                        bodyText = null
+                    )
+                }
+            warningLogger(
+                "endpoint category=account_avatar_upload path=auth/me/avatar method=POST " +
+                    "fileCount=1 requestBytes=${file.bytes.size} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "result=${response.networkDiagnosticsResult()}"
+            )
+            response
+        }
+
     private fun absoluteUrl(path: String, query: List<Pair<String, String>> = emptyList()): String {
         val url = "${baseUrl.trimEnd('/')}/${path.trimStart('/')}"
         if (query.isEmpty()) return url

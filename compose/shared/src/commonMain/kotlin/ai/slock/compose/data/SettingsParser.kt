@@ -37,6 +37,36 @@ private data class WireAccountUser(
     val timeFormat: String? = null,
 )
 
+@Serializable
+private data class WireAuthProvidersResponse(
+    val providers: List<WireAuthProvider> = emptyList()
+)
+
+@Serializable
+private data class WireAuthProvider(
+    val id: String,
+    val label: String? = null,
+    val name: String? = null,
+    val enabled: Boolean = false
+)
+
+@Serializable
+private data class WireAuthIdentitiesResponse(
+    val identities: List<WireAuthIdentity> = emptyList()
+)
+
+@Serializable
+private data class WireAuthIdentity(
+    val provider: String,
+    val providerEmail: String? = null,
+    val email: String? = null
+)
+
+@Serializable
+private data class WireAccountProviderLinkStartResponse(
+    val url: String
+)
+
 fun parseSharedAccountSettingsSnapshot(
     bodyText: String,
     fallbackRole: String?,
@@ -56,6 +86,7 @@ fun parseSharedAccountSettingsSnapshot(
         ),
         connectedAccounts = listOf(
             ConnectedAccountSnapshot(
+                providerId = "password",
                 provider = "Email password",
                 identifier = user.email,
                 status = ConnectedAccountStatus.Connected,
@@ -63,6 +94,54 @@ fun parseSharedAccountSettingsSnapshot(
         ),
         canEditProfile = true,
     )
+}.getOrNull()
+
+fun parseSharedAccountProviderLinkStartResult(
+    providerId: String,
+    bodyText: String
+): AccountProviderLinkStartResult? = runCatching {
+    val response = settingsJson.decodeFromString(WireAccountProviderLinkStartResponse.serializer(), bodyText)
+    AccountProviderLinkStartResult(providerId = providerId, url = response.url.takeIf { it.isNotBlank() } ?: return@runCatching null)
+}.getOrNull()
+
+fun parseSharedAccountConnectedAccounts(
+    providersBodyText: String,
+    identitiesBodyText: String,
+    fallbackEmail: String
+): List<ConnectedAccountSnapshot>? = runCatching {
+    val providers = settingsJson.decodeFromString(WireAuthProvidersResponse.serializer(), providersBodyText).providers
+    val identities =
+        settingsJson
+            .decodeFromString(WireAuthIdentitiesResponse.serializer(), identitiesBodyText)
+            .identities
+            .associateBy { it.provider.trim().lowercase() }
+    buildList {
+        add(
+            ConnectedAccountSnapshot(
+                providerId = "password",
+                provider = "Email password",
+                identifier = fallbackEmail,
+                status = ConnectedAccountStatus.Connected,
+                canConnect = false
+            )
+        )
+        providers
+            .filter { it.enabled }
+            .forEach { provider ->
+                val providerId = provider.id.trim().lowercase()
+                val identity = identities[providerId]
+                add(
+                    ConnectedAccountSnapshot(
+                        providerId = providerId,
+                        provider = (provider.label ?: provider.name).orEmpty().ifBlank { providerId.titleLabel() },
+                        identifier = identity?.providerEmail?.takeIf { it.isNotBlank() }
+                            ?: identity?.email?.takeIf { it.isNotBlank() }
+                            ?: "Not connected",
+                        status = if (identity != null) ConnectedAccountStatus.Connected else ConnectedAccountStatus.NotConnected
+                    )
+                )
+            }
+    }
 }.getOrNull()
 
 fun parseSharedLanguageRegionAccountPreferences(
@@ -76,6 +155,9 @@ fun parseSharedLanguageRegionAccountPreferences(
         preferredTimeFormat = normalizeSharedLanguageRegionTimeFormat(user.preferredTimeFormat ?: user.timeFormat)
     )
 }.getOrNull()
+
+private fun String.titleLabel(): String =
+    replaceFirstChar { it.uppercase() }
 
 private fun normalizeSharedLanguageRegionLanguage(value: String?): String? =
     value?.trim()?.lowercase()?.takeIf { it == "en" }

@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -49,6 +50,77 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(account is DataResult.Content)
         assertEquals("New Name", account.data.profile.displayName)
         assertEquals("""{"displayName":"New Name","handle":"@new","email":"new@slock.ai"}""", network.accountUpdateBodies.single())
+    }
+
+    @Test
+    fun accountMapsEnabledProvidersAndLinkedIdentities() = runBlocking {
+        val repository =
+            RealSettingsRepository(
+                sampleStore(),
+                FakeSettingsNetworkClient(
+                    accountJson = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User","emailVerified":true}""",
+                    authProvidersJson = """
+                        {"providers":[
+                          {"id":"google","name":"Google","enabled":true},
+                          {"id":"github","name":"GitHub","enabled":true},
+                          {"id":"disabled","name":"Disabled","enabled":false}
+                        ]}
+                    """.trimIndent(),
+                    authIdentitiesJson = """
+                        {"identities":[
+                          {"provider":"google","providerUserId":"google-1","email":"user@gmail.com"}
+                        ]}
+                    """.trimIndent()
+                )
+            )
+
+        val result = repository.getAccount()
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("password", "google", "github"), result.data.connectedAccounts.map { it.providerId })
+        assertEquals(ConnectedAccountStatus.Connected, result.data.connectedAccounts.single { it.providerId == "google" }.status)
+        assertEquals("user@gmail.com", result.data.connectedAccounts.single { it.providerId == "google" }.identifier)
+        assertEquals(ConnectedAccountStatus.NotConnected, result.data.connectedAccounts.single { it.providerId == "github" }.status)
+    }
+
+    @Test
+    fun accountPasswordAvatarAndProviderLinkUseTypedEndpoints() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                accountJson = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User","emailVerified":true}""",
+                providerLinkStartJson = """{"url":"https://raft.build/auth/github/link"}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val password =
+            repository.changeAccountPassword(
+                AccountPasswordChangeRequest(currentPassword = "old-password", newPassword = "new-password")
+            )
+        val avatar =
+            repository.uploadAccountAvatar(
+                AccountAvatarUploadRequest(
+                    AttachmentUploadFile(
+                        id = "avatar-1",
+                        fileName = "avatar.png",
+                        mimeType = "image/png",
+                        bytes = "image".encodeToByteArray(),
+                        previewUri = "file://avatar.png"
+                    )
+                )
+            )
+        val link =
+            repository.startAccountProviderLink(
+                AccountProviderLinkStartRequest(providerId = "GitHub!!", returnTo = "slock://settings/account")
+            )
+
+        assertTrue(password is DataResult.Content)
+        assertTrue(avatar is DataResult.Content)
+        assertTrue(link is DataResult.Content)
+        assertEquals("""{"currentPassword":"old-password","newPassword":"new-password"}""", network.accountUpdateBodies.single())
+        assertEquals("avatar", network.avatarFileNames.single())
+        assertEquals("github", network.providerLinkProviderIds.single())
+        assertEquals("""{"returnTo":"slock://settings/account"}""", network.providerLinkBodies.single())
+        assertEquals("https://raft.build/auth/github/link", link.data.url)
     }
 
     @Test
@@ -671,6 +743,9 @@ class SettingsRepositoryDataSourceTest {
 
     private class FakeSettingsNetworkClient(
         private val accountJson: String = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User"}""",
+        private val authProvidersJson: String = """{"providers":[]}""",
+        private val authIdentitiesJson: String = """{"identities":[]}""",
+        private val providerLinkStartJson: String = """{"url":"https://raft.build/auth/google/link"}""",
         private val connectedAppClientsJson: String = """[]""",
         private val connectedAppBuiltInsJson: String = """[]""",
         private val connectedAppMarketplaceJson: String = """[]""",
@@ -770,6 +845,9 @@ class SettingsRepositoryDataSourceTest {
         val memberRoleBodies = mutableListOf<String>()
         val registerBodies = mutableListOf<String>()
         val renameBodies = mutableListOf<String>()
+        val avatarFileNames = mutableListOf<String>()
+        val providerLinkProviderIds = mutableListOf<String>()
+        val providerLinkBodies = mutableListOf<String>()
 
         override suspend fun request(
             priority: DataRequestPriority,
@@ -786,6 +864,15 @@ class SettingsRepositoryDataSourceTest {
                 normalized == "auth/me" && method == "PATCH" -> {
                     accountUpdateBodies += bodyText.orEmpty()
                     response(accountJson)
+                }
+                normalized == "auth/providers" && method == "GET" ->
+                    response(authProvidersJson)
+                normalized == "auth/identities" && method == "GET" ->
+                    response(authIdentitiesJson)
+                normalized.matches(Regex("""auth/[^/]+/link/start""")) && method == "POST" -> {
+                    providerLinkProviderIds += normalized.split("/")[1]
+                    providerLinkBodies += bodyText.orEmpty()
+                    response(providerLinkStartJson)
                 }
                 normalized == "integrations/clients" && method == "GET" ->
                     response(connectedAppClientsJson)
@@ -943,6 +1030,14 @@ class SettingsRepositoryDataSourceTest {
             } else {
                 HomeNetworkResponse(code = code, bodyText = null, errorBodyText = """{"error":"failed"}""")
             }
+
+        override suspend fun uploadAccountAvatar(
+            priority: DataRequestPriority,
+            file: MultipartFile
+        ): HomeNetworkResponse {
+            avatarFileNames += file.name
+            return response(accountJson)
+        }
     }
 
     private fun sampleStore(session: StoredAuthSession = sampleSession()): SlockAuthSessionStore =

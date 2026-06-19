@@ -1060,6 +1060,111 @@
       }
     },
     {
+      "id": "settings.account.provider-linked",
+      "title": "Settings Account Provider Linked",
+      "surface": "settings",
+      "fixture": "fixtures/settings.account.provider-linked.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "provider-linked",
+          "name": "Provider Linked",
+          "props": {
+            "tab": "account",
+            "state": "provider-linked"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.account.provider-linked']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AccountSection",
+      "androidCaseHint": "compose_settings_page_visual:account-provider-linked",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.account.password-expanded",
+      "title": "Settings Account Password Expanded",
+      "surface": "settings",
+      "fixture": "fixtures/settings.account.password-expanded.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "password-expanded",
+          "name": "Password Expanded",
+          "props": {
+            "tab": "account",
+            "state": "password-expanded"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.account.password-expanded']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AccountSection",
+      "androidCaseHint": "compose_settings_page_visual:account-password-expanded",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "settings.account.error-state",
+      "title": "Settings Account Error State",
+      "surface": "settings",
+      "fixture": "fixtures/settings.account.error-state.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "account-error",
+          "name": "Account Error",
+          "props": {
+            "tab": "account",
+            "state": "error"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='settings.account.error-state']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AccountSection",
+      "androidCaseHint": "compose_settings_page_visual:account-error",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "settings.server.profile",
       "title": "Settings Server Profile",
       "surface": "settings",
@@ -2618,6 +2723,132 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "settings.account.provider-linked",
+      "title": "Settings Account Provider Linked",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "Account connected-provider state maps React AccountSection identities and provider connect affordances to shared KMP Settings.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AccountSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.account.provider-linked.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountProviderLinked",
+          "route": "compose_settings_page_visual:account-provider-linked"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "settings.account.password-expanded",
+      "title": "Settings Account Password Expanded",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "Account password disclosure state maps React current/new/confirm password form to shared KMP Settings without exposing password values in snapshot fixtures.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AccountSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.account.password-expanded.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountPasswordExpanded",
+          "route": "compose_settings_page_visual:account-password-expanded"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
+        }
+      ]
+    },
+    {
+      "id": "settings.account.error-state",
+      "title": "Settings Account Error State",
+      "surface": "settings",
+      "group": "product-settings",
+      "status": "baseline",
+      "notes": "Account save/avatar/password/provider error messages are rendered from typed Store action state rather than raw API responses.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "AccountSection"
+          ],
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/settings.account.error-state.json"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAccountErrorState",
+          "route": "compose_settings_page_visual:account-error"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "components": [
+            "SettingsAccountPage",
+            "SettingsHomePage"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsAccountPage.kt",
+          "reason": "Needs Harmony real-device/provider capture."
         }
       ]
     },

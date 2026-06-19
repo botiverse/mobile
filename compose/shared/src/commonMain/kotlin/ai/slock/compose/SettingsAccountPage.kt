@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -30,6 +31,9 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.input.KeyboardType
+import com.tencent.kuikly.compose.ui.text.input.PasswordVisualTransformation
+import com.tencent.kuikly.compose.ui.text.input.VisualTransformation
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -69,11 +73,34 @@ internal data class KuiklySettingsAccountPayload(
     val connectLabel: String = "Connect",
     val connectingLabel: String = "Connecting",
     val failedLabel: String = "Failed",
-    val logoutDetail: String = "Sign out of this device. You can sign back in anytime.",
+    val avatarUploadLabel: String = "Upload image",
+    val avatarUploadingLabel: String = "Uploading avatar",
+    val avatarInProgress: Boolean = false,
+    val avatarErrorCode: String? = null,
+    val logoutTitle: String = "Log out",
+    val logoutDetail: String = "Sign out of this browser. Your account and data stay; you can sign back in any time.",
     val logoutLabel: String = "Log out",
+    val logoutConfirmMessage: String = "Sign out of this browser? Your account and data are kept; you can log back in any time.",
+    val logoutConfirmLabel: String = "Log out",
+    val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
     val changePasswordSubtitle: String = "Requires current password before saving a new one",
+    val currentPasswordLabel: String = "Current Password",
+    val newPasswordLabel: String = "New Password",
+    val confirmPasswordLabel: String = "Confirm Password",
+    val newPasswordPlaceholder: String = "Min 8 characters",
+    val changePasswordButtonLabel: String = "Change Password",
+    val passwordUpdatingLabel: String = "Updating",
+    val passwordUpdatedLabel: String = "Password updated!",
+    val passwordExpanded: Boolean = false,
+    val passwordInProgress: Boolean = false,
+    val passwordErrorCode: String? = null,
+    val providerConnectingId: String? = null,
+    val providerErrorId: String? = null,
+    val providerErrorCode: String? = null,
     val canEditProfile: Boolean = true,
+    val canUploadAvatar: Boolean = true,
+    val canChangePassword: Boolean = true,
     val saveInProgress: Boolean = false,
     val saveErrorCode: String? = null
 )
@@ -90,9 +117,11 @@ internal data class KuiklySettingsAccountProfile(
 
 @Serializable
 internal data class KuiklySettingsConnectedAccount(
+    val providerId: String = "",
     val provider: String = "",
     val identifier: String = "",
-    val status: String = "notConnected"
+    val status: String = "notConnected",
+    val canConnect: Boolean = status == "notConnected"
 )
 
 internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
@@ -106,9 +135,9 @@ internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
         roleLabel = "Workspace owner"
     ),
     connectedAccounts = listOf(
-        KuiklySettingsConnectedAccount("Google", "artin@raft.build", "connected"),
-        KuiklySettingsConnectedAccount("GitHub", "github.com/artin", "connected"),
-        KuiklySettingsConnectedAccount("Email password", "Password last changed 3 days ago", "notConnected")
+        KuiklySettingsConnectedAccount("password", "Email password", "artin@raft.build", "connected", canConnect = false),
+        KuiklySettingsConnectedAccount("google", "Google", "artin@raft.build", "connected"),
+        KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected")
     )
 )
 
@@ -143,6 +172,7 @@ internal fun SettingsAccountContent(
     payload: KuiklySettingsAccountPayload,
     applyTopSafeArea: Boolean = true,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    onPasswordChange: (currentPassword: String, newPassword: String) -> Unit = { _, _ -> },
     onEvent: (String, String?) -> Unit
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -156,11 +186,11 @@ internal fun SettingsAccountContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { SettingsAccountSectionHeader(payload.profileSectionTitle) }
-        item { SettingsAccountProfileCard(payload, onEvent) }
+        item { SettingsAccountProfileCard(payload, onEvent, onPasswordChange) }
         if (payload.connectedAccounts.isNotEmpty()) {
-            item { SettingsConnectedAccounts(payload) }
+            item { SettingsConnectedAccounts(payload, onEvent) }
         }
-        item { SettingsLogoutAction(payload.logoutDetail, payload.logoutLabel) { onEvent("logout", null) } }
+        item { SettingsLogoutAction(payload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
@@ -186,18 +216,32 @@ private fun SettingsAccountSectionHeader(title: String) {
 @Composable
 private fun SettingsAccountProfileCard(
     payload: KuiklySettingsAccountPayload,
-    onEvent: (String, String?) -> Unit
+    onEvent: (String, String?) -> Unit,
+    onPasswordChange: (currentPassword: String, newPassword: String) -> Unit
 ) {
     val profile = payload.profile
     val displayNameState = remember(profile.displayName) { mutableStateOf(profile.displayName) }
+    val passwordExpandedState = remember(payload.passwordExpanded) { mutableStateOf(payload.passwordExpanded) }
+    val currentPasswordState = remember { mutableStateOf("") }
+    val newPasswordState = remember { mutableStateOf("") }
+    val confirmPasswordState = remember { mutableStateOf("") }
+    val passwordDraftError = remember { mutableStateOf<String?>(null) }
     val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Box(
-                modifier = Modifier.size(56.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+                modifier =
+                    Modifier
+                        .size(56.dp)
+                        .background(if (payload.avatarInProgress) SlockColor.EmptyStateGray else SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(24.dp))
+                SlockLucideIcon(
+                    if (payload.avatarInProgress) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Upload,
+                    modifier = Modifier.size(22.dp)
+                )
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -216,7 +260,17 @@ private fun SettingsAccountProfileCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                Text(
+                    if (payload.avatarInProgress) payload.avatarUploadingLabel else payload.avatarUploadLabel,
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
+        }
+        payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
+            SettingsAccountWarning("Avatar upload failed: $code")
         }
         SettingsProfileTextField(
             label = "Name",
@@ -244,14 +298,51 @@ private fun SettingsAccountProfileCard(
             onClick = { onEvent("saveProfile", displayName.trim()) }
         )
         payload.saveErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
-            Text(
-                "Profile save failed: $code",
-                style = SlockType.Caption.copy(color = SlockColor.AccentRed),
-                color = SlockColor.AccentRed
-            )
+            SettingsAccountWarning("Profile save failed: $code")
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-        SettingsPasswordDisclosure(payload.changePasswordTitle) { onEvent("changePassword", null) }
+        SettingsPasswordDisclosure(
+            title = payload.changePasswordTitle,
+            expanded = passwordExpandedState.value,
+            enabled = payload.canChangePassword && !payload.passwordInProgress
+        ) {
+            passwordExpandedState.value = !passwordExpandedState.value
+            passwordDraftError.value = null
+        }
+        if (passwordExpandedState.value) {
+            SettingsPasswordForm(
+                payload = payload,
+                currentPassword = currentPasswordState.value,
+                newPassword = newPasswordState.value,
+                confirmPassword = confirmPasswordState.value,
+                draftError = passwordDraftError.value,
+                onCurrentPasswordChange = {
+                    currentPasswordState.value = it
+                    passwordDraftError.value = null
+                },
+                onNewPasswordChange = {
+                    newPasswordState.value = it
+                    passwordDraftError.value = null
+                },
+                onConfirmPasswordChange = {
+                    confirmPasswordState.value = it
+                    passwordDraftError.value = null
+                },
+                onSubmit = {
+                    val current = currentPasswordState.value
+                    val next = newPasswordState.value
+                    val confirm = confirmPasswordState.value
+                    when {
+                        next.length < 8 -> passwordDraftError.value = "New password must be at least 8 characters"
+                        next != confirm -> passwordDraftError.value = "Passwords do not match"
+                        else -> {
+                            passwordDraftError.value = null
+                            onPasswordChange(current, next)
+                        }
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -262,6 +353,7 @@ private fun SettingsProfileTextField(
     placeholder: String,
     muted: Boolean,
     editable: Boolean = false,
+    password: Boolean = false,
     onValueChange: (String) -> Unit = {}
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -285,7 +377,9 @@ private fun SettingsProfileTextField(
                     onValueChange = onValueChange,
                     textStyle = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
                     placeholderColor = SlockColor.TextMutedGray,
-                    maxLines = 1
+                    maxLines = 1,
+                    visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                    keyboardOptions = if (password) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default
                 )
             } else {
                 Text(
@@ -359,19 +453,80 @@ private fun SettingsAccountHardShadowCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsPasswordDisclosure(title: String, onClick: () -> Unit) {
+private fun SettingsPasswordDisclosure(
+    title: String,
+    expanded: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().height(32.dp).clickable(onClick = onClick),
+        modifier = Modifier.fillMaxWidth().height(32.dp).clickable(enabled = enabled, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(14.dp))
+        SlockLucideIcon(
+            if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+            modifier = Modifier.size(14.dp)
+        )
         Text(title, style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
-private fun SettingsConnectedAccounts(payload: KuiklySettingsAccountPayload) {
+private fun SettingsPasswordForm(
+    payload: KuiklySettingsAccountPayload,
+    currentPassword: String,
+    newPassword: String,
+    confirmPassword: String,
+    draftError: String?,
+    onCurrentPasswordChange: (String) -> Unit,
+    onNewPasswordChange: (String) -> Unit,
+    onConfirmPasswordChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SettingsProfileTextField(
+            label = payload.currentPasswordLabel,
+            value = currentPassword,
+            placeholder = "",
+            muted = payload.passwordInProgress,
+            editable = !payload.passwordInProgress,
+            password = true,
+            onValueChange = onCurrentPasswordChange
+        )
+        SettingsProfileTextField(
+            label = payload.newPasswordLabel,
+            value = newPassword,
+            placeholder = payload.newPasswordPlaceholder,
+            muted = payload.passwordInProgress,
+            editable = !payload.passwordInProgress,
+            password = true,
+            onValueChange = onNewPasswordChange
+        )
+        SettingsProfileTextField(
+            label = payload.confirmPasswordLabel,
+            value = confirmPassword,
+            placeholder = "",
+            muted = payload.passwordInProgress,
+            editable = !payload.passwordInProgress,
+            password = true,
+            onValueChange = onConfirmPasswordChange
+        )
+        draftError?.let { SettingsAccountWarning(it) }
+        payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let { SettingsAccountWarning("Password update failed: $it") }
+        SettingsProfileSaveButton(
+            text = if (payload.passwordInProgress) payload.passwordUpdatingLabel else payload.changePasswordButtonLabel,
+            enabled = payload.canChangePassword && !payload.passwordInProgress,
+            onClick = onSubmit
+        )
+    }
+}
+
+@Composable
+private fun SettingsConnectedAccounts(
+    payload: KuiklySettingsAccountPayload,
+    onEvent: (String, String?) -> Unit
+) {
     val accounts = payload.connectedAccounts
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsAccountSectionTitle(payload.connectedAccountsTitle.uppercase())
@@ -379,7 +534,7 @@ private fun SettingsConnectedAccounts(payload: KuiklySettingsAccountPayload) {
             SettingsAccountEmptyMessage("No connected accounts", "External login providers will show up here.")
         } else {
             accounts.forEachIndexed { index, account ->
-                SettingsConnectedAccountRow(account, index, payload)
+                SettingsConnectedAccountRow(account, index, payload, onEvent)
             }
         }
     }
@@ -389,21 +544,44 @@ private fun SettingsConnectedAccounts(payload: KuiklySettingsAccountPayload) {
 private fun SettingsConnectedAccountRow(
     account: KuiklySettingsConnectedAccount,
     index: Int,
-    payload: KuiklySettingsAccountPayload
+    payload: KuiklySettingsAccountPayload,
+    onEvent: (String, String?) -> Unit
 ) {
-    val connected = account.status == "connected"
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        IconBox(providerIcon(account.provider), if (connected) SlockColor.TextBlack else SlockColor.SurfaceWhite, invert = connected)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(account.provider.ifBlank { "Account ${index + 1}" }, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(account.identifier, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val providerId = account.providerId.ifBlank { account.provider.lowercase() }
+    val connecting = payload.providerConnectingId == providerId
+    val failed = payload.providerErrorId == providerId
+    val status =
+        when {
+            connecting -> "loading"
+            failed -> "failed"
+            else -> account.status
         }
-        val (label, color, icon) = connectedStatus(account.status, payload)
-        SettingsStatusBadge(label, color, icon)
+    val connected = status == "connected"
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            IconBox(providerIcon(account.provider), if (connected) SlockColor.TextBlack else SlockColor.SurfaceWhite, invert = connected)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(account.provider.ifBlank { "Account ${index + 1}" }, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(account.identifier, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            if (account.canConnect && !connected) {
+                SettingsProviderConnectButton(
+                    text = if (connecting) payload.connectingLabel else payload.connectLabel,
+                    enabled = !connecting,
+                    onClick = { onEvent("connectProvider", providerId) }
+                )
+            } else {
+                val (label, color, icon) = connectedStatus(status, payload)
+                SettingsStatusBadge(label, color, icon)
+            }
+        }
+        if (failed) {
+            SettingsAccountWarning("Provider link failed: ${payload.providerErrorCode ?: payload.failedLabel}")
+        }
     }
 }
 
@@ -424,19 +602,52 @@ private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, 
 }
 
 @Composable
-private fun SettingsLogoutAction(detail: String, label: String, onClick: () -> Unit) {
+private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfirmLogout: () -> Unit) {
+    val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(detail, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        SlockBrutalActionButton(
-            label = label,
-            onClick = onClick,
-            modifier = Modifier.fillMaxWidth(),
-            backgroundColor = SlockColor.AccentRed,
-            minWidth = 0.dp,
-            minHeight = 48.dp,
-            shadowOffset = 3.dp,
-            textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
-        )
+        SettingsAccountSectionTitle("SESSION")
+        SettingsAccountHardShadowCard {
+            Text(
+                payload.logoutTitle,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(payload.logoutDetail, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+            if (confirming.value) {
+                SettingsAccountWarning(payload.logoutConfirmMessage)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsInlineButton(
+                        text = payload.logoutCancelLabel,
+                        color = SlockColor.SurfaceWhite,
+                        enabled = true,
+                        modifier = Modifier.weight(1f).clickable { confirming.value = false }
+                    )
+                    SlockBrutalActionButton(
+                        label = payload.logoutConfirmLabel,
+                        onClick = onConfirmLogout,
+                        modifier = Modifier.weight(1f),
+                        backgroundColor = SlockColor.AccentRed,
+                        minWidth = 0.dp,
+                        minHeight = 44.dp,
+                        shadowOffset = 2.dp,
+                        textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+                    )
+                }
+            } else {
+                SlockBrutalActionButton(
+                    label = payload.logoutLabel,
+                    onClick = { confirming.value = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    backgroundColor = SlockColor.AccentRed,
+                    minWidth = 0.dp,
+                    minHeight = 48.dp,
+                    shadowOffset = 3.dp,
+                    textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
+                )
+            }
+        }
     }
 }
 
@@ -462,6 +673,45 @@ private fun SettingsStatusBadge(text: String, color: Color, iconName: SlockLucid
     ) {
         iconName?.let { SlockLucideIcon(it, modifier = Modifier.size(12.dp)) }
         Text(text, style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClick: () -> Unit) {
+    SlockBrutalActionButton(
+        label = text,
+        onClick = onClick,
+        enabled = enabled,
+        backgroundColor = SlockColor.BrandYellow,
+        disabledBackgroundColor = SlockColor.EmptyStateGray,
+        minWidth = 84.dp,
+        minHeight = 32.dp,
+        shadowOffset = 2.dp,
+        textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
+    )
+}
+
+@Composable
+private fun SettingsAccountWarning(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(14.dp))
+        Text(text, style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 3, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun SettingsAccountSuccess(text: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.AccentLime).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(14.dp))
+        Text(text, style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
 }
 

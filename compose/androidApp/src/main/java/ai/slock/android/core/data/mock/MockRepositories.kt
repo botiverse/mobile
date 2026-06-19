@@ -9,7 +9,11 @@ import ai.slock.compose.data.AgentDmSnapshot
 import ai.slock.compose.data.AgentDmSummary
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.AgentSnapshot
+import ai.slock.compose.data.AccountAvatarUploadRequest
+import ai.slock.compose.data.AccountPasswordChangeRequest
 import ai.slock.compose.data.AccountProfileUpdateRequest
+import ai.slock.compose.data.AccountProviderLinkStartRequest
+import ai.slock.compose.data.AccountProviderLinkStartResult
 import ai.slock.compose.data.AccountSettingsSnapshot
 import ai.slock.compose.data.AgentReminderSnapshot
 import ai.slock.compose.data.AgentReminderSummary
@@ -174,6 +178,24 @@ class MockSettingsRepository(
                     handle = request.handle,
                     email = request.email
                 )
+            )
+        }
+
+    override suspend fun changeAccountPassword(request: AccountPasswordChangeRequest): DataResult<AccountSettingsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.accountSettingsSnapshot }
+
+    override suspend fun uploadAccountAvatar(request: AccountAvatarUploadRequest): DataResult<AccountSettingsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            MockSeedData.accountSettingsSnapshot.copy(
+                profile = MockSeedData.accountSettingsSnapshot.profile.copy(avatarUrl = request.file.previewUri)
+            )
+        }
+
+    override suspend fun startAccountProviderLink(request: AccountProviderLinkStartRequest): DataResult<AccountProviderLinkStartResult> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            AccountProviderLinkStartResult(
+                providerId = request.providerId,
+                url = "https://app.raft.build/auth/${request.providerId}/link"
             )
         }
 

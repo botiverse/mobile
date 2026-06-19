@@ -142,7 +142,13 @@ import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
 import ai.slock.compose.data.SharedHomeSearchSavedViewModel
 import ai.slock.compose.data.AccountProfileUpdateRequest
+import ai.slock.compose.data.AccountPasswordChangeRequest
+import ai.slock.compose.data.AccountProviderLinkStartRequest
 import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.ACCOUNT_ACTION_AVATAR_UPLOAD
+import ai.slock.compose.data.ACCOUNT_ACTION_PASSWORD_CHANGE
+import ai.slock.compose.data.ACCOUNT_ACTION_PROFILE_SAVE
+import ai.slock.compose.data.ACCOUNT_ACTION_PROVIDER_CONNECT
 import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentResetRequest
@@ -2167,6 +2173,9 @@ private fun SettingsAppShellContent(
                 runCatchingPreservingCancellation { authDataSource.logout() }
                 onLogout()
             }
+            is SharedSettingsEffect.OpenUrl -> {
+                settingsCapabilities.openUrl(effect.url)
+            }
             SharedSettingsEffect.CopyDiagnostics -> {
                 val ok = settingsCapabilities.copyDiagnostics()
                 if (ok) {
@@ -2344,10 +2353,29 @@ private fun SettingsAppShellContent(
                 SettingsAccountContent(
                     settingsState.account.toAccountPayload(session, settingsState.actionState),
                     applyTopSafeArea = false,
-                    bottomContentPadding = bottomContentPadding
+                    bottomContentPadding = bottomContentPadding,
+                    onPasswordChange = { currentPassword, newPassword ->
+                        onSettingsIntent(
+                            SharedSettingsIntent.ChangeAccountPassword(
+                                AccountPasswordChangeRequest(
+                                    currentPassword = currentPassword,
+                                    newPassword = newPassword
+                                )
+                            )
+                        )
+                    }
                 ) { action, value ->
                     when (action) {
                         "logout" -> onSettingsIntent(SharedSettingsIntent.Logout)
+                        "uploadAvatar" -> onSettingsIntent(SharedSettingsIntent.RequestAccountAvatarUpload)
+                        "connectProvider" ->
+                            value?.takeIf { it.isNotBlank() }?.let { providerId ->
+                                onSettingsIntent(
+                                    SharedSettingsIntent.ConnectAccountProvider(
+                                        AccountProviderLinkStartRequest(providerId = providerId)
+                                    )
+                                )
+                            }
                         "saveProfile" -> {
                             val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
                             val displayName = value.orEmpty().trim()
@@ -4474,10 +4502,21 @@ private fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     actionState: ai.slock.compose.data.SharedSettingsActionState? = null
 ): KuiklySettingsAccountPayload {
     val account = (this as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+    val providerActionId =
+        actionState
+            ?.itemId
+            ?.takeIf { actionState.action == ACCOUNT_ACTION_PROVIDER_CONNECT }
     return (account?.toAccountPayload() ?: appShellAccountPayload(session))
         .copy(
-            saveInProgress = actionState?.action == "saveProfile" && actionState.inProgress,
-            saveErrorCode = actionState?.errorCode.takeIf { actionState?.action == "saveProfile" }
+            saveInProgress = actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE && actionState.inProgress,
+            saveErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_PROFILE_SAVE },
+            avatarInProgress = actionState?.action == ACCOUNT_ACTION_AVATAR_UPLOAD && actionState.inProgress,
+            avatarErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_AVATAR_UPLOAD },
+            passwordInProgress = actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE && actionState.inProgress,
+            passwordErrorCode = actionState?.errorCode.takeIf { actionState?.action == ACCOUNT_ACTION_PASSWORD_CHANGE },
+            providerConnectingId = providerActionId.takeIf { actionState?.inProgress == true },
+            providerErrorId = providerActionId.takeIf { actionState?.errorCode != null },
+            providerErrorCode = actionState?.errorCode.takeIf { providerActionId != null }
         )
 }
 
@@ -4496,6 +4535,7 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
         connectedAccounts =
             connectedAccounts.map {
                 KuiklySettingsConnectedAccount(
+                    providerId = it.providerId,
                     provider = it.provider,
                     identifier = it.identifier,
                     status =
@@ -4504,10 +4544,13 @@ private fun AccountSettingsSnapshot.toAccountPayload(): KuiklySettingsAccountPay
                             ConnectedAccountStatus.NotConnected -> "notConnected"
                             ConnectedAccountStatus.Loading -> "loading"
                             ConnectedAccountStatus.Failed -> "failed"
-                        }
+                        },
+                    canConnect = it.canConnect
                 )
             },
-        canEditProfile = canEditProfile
+        canEditProfile = canEditProfile,
+        canUploadAvatar = canUploadAvatar,
+        canChangePassword = canChangePassword
     )
 
 private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsAccountPayload {
@@ -4524,7 +4567,22 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
                 verified = user?.emailVerified == true,
                 roleLabel = session?.currentServerSummary()?.role.orEmpty()
             ),
-        connectedAccounts = emptyList()
+        connectedAccounts =
+            user
+                ?.email
+                ?.takeIf { it.isNotBlank() }
+                ?.let {
+                    listOf(
+                        KuiklySettingsConnectedAccount(
+                            providerId = "password",
+                            provider = "Email password",
+                            identifier = it,
+                            status = "connected",
+                            canConnect = false
+                        )
+                    )
+                }
+                .orEmpty()
     )
 }
 
@@ -9858,6 +9916,10 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Notifications", "Push notification preferences", SlockLucideIconName.Bell)
         "connected-apps" ->
             SettingsVisualSpec(variant, "Connected Apps", "Marketplace, installed apps, and OAuth clients", SlockLucideIconName.Blocks)
+        "account-provider-linked",
+        "account-password-expanded",
+        "account-error" ->
+            SettingsVisualSpec(variant, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
         else ->
             SettingsVisualSpec("account", "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User)
     }
@@ -9878,16 +9940,31 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
         "language-region" -> SettingsVisualLanguageRegionContent()
         "notifications" -> SettingsVisualNotificationsContent()
         "connected-apps" -> SettingsVisualConnectedAppsContent()
-        else -> SettingsVisualAccountContent()
+        else -> SettingsVisualAccountContent(spec.variant)
     }
 }
 
 @Composable
-private fun SettingsVisualAccountContent() {
+private fun SettingsVisualAccountContent(variant: String = "account") {
+    val connectedAccounts =
+        when (variant) {
+            "account-provider-linked" ->
+                listOf(
+                    KuiklySettingsConnectedAccount("password", "Email password", "artin@slock.test", "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("google", "Google", "artin@slock.test", "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
+                )
+            else ->
+                listOf(
+                    KuiklySettingsConnectedAccount("password", "Email password", "artin@slock.test", "connected", canConnect = false),
+                    KuiklySettingsConnectedAccount("google", "Google", "Not connected", "notConnected", canConnect = true),
+                    KuiklySettingsConnectedAccount("github", "GitHub", "Not connected", "notConnected", canConnect = true)
+                )
+        }
     SettingsAccountContent(
         payload =
             settingsAccountSmokePayload.copy(
-                instanceId = "visual-settings-account-page",
+                instanceId = "visual-settings-account-$variant",
                 profile =
                     settingsAccountSmokePayload.profile.copy(
                         displayName = "Artin",
@@ -9896,9 +9973,16 @@ private fun SettingsVisualAccountContent() {
                         verified = true,
                         roleLabel = "Owner"
                     ),
-                connectedAccounts = emptyList()
+                connectedAccounts = connectedAccounts,
+                passwordExpanded = variant == "account-password-expanded" || variant == "account-error",
+                saveErrorCode = "server_unavailable".takeIf { variant == "account-error" },
+                avatarErrorCode = "upload_failed".takeIf { variant == "account-error" },
+                passwordErrorCode = "invalid_current_password".takeIf { variant == "account-error" },
+                providerErrorId = "github".takeIf { variant == "account-error" },
+                providerErrorCode = "oauth_provider_unavailable".takeIf { variant == "account-error" }
             ),
         applyTopSafeArea = false,
+        onPasswordChange = { _, _ -> },
         onEvent = { _, _ -> }
     )
 }

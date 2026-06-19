@@ -281,6 +281,21 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsAccountProviderLinked() {
+        captureKmpSettingsPageCase("settings.account.provider-linked", "account-provider-linked")
+    }
+
+    @Test
+    fun captureSettingsAccountPasswordExpanded() {
+        captureKmpSettingsPageCase("settings.account.password-expanded", "account-password-expanded")
+    }
+
+    @Test
+    fun captureSettingsAccountErrorState() {
+        captureKmpSettingsPageCase("settings.account.error-state", "account-error")
+    }
+
+    @Test
     fun captureSettingsServerProfile() {
         captureKmpSettingsPageCase("settings.server.profile", "server-profile")
     }

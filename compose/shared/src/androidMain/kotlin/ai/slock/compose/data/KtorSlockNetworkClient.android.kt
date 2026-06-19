@@ -37,6 +37,15 @@ class KtorSlockNetworkClient(
             channelId = channelId.value,
             files = files
         ).toHomeNetworkResponse()
+
+    override suspend fun uploadAccountAvatar(
+        priority: DataRequestPriority,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        client.uploadAccountAvatar(
+            priority = priority.toNetworkPriority(),
+            file = file
+        ).toHomeNetworkResponse()
 }
 
 private fun DataRequestPriority.toNetworkPriority(): SlockRequestPriority =
