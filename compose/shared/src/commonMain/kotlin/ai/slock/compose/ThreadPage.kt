@@ -1469,28 +1469,27 @@ internal fun SharedThreadRouteContent(
             loadThreadFiles("initial_tab")
         }
     }
-    val threadRenderReplyRows = remember(renderedPayload.messages) {
-        renderedPayload.messages.filter { it.replyCount > 0 }
-    }
-    val threadRenderFirstReply = threadRenderReplyRows.firstOrNull()
-    LaunchedEffect(
+    // Render-axis signature: only the fields the render log actually reads.
+    // Members / settings / actions / realtime metadata / files payload
+    // are intentionally excluded so they do not retrigger the render log.
+    // See ThreadRenderSignature / Test.
+    val renderSignature = remember(
         renderedPayload.instanceId,
         renderedPayload.sourceThreadId,
         renderedPayload.status,
         renderedPayload.selectedTab,
         renderedPayload.messages.size,
         renderedPayload.tasks.size,
-        renderedPayload.showReplyActions,
-        threadRenderReplyRows.size,
-        threadRenderFirstReply?.id?.take(8),
-        threadRenderFirstReply?.replyCount,
-        threadRenderFirstReply?.unreadReplyCount
+        renderedPayload.showReplyActions
     ) {
+        renderedPayload.toRenderSignature()
+    }
+    LaunchedEffect(renderSignature) {
         bridge.log(
-            "thread_render instanceId=${renderedPayload.instanceId} status=${renderedPayload.status} tab=${renderedPayload.selectedTab} " +
-                "messages=${renderedPayload.messages.size} tasks=${renderedPayload.tasks.size} " +
-                "showReplyActions=${renderedPayload.showReplyActions} replyRows=${threadRenderReplyRows.size} " +
-                "firstReply=${threadRenderFirstReply?.let { "${it.id.take(8)}:${it.replyCount}/${it.unreadReplyCount}" } ?: "none"}"
+            "thread_render instanceId=${renderSignature.instanceId} status=${renderSignature.status} tab=${renderSignature.selectedTab} " +
+                "messages=${renderSignature.messagesSize} tasks=${renderSignature.tasksSize} " +
+                "showReplyActions=${renderSignature.showReplyActions} replyRows=${renderSignature.replyRowsSize} " +
+                "firstReply=${if (renderSignature.firstReplyId8 == null) "none" else "${renderSignature.firstReplyId8}:${renderSignature.firstReplyCount}/${renderSignature.firstReplyUnreadCount}"}"
         )
     }
     LaunchedEffect(renderedPayload.sourceThreadId, renderedPayload.status, renderedPayload.messages.size) {
