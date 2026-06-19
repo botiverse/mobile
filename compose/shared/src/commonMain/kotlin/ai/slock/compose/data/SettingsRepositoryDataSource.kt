@@ -15,6 +15,8 @@ private val settingsRepositoryJson = Json {
     explicitNulls = false
 }
 
+private const val PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH = 5_000
+
 private suspend fun SlockNetworkClient.settingsAccount(priority: DataRequestPriority): HomeNetworkResponse =
     request(priority, "auth/me")
 
@@ -71,6 +73,19 @@ private suspend fun SlockNetworkClient.updateSettingsServerOnboarding(
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/onboarding-settings", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsServerAgreement(
+    priority: DataRequestPriority,
+    serverId: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/agreement", serverIdOverride = ServerId(serverId))
+
+private suspend fun SlockNetworkClient.updateSettingsServerAgreement(
+    priority: DataRequestPriority,
+    serverId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "servers/$serverId/agreement", method = "PUT", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
 private suspend fun SlockNetworkClient.settingsServerTranslation(
     priority: DataRequestPriority,
@@ -427,13 +442,25 @@ class RealSettingsRepository(
             } else {
                 DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_invites"))
             }
+        val agreement =
+            if (canManageServer) {
+                fetchServerAgreement(serverId, canManageServer)
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server"))
+            }
+        val onboardingAgents =
+            if (canManageServer) {
+                fetchServerOnboardingAgents()
+            } else {
+                DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_onboarding"))
+            }
         val onboarding =
-            if (server.role == "owner") {
-                fetchServerOnboarding(serverId)
+            if (canManageServer) {
+                fetchServerOnboarding(serverId, (onboardingAgents as? DataResult.Content)?.data.orEmpty(), canManageServer)
             } else {
                 DataResult.NoPermission(
                     PermissionBlocker(
-                        code = "server_owner_required",
+                        code = "server_admin_required",
                         requiredCapability = "manage_onboarding"
                     )
                 )
@@ -459,6 +486,7 @@ class RealSettingsRepository(
         )
         val pendingInvites = (invites as? DataResult.Content)?.data.orEmpty()
         val joinLinkRows = (joinLinks as? DataResult.Content)?.data.orEmpty()
+        val agreementSnapshot = (agreement as? DataResult.Content)?.data
         val onboardingSnapshot = (onboarding as? DataResult.Content)?.data
         val translationSnapshot = (translation as? DataResult.Content)?.data
         val sidebarOrderSnapshot = (sidebarOrder as? DataResult.Content)?.data
@@ -488,10 +516,26 @@ class RealSettingsRepository(
                 state = joinLinks.sectionState(joinLinkRows.isEmpty())
             ),
             SettingsServerSectionSnapshot(
+                key = "pre_join_agreement",
+                title = "Pre-join Agreement",
+                detail = agreementSectionDetail(agreement, agreementSnapshot),
+                state = agreement.sectionState(agreementSnapshot == null)
+            ),
+            SettingsServerSectionSnapshot(
                 key = "onboarding_agent",
-                title = "Onboarding Agent",
+                title = "Onboarding",
                 detail = onboardingSectionDetail(onboarding, onboardingSnapshot),
                 state = onboarding.sectionState(onboardingSnapshot == null)
+            ),
+            SettingsServerSectionSnapshot(
+                key = "member_permissions",
+                title = "Member Permissions",
+                detail = if (canManageServer) {
+                    "Control whether members can see the human directory and counts."
+                } else {
+                    "Only server owners and admins can change member permissions."
+                },
+                state = if (canManageServer) SettingsSectionAvailability.Available else SettingsSectionAvailability.NoPermission
             ),
             SettingsServerSectionSnapshot(
                 key = "translation",
@@ -524,6 +568,7 @@ class RealSettingsRepository(
                 profile = SettingsServerProfileSnapshot(
                     name = server.name,
                     slug = server.slug ?: server.name.toSettingsSlug(),
+                    hideHumansFromMembers = server.hideHumansFromMembers,
                     canSave = canManageServer
                 ),
                 sections = sections,
@@ -531,6 +576,7 @@ class RealSettingsRepository(
                 usageRows = usageRows,
                 pendingInvites = pendingInvites,
                 joinLinks = joinLinkRows,
+                agreement = agreementSnapshot,
                 onboarding = onboardingSnapshot,
                 translation = translationSnapshot,
                 sidebarOrder = sidebarOrderSnapshot
@@ -545,9 +591,9 @@ class RealSettingsRepository(
                 PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server")
             )
         }
-        val name = request.name.trim()
-        if (name.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        val update = settingsUpdateServerProfile(server.id, name)
+        val name = request.name?.trim()?.takeIf { it.isNotBlank() }
+        if (name == null && request.hideHumansFromMembers == null) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val update = settingsUpdateServerProfile(server.id, name, request.hideHumansFromMembers)
         return when (update) {
             is DataResult.Content -> getServerSettings()
             is DataResult.Empty -> DataResult.Empty(update.reason)
@@ -661,6 +707,21 @@ class RealSettingsRepository(
             return DataResult.Error(ScreenError(code = "server_delete_confirmation_mismatch", retryable = false))
         }
         return settingsDeleteServer(server.id)
+    }
+
+    override suspend fun updateServerAgreement(
+        request: SettingsServerAgreementUpdateRequest
+    ): DataResult<SettingsServerAgreementSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_server")
+            )
+        }
+        if (request.title.length > 160 || request.bodyMarkdown.length > PRE_JOIN_AGREEMENT_BODY_MAX_LENGTH) {
+            return DataResult.Error(ScreenError(code = "settings_agreement_limit_exceeded", retryable = false))
+        }
+        return settingsUpdateServerAgreement(server.id, request, server.canManageServer)
     }
 
     override suspend fun updateServerOnboarding(
@@ -936,14 +997,65 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun fetchServerOnboarding(serverId: String): DataResult<SettingsServerOnboardingSnapshot> =
+    private suspend fun fetchServerOnboarding(
+        serverId: String,
+        agents: List<SettingsServerOnboardingAgentSnapshot>,
+        canSave: Boolean
+    ): DataResult<SettingsServerOnboardingSnapshot> =
         executeTypedSettings(
             source = "settings_server_onboarding_settings",
             contractCode = "settings_server_onboarding_contract_mismatch",
             block = { networkClient.settingsServerOnboarding(DataRequestPriority.Visible, serverId) },
             mapper = { bodyText ->
                 parseSharedSettingsServerOnboarding(bodyText)
+                    ?.copy(agents = agents, canSave = canSave)
                     ?: settingsContractMismatch("settings_server_onboarding_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerOnboardingAgents(): DataResult<List<SettingsServerOnboardingAgentSnapshot>> =
+        executeTypedSettings(
+            source = "settings_server_onboarding_agents",
+            contractCode = "settings_server_onboarding_agents_contract_mismatch",
+            block = { networkClient.settingsAgents(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerOnboardingAgents(bodyText)
+                    ?: settingsContractMismatch("settings_server_onboarding_agents_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchServerAgreement(
+        serverId: String,
+        canSave: Boolean
+    ): DataResult<SettingsServerAgreementSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_agreement",
+            contractCode = "settings_server_agreement_contract_mismatch",
+            block = { networkClient.settingsServerAgreement(DataRequestPriority.Visible, serverId) },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAgreement(bodyText, canSave)
+                    ?: settingsContractMismatch("settings_server_agreement_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateServerAgreement(
+        serverId: String,
+        request: SettingsServerAgreementUpdateRequest,
+        canSave: Boolean
+    ): DataResult<SettingsServerAgreementSnapshot> =
+        executeTypedSettings(
+            source = "settings_server_agreement_update",
+            contractCode = "settings_server_agreement_contract_mismatch",
+            block = {
+                networkClient.updateSettingsServerAgreement(
+                    DataRequestPriority.Foreground,
+                    serverId,
+                    buildSharedSettingsServerAgreementUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsServerAgreement(bodyText, canSave)
+                    ?: settingsContractMismatch("settings_server_agreement_contract_mismatch")
             }
         )
 
@@ -963,6 +1075,7 @@ class RealSettingsRepository(
             },
             mapper = { bodyText ->
                 parseSharedSettingsServerOnboarding(bodyText)
+                    ?.copy(canSave = true)
                     ?: settingsContractMismatch("settings_server_onboarding_contract_mismatch")
             }
         )
@@ -1062,7 +1175,11 @@ class RealSettingsRepository(
             }
         )
 
-    private suspend fun settingsUpdateServerProfile(serverId: String, name: String): DataResult<Unit> =
+    private suspend fun settingsUpdateServerProfile(
+        serverId: String,
+        name: String?,
+        hideHumansFromMembers: Boolean?
+    ): DataResult<Unit> =
         executeTypedSettings(
             source = "settings_server_profile_update",
             contractCode = "settings_server_profile_contract_mismatch",
@@ -1070,7 +1187,7 @@ class RealSettingsRepository(
                 networkClient.updateSettingsServerProfile(
                     DataRequestPriority.Foreground,
                     serverId,
-                    buildSharedSettingsServerProfileUpdateBody(name)
+                    buildSharedSettingsServerProfileUpdateBody(name, hideHumansFromMembers)
                 )
             },
             mapper = { bodyText ->
@@ -1629,8 +1746,19 @@ private fun onboardingSectionDetail(
     when (result) {
         is DataResult.Content -> onboarding?.detail ?: "Onboarding preference loaded."
         is DataResult.Empty -> "No onboarding preference was returned."
-        is DataResult.NoPermission -> "Only server owners can update onboarding reminder settings."
+        is DataResult.NoPermission -> "Only server owners and admins can update onboarding settings."
         is DataResult.Error -> "Onboarding settings failed to load: ${result.error.code}"
+    }
+
+private fun agreementSectionDetail(
+    result: DataResult<SettingsServerAgreementSnapshot>,
+    agreement: SettingsServerAgreementSnapshot?
+): String =
+    when (result) {
+        is DataResult.Content -> agreement?.detail ?: "Pre-join agreement loaded."
+        is DataResult.Empty -> "No pre-join agreement was returned."
+        is DataResult.NoPermission -> "Only server owners and admins can manage the pre-join agreement."
+        is DataResult.Error -> "Pre-join agreement failed to load: ${result.error.code}"
     }
 
 private fun translationSectionDetail(
@@ -1759,11 +1887,14 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
         )
     )
 
-@Serializable
-data class SettingsServerProfileUpdateRequestBody(val name: String)
-
-fun buildSharedSettingsServerProfileUpdateBody(name: String): String =
-    settingsRepositoryJson.encodeToString(SettingsServerProfileUpdateRequestBody(name))
+fun buildSharedSettingsServerProfileUpdateBody(
+    name: String?,
+    hideHumansFromMembers: Boolean?
+): String =
+    buildJsonObject {
+        name?.let { put("name", JsonPrimitive(it)) }
+        hideHumansFromMembers?.let { put("hideHumansFromMembers", JsonPrimitive(it)) }
+    }.toString()
 
 @Serializable
 data class SettingsServerInviteCreateRequestBody(val email: String)
@@ -1786,16 +1917,30 @@ fun buildSharedSettingsServerJoinLinkCreateBody(request: SettingsServerJoinLinkC
     )
 
 @Serializable
-data class SettingsServerOnboardingUpdateRequestBody(
-    val setupModalReminderOptOut: Boolean
+data class SettingsServerAgreementUpdateRequestBody(
+    val enabled: Boolean,
+    val title: String,
+    val bodyMarkdown: String
 )
 
-fun buildSharedSettingsServerOnboardingUpdateBody(request: SettingsServerOnboardingUpdateRequest): String =
+fun buildSharedSettingsServerAgreementUpdateBody(request: SettingsServerAgreementUpdateRequest): String =
     settingsRepositoryJson.encodeToString(
-        SettingsServerOnboardingUpdateRequestBody(
-            setupModalReminderOptOut = request.setupModalReminderOptOut
+        SettingsServerAgreementUpdateRequestBody(
+            enabled = request.enabled,
+            title = request.title,
+            bodyMarkdown = request.bodyMarkdown
         )
     )
+
+fun buildSharedSettingsServerOnboardingUpdateBody(request: SettingsServerOnboardingUpdateRequest): String =
+    buildJsonObject {
+        request.setupModalReminderOptOut?.let { put("setupModalReminderOptOut", JsonPrimitive(it)) }
+        when {
+            request.clearOnboardingAgent -> put("onboardingAgentId", JsonNull)
+            request.onboardingAgentId != null -> put("onboardingAgentId", JsonPrimitive(request.onboardingAgentId))
+        }
+        request.agentAllChannelGreetingEnabled?.let { put("agentAllChannelGreetingEnabled", JsonPrimitive(it)) }
+    }.toString()
 
 @Serializable
 data class SettingsServerTranslationUpdateRequestBody(

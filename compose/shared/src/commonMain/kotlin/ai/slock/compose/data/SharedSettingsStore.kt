@@ -208,6 +208,7 @@ sealed interface SharedSettingsIntent {
         val serverId: String,
         val event: RealtimeEvent
     ) : SharedSettingsIntent
+    data class UpdateServerAgreement(val request: SettingsServerAgreementUpdateRequest) : SharedSettingsIntent
     data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
     data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
     data class UpdateServerSidebarOrder(val request: SettingsServerSidebarOrderUpdateRequest) : SharedSettingsIntent
@@ -338,6 +339,12 @@ class SharedSettingsDataSource(
 
     suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult> =
         settingsRepository?.deleteServer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateServerAgreement(
+        request: SettingsServerAgreementUpdateRequest
+    ): DataResult<SettingsServerAgreementSnapshot> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateServerAgreement(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun updateServerOnboarding(
         request: SettingsServerOnboardingUpdateRequest
@@ -749,8 +756,9 @@ class SharedSettingsStore(
                 }
             }
             is SharedSettingsIntent.UpdateServerProfile -> {
-                runAction(SERVER_ACTION_PROFILE_SAVE) {
-                    dataSource.updateServerProfile(intent.request).applyServerSnapshotActionResult(SERVER_ACTION_PROFILE_SAVE)
+                val action = intent.request.serverProfileActionKey
+                runAction(action) {
+                    dataSource.updateServerProfile(intent.request).applyServerSnapshotActionResult(action)
                 }
             }
             is SharedSettingsIntent.CreateServerInvite -> {
@@ -789,9 +797,14 @@ class SharedSettingsStore(
                 }
             }
             is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
+            is SharedSettingsIntent.UpdateServerAgreement -> {
+                runAction(SERVER_ACTION_AGREEMENT_SAVE) {
+                    dataSource.updateServerAgreement(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_AGREEMENT_SAVE)
+                }
+            }
             is SharedSettingsIntent.UpdateServerOnboarding -> {
-                runAction(SERVER_ACTION_ONBOARDING_TOGGLE) {
-                    dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_TOGGLE)
+                runAction(SERVER_ACTION_ONBOARDING_SAVE) {
+                    dataSource.updateServerOnboarding(intent.request).applyServerSnapshotReloadResult(SERVER_ACTION_ONBOARDING_SAVE)
                 }
             }
             is SharedSettingsIntent.UpdateServerTranslation -> {
@@ -1375,6 +1388,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RevokeServerInvite,
             is SharedSettingsIntent.CreateServerJoinLink,
             is SharedSettingsIntent.RevokeServerJoinLink,
+            is SharedSettingsIntent.UpdateServerAgreement,
             is SharedSettingsIntent.UpdateServerOnboarding,
             is SharedSettingsIntent.UpdateServerTranslation,
             is SharedSettingsIntent.UpdateServerSidebarOrder,
@@ -1478,6 +1492,9 @@ internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"
 internal const val SERVER_ACTION_JOIN_LINK_CREATE = "serverJoinLinkCreate"
 internal const val SERVER_ACTION_JOIN_LINK_REVOKE = "serverJoinLinkRevoke"
 internal const val SERVER_ACTION_ONBOARDING_TOGGLE = "serverOnboardingToggle"
+internal const val SERVER_ACTION_ONBOARDING_SAVE = "serverOnboardingSave"
+internal const val SERVER_ACTION_AGREEMENT_SAVE = "serverAgreementSave"
+internal const val SERVER_ACTION_MEMBER_PERMISSIONS_SAVE = "serverMemberPermissionsSave"
 internal const val SERVER_ACTION_TRANSLATION_TOGGLE = "serverTranslationToggle"
 internal const val SERVER_ACTION_SIDEBAR_ORDER = "serverSidebarOrder"
 internal const val SERVER_ACTION_MEMBER_ROLE = "serverMemberRole"
@@ -1499,6 +1516,14 @@ private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction
         preferredTimeFormat != null || clearPreferredTimeFormat -> LANGUAGE_REGION_ACTION_TIME_FORMAT
         else -> "languageRegionPreference"
     }
+
+internal val SettingsServerProfileUpdateRequest.serverProfileActionKey: String
+    get() =
+        if (hideHumansFromMembers != null && name == null) {
+            SERVER_ACTION_MEMBER_PERMISSIONS_SAVE
+        } else {
+            SERVER_ACTION_PROFILE_SAVE
+        }
 
 private fun LocaleSnapshot.toSettingsMobileSelectionSnapshot(): SettingsMobileSelectionSnapshot =
     SettingsMobileSelectionSnapshot(

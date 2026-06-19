@@ -101,12 +101,13 @@ class SharedSettingsStoreContract(
         private fun SharedSettingsIntent.actionKeyOrNull(): MviActionKey? =
             when (this) {
                 is SharedSettingsIntent.UpdateProfile -> MviActionKey("saveProfile")
-                is SharedSettingsIntent.UpdateServerProfile -> MviActionKey(SERVER_ACTION_PROFILE_SAVE)
+                is SharedSettingsIntent.UpdateServerProfile -> MviActionKey(request.serverProfileActionKey)
                 is SharedSettingsIntent.CreateServerInvite -> MviActionKey(SERVER_ACTION_INVITE_CREATE)
                 is SharedSettingsIntent.RevokeServerInvite -> MviActionKey("${SERVER_ACTION_INVITE_REVOKE}:$inviteId")
                 is SharedSettingsIntent.CreateServerJoinLink -> MviActionKey(SERVER_ACTION_JOIN_LINK_CREATE)
                 is SharedSettingsIntent.RevokeServerJoinLink -> MviActionKey("${SERVER_ACTION_JOIN_LINK_REVOKE}:$linkId")
-                is SharedSettingsIntent.UpdateServerOnboarding -> MviActionKey(SERVER_ACTION_ONBOARDING_TOGGLE)
+                is SharedSettingsIntent.UpdateServerAgreement -> MviActionKey(SERVER_ACTION_AGREEMENT_SAVE)
+                is SharedSettingsIntent.UpdateServerOnboarding -> MviActionKey(SERVER_ACTION_ONBOARDING_SAVE)
                 is SharedSettingsIntent.UpdateServerTranslation -> MviActionKey(SERVER_ACTION_TRANSLATION_TOGGLE)
                 is SharedSettingsIntent.UpdateServerSidebarOrder -> MviActionKey(SERVER_ACTION_SIDEBAR_ORDER)
                 is SharedSettingsIntent.UpdateServerMemberRole -> MviActionKey("${SERVER_ACTION_MEMBER_ROLE}:${request.memberId}")

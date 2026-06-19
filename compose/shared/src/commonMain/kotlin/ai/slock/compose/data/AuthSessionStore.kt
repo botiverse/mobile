@@ -112,6 +112,7 @@ data class StoredAuthServer(
     val onboardingAgentId: String? = null,
     val plan: String? = null,
     val planDowngradedAt: String? = null,
+    val hideHumansFromMembers: Boolean = false,
     val role: String? = null,
     val createdAt: String? = null
 ) {

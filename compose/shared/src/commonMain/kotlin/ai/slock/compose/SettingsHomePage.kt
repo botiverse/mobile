@@ -45,8 +45,11 @@ import ai.slock.compose.data.SERVER_ACTION_JOIN_LINK_REVOKE
 import ai.slock.compose.data.SERVER_ACTION_CONFIRM
 import ai.slock.compose.data.SERVER_ACTION_DELETE
 import ai.slock.compose.data.SERVER_ACTION_LEAVE
+import ai.slock.compose.data.SERVER_ACTION_AGREEMENT_SAVE
+import ai.slock.compose.data.SERVER_ACTION_MEMBER_PERMISSIONS_SAVE
 import ai.slock.compose.data.SERVER_ACTION_MEMBER_REMOVE
 import ai.slock.compose.data.SERVER_ACTION_MEMBER_ROLE
+import ai.slock.compose.data.SERVER_ACTION_ONBOARDING_SAVE
 import ai.slock.compose.data.SERVER_ACTION_ONBOARDING_TOGGLE
 import ai.slock.compose.data.SERVER_ACTION_PROFILE_SAVE
 import ai.slock.compose.data.SERVER_ACTION_SIDEBAR_ORDER
@@ -155,12 +158,15 @@ import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
 import ai.slock.compose.data.SettingsLanguageRegionSnapshot
 import ai.slock.compose.data.SettingsServerAdminSnapshot
+import ai.slock.compose.data.SettingsServerAgreementSnapshot
+import ai.slock.compose.data.SettingsServerAgreementUpdateRequest
 import ai.slock.compose.data.SettingsServerDeleteRequest
 import ai.slock.compose.data.SettingsServerInviteCreateRequest
 import ai.slock.compose.data.SettingsServerInviteSnapshot
 import ai.slock.compose.data.SettingsServerJoinLinkCreateRequest
 import ai.slock.compose.data.SettingsServerJoinLinkSnapshot
 import ai.slock.compose.data.SettingsServerMemberRoleUpdateRequest
+import ai.slock.compose.data.SettingsServerOnboardingAgentSnapshot
 import ai.slock.compose.data.SettingsServerOnboardingSnapshot
 import ai.slock.compose.data.SettingsServerOnboardingUpdateRequest
 import ai.slock.compose.data.SettingsServerProfileUpdateRequest
@@ -170,6 +176,7 @@ import ai.slock.compose.data.SettingsServerSidebarOrderUpdateRequest
 import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsServerTranslationSnapshot
 import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
+import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -314,6 +321,7 @@ private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationRouter = "router"
+private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
 private val SearchControlsHorizontalPadding = 16.dp
@@ -2161,11 +2169,32 @@ private fun SettingsAppShellContent(
     var serverDeleteConfirmation by remember { mutableStateOf("") }
     var serverJoinLinkMaxUses by remember { mutableStateOf("") }
     var serverJoinLinkExpiresAt by remember { mutableStateOf("") }
+    var serverAgreementEnabled by remember { mutableStateOf(false) }
+    var serverAgreementTitle by remember { mutableStateOf("") }
+    var serverAgreementBody by remember { mutableStateOf("") }
+    var serverHideHumansFromMembers by remember { mutableStateOf(false) }
+    var serverOnboardingAgentId by remember { mutableStateOf("") }
+    var serverOnboardingGreetingEnabled by remember { mutableStateOf(true) }
+    val currentServerSnapshot = settingsState.server.currentContent()
     val currentServerProfile = settingsState.server.currentContent()?.profile
     val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
     val currentServerSlug = currentServerProfile?.slug ?: session?.currentServerSummary()?.slug.orEmpty()
+    val currentAgreement = currentServerSnapshot?.agreement
+    val currentOnboarding = currentServerSnapshot?.onboarding
     LaunchedEffect(currentServerName) {
         serverProfileName = currentServerName
+    }
+    LaunchedEffect(currentServerProfile?.hideHumansFromMembers) {
+        serverHideHumansFromMembers = currentServerProfile?.hideHumansFromMembers == true
+    }
+    LaunchedEffect(currentAgreement?.enabled, currentAgreement?.title, currentAgreement?.bodyMarkdown) {
+        serverAgreementEnabled = currentAgreement?.enabled == true
+        serverAgreementTitle = currentAgreement?.title.orEmpty()
+        serverAgreementBody = currentAgreement?.bodyMarkdown.orEmpty()
+    }
+    LaunchedEffect(currentOnboarding?.onboardingAgentId, currentOnboarding?.agentAllChannelGreetingEnabled) {
+        serverOnboardingAgentId = currentOnboarding?.onboardingAgentId.orEmpty()
+        serverOnboardingGreetingEnabled = currentOnboarding?.agentAllChannelGreetingEnabled ?: true
     }
     LaunchedEffect(currentServerSlug) {
         serverDeleteConfirmation = ""
@@ -2360,7 +2389,19 @@ private fun SettingsAppShellContent(
                     onJoinLinkExpiresAtChange = { serverJoinLinkExpiresAt = it },
                     profileName = serverProfileName,
                     onProfileNameChange = { serverProfileName = it },
-                    serverSnapshot = settingsState.server.currentContent(),
+                    agreementEnabled = serverAgreementEnabled,
+                    onAgreementEnabledChange = { serverAgreementEnabled = it },
+                    agreementTitle = serverAgreementTitle,
+                    onAgreementTitleChange = { serverAgreementTitle = it },
+                    agreementBody = serverAgreementBody,
+                    onAgreementBodyChange = { serverAgreementBody = it },
+                    hideHumansFromMembers = serverHideHumansFromMembers,
+                    onHideHumansFromMembersChange = { serverHideHumansFromMembers = it },
+                    onboardingAgentId = serverOnboardingAgentId,
+                    onOnboardingAgentIdChange = { serverOnboardingAgentId = it },
+                    onboardingGreetingEnabled = serverOnboardingGreetingEnabled,
+                    onOnboardingGreetingEnabledChange = { serverOnboardingGreetingEnabled = it },
+                    serverSnapshot = currentServerSnapshot,
                     serverRole = session?.currentServerSummary()?.role.orEmpty(),
                     expectedServerSlug = currentServerSlug,
                     deleteConfirmationName = serverDeleteConfirmation,
@@ -2374,8 +2415,24 @@ private fun SettingsAppShellContent(
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
                             itemId?.trim()?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(it)))
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(name = it)))
                             }
+                        SERVER_ACTION_AGREEMENT_SAVE ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateServerAgreement(
+                                    SettingsServerAgreementUpdateRequest(
+                                        enabled = serverAgreementEnabled,
+                                        title = serverAgreementTitle.trim(),
+                                        bodyMarkdown = serverAgreementBody
+                                    )
+                                )
+                            )
+                        SERVER_ACTION_MEMBER_PERMISSIONS_SAVE ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateServerProfile(
+                                    SettingsServerProfileUpdateRequest(hideHumansFromMembers = serverHideHumansFromMembers)
+                                )
+                            )
                         SERVER_ACTION_INVITE_CREATE ->
                             itemId?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest(it)))
@@ -2398,9 +2455,19 @@ private fun SettingsAppShellContent(
                                     onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it))
                                 }
                             }
+                        SERVER_ACTION_ONBOARDING_SAVE ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateServerOnboarding(
+                                    SettingsServerOnboardingUpdateRequest(
+                                        onboardingAgentId = serverOnboardingAgentId.trim().takeIf { it.isNotBlank() },
+                                        clearOnboardingAgent = serverOnboardingAgentId.trim().isBlank(),
+                                        agentAllChannelGreetingEnabled = serverOnboardingGreetingEnabled
+                                    )
+                                )
+                            )
                         SERVER_ACTION_ONBOARDING_TOGGLE ->
                             itemId?.toBooleanStrictOrNull()?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerOnboarding(SettingsServerOnboardingUpdateRequest(it)))
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = it)))
                             }
                         SERVER_ACTION_TRANSLATION_TOGGLE ->
                             itemId?.toBooleanStrictOrNull()?.let {
@@ -2547,6 +2614,18 @@ private fun SharedSettingsServerContent(
     onJoinLinkExpiresAtChange: (String) -> Unit,
     profileName: String,
     onProfileNameChange: (String) -> Unit,
+    agreementEnabled: Boolean,
+    onAgreementEnabledChange: (Boolean) -> Unit,
+    agreementTitle: String,
+    onAgreementTitleChange: (String) -> Unit,
+    agreementBody: String,
+    onAgreementBodyChange: (String) -> Unit,
+    hideHumansFromMembers: Boolean,
+    onHideHumansFromMembersChange: (Boolean) -> Unit,
+    onboardingAgentId: String,
+    onOnboardingAgentIdChange: (String) -> Unit,
+    onboardingGreetingEnabled: Boolean,
+    onOnboardingGreetingEnabledChange: (Boolean) -> Unit,
     serverSnapshot: SettingsServerSnapshot?,
     serverRole: String,
     expectedServerSlug: String,
@@ -2611,6 +2690,45 @@ private fun SharedSettingsServerContent(
                             onExpiresAtChange = onJoinLinkExpiresAtChange,
                             onCreate = onCreateJoinLink,
                             onAction = onAction
+                        )
+                    }
+                "Pre-join Agreement" ->
+                    item {
+                        SettingsServerAgreementCard(
+                            agreement = serverSnapshot?.agreement,
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "pre_join_agreement" },
+                            enabled = agreementEnabled,
+                            title = agreementTitle,
+                            bodyMarkdown = agreementBody,
+                            actionState = actionState,
+                            onEnabledChange = onAgreementEnabledChange,
+                            onTitleChange = onAgreementTitleChange,
+                            onBodyChange = onAgreementBodyChange,
+                            onSubmit = { onAction(SERVER_ACTION_AGREEMENT_SAVE, null) }
+                        )
+                    }
+                "Onboarding" ->
+                    item {
+                        SettingsServerOnboardingCard(
+                            onboarding = serverSnapshot?.onboarding,
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "onboarding_agent" },
+                            selectedAgentId = onboardingAgentId,
+                            greetingEnabled = onboardingGreetingEnabled,
+                            actionState = actionState,
+                            onAgentSelected = onOnboardingAgentIdChange,
+                            onGreetingEnabledChange = onOnboardingGreetingEnabledChange,
+                            onSubmit = { onAction(SERVER_ACTION_ONBOARDING_SAVE, null) }
+                        )
+                    }
+                "Member Permissions" ->
+                    item {
+                        SettingsServerMemberPermissionsCard(
+                            profile = serverSnapshot?.profile,
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "member_permissions" },
+                            hideHumansFromMembers = hideHumansFromMembers,
+                            actionState = actionState,
+                            onHideHumansFromMembersChange = onHideHumansFromMembersChange,
+                            onSubmit = { onAction(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, null) }
                         )
                     }
                 else -> item { SharedSettingsSectionCard(section, onAction) }
@@ -3056,6 +3174,259 @@ private fun SettingsServerJoinLinksCard(
         }
     }
 }
+
+@Composable
+private fun SettingsServerAgreementCard(
+    agreement: SettingsServerAgreementSnapshot?,
+    section: SettingsServerSectionSnapshot?,
+    enabled: Boolean,
+    title: String,
+    bodyMarkdown: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onEnabledChange: (Boolean) -> Unit,
+    onTitleChange: (String) -> Unit,
+    onBodyChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val canSave = agreement?.canSave == true
+    val busy = actionState?.action == SERVER_ACTION_AGREEMENT_SAVE && actionState.inProgress
+    val bodyTooLong = bodyMarkdown.length > PreJoinAgreementBodyMaxLength
+    val titleTooLong = title.length > 160
+    val dirty =
+        agreement != null &&
+            (enabled != agreement.enabled || title.trim() != agreement.title || bodyMarkdown != agreement.bodyMarkdown)
+    val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
+    SettingsFormSectionCard(iconName = "file-check-2", title = "Pre-join Agreement") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        SegmentedControl(
+            selectedValue = if (enabled) "enabled" else "disabled",
+            options = listOf(
+                SegmentedControlOption("enabled", "Required", "check-circle"),
+                SegmentedControlOption("disabled", "Disabled", "x")
+            ),
+            onValueSelected = { onEnabledChange(it == "enabled") },
+            enabled = canSave && !busy
+        )
+        SlockBrutalTextField(
+            label = "Title",
+            value = title,
+            placeholder = "Community agreement",
+            onValueChange = { onTitleChange(it.take(180)) },
+            required = enabled,
+            enabled = canSave && !busy
+        )
+        SlockBrutalTextField(
+            label = "Body Markdown",
+            value = bodyMarkdown,
+            placeholder = "Write the agreement new members must accept.",
+            onValueChange = onBodyChange,
+            required = enabled,
+            enabled = canSave && !busy,
+            maxLines = 7,
+            fieldMinHeight = 142.dp
+        )
+        SettingsFormDetailText("${bodyMarkdown.length} / $PreJoinAgreementBodyMaxLength characters")
+        if (titleTooLong) {
+            SettingsFormErrorText("Agreement title must be 160 characters or fewer.")
+        }
+        if (bodyTooLong) {
+            SettingsFormErrorText("Agreement body must be 5,000 characters or fewer.")
+        }
+        SettingsAgreementPreview(bodyMarkdown)
+        if (actionState?.action == SERVER_ACTION_AGREEMENT_SAVE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+        if (canSave) {
+            SlockBrutalActionButton(
+                label = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, "Save Agreement"),
+                onClick = onSubmit,
+                enabled = saveEnabled,
+                leadingIcon = "save",
+                backgroundColor = SlockColor.BrandYellow
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsAgreementPreview(bodyMarkdown: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            "Preview",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        if (bodyMarkdown.isBlank()) {
+            SettingsFormEmptyText("Agreement preview will appear here.")
+        } else {
+            SlockMarkdownBody(
+                body = bodyMarkdown,
+                textStyle = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerOnboardingCard(
+    onboarding: SettingsServerOnboardingSnapshot?,
+    section: SettingsServerSectionSnapshot?,
+    selectedAgentId: String,
+    greetingEnabled: Boolean,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onAgentSelected: (String) -> Unit,
+    onGreetingEnabledChange: (Boolean) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val canSave = onboarding?.canSave == true
+    val busy = actionState?.action == SERVER_ACTION_ONBOARDING_SAVE && actionState.inProgress
+    val currentAgentId = onboarding?.onboardingAgentId.orEmpty()
+    val currentGreeting = onboarding?.agentAllChannelGreetingEnabled ?: true
+    val dirty = onboarding != null && (selectedAgentId != currentAgentId || greetingEnabled != currentGreeting)
+    val agents = onboarding?.agents.orEmpty()
+    SettingsFormSectionCard(iconName = "bot", title = "Onboarding") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        Text(
+            "Human Onboarding Agent",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        SettingsServerSelectRow(
+            title = "Disabled (no automatic onboarding)",
+            detail = "Do not assign an agent to greet new humans automatically.",
+            selected = selectedAgentId.isBlank(),
+            enabled = canSave && !busy,
+            onClick = { onAgentSelected("") }
+        )
+        if (agents.isEmpty()) {
+            SettingsFormEmptyText("No active agents are available for onboarding.")
+        } else {
+            agents.forEach { agent ->
+                SettingsServerSelectRow(
+                    title = agent.onboardingAgentLabel(),
+                    detail = agent.name.takeIf { it.isNotBlank() }?.let { "@$it" }.orEmpty(),
+                    selected = selectedAgentId == agent.id,
+                    enabled = canSave && !busy,
+                    onClick = { onAgentSelected(agent.id) }
+                )
+            }
+        }
+        SettingsFormDivider()
+        Text(
+            "New Agent Greeting",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        SegmentedControl(
+            selectedValue = if (greetingEnabled) "yes" else "no",
+            options = listOf(
+                SegmentedControlOption("yes", "Yes", "message-circle"),
+                SegmentedControlOption("no", "No", "message-circle-off")
+            ),
+            onValueSelected = { onGreetingEnabledChange(it == "yes") },
+            enabled = canSave && !busy
+        )
+        if (actionState?.action == SERVER_ACTION_ONBOARDING_SAVE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+        if (canSave) {
+            SlockBrutalActionButton(
+                label = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, "Save Onboarding"),
+                onClick = onSubmit,
+                enabled = dirty && !busy,
+                leadingIcon = "save",
+                backgroundColor = SlockColor.BrandYellow
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerMemberPermissionsCard(
+    profile: ai.slock.compose.data.SettingsServerProfileSnapshot?,
+    section: SettingsServerSectionSnapshot?,
+    hideHumansFromMembers: Boolean,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onHideHumansFromMembersChange: (Boolean) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val canSave = profile?.canSave == true
+    val busy = actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.inProgress
+    val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
+    SettingsFormSectionCard(iconName = "users-round", title = "Member Permissions") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        SegmentedControl(
+            selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
+            options = listOf(
+                SegmentedControlOption("hidden", "Hide Humans", "eye-off"),
+                SegmentedControlOption("visible", "Visible", "eye")
+            ),
+            onValueSelected = { onHideHumansFromMembersChange(it == "hidden") },
+            enabled = canSave && !busy
+        )
+        SettingsFormDetailText("Member role users cannot see server-wide human lists, graph surfaces, or human counts when hidden.")
+        if (actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+        if (canSave) {
+            SlockBrutalActionButton(
+                label = actionState.serverStatusFor(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, "Save Permissions"),
+                onClick = onSubmit,
+                enabled = dirty && !busy,
+                leadingIcon = "save",
+                backgroundColor = SlockColor.BrandYellow
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerSelectRow(
+    title: String,
+    detail: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val background = if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite
+    val shadowOffset = if (selected) 3.dp else 0.dp
+    Box(modifier = Modifier.fillMaxWidth().padding(bottom = shadowOffset, end = shadowOffset)) {
+        if (shadowOffset > 0.dp) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = shadowOffset, y = shadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+        }
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .background(background)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(if (selected) "check-circle" else "circle", modifier = Modifier.size(16.dp), color = "#FF000000")
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                detail.takeIf { it.isNotBlank() }?.let {
+                    Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+                }
+            }
+        }
+    }
+}
+
+private fun SettingsServerOnboardingAgentSnapshot.onboardingAgentLabel(): String =
+    displayName?.takeIf { it.isNotBlank() } ?: name.ifBlank { id }
 
 @Composable
 private fun SettingsFormDetailText(text: String) {
@@ -3730,8 +4101,16 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                     rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState)
                 ),
                 KuiklySharedSettingsSection(
+                    title = "Pre-join Agreement",
+                    rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
+                ),
+                KuiklySharedSettingsSection(
                     title = "Onboarding",
                     rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Member Permissions",
+                    rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
                 ),
                 KuiklySharedSettingsSection(
                     title = "Translation",
@@ -3864,6 +4243,24 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     } + createRow
 }
 
+private fun SettingsServerAgreementSnapshot?.toAgreementRows(
+    section: SettingsServerSectionSnapshot?,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?
+): List<KuiklySharedSettingsRow> =
+    listOf(
+        this?.let { agreement ->
+            KuiklySharedSettingsRow(
+                key = SERVER_ACTION_AGREEMENT_SAVE,
+                iconName = "file-check-2",
+                title = "Pre-join Agreement",
+                detail = agreement.detail,
+                value = agreement.enabled.toString(),
+                status = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, agreement.statusLabel),
+                enabled = agreement.canSave && actionState?.inProgress != true
+            )
+        } ?: section.toPlaceholderRow("preJoinAgreement", "file-check-2", "Pre-join Agreement", "No pre-join agreement settings are available.")
+    )
+
 private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
     section: SettingsServerSectionSnapshot?,
     actionState: ai.slock.compose.data.SharedSettingsActionState?
@@ -3871,15 +4268,36 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
     listOf(
         this?.let { onboarding ->
             KuiklySharedSettingsRow(
-                key = SERVER_ACTION_ONBOARDING_TOGGLE,
+                key = SERVER_ACTION_ONBOARDING_SAVE,
                 iconName = "bot",
-                title = "Onboarding Agent",
+                title = "Onboarding",
                 detail = onboarding.detail,
-                value = (!onboarding.setupModalReminderOptOut).toString(),
-                status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_TOGGLE, onboarding.statusLabel),
-                enabled = actionState?.inProgress != true
+                value = onboarding.onboardingAgentId.orEmpty(),
+                status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, onboarding.statusLabel),
+                enabled = onboarding.canSave && actionState?.inProgress != true
             )
         } ?: section.toPlaceholderRow("onboarding", "bot", "Onboarding Agent", "No onboarding settings are available.")
+    )
+
+private fun ai.slock.compose.data.SettingsServerProfileSnapshot?.toMemberPermissionsRows(
+    section: SettingsServerSectionSnapshot?,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?
+): List<KuiklySharedSettingsRow> =
+    listOf(
+        this?.let { profile ->
+            KuiklySharedSettingsRow(
+                key = SERVER_ACTION_MEMBER_PERMISSIONS_SAVE,
+                iconName = "users-round",
+                title = "Hide human directory and counts from members",
+                detail = "Member role users cannot see server-wide human lists, graph surfaces, or human counts.",
+                value = profile.hideHumansFromMembers.toString(),
+                status = actionState.serverStatusFor(
+                    SERVER_ACTION_MEMBER_PERMISSIONS_SAVE,
+                    if (profile.hideHumansFromMembers) "Hidden" else "Visible"
+                ),
+                enabled = profile.canSave && actionState?.inProgress != true
+            )
+        } ?: section.toPlaceholderRow("memberPermissions", "users-round", "Member Permissions", "No member permission settings are available.")
     )
 
 private fun SettingsServerTranslationSnapshot?.toTranslationRows(

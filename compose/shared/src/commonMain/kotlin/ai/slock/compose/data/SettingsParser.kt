@@ -293,19 +293,72 @@ fun parseSharedSettingsServerNotificationSettings(bodyText: String): Boolean? = 
 
 @Serializable
 private data class WireSettingsServerOnboarding(
-    val setupModalReminderOptOut: Boolean,
+    val setupModalReminderOptOut: Boolean = false,
+    val onboardingAgentId: String? = null,
+    val agentAllChannelGreetingEnabled: Boolean? = null,
 )
 
 fun parseSharedSettingsServerOnboarding(bodyText: String): SettingsServerOnboardingSnapshot? = runCatching {
     val onboarding = settingsJson.decodeFromString(WireSettingsServerOnboarding.serializer(), bodyText)
+    val agentStatus =
+        onboarding.onboardingAgentId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { "Agent selected" }
+            ?: "No onboarding agent"
+    val greetingStatus = if (onboarding.agentAllChannelGreetingEnabled != false) "new-agent greeting on" else "new-agent greeting off"
     SettingsServerOnboardingSnapshot(
         setupModalReminderOptOut = onboarding.setupModalReminderOptOut,
-        statusLabel = if (onboarding.setupModalReminderOptOut) "Reminder muted" else "Reminder active",
-        detail = if (onboarding.setupModalReminderOptOut) {
-            "The onboarding setup reminder is muted for this server."
-        } else {
-            "The onboarding setup reminder can appear when the server has no computer or agent."
-        },
+        onboardingAgentId = onboarding.onboardingAgentId?.takeIf { it.isNotBlank() },
+        agentAllChannelGreetingEnabled = onboarding.agentAllChannelGreetingEnabled != false,
+        statusLabel = agentStatus,
+        detail = "$agentStatus; $greetingStatus.",
+    )
+}.getOrNull()
+
+fun parseSharedSettingsServerOnboardingAgents(bodyText: String): List<SettingsServerOnboardingAgentSnapshot>? =
+    parseSharedSettingsAgentsAsMembers(bodyText)
+        ?.filter { it.kind == MemberKind.Agent }
+        ?.map {
+            SettingsServerOnboardingAgentSnapshot(
+                id = it.id.value,
+                name = it.handle,
+                displayName = it.displayName
+            )
+        }
+
+@Serializable
+private data class WireSettingsServerAgreementResponse(
+    val enabled: Boolean = false,
+    val agreement: WireSettingsServerAgreement? = null
+)
+
+@Serializable
+private data class WireSettingsServerAgreement(
+    val title: String? = null,
+    val bodyMarkdown: String? = null,
+    val enabled: Boolean? = null
+)
+
+fun parseSharedSettingsServerAgreement(
+    bodyText: String,
+    canSave: Boolean
+): SettingsServerAgreementSnapshot? = runCatching {
+    val response = settingsJson.decodeFromString(WireSettingsServerAgreementResponse.serializer(), bodyText)
+    val title = response.agreement?.title?.takeIf { it.isNotBlank() }.orEmpty()
+    val body = response.agreement?.bodyMarkdown.orEmpty()
+    val enabled = response.enabled || response.agreement?.enabled == true
+    SettingsServerAgreementSnapshot(
+        enabled = enabled,
+        title = title,
+        bodyMarkdown = body,
+        statusLabel = if (enabled) "Required" else "Disabled",
+        detail =
+            if (enabled) {
+                "New joiners must accept the pre-join agreement before joining."
+            } else {
+                "New joiners can enter without accepting an agreement."
+            },
+        canSave = canSave
     )
 }.getOrNull()
 

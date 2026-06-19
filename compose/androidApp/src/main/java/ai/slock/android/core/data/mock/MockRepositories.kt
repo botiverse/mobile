@@ -276,8 +276,13 @@ class MockSettingsRepository(
         request: SettingsServerProfileUpdateRequest
     ): DataResult<SettingsServerSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            val current = MockSeedData.settingsServerSnapshot.profile
             MockSeedData.settingsServerSnapshot.copy(
-                profile = MockSeedData.settingsServerSnapshot.profile.copy(name = request.name)
+                profile =
+                    current.copy(
+                        name = request.name ?: current.name,
+                        hideHumansFromMembers = request.hideHumansFromMembers ?: current.hideHumansFromMembers
+                    )
             )
         }
 

@@ -184,7 +184,9 @@ class SettingsRepositoryDataSourceTest {
                     """.trimIndent(),
                     usageJson = """{"machines":1,"agents":10,"channels":12}""",
                     billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z"},"stripeConfigured":true}""",
-                    onboardingJson = """{"setupModalReminderOptOut":true}""",
+                    agreementJson = """{"enabled":true,"agreement":{"title":"Join Agreement","bodyMarkdown":"Be kind."}}""",
+                    onboardingJson = """{"setupModalReminderOptOut":true,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
+                    agentsJson = """[{"id":"agent-1","name":"onboarding-agent","displayName":"Onboarding Agent","status":"idle"}]""",
                     invitesJson = """[{"id":"invite-1","invitedEmail":"new@slock.ai","createdAt":"2026-05-09T00:00:00Z"}]""",
                     joinLinksJson = """[{"id":"join-1","token":"token-123456789","createdAt":"2026-05-09T00:00:00Z","expiresAt":"2026-06-01T00:00:00Z","maxUses":10,"useCount":2}]""",
                     notificationSettingsJson = """{"serverPushMuted":true}"""
@@ -199,7 +201,7 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("slock-android", serverSnapshot.profile.slug)
         assertEquals(true, serverSnapshot.profile.canSave)
         assertEquals(
-            listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "translation", "sidebar_order", "danger"),
+            listOf("admins", "billing", "pending_invites", "join_links", "pre_join_agreement", "onboarding_agent", "member_permissions", "translation", "sidebar_order", "danger"),
             serverSnapshot.sections.map { it.key }
         )
         assertEquals(listOf("Owner", "Admin User", "Member User"), serverSnapshot.admins.map { it.name })
@@ -207,7 +209,13 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("2 owner/admin members", serverSnapshot.sections.first { it.key == "admins" }.detail)
         assertTrue(serverSnapshot.usageRows.any { it.label == "Billing Status" && it.value == "Active" })
         assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1" })
+        assertEquals(true, serverSnapshot.agreement?.enabled)
+        assertEquals("Join Agreement", serverSnapshot.agreement?.title)
         assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)
+        assertEquals("agent-1", serverSnapshot.onboarding?.onboardingAgentId)
+        assertEquals(false, serverSnapshot.onboarding?.agentAllChannelGreetingEnabled)
+        assertEquals(listOf("Onboarding Agent"), serverSnapshot.onboarding?.agents?.map { it.displayName })
+        assertEquals(false, serverSnapshot.profile.hideHumansFromMembers)
         assertEquals(false, serverSnapshot.translation?.translationEnabled)
         assertEquals("manual", serverSnapshot.sidebarOrder?.channelSortMode)
         assertEquals("new@slock.ai", serverSnapshot.pendingInvites.single().email)
@@ -278,19 +286,28 @@ class SettingsRepositoryDataSourceTest {
     fun serverManagementContractsUseConfirmedShapes() = runBlocking {
         val network =
             FakeSettingsNetworkClient(
-                onboardingJson = """{"setupModalReminderOptOut":false}""",
+                agreementJson = """{"enabled":false,"agreement":null}""",
+                agreementUpdateJson = """{"enabled":true,"agreement":{"title":"Rules","bodyMarkdown":"Be excellent."}}""",
+                onboardingJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":null,"agentAllChannelGreetingEnabled":true}""",
                 translationJson = """{"translationEnabled":true,"translationAvailable":true,"canManageTranslation":true}""",
                 sidebarOrderJson = """{"channelOrder":["channel-1"],"agentOrder":["agent-1"],"dmOrder":["dm-1"],"channelSortMode":"manual","dmSortMode":"recent","pinnedSortMode":"az","pinnedChannelIds":["channel-1"],"pinnedAgentIds":["agent-1"],"pinnedOrder":["channel-1","agent-1"],"hiddenDmIds":["dm-2"],"channelPanelTabOrder":["channels","threads"],"agentPanelTabOrder":["agents","dms"]}""",
-                onboardingUpdateJson = """{"setupModalReminderOptOut":true}""",
+                onboardingUpdateJson = """{"setupModalReminderOptOut":false,"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""",
                 translationUpdateJson = """{"translationEnabled":false,"translationAvailable":true,"canManageTranslation":true}""",
                 sidebarOrderUpdateJson = """{"channelOrder":["channel-2"],"agentOrder":[],"dmOrder":[],"channelSortMode":"az","dmSortMode":"manual","pinnedSortMode":"manual","pinnedChannelIds":[],"pinnedAgentIds":[],"pinnedOrder":[],"hiddenDmIds":[],"channelPanelTabOrder":["threads","channels"],"agentPanelTabOrder":["dms","agents"]}""",
                 memberRoleUpdateJson = """{"ok":true}""",
                 removeMemberJson = """{"ok":true}""",
                 leaveServerJson = """{"ok":true}"""
-            )
+        )
         val repository = RealSettingsRepository(sampleStore(), network)
 
-        val onboarding = repository.updateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = true))
+        val agreement = repository.updateServerAgreement(SettingsServerAgreementUpdateRequest(enabled = true, title = "Rules", bodyMarkdown = "Be excellent."))
+        val onboarding =
+            repository.updateServerOnboarding(
+                SettingsServerOnboardingUpdateRequest(
+                    onboardingAgentId = "agent-1",
+                    agentAllChannelGreetingEnabled = false
+                )
+            )
         val translation = repository.getServerTranslationSettings()
         val updatedTranslation = repository.updateServerTranslationSettings(SettingsServerTranslationUpdateRequest(translationEnabled = false))
         val sidebar = repository.getServerSidebarOrder()
@@ -307,9 +324,17 @@ class SettingsRepositoryDataSourceTest {
         val removedMember = repository.removeServerMember("member-3")
         val leftServer = repository.leaveServer()
 
+        val profile = repository.updateServerProfile(SettingsServerProfileUpdateRequest(hideHumansFromMembers = true))
+
+        assertTrue(agreement is DataResult.Content)
+        assertEquals(true, agreement.data.enabled)
+        assertEquals("""{"enabled":true,"title":"Rules","bodyMarkdown":"Be excellent."}""", network.agreementBodies.single())
         assertTrue(onboarding is DataResult.Content)
-        assertEquals(true, onboarding.data.setupModalReminderOptOut)
-        assertEquals("""{"setupModalReminderOptOut":true}""", network.onboardingBodies.single())
+        assertEquals("agent-1", onboarding.data.onboardingAgentId)
+        assertEquals(false, onboarding.data.agentAllChannelGreetingEnabled)
+        assertEquals("""{"onboardingAgentId":"agent-1","agentAllChannelGreetingEnabled":false}""", network.onboardingBodies.single())
+        assertTrue(profile is DataResult.Content)
+        assertEquals("""{"hideHumansFromMembers":true}""", network.profileBodies.single())
         assertTrue(translation is DataResult.Content)
         assertEquals(true, translation.data.translationEnabled)
         assertEquals("Enabled", translation.data.statusLabel)
@@ -561,6 +586,8 @@ class SettingsRepositoryDataSourceTest {
         private val membersJson: String = """[]""",
         private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
+        private val agreementJson: String = """{"enabled":false,"agreement":null}""",
+        private val agreementUpdateJson: String = agreementJson,
         private val onboardingJson: String = """{"setupModalReminderOptOut":false}""",
         private val onboardingUpdateJson: String = onboardingJson,
         private val translationJson: String = """{"translationEnabled":false,"translationAvailable":false,"canManageTranslation":false}""",
@@ -623,8 +650,10 @@ class SettingsRepositoryDataSourceTest {
         val accountUpdateBodies = mutableListOf<String>()
         val inviteBodies = mutableListOf<String>()
         val joinLinkBodies = mutableListOf<String>()
+        val agreementBodies = mutableListOf<String>()
         val notificationSettingsBodies = mutableListOf<String>()
         val onboardingBodies = mutableListOf<String>()
+        val profileBodies = mutableListOf<String>()
         val translationBodies = mutableListOf<String>()
         val sidebarBodies = mutableListOf<String>()
         val memberRoleBodies = mutableListOf<String>()
@@ -690,6 +719,12 @@ class SettingsRepositoryDataSourceTest {
                     response(usageJson)
                 normalized == "billing/subscription" && method == "GET" ->
                     response(billingSubscriptionJson)
+                normalized.matches(Regex("""servers/[^/]+/agreement""")) && method == "GET" ->
+                    response(agreementJson)
+                normalized.matches(Regex("""servers/[^/]+/agreement""")) && method == "PUT" -> {
+                    agreementBodies += bodyText.orEmpty()
+                    response(agreementUpdateJson)
+                }
                 normalized.matches(Regex("""servers/[^/]+/onboarding-settings""")) && method == "GET" ->
                     response(onboardingJson)
                 normalized.matches(Regex("""servers/[^/]+/onboarding-settings""")) && method == "PATCH" -> {
@@ -717,6 +752,7 @@ class SettingsRepositoryDataSourceTest {
                 }
                 normalized.matches(Regex("""servers/[^/]+""")) && method == "PATCH" -> {
                     val serverId = normalized.split("/")[1]
+                    profileBodies += bodyText.orEmpty()
                     response("""{"id":"$serverId","name":"Slock Android"}""")
                 }
                 normalized.matches(Regex("""servers/[^/]+/invites""")) && method == "POST" -> {

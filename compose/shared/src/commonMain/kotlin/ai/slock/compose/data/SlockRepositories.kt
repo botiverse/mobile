@@ -83,6 +83,10 @@ interface SettingsServerActionRepository {
 }
 
 interface SettingsServerManagementRepository {
+    suspend fun updateServerAgreement(
+        request: SettingsServerAgreementUpdateRequest
+    ): DataResult<SettingsServerAgreementSnapshot>
+
     suspend fun updateServerOnboarding(
         request: SettingsServerOnboardingUpdateRequest
     ): DataResult<SettingsServerOnboardingSnapshot>
@@ -389,7 +393,8 @@ data class AccountProfileUpdateRequest(
 )
 
 data class SettingsServerProfileUpdateRequest(
-    val name: String
+    val name: String? = null,
+    val hideHumansFromMembers: Boolean? = null
 )
 
 data class SettingsServerInviteCreateRequest(
@@ -405,8 +410,17 @@ data class SettingsServerJoinLinkCreateRequest(
     val maxUses: Int? = null
 )
 
+data class SettingsServerAgreementUpdateRequest(
+    val enabled: Boolean,
+    val title: String,
+    val bodyMarkdown: String
+)
+
 data class SettingsServerOnboardingUpdateRequest(
-    val setupModalReminderOptOut: Boolean
+    val setupModalReminderOptOut: Boolean? = null,
+    val onboardingAgentId: String? = null,
+    val clearOnboardingAgent: Boolean = false,
+    val agentAllChannelGreetingEnabled: Boolean? = null
 )
 
 data class SettingsServerTranslationUpdateRequest(

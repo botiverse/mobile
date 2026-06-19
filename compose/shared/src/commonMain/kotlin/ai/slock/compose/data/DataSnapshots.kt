@@ -534,6 +534,7 @@ data class SettingsServerSnapshot(
     val usageRows: List<SettingsPlanUsageSnapshot> = emptyList(),
     val pendingInvites: List<SettingsServerInviteSnapshot> = emptyList(),
     val joinLinks: List<SettingsServerJoinLinkSnapshot> = emptyList(),
+    val agreement: SettingsServerAgreementSnapshot? = null,
     val onboarding: SettingsServerOnboardingSnapshot? = null,
     val translation: SettingsServerTranslationSnapshot? = null,
     val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null
@@ -542,6 +543,7 @@ data class SettingsServerSnapshot(
 data class SettingsServerProfileSnapshot(
     val name: String,
     val slug: String,
+    val hideHumansFromMembers: Boolean = false,
     val canSave: Boolean = false
 )
 
@@ -575,10 +577,29 @@ data class SettingsServerJoinLinkSnapshot(
     val expiresAtLabel: String? = null
 )
 
+data class SettingsServerAgreementSnapshot(
+    val enabled: Boolean,
+    val title: String,
+    val bodyMarkdown: String,
+    val statusLabel: String,
+    val detail: String,
+    val canSave: Boolean = false
+)
+
 data class SettingsServerOnboardingSnapshot(
     val setupModalReminderOptOut: Boolean,
+    val onboardingAgentId: String? = null,
+    val agentAllChannelGreetingEnabled: Boolean = true,
+    val agents: List<SettingsServerOnboardingAgentSnapshot> = emptyList(),
     val statusLabel: String,
-    val detail: String
+    val detail: String,
+    val canSave: Boolean = false
+)
+
+data class SettingsServerOnboardingAgentSnapshot(
+    val id: String,
+    val name: String,
+    val displayName: String? = null
 )
 
 data class SettingsServerTranslationSnapshot(

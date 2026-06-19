@@ -1223,9 +1223,14 @@ class SharedSettingsStoreTest {
         }
 
         override suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot> {
-            calls += "updateServerProfile:${request.name}"
+            calls += "updateServerProfile:${request.name}:${request.hideHumansFromMembers}"
             val current = (serverResult as? DataResult.Content)?.data ?: return serverResult
-            serverResult = DataResult.Content(current.copy(profile = current.profile.copy(name = request.name)))
+            val profile =
+                current.profile.copy(
+                    name = request.name ?: current.profile.name,
+                    hideHumansFromMembers = request.hideHumansFromMembers ?: current.profile.hideHumansFromMembers
+                )
+            serverResult = DataResult.Content(current.copy(profile = profile))
             return serverResult
         }
 
@@ -1283,15 +1288,39 @@ class SharedSettingsStoreTest {
             return deleteServerResult
         }
 
+        override suspend fun updateServerAgreement(
+            request: SettingsServerAgreementUpdateRequest
+        ): DataResult<SettingsServerAgreementSnapshot> {
+            calls += "updateServerAgreement:${request.enabled}:${request.title}"
+            val agreement =
+                SettingsServerAgreementSnapshot(
+                    enabled = request.enabled,
+                    title = request.title,
+                    bodyMarkdown = request.bodyMarkdown,
+                    statusLabel = if (request.enabled) "Required" else "Disabled",
+                    detail = "Pre-join agreement ${if (request.enabled) "required" else "disabled"}.",
+                    canSave = true
+                )
+            val current = (serverResult as? DataResult.Content)?.data
+            if (current != null) {
+                serverResult = DataResult.Content(current.copy(agreement = agreement))
+            }
+            return DataResult.Content(agreement)
+        }
+
         override suspend fun updateServerOnboarding(
             request: SettingsServerOnboardingUpdateRequest
         ): DataResult<SettingsServerOnboardingSnapshot> {
-            calls += "updateServerOnboarding:${request.setupModalReminderOptOut}"
+            calls += "updateServerOnboarding:${request.setupModalReminderOptOut}:${request.onboardingAgentId}:${request.clearOnboardingAgent}:${request.agentAllChannelGreetingEnabled}"
+            val optOut = request.setupModalReminderOptOut ?: false
             val onboarding =
                 SettingsServerOnboardingSnapshot(
-                    setupModalReminderOptOut = request.setupModalReminderOptOut,
-                    statusLabel = if (request.setupModalReminderOptOut) "Disabled" else "Enabled",
-                    detail = "Agent onboarding ${if (request.setupModalReminderOptOut) "disabled" else "enabled"}."
+                    setupModalReminderOptOut = optOut,
+                    onboardingAgentId = request.onboardingAgentId,
+                    agentAllChannelGreetingEnabled = request.agentAllChannelGreetingEnabled ?: true,
+                    statusLabel = if (request.onboardingAgentId.isNullOrBlank()) "No onboarding agent" else "Agent selected",
+                    detail = "Agent onboarding updated.",
+                    canSave = true
                 )
             val current = (serverResult as? DataResult.Content)?.data
             if (current != null) {
