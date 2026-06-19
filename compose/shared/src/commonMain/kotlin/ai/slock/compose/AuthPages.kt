@@ -181,6 +181,15 @@ private fun LoginScreen() {
     }
 
     fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
+        if (
+            isLoginSubmitInFlight(
+                submitting = state.submitting,
+                pendingLogin = pendingLogin != null,
+                socialSubmitting = socialSubmittingProvider != null
+            )
+        ) {
+            return
+        }
         val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
         state = update.state
         when (val effect = update.effect) {
@@ -673,9 +682,11 @@ internal fun LoginContent(
     }
     val formBusy = submitting || socialSubmittingProvider != null
     val canSubmit = canSubmitLoginForm(emailDraft, passwordDraft, formBusy)
-    val submitIfReady = {
-        if (canSubmit) {
-            onSubmitValues(emailDraft, passwordDraft)
+    val submitCurrentDraft = {
+        when (val decision = resolveLoginDraftSubmit(emailDraft, passwordDraft, formBusy)) {
+            is LoginDraftSubmitDecision.Forward ->
+                onSubmitValues(decision.email, decision.password)
+            LoginDraftSubmitDecision.IgnoreBusy -> Unit
         }
     }
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
@@ -710,12 +721,12 @@ internal fun LoginContent(
                 enabled = !formBusy,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { submitIfReady() })
+                keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
             )
             AuthError(errorMessage)
             AuthActionButton(
                 text = if (submitting) "Signing in..." else "Sign in",
-                onClick = submitIfReady,
+                onClick = submitCurrentDraft,
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
                 loading = submitting,

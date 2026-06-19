@@ -28,10 +28,56 @@ class LoginContractTest {
     }
 
     @Test
+    fun submittingSubmitKeepsCurrentStateWithoutRequiredError() {
+        val state = LoginFormState(
+            email = "user@example.com",
+            password = "secret",
+            submitting = true,
+            errorMessage = null
+        )
+        val update = LoginFormReducer().reduce(state, LoginFormEvent.Submit)
+
+        assertEquals(state, update.state)
+        assertEquals(null, update.effect)
+    }
+
+    @Test
     fun loginFormCanSubmitOnlyWhenFieldsAreReady() {
         assertEquals(false, canSubmitLoginForm(email = "user@example.com", password = "", formBusy = false))
         assertEquals(false, canSubmitLoginForm(email = "", password = "secret", formBusy = false))
         assertEquals(false, canSubmitLoginForm(email = "user@example.com", password = "secret", formBusy = true))
         assertEquals(true, canSubmitLoginForm(email = "user@example.com", password = "secret", formBusy = false))
+    }
+
+    @Test
+    fun currentDraftSubmitAlwaysForwardsSnapshotWhenNotBusy() {
+        assertEquals(
+            LoginDraftSubmitDecision.Forward(email = "a", password = "secret"),
+            resolveLoginDraftSubmit(email = "a", password = "secret", formBusy = false)
+        )
+        assertEquals(
+            LoginDraftSubmitDecision.Forward(email = "a", password = ""),
+            resolveLoginDraftSubmit(email = "a", password = "", formBusy = false)
+        )
+        assertEquals(
+            LoginDraftSubmitDecision.Forward(email = "", password = "secret"),
+            resolveLoginDraftSubmit(email = "", password = "secret", formBusy = false)
+        )
+    }
+
+    @Test
+    fun currentDraftSubmitIgnoresBusyForm() {
+        assertEquals(
+            LoginDraftSubmitDecision.IgnoreBusy,
+            resolveLoginDraftSubmit(email = "user@example.com", password = "secret", formBusy = true)
+        )
+    }
+
+    @Test
+    fun loginSubmitInFlightIncludesPendingAndSocialAuth() {
+        assertEquals(false, isLoginSubmitInFlight(submitting = false, pendingLogin = false, socialSubmitting = false))
+        assertEquals(true, isLoginSubmitInFlight(submitting = true, pendingLogin = false, socialSubmitting = false))
+        assertEquals(true, isLoginSubmitInFlight(submitting = false, pendingLogin = true, socialSubmitting = false))
+        assertEquals(true, isLoginSubmitInFlight(submitting = false, pendingLogin = false, socialSubmitting = true))
     }
 }

@@ -5867,6 +5867,15 @@ private fun AppShellAuthGateContent(
     }
 
     fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
+        if (
+            isLoginSubmitInFlight(
+                submitting = state.submitting,
+                pendingLogin = pendingLogin != null,
+                socialSubmitting = socialSubmittingProvider != null
+            )
+        ) {
+            return
+        }
         val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
         state = update.state
         when (val effect = update.effect) {

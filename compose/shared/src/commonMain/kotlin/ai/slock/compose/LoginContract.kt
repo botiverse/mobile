@@ -74,19 +74,22 @@ class LoginFormReducer {
                 LoginFormUpdate(state.copy(password = event.value, errorMessage = null))
 
             LoginFormEvent.Submit ->
-                if (state.canSubmit) {
-                    LoginFormUpdate(
-                        state = state.copy(submitting = true, errorMessage = null),
-                        effect = LoginFormEffect.SubmitLogin(
-                            email = state.normalizedEmail,
-                            password = state.password
+                when {
+                    state.submitting -> LoginFormUpdate(state)
+                    state.normalizedEmail.isNotEmpty() && state.password.isNotBlank() ->
+                        LoginFormUpdate(
+                            state = state.copy(submitting = true, errorMessage = null),
+                            effect = LoginFormEffect.SubmitLogin(
+                                email = state.normalizedEmail,
+                                password = state.password
+                            )
                         )
-                    )
-                } else {
-                    LoginFormUpdate(
-                        state = state.copy(errorMessage = "Email and password are required."),
-                        effect = LoginFormEffect.FocusEmail
-                    )
+
+                    else ->
+                        LoginFormUpdate(
+                            state = state.copy(errorMessage = "Email and password are required."),
+                            effect = LoginFormEffect.FocusEmail
+                        )
                 }
 
             LoginFormEvent.ForgotPassword,
@@ -96,6 +99,29 @@ class LoginFormReducer {
 
 internal fun canSubmitLoginForm(email: String, password: String, formBusy: Boolean): Boolean =
     email.isNotBlank() && password.isNotBlank() && !formBusy
+
+internal sealed class LoginDraftSubmitDecision {
+    data class Forward(val email: String, val password: String) : LoginDraftSubmitDecision()
+    data object IgnoreBusy : LoginDraftSubmitDecision()
+}
+
+internal fun resolveLoginDraftSubmit(
+    email: String,
+    password: String,
+    formBusy: Boolean
+): LoginDraftSubmitDecision =
+    if (formBusy) {
+        LoginDraftSubmitDecision.IgnoreBusy
+    } else {
+        LoginDraftSubmitDecision.Forward(email = email, password = password)
+    }
+
+internal fun isLoginSubmitInFlight(
+    submitting: Boolean,
+    pendingLogin: Boolean,
+    socialSubmitting: Boolean
+): Boolean =
+    submitting || pendingLogin || socialSubmitting
 
 sealed class CreateAccountFormEvent {
     data class NameChanged(val value: String) : CreateAccountFormEvent()
