@@ -15,6 +15,7 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
@@ -126,6 +127,81 @@ class ComposeLocalWriteThroughTest {
         assertEquals(ChannelId("channel-1"), cached.conversation.channelId)
         assertEquals(ChannelId("thread-channel-1"), cached.conversation.thread?.streamChannelId)
         assertEquals(parent.id, cached.parentMessage?.id)
+    }
+
+    @Test
+    fun writeThreadResultRejectsMismatchedFallbackMetadata() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = InMemoryComposeLocalDataStore()
+        val writer = ComposeLocalWriteThrough(store, logger = logs::add)
+        val parent =
+            message(
+                id = "parent-1",
+                threadId = "channel-1",
+                channelId = "channel-1",
+                threadChannelId = "thread-channel-1",
+                replyCount = 2
+            )
+        val reply = message("reply-1", "thread-channel-1", "thread-channel-1", seq = 2)
+        val threadId = threadIdentity(ChannelId("channel-1"), MessageId("parent-1"))
+        val snapshot =
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = threadId,
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Thread,
+                        thread =
+                            ThreadConversation(
+                                parentChannelId = ChannelId("channel-1"),
+                                parentMessageId = MessageId("parent-1"),
+                                streamChannelId = ChannelId("thread-channel-1")
+                            ),
+                        name = "Thread"
+                    ),
+                messages = listOf(reply),
+                parentMessage = parent,
+                lastSeq = 2
+            )
+        val wrongHeader =
+            ConversationSummary(
+                threadId = ThreadId("channel-wrong"),
+                channelId = ChannelId("channel-wrong"),
+                kind = ConversationKind.Channel,
+                name = "wrong-channel",
+                subtitle = "Wrong subtitle",
+                lastMessagePreview = "wrong preview",
+                unreadCount = 9,
+                unreadCountKnown = true
+            )
+        val wrongParent =
+            message(
+                id = "parent-wrong",
+                threadId = "channel-wrong",
+                channelId = "channel-wrong",
+                threadChannelId = "wrong-thread",
+                body = "wrong parent"
+            )
+
+        writer.writeThreadResult(
+            DataResult.Content(snapshot),
+            source = "test_wrong_fallback",
+            fallbackThreadId = ThreadId("wrong-thread"),
+            fallbackHeader = wrongHeader,
+            fallbackParentMessage = wrongParent
+        )
+
+        val cached = store.readThread(threadId)
+        assertNotNull(cached)
+        assertEquals("Thread", cached.conversation.name)
+        assertNull(cached.conversation.subtitle)
+        assertNull(cached.conversation.lastMessagePreview)
+        assertEquals(0, cached.conversation.unreadCount)
+        assertEquals(false, cached.conversation.unreadCountKnown)
+        assertEquals("parent-1", cached.parentMessage?.id?.value)
+        assertEquals("parent-1", cached.messages.first().id.value)
+        assertNull(store.readThread(ThreadId("wrong-thread")))
+        assertTrue(logs.any { it.startsWith("write_thread_fallback_skip source=test_wrong_fallback reason=unproven") })
     }
 
     @Test

@@ -23,7 +23,10 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.explicitMessageStreamChannelId
 import ai.slock.compose.model.isGravatarAvatarWireValue
+import ai.slock.compose.model.isSameConversationAs
 import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.parentChannelIdOrNull
+import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
 
@@ -203,18 +206,39 @@ class ComposeLocalWriteThrough(
         fallbackHeader: ConversationSummary? = null,
         fallbackParentMessage: Message? = null
     ): Boolean {
+        val snapshotStreamChannelId = snapshot.conversation.messageStreamChannelId()
         val storedConversation =
-            fallbackThreadId?.let { store.readThread(it)?.conversation }
-                ?: store.readThread(snapshot.conversation.threadId)?.conversation
-        val resolvedParentMessage = snapshot.parentMessage ?: fallbackParentMessage
+            store.readThread(snapshot.conversation.threadId)?.conversation
+                ?: fallbackThreadId
+                    ?.takeIf { it == snapshot.conversation.threadId || it.value == snapshotStreamChannelId.value }
+                    ?.let { store.readThread(it)?.conversation }
+        val fallbackProof =
+            ThreadFallbackProof.resolve(
+                snapshotConversation = snapshot.conversation,
+                snapshotParentMessage = snapshot.parentMessage,
+                storedConversation = storedConversation,
+                fallbackThreadId = fallbackThreadId,
+                fallbackHeader = fallbackHeader,
+                fallbackParentMessage = fallbackParentMessage
+            )
+        if (fallbackProof.rejected) {
+            logger(
+                "write_thread_fallback_skip source=$source reason=unproven " +
+                    "threadId=${snapshot.conversation.threadId.value} " +
+                    "fallbackThreadId=${fallbackThreadId?.value.orEmpty()} " +
+                    "fallbackHeader=${fallbackHeader?.threadId?.value.orEmpty()} " +
+                    "fallbackParent=${fallbackParentMessage?.id?.value.orEmpty()}"
+            )
+        }
+        val resolvedParentMessage = snapshot.parentMessage ?: fallbackProof.parentMessage
         val conversation =
             snapshot.conversation
-                .withTitleFallback(fallbackHeader)
+                .withTitleFallback(fallbackProof.header)
                 .withResolvedReplyThreadMetadata(
                     storedConversation = storedConversation,
-                    fallbackHeader = fallbackHeader,
+                    fallbackHeader = fallbackProof.header,
                     parentMessage = resolvedParentMessage,
-                    fallbackThreadId = fallbackThreadId
+                    fallbackThreadId = fallbackProof.aliasThreadId
                 )
         val streamChannelId = conversation.messageStreamChannelId()
         val messages =
@@ -231,7 +255,7 @@ class ComposeLocalWriteThrough(
                 lastSeq = snapshot.lastSeq.takeIf { it > 0L } ?: messages.latestSeq()
             )
         val aliasSnapshot =
-            fallbackThreadId
+            fallbackProof.aliasThreadId
                 ?.takeIf { it != updatedSnapshot.conversation.threadId }
                 ?.let { aliasThreadId ->
                     updatedSnapshot.copy(
@@ -478,6 +502,102 @@ class ComposeLocalWriteThrough(
         if (updatedHome == home) return false
         store.writeHome(updatedHome)
         return true
+    }
+}
+
+private data class ThreadFallbackProof(
+    val header: ConversationSummary?,
+    val parentMessage: Message?,
+    val aliasThreadId: ThreadId?,
+    val rejected: Boolean
+) {
+    companion object {
+        fun resolve(
+            snapshotConversation: ConversationSummary,
+            snapshotParentMessage: Message?,
+            storedConversation: ConversationSummary?,
+            fallbackThreadId: ThreadId?,
+            fallbackHeader: ConversationSummary?,
+            fallbackParentMessage: Message?
+        ): ThreadFallbackProof {
+            val snapshotStreamChannelId = snapshotConversation.messageStreamChannelId()
+            val snapshotParentChannelId =
+                snapshotParentMessage?.channelId
+                    ?: snapshotConversation.thread?.parentChannelId
+                    ?: snapshotConversation.threadId.parentChannelIdOrNull()
+            val snapshotParentMessageId =
+                snapshotParentMessage?.id
+                    ?: snapshotConversation.thread?.parentMessageId
+                    ?: snapshotConversation.threadId.parentMessageIdOrNull()
+            val fallbackParentPairMatchesSnapshot =
+                fallbackParentMessage != null &&
+                    snapshotParentChannelId != null &&
+                    snapshotParentMessageId != null &&
+                    fallbackParentMessage.channelId == snapshotParentChannelId &&
+                    fallbackParentMessage.id == snapshotParentMessageId
+            val fallbackParentStreamMatchesSnapshot =
+                fallbackParentMessage?.threadChannelId != null &&
+                    fallbackParentMessage.threadChannelId == snapshotStreamChannelId
+            val fallbackThreadIdMatchesSnapshot =
+                fallbackThreadId != null &&
+                    (
+                        fallbackThreadId == snapshotConversation.threadId ||
+                            fallbackThreadId.value == snapshotStreamChannelId.value
+                    )
+            val safeParentMessage =
+                fallbackParentMessage?.takeIf {
+                    fallbackParentPairMatchesSnapshot ||
+                        fallbackParentStreamMatchesSnapshot
+                }
+            val safeParentChannelId = snapshotParentChannelId ?: safeParentMessage?.channelId
+            val safeParentMessageId = snapshotParentMessageId ?: safeParentMessage?.id
+            val fallbackHeaderThread = fallbackHeader?.thread
+            val fallbackHeaderParentPairMatches =
+                fallbackHeaderThread != null &&
+                    safeParentChannelId != null &&
+                    safeParentMessageId != null &&
+                    fallbackHeaderThread.parentChannelId == safeParentChannelId &&
+                    fallbackHeaderThread.parentMessageId == safeParentMessageId
+            val fallbackHeaderSameConversation =
+                fallbackHeader != null &&
+                    (
+                        snapshotConversation.isSameConversationAs(fallbackHeader) ||
+                            storedConversation?.isSameConversationAs(fallbackHeader) == true
+                    )
+            val fallbackHeaderTopLevelParentMatches =
+                fallbackHeader != null &&
+                    fallbackHeader.kind != ConversationKind.Thread &&
+                    safeParentMessage != null &&
+                    fallbackHeader.channelId == safeParentMessage.channelId
+            val fallbackHeaderStreamMatches =
+                fallbackHeader?.explicitMessageStreamChannelId() != null &&
+                    fallbackHeader.explicitMessageStreamChannelId() == snapshotStreamChannelId
+            val safeHeader =
+                fallbackHeader?.takeIf {
+                    fallbackHeaderSameConversation ||
+                        fallbackHeaderParentPairMatches ||
+                        fallbackHeaderTopLevelParentMatches ||
+                        fallbackHeaderStreamMatches
+                }
+            val safeAliasThreadId =
+                fallbackThreadId?.takeIf {
+                    fallbackThreadIdMatchesSnapshot ||
+                        (
+                            safeParentChannelId != null &&
+                                safeParentMessageId != null &&
+                                it == threadIdentity(safeParentChannelId, safeParentMessageId)
+                            )
+                }
+            return ThreadFallbackProof(
+                header = safeHeader,
+                parentMessage = safeParentMessage,
+                aliasThreadId = safeAliasThreadId,
+                rejected =
+                    (fallbackHeader != null && safeHeader == null) ||
+                        (fallbackParentMessage != null && safeParentMessage == null) ||
+                        (fallbackThreadId != null && safeAliasThreadId == null)
+            )
+        }
     }
 }
 
