@@ -218,6 +218,16 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentDetailProfile() {
+        captureKmpComponentCase(
+            caseId = "members.agent-detail.profile",
+            pageName = "compose_members_agent_detail_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "channel.members.panel",
