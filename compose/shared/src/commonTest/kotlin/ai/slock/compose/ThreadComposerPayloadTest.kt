@@ -172,7 +172,7 @@ class ThreadComposerPayloadTest {
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, surface.kind)
         assertEquals("route-thread-1", surface.channelId)
         assertEquals("reply-thread-1", surface.sendChannelId)
-        assertEquals("parent-channel-1", surface.mentionScopeChannelId)
+        assertEquals("reply-thread-1", surface.mentionScopeChannelId)
         assertEquals("parent-message-1", surface.parentMessageId)
         assertFalse(surface.showTaskButton)
     }

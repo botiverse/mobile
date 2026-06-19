@@ -45,6 +45,87 @@ class SharedMembersStoreTest {
     }
 
     @Test
+    fun memberScopedMentionScopeLoadsChannelMembersWithoutServerMembers() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        memberRepository.channelMembersByChannel["dm-1"] =
+            listOf(MemberProfile(MemberId("u2"), "Artin", "@artin", MemberKind.Human))
+        val channelRepository = FakeChannelRepository()
+        val store = store(memberRepository, channelRepository)
+
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "dm-1",
+            memberScopedMentions = true
+        )
+
+        assertEquals(0, memberRepository.getMembersCalls)
+        assertEquals(1, memberRepository.getChannelMembersCalls)
+        assertEquals(1, channelRepository.getChannelsCalls)
+        assertEquals("dm-1", store.state.value.mentionChannelId)
+        assertEquals(true, store.state.value.memberScopedMentions)
+        assertEquals(listOf(SharedMembersMemberSuggestion("Artin", "artin")), store.state.value.memberSuggestions)
+        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team")), store.state.value.channelSuggestions)
+    }
+
+    @Test
+    fun channelMentionScopeMergesServerMembersWithChannelMembers() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(MemberId("u1"), "Cindy", "cindy", MemberKind.Human),
+                        MemberProfile(MemberId("u2"), "Build Agent", "build", MemberKind.Agent)
+                    )
+            )
+        memberRepository.channelMembersByChannel["thread-channel-1"] =
+            listOf(
+                MemberProfile(MemberId("u1"), "Cindy Duplicate", "@cindy", MemberKind.Human),
+                MemberProfile(MemberId("remote-1"), "Remote User", "@remote", MemberKind.Human)
+            )
+        val channelRepository = FakeChannelRepository()
+        val store = store(memberRepository, channelRepository)
+
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "thread-channel-1"
+        )
+
+        assertEquals(1, memberRepository.getMembersCalls)
+        assertEquals(1, memberRepository.getChannelMembersCalls)
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion("Cindy", "cindy"),
+                SharedMembersMemberSuggestion("Build Agent", "build"),
+                SharedMembersMemberSuggestion("Remote User", "remote")
+            ),
+            store.state.value.memberSuggestions
+        )
+    }
+
+    @Test
+    fun switchingMentionScopeReloadsMembersWithoutRefetchingLoadedChannels() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        memberRepository.channelMembersByChannel["dm-1"] =
+            listOf(MemberProfile(MemberId("u2"), "Artin", "@artin", MemberKind.Human))
+        val channelRepository = FakeChannelRepository()
+        val store = store(memberRepository, channelRepository)
+
+        store.ensureSuggestionsForServer("server-1")
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "dm-1",
+            memberScopedMentions = true
+        )
+
+        assertEquals(1, memberRepository.getMembersCalls)
+        assertEquals(1, memberRepository.getChannelMembersCalls)
+        assertEquals(1, channelRepository.getChannelsCalls)
+        assertEquals(SharedMembersLoadStatus.Loaded, store.state.value.memberStatus)
+        assertEquals(listOf(SharedMembersMemberSuggestion("Artin", "artin")), store.state.value.memberSuggestions)
+        assertEquals(listOf(SharedMembersChannelSuggestion("general", "team")), store.state.value.channelSuggestions)
+    }
+
+    @Test
     fun switchingServerResetsLoadedSuggestionsAndReloads() = runBlocking {
         val memberRepository = FakeMemberRepository()
         val channelRepository = FakeChannelRepository()
@@ -115,7 +196,9 @@ class SharedMembersStoreTest {
         private var failMembersFirstCalls: Int = 0
     ) : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to members)
+        val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
         var getMembersCalls = 0
+        var getChannelMembersCalls = 0
 
         override suspend fun getMembers(
             priority: DataRequestPriority,
@@ -145,7 +228,18 @@ class SharedMembersStoreTest {
         override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> = error("unused")
         override suspend fun assignAgentMachine(priority: DataRequestPriority, request: AgentMachineAssignmentRequest): DataResult<AgentLifecycleActionResult> = error("unused")
-        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> = error("unused")
+        override suspend fun getChannelMembers(
+            priority: DataRequestPriority,
+            channelId: ChannelId
+        ): DataResult<ChannelMemberSnapshot> {
+            getChannelMembersCalls += 1
+            return DataResult.Content(
+                ChannelMemberSnapshot(
+                    channelId = channelId,
+                    members = channelMembersByChannel[channelId.value].orEmpty()
+                )
+            )
+        }
         override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
         override suspend fun removeChannelMember(priority: DataRequestPriority, request: RemoveChannelMemberRequest): DataResult<ChannelMemberActionResult> = error("unused")
     }

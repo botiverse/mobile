@@ -2687,6 +2687,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        memberScopedMentions = base.memberScopedMentions || conversation.usesMemberScopedMentions(),
         messages = cachedMessages,
         originMessage = resolvedOrigin,
         originParentMessageId = resolvedParentMessage?.id?.value ?: base.originParentMessageId ?: base.parentMessageId,

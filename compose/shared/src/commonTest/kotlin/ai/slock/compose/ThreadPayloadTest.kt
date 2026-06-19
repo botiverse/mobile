@@ -309,7 +309,26 @@ class ThreadPayloadTest {
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals("files", payload.selectedTab)
         assertEquals(false, payload.canSend)
+        assertEquals(true, payload.memberScopedMentions)
         assertEquals(false, payload.resolveThreadComposer().enabled)
+    }
+
+    @Test
+    fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
+        val payload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("joint-1"),
+                    channelId = ChannelId("joint-1"),
+                    channelType = "joint",
+                    kind = ConversationKind.Joint,
+                    name = "partner",
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+
+        assertEquals(true, payload.memberScopedMentions)
+        assertEquals("joint-1", payload.resolveThreadComposer().streamChannelId)
     }
 
     @Test

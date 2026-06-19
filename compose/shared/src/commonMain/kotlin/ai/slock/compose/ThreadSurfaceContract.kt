@@ -16,6 +16,17 @@ internal fun ConversationSummary.threadSurfaceKind(): String =
         else -> KuiklyThreadSurfaceKind.Channel
     }
 
+internal fun ConversationSummary.usesMemberScopedMentions(): Boolean =
+    kind == ConversationKind.DirectMessage ||
+        kind == ConversationKind.Joint ||
+        channelType.isMemberScopedThreadChannelType()
+
+private fun String?.isMemberScopedThreadChannelType(): Boolean =
+    when (this?.trim()?.lowercase()) {
+        "dm", "direct", "direct_message", "direct-message", "private", "joint" -> true
+        else -> false
+    }
+
 internal fun ConversationSummary.threadStreamChannelId(): String =
     thread?.streamChannelId?.value
         ?: channelId?.value

@@ -263,6 +263,7 @@ internal data class KuiklyThreadScreenPayload(
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val memberScopedMentions: Boolean = false,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
     val showModeTabs: Boolean = true,
@@ -321,6 +322,7 @@ internal data class WireThreadLaunchPayload(
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val memberScopedMentions: Boolean = false,
     val originParentMessageId: String? = null,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
@@ -385,6 +387,7 @@ internal data class WireThreadLaunchPayload(
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
+            memberScopedMentions = memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
@@ -1225,6 +1228,18 @@ internal fun SharedThreadRouteContent(
     val membersState by remember(membersStore) {
         membersStore?.state ?: emptyMembersStateFlow
     }.collectAsState()
+    val memberSuggestionScopePayload =
+        if (
+            payload.threadComposerMentionScopeChannelId() != null ||
+            payload.memberScopedMentions ||
+            payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+        ) {
+            payload
+        } else {
+            initialPayload
+        }
+    val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
+    val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val filesRouteKey =
         initialPayload.sourceThreadId
             ?: initialPayload.streamChannelId
@@ -1286,8 +1301,13 @@ internal fun SharedThreadRouteContent(
         attachmentOpenStates = emptyMap()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
-    LaunchedEffect(membersStore, initialPayload.instanceId, initialPayload.sourceThreadId) {
-        membersStore?.dispatch(SharedMembersIntent.EnsureSuggestions)
+    LaunchedEffect(membersStore, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
+        membersStore?.dispatch(
+            SharedMembersIntent.EnsureSuggestions(
+                mentionChannelId = memberSuggestionScopeChannelId,
+                memberScopedMentions = memberSuggestionScopedMentions
+            )
+        )
     }
     LaunchedEffect(realtimeEventSignal?.sequence, initialPayload.instanceId) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
@@ -3006,6 +3026,18 @@ private fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikly
     }.getOrNull()
 
 private fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }
+
+private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
+    val resolvedComposer = resolveThreadComposer()
+    return resolvedComposer.streamChannelId.nonBlank()
+        ?: streamChannelId.nonBlank()
+        ?: sourceThreadId.nonBlank()
+        ?: resolvedComposer.mentionChannelId.nonBlank()
+        ?: parentChannelId.nonBlank()
+}
+
+private fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
+    memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
 
 internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
     this?.user?.let { user ->

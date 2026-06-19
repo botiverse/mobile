@@ -9295,6 +9295,7 @@ internal fun buildAppShellThreadPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
         selectedTab = "chat",
         navigationLabel = "Back",
