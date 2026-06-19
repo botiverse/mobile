@@ -66,6 +66,15 @@ import ai.slock.compose.data.SettingsComputerRuntimeModelsSnapshot
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceDeleteRequest
 import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SettingsConnectedAppBuiltInSnapshot
+import ai.slock.compose.data.SettingsConnectedAppClientSnapshot
+import ai.slock.compose.data.SettingsConnectedAppInstalledSnapshot
+import ai.slock.compose.data.SettingsConnectedAppMarketplaceSnapshot
+import ai.slock.compose.data.SettingsConnectedAppPublishRequest
+import ai.slock.compose.data.SettingsConnectedAppRegisterRequest
+import ai.slock.compose.data.SettingsConnectedAppSecretSnapshot
+import ai.slock.compose.data.SettingsConnectedAppUpdateRequest
+import ai.slock.compose.data.SettingsConnectedAppsSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
@@ -167,6 +176,46 @@ class MockSettingsRepository(
                 )
             )
         }
+
+    override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps() }
+
+    override suspend fun registerConnectedApp(
+        request: SettingsConnectedAppRegisterRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            mockConnectedApps(
+                oneTimeClientSecret =
+                    SettingsConnectedAppSecretSnapshot(
+                        clientId = request.clientId ?: "mock-client",
+                        clientSecret = "secret_mock_shown_once"
+                    )
+            )
+        }
+
+    override suspend fun updateConnectedApp(
+        request: SettingsConnectedAppUpdateRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps() }
+
+    override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps(registered = emptyList()) }
+
+    override suspend fun requestConnectedAppPublish(
+        request: SettingsConnectedAppPublishRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            mockConnectedApps(
+                registered =
+                    listOf(mockConnectedAppClient().copy(publishStatus = "pending_review", category = request.category))
+            )
+        }
+
+    override suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps(marketplaceInstalled = true) }
+
+    override suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps(marketplaceInstalled = false) }
 
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsComputersSnapshot }
@@ -339,6 +388,75 @@ class MockSettingsRepository(
             maxUsesLabel = "Unlimited",
             usageLabel = "0 uses",
             expiresAtLabel = "Never expires"
+        )
+
+    private fun mockConnectedApps(
+        marketplaceInstalled: Boolean = true,
+        registered: List<SettingsConnectedAppClientSnapshot> = listOf(mockConnectedAppClient()),
+        oneTimeClientSecret: SettingsConnectedAppSecretSnapshot? = null
+    ): SettingsConnectedAppsSnapshot =
+        SettingsConnectedAppsSnapshot(
+            marketplace =
+                listOf(
+                    SettingsConnectedAppMarketplaceSnapshot(
+                        id = "marketplace-client",
+                        clientId = "marketplace-client",
+                        name = "Raft Calendar",
+                        category = "productivity",
+                        developer = "Raft",
+                        description = "Create reminders from workspace activity.",
+                        homepageDomain = "raft.build",
+                        callbackDomain = "calendar.raft.build",
+                        installed = marketplaceInstalled,
+                        dataAccessSummary = "Profile and reminders"
+                    )
+                ),
+            builtIn =
+                listOf(
+                    SettingsConnectedAppBuiltInSnapshot(
+                        id = "built-in-client",
+                        clientId = "raft-actions",
+                        name = "Raft Actions",
+                        description = "Built-in agent action callbacks.",
+                        homepageDomain = "raft.build"
+                    )
+                ),
+            installed =
+                if (marketplaceInstalled) {
+                    listOf(
+                        SettingsConnectedAppInstalledSnapshot(
+                            id = "marketplace-client",
+                            clientId = "marketplace-client",
+                            name = "Raft Calendar",
+                            developer = "Raft",
+                            description = "Create reminders from workspace activity.",
+                            homepageDomain = "raft.build",
+                            callbackDomain = "calendar.raft.build",
+                            origin = "marketplace"
+                        )
+                    )
+                } else {
+                    emptyList()
+                },
+            registered = registered,
+            canManage = true,
+            oneTimeClientSecret = oneTimeClientSecret
+        )
+
+    private fun mockConnectedAppClient(): SettingsConnectedAppClientSnapshot =
+        SettingsConnectedAppClientSnapshot(
+            id = "local-client",
+            serverId = "server-1",
+            clientId = "local-client",
+            appType = "server_local",
+            publishStatus = "draft",
+            category = "productivity",
+            dataAccessSummary = "Profile and identity",
+            name = "Local OAuth Client",
+            description = "Private server integration.",
+            homepageDomain = "example.invalid",
+            callbackDomain = "example.invalid",
+            returnUrl = "https://example.invalid/oauth/callback"
         )
 }
 

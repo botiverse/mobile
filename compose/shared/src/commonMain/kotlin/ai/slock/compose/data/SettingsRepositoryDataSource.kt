@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
@@ -25,6 +26,53 @@ private suspend fun SlockNetworkClient.updateSettingsAccount(
     bodyText: String
 ): HomeNetworkResponse =
     request(priority, "auth/me", method = "PATCH", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsConnectedAppClients(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "integrations/clients")
+
+private suspend fun SlockNetworkClient.createSettingsConnectedAppClient(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "integrations/clients", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.updateSettingsConnectedAppClient(
+    priority: DataRequestPriority,
+    clientRecordId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "integrations/clients/$clientRecordId", method = "PATCH", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.deleteSettingsConnectedAppClient(
+    priority: DataRequestPriority,
+    clientRecordId: String
+): HomeNetworkResponse =
+    request(priority, "integrations/clients/$clientRecordId", method = "DELETE")
+
+private suspend fun SlockNetworkClient.requestSettingsConnectedAppPublish(
+    priority: DataRequestPriority,
+    clientRecordId: String,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "integrations/clients/$clientRecordId/request-publish", method = "POST", bodyText = bodyText)
+
+private suspend fun SlockNetworkClient.settingsConnectedAppBuiltIns(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "integrations/built-in")
+
+private suspend fun SlockNetworkClient.settingsConnectedAppMarketplace(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "integrations/marketplace")
+
+private suspend fun SlockNetworkClient.installSettingsConnectedAppMarketplace(
+    priority: DataRequestPriority,
+    clientRecordId: String
+): HomeNetworkResponse =
+    request(priority, "integrations/marketplace/$clientRecordId/install", method = "POST")
+
+private suspend fun SlockNetworkClient.uninstallSettingsConnectedAppMarketplace(
+    priority: DataRequestPriority,
+    clientRecordId: String
+): HomeNetworkResponse =
+    request(priority, "integrations/marketplace/$clientRecordId/install", method = "DELETE")
 
 private suspend fun SlockNetworkClient.settingsMachines(
     priority: DataRequestPriority,
@@ -239,6 +287,129 @@ class RealSettingsRepository(
                 ) ?: throw IllegalStateException("Account settings response missing user")
             }
         )
+    }
+
+    override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        return fetchConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun registerConnectedApp(
+        request: SettingsConnectedAppRegisterRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val name = request.name.trim()
+        if (name.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val create =
+            settingsCreateConnectedApp(
+                request.copy(
+                    name = name,
+                    clientId = request.clientId?.trim()?.takeIf { it.isNotBlank() },
+                    description = request.description?.trim()?.takeIf { it.isNotBlank() },
+                    homepageUrl = request.homepageUrl?.trim()?.takeIf { it.isNotBlank() },
+                    returnUrl = request.returnUrl?.trim()?.takeIf { it.isNotBlank() },
+                    agentManifestUrl = request.agentManifestUrl?.trim()?.takeIf { it.isNotBlank() }
+                )
+            )
+        return when (create) {
+            is DataResult.Content -> fetchConnectedAppsSnapshot(server.canManageServer, create.data.second)
+            is DataResult.Empty -> DataResult.Empty(create.reason)
+            is DataResult.Error -> DataResult.Error(create.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(create.blocker)
+        }
+    }
+
+    override suspend fun updateConnectedApp(
+        request: SettingsConnectedAppUpdateRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val clientRecordId = request.id.trim()
+        val name = request.name.trim()
+        if (clientRecordId.isBlank() || name.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val update =
+            settingsUpdateConnectedApp(
+                request.copy(
+                    id = clientRecordId,
+                    name = name,
+                    description = request.description?.trim()?.takeIf { it.isNotBlank() },
+                    homepageUrl = request.homepageUrl?.trim()?.takeIf { it.isNotBlank() },
+                    returnUrl = request.returnUrl?.trim()?.takeIf { it.isNotBlank() },
+                    agentManifestUrl = request.agentManifestUrl?.trim()?.takeIf { it.isNotBlank() }
+                )
+            )
+        return update.reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val id = clientRecordId.trim()
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsDeleteConnectedApp(id).reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun requestConnectedAppPublish(
+        request: SettingsConnectedAppPublishRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val id = request.id.trim()
+        val category = request.category.trim().takeIf { it.isNotBlank() } ?: "Other"
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsRequestConnectedAppPublish(
+            SettingsConnectedAppPublishRequest(
+                id = id,
+                category = category,
+                dataAccessSummary = request.dataAccessSummary?.trim()?.takeIf { it.isNotBlank() }
+            )
+        ).reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val id = clientRecordId.trim()
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsInstallMarketplaceApp(id).reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val id = clientRecordId.trim()
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsUninstallMarketplaceApp(id).reloadConnectedAppsSnapshot(server.canManageServer)
     }
 
     override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
@@ -996,6 +1167,181 @@ class RealSettingsRepository(
                     ?: settingsContractMismatch("settings_billing_subscription_contract_mismatch")
             }
         )
+
+    private suspend fun fetchConnectedAppsSnapshot(
+        canManage: Boolean,
+        oneTimeClientSecret: SettingsConnectedAppSecretSnapshot? = null
+    ): DataResult<SettingsConnectedAppsSnapshot> {
+        val clients = fetchConnectedAppClients()
+        val builtIn = fetchConnectedAppBuiltIns()
+        val marketplace = fetchConnectedAppMarketplace()
+        val clientRows =
+            when (clients) {
+                is DataResult.Content -> clients.data
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(clients.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(clients.blocker)
+            }
+        val builtInRows =
+            when (builtIn) {
+                is DataResult.Content -> builtIn.data
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(builtIn.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(builtIn.blocker)
+            }
+        val marketplaceRows =
+            when (marketplace) {
+                is DataResult.Content -> marketplace.data
+                is DataResult.Empty -> emptyList()
+                is DataResult.Error -> return DataResult.Error(marketplace.error)
+                is DataResult.NoPermission -> return DataResult.NoPermission(marketplace.blocker)
+            }
+        return DataResult.Content(
+            buildSettingsConnectedAppsSnapshot(
+                clients = clientRows,
+                builtIn = builtInRows,
+                marketplace = marketplaceRows,
+                canManage = canManage,
+                oneTimeClientSecret = oneTimeClientSecret
+            )
+        )
+    }
+
+    private suspend fun fetchConnectedAppClients(): DataResult<List<SettingsConnectedAppClientSnapshot>> =
+        executeTypedSettings(
+            source = "settings_connected_apps_clients",
+            contractCode = "settings_connected_apps_clients_contract_mismatch",
+            block = { networkClient.settingsConnectedAppClients(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClients(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_clients_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchConnectedAppBuiltIns(): DataResult<List<SettingsConnectedAppBuiltInSnapshot>> =
+        executeTypedSettings(
+            source = "settings_connected_apps_built_in",
+            contractCode = "settings_connected_apps_built_in_contract_mismatch",
+            block = { networkClient.settingsConnectedAppBuiltIns(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppBuiltIns(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_built_in_contract_mismatch")
+            }
+        )
+
+    private suspend fun fetchConnectedAppMarketplace(): DataResult<List<SettingsConnectedAppMarketplaceSnapshot>> =
+        executeTypedSettings(
+            source = "settings_connected_apps_marketplace",
+            contractCode = "settings_connected_apps_marketplace_contract_mismatch",
+            block = { networkClient.settingsConnectedAppMarketplace(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppMarketplace(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_marketplace_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsCreateConnectedApp(
+        request: SettingsConnectedAppRegisterRequest
+    ): DataResult<Pair<SettingsConnectedAppClientSnapshot, SettingsConnectedAppSecretSnapshot?>> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_create",
+            contractCode = "settings_connected_apps_client_contract_mismatch",
+            block = {
+                networkClient.createSettingsConnectedAppClient(
+                    DataRequestPriority.Foreground,
+                    buildSharedSettingsConnectedAppRegisterBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppCreateResult(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
+            }
+        )
+
+    private suspend fun settingsUpdateConnectedApp(
+        request: SettingsConnectedAppUpdateRequest
+    ): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_update",
+            contractCode = "settings_connected_apps_client_contract_mismatch",
+            block = {
+                networkClient.updateSettingsConnectedAppClient(
+                    DataRequestPriority.Foreground,
+                    request.id,
+                    buildSharedSettingsConnectedAppUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsDeleteConnectedApp(clientRecordId: String): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_delete",
+            contractCode = "settings_connected_apps_client_contract_mismatch",
+            block = { networkClient.deleteSettingsConnectedAppClient(DataRequestPriority.Foreground, clientRecordId) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsRequestConnectedAppPublish(
+        request: SettingsConnectedAppPublishRequest
+    ): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_request_publish",
+            contractCode = "settings_connected_apps_publish_contract_mismatch",
+            block = {
+                networkClient.requestSettingsConnectedAppPublish(
+                    DataRequestPriority.Foreground,
+                    request.id,
+                    buildSharedSettingsConnectedAppPublishBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_publish_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsInstallMarketplaceApp(clientRecordId: String): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_marketplace_install",
+            contractCode = "settings_connected_apps_marketplace_install_contract_mismatch",
+            block = { networkClient.installSettingsConnectedAppMarketplace(DataRequestPriority.Foreground, clientRecordId) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_marketplace_install_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsUninstallMarketplaceApp(clientRecordId: String): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_marketplace_uninstall",
+            contractCode = "settings_connected_apps_marketplace_uninstall_contract_mismatch",
+            block = { networkClient.uninstallSettingsConnectedAppMarketplace(DataRequestPriority.Foreground, clientRecordId) },
+            mapper = { bodyText ->
+                settingsRepositoryJson.decodeFromString(JsonObject.serializer(), bodyText)
+                Unit
+            }
+        )
+
+    private suspend fun DataResult<Unit>.reloadConnectedAppsSnapshot(
+        canManage: Boolean
+    ): DataResult<SettingsConnectedAppsSnapshot> =
+        when (this) {
+            is DataResult.Content -> fetchConnectedAppsSnapshot(canManage)
+            is DataResult.Empty -> DataResult.Empty(reason)
+            is DataResult.Error -> DataResult.Error(error)
+            is DataResult.NoPermission -> DataResult.NoPermission(blocker)
+        }
 
     private suspend fun fetchServerOnboarding(
         serverId: String,
@@ -1886,6 +2232,31 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
             email = request.email
         )
     )
+
+fun buildSharedSettingsConnectedAppRegisterBody(request: SettingsConnectedAppRegisterRequest): String =
+    buildJsonObject {
+        put("name", JsonPrimitive(request.name))
+        request.clientId?.let { put("clientId", JsonPrimitive(it)) }
+        request.description?.let { put("description", JsonPrimitive(it)) }
+        request.homepageUrl?.let { put("homepageUrl", JsonPrimitive(it)) }
+        request.returnUrl?.let { put("returnUrl", JsonPrimitive(it)) }
+        request.agentManifestUrl?.let { put("agentManifestUrl", JsonPrimitive(it)) }
+    }.toString()
+
+fun buildSharedSettingsConnectedAppUpdateBody(request: SettingsConnectedAppUpdateRequest): String =
+    buildJsonObject {
+        put("name", JsonPrimitive(request.name))
+        put("description", request.description?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("homepageUrl", request.homepageUrl?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("returnUrl", request.returnUrl?.let { JsonPrimitive(it) } ?: JsonNull)
+        put("agentManifestUrl", request.agentManifestUrl?.let { JsonPrimitive(it) } ?: JsonNull)
+    }.toString()
+
+fun buildSharedSettingsConnectedAppPublishBody(request: SettingsConnectedAppPublishRequest): String =
+    buildJsonObject {
+        put("category", JsonPrimitive(request.category))
+        request.dataAccessSummary?.let { put("dataAccessSummary", JsonPrimitive(it)) }
+    }.toString()
 
 fun buildSharedSettingsServerProfileUpdateBody(
     name: String?,

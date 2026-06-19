@@ -21,6 +21,7 @@ enum class SharedSettingsDestination {
     Computers,
     ComputerDetail,
     Server,
+    ConnectedApps,
     Billing,
     LanguageRegion,
     Mobile,
@@ -42,6 +43,7 @@ data class SharedSettingsState(
     val computers: ScreenLoadState<SettingsComputersSnapshot> = ScreenLoadState.Loading,
     val computerDetail: ScreenLoadState<SettingsComputerDetailSnapshot> = ScreenLoadState.Loading,
     val server: ScreenLoadState<SettingsServerSnapshot> = ScreenLoadState.Loading,
+    val connectedApps: ScreenLoadState<SettingsConnectedAppsSnapshot> = ScreenLoadState.Loading,
     val billing: ScreenLoadState<SettingsBillingSnapshot> = ScreenLoadState.Loading,
     val languageRegion: ScreenLoadState<SettingsLanguageRegionSnapshot> = ScreenLoadState.Loading,
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
@@ -188,6 +190,12 @@ sealed interface SharedSettingsIntent {
     data object OpenNotificationSettings : SharedSettingsIntent
     data object SendTestNotification : SharedSettingsIntent
     data class UpdateProfile(val request: AccountProfileUpdateRequest) : SharedSettingsIntent
+    data class RegisterConnectedApp(val request: SettingsConnectedAppRegisterRequest) : SharedSettingsIntent
+    data class UpdateConnectedApp(val request: SettingsConnectedAppUpdateRequest) : SharedSettingsIntent
+    data class DeleteConnectedApp(val clientRecordId: String) : SharedSettingsIntent
+    data class RequestConnectedAppPublish(val request: SettingsConnectedAppPublishRequest) : SharedSettingsIntent
+    data class InstallMarketplaceApp(val clientRecordId: String) : SharedSettingsIntent
+    data class UninstallMarketplaceApp(val clientRecordId: String) : SharedSettingsIntent
     data class UpdateServerProfile(val request: SettingsServerProfileUpdateRequest) : SharedSettingsIntent
     data class CreateServerInvite(val request: SettingsServerInviteCreateRequest) : SharedSettingsIntent
     data class RevokeServerInvite(val inviteId: String) : SharedSettingsIntent
@@ -300,6 +308,27 @@ class SharedSettingsDataSource(
 
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot> =
         settingsRepository?.updateProfile(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.getConnectedApps() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun registerConnectedApp(request: SettingsConnectedAppRegisterRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.registerConnectedApp(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateConnectedApp(request: SettingsConnectedAppUpdateRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.updateConnectedApp(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.deleteConnectedApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun requestConnectedAppPublish(request: SettingsConnectedAppPublishRequest): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.requestConnectedAppPublish(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.installMarketplaceApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.uninstallMarketplaceApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadComputers(): DataResult<SettingsComputersSnapshot> =
         settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -755,6 +784,42 @@ class SharedSettingsStore(
                     dataSource.updateProfile(intent.request).applyAccountActionResult("saveProfile")
                 }
             }
+            is SharedSettingsIntent.RegisterConnectedApp -> {
+                runAction(CONNECTED_APPS_ACTION_REGISTER) {
+                    dataSource.registerConnectedApp(intent.request)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_REGISTER)
+                }
+            }
+            is SharedSettingsIntent.UpdateConnectedApp -> {
+                runAction(CONNECTED_APPS_ACTION_UPDATE, intent.request.id) {
+                    dataSource.updateConnectedApp(intent.request)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_UPDATE, intent.request.id)
+                }
+            }
+            is SharedSettingsIntent.DeleteConnectedApp -> {
+                runAction(CONNECTED_APPS_ACTION_DELETE, intent.clientRecordId) {
+                    dataSource.deleteConnectedApp(intent.clientRecordId)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_DELETE, intent.clientRecordId)
+                }
+            }
+            is SharedSettingsIntent.RequestConnectedAppPublish -> {
+                runAction(CONNECTED_APPS_ACTION_PUBLISH, intent.request.id) {
+                    dataSource.requestConnectedAppPublish(intent.request)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_PUBLISH, intent.request.id)
+                }
+            }
+            is SharedSettingsIntent.InstallMarketplaceApp -> {
+                runAction(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId) {
+                    dataSource.installMarketplaceApp(intent.clientRecordId)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_INSTALL, intent.clientRecordId)
+                }
+            }
+            is SharedSettingsIntent.UninstallMarketplaceApp -> {
+                runAction(CONNECTED_APPS_ACTION_UNINSTALL, intent.clientRecordId) {
+                    dataSource.uninstallMarketplaceApp(intent.clientRecordId)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_UNINSTALL, intent.clientRecordId)
+                }
+            }
             is SharedSettingsIntent.UpdateServerProfile -> {
                 val action = intent.request.serverProfileActionKey
                 runAction(action) {
@@ -967,6 +1032,8 @@ class SharedSettingsStore(
                 loadComputerDetail(_state.value.route.itemId.orEmpty())
             SharedSettingsDestination.Server ->
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
+            SharedSettingsDestination.ConnectedApps ->
+                dataSource.loadConnectedApps().applyToState(destination) { copy(connectedApps = it) }
             SharedSettingsDestination.Billing ->
                 dataSource.loadBilling().applyToState(destination) { copy(billing = it) }
             SharedSettingsDestination.LanguageRegion ->
@@ -1180,6 +1247,29 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<SettingsConnectedAppsSnapshot>.applyConnectedAppsActionResult(
+        action: String,
+        itemId: String? = null
+    ) {
+        val nextConnectedApps = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                connectedApps =
+                    when (nextConnectedApps) {
+                        is ScreenLoadState.Content -> nextConnectedApps
+                        else -> _state.value.connectedApps
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        itemId = itemId,
+                        inProgress = false,
+                        errorCode = nextConnectedApps.routeErrorCode()
+                    ),
+                routeErrorCode = nextConnectedApps.routeErrorCode()
+            )
+    }
+
     private fun DataResult<SettingsServerSnapshot>.applyServerSnapshotActionResult(action: String, itemId: String? = null) {
         val nextServer = toScreenLoadState()
         _state.value =
@@ -1383,6 +1473,12 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.OpenNotificationSettings,
             SharedSettingsIntent.SendTestNotification,
             is SharedSettingsIntent.UpdateProfile,
+            is SharedSettingsIntent.RegisterConnectedApp,
+            is SharedSettingsIntent.UpdateConnectedApp,
+            is SharedSettingsIntent.DeleteConnectedApp,
+            is SharedSettingsIntent.RequestConnectedAppPublish,
+            is SharedSettingsIntent.InstallMarketplaceApp,
+            is SharedSettingsIntent.UninstallMarketplaceApp,
             is SharedSettingsIntent.UpdateServerProfile,
             is SharedSettingsIntent.CreateServerInvite,
             is SharedSettingsIntent.RevokeServerInvite,
@@ -1462,6 +1558,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.Computers -> computers is ScreenLoadState.Content
         SharedSettingsDestination.ComputerDetail -> computerDetail is ScreenLoadState.Content
         SharedSettingsDestination.Server -> server is ScreenLoadState.Content
+        SharedSettingsDestination.ConnectedApps -> connectedApps is ScreenLoadState.Content
         SharedSettingsDestination.Billing -> billing is ScreenLoadState.Content
         SharedSettingsDestination.LanguageRegion -> languageRegion is ScreenLoadState.Content
         SharedSettingsDestination.Mobile -> mobile is ScreenLoadState.Content
@@ -1486,6 +1583,12 @@ internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAuto
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
 internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
 internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
+internal const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
+internal const val CONNECTED_APPS_ACTION_UPDATE = "connectedAppsUpdate"
+internal const val CONNECTED_APPS_ACTION_DELETE = "connectedAppsDelete"
+internal const val CONNECTED_APPS_ACTION_PUBLISH = "connectedAppsPublish"
+internal const val CONNECTED_APPS_ACTION_INSTALL = "connectedAppsInstall"
+internal const val CONNECTED_APPS_ACTION_UNINSTALL = "connectedAppsUninstall"
 internal const val SERVER_ACTION_PROFILE_SAVE = "serverProfileSave"
 internal const val SERVER_ACTION_INVITE_CREATE = "serverInviteCreate"
 internal const val SERVER_ACTION_INVITE_REVOKE = "serverInviteRevoke"
@@ -1627,6 +1730,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", "user", this?.user?.bestDisplayName, selectedDestination),
                 nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", "monitor", null, selectedDestination),
                 nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", "users", server?.role?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", "blocks", null, selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", "shield-check", server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", "languages", null, selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", "smartphone", null, selectedDestination),

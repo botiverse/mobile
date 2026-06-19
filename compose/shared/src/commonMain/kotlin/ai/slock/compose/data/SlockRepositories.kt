@@ -33,6 +33,19 @@ interface ServerRepository {
 interface SettingsRepository {
     suspend fun getAccount(): DataResult<AccountSettingsSnapshot>
     suspend fun updateProfile(request: AccountProfileUpdateRequest): DataResult<AccountSettingsSnapshot>
+    suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun registerConnectedApp(
+        request: SettingsConnectedAppRegisterRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun updateConnectedApp(
+        request: SettingsConnectedAppUpdateRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun requestConnectedAppPublish(
+        request: SettingsConnectedAppPublishRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun getComputers(): DataResult<SettingsComputersSnapshot>
     suspend fun getComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot>
     suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult>
@@ -390,6 +403,30 @@ data class AccountProfileUpdateRequest(
     val displayName: String,
     val handle: String,
     val email: String
+)
+
+data class SettingsConnectedAppRegisterRequest(
+    val name: String,
+    val clientId: String? = null,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val returnUrl: String? = null,
+    val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppUpdateRequest(
+    val id: String,
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val returnUrl: String? = null,
+    val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppPublishRequest(
+    val id: String,
+    val category: String,
+    val dataAccessSummary: String? = null
 )
 
 data class SettingsServerProfileUpdateRequest(

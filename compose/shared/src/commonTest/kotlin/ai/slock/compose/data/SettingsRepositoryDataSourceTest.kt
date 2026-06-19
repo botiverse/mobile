@@ -52,6 +52,94 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun connectedAppsMapsMarketplaceAndCreateSecretOnce() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                connectedAppClientsJson = """
+                    [
+                      {
+                        "id":"client-1",
+                        "serverId":"server-1",
+                        "clientId":"local-client",
+                        "appType":"server_local",
+                        "publishStatus":"draft",
+                        "category":"productivity",
+                        "dataAccessSummary":"Profile",
+                        "name":"Local Client",
+                        "description":"Private integration",
+                        "homepageUrl":"https://local.example/app",
+                        "returnUrl":"https://local.example/oauth/callback"
+                      }
+                    ]
+                """.trimIndent(),
+                connectedAppBuiltInsJson = """
+                    [
+                      {
+                        "id":"built-in-1",
+                        "clientId":"raft-actions",
+                        "name":"Raft Actions",
+                        "description":"Built-in action callbacks",
+                        "homepageUrl":"https://raft.build"
+                      }
+                    ]
+                """.trimIndent(),
+                connectedAppMarketplaceJson = """
+                    [
+                      {
+                        "id":"market-1",
+                        "clientId":"calendar",
+                        "name":"Calendar",
+                        "category":"productivity",
+                        "publisherName":"Raft",
+                        "description":"Sync reminders",
+                        "homepageUrl":"https://calendar.example",
+                        "returnUrl":"https://calendar.example/callback",
+                        "installedAt":"2026-06-01T00:00:00Z",
+                        "dataAccessSummary":"Profile and reminders"
+                      }
+                    ]
+                """.trimIndent(),
+                connectedAppCreateJson = """
+                    {
+                      "client": {
+                        "id":"client-created",
+                        "serverId":"server-1",
+                        "clientId":"mobile-client",
+                        "appType":"server_local",
+                        "publishStatus":"draft",
+                        "category":"productivity",
+                        "name":"Mobile App",
+                        "returnUrl":"https://mobile.example/callback"
+                      },
+                      "clientSecret":"secret_once"
+                    }
+                """.trimIndent()
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val apps = repository.getConnectedApps()
+
+        assertTrue(apps is DataResult.Content)
+        assertEquals(listOf("Calendar"), apps.data.marketplace.map { it.name })
+        assertEquals(listOf("Raft Actions"), apps.data.builtIn.map { it.name })
+        assertEquals(listOf("market-1", "client-1"), apps.data.installed.map { it.id })
+        assertEquals(true, apps.data.canManage)
+
+        val created =
+            repository.registerConnectedApp(
+                SettingsConnectedAppRegisterRequest(
+                    name = "Mobile App",
+                    clientId = "mobile-client",
+                    returnUrl = "https://mobile.example/callback"
+                )
+            )
+
+        assertTrue(created is DataResult.Content)
+        assertEquals("secret_once", created.data.oneTimeClientSecret?.clientSecret)
+        assertEquals("""{"name":"Mobile App","clientId":"mobile-client","returnUrl":"https://mobile.example/callback"}""", network.connectedAppCreateBodies.single())
+    }
+
+    @Test
     fun languageRegionCombinesAccountPreferencesAndServerTranslation() = runBlocking {
         val repository =
             RealSettingsRepository(
@@ -583,6 +671,20 @@ class SettingsRepositoryDataSourceTest {
 
     private class FakeSettingsNetworkClient(
         private val accountJson: String = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","displayName":"Slock User"}""",
+        private val connectedAppClientsJson: String = """[]""",
+        private val connectedAppBuiltInsJson: String = """[]""",
+        private val connectedAppMarketplaceJson: String = """[]""",
+        private val connectedAppCreateJson: String =
+            """{"client":{"id":"client-created","serverId":"server-1","clientId":"client-created","name":"Created","appType":"server_local","publishStatus":"draft","category":"productivity"},"clientSecret":"secret_once"}""",
+        private val connectedAppUpdateJson: String =
+            """{"id":"client-1","serverId":"server-1","clientId":"client-1","name":"Updated","appType":"server_local","publishStatus":"draft","category":"productivity"}""",
+        private val connectedAppDeleteJson: String =
+            """{"id":"client-1","serverId":"server-1","clientId":"client-1","name":"Deleted","appType":"server_local","publishStatus":"draft","category":"productivity"}""",
+        private val connectedAppPublishJson: String =
+            """{"id":"client-1","serverId":"server-1","clientId":"client-1","name":"Published","appType":"server_local","publishStatus":"pending_review","category":"productivity"}""",
+        private val connectedAppInstallJson: String =
+            """{"id":"market-1","serverId":"server-1","clientId":"market-1","name":"Installed","appType":"marketplace","publishStatus":"approved","category":"productivity"}""",
+        private val connectedAppUninstallJson: String = """{"clientId":"market-1","revokedGrantCount":1,"revokedTokenCount":1,"deniedPendingRequestCount":0}""",
         private val membersJson: String = """[]""",
         private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
@@ -648,6 +750,15 @@ class SettingsRepositoryDataSourceTest {
         var leaveServerCallCount: Int = 0
             private set
         val accountUpdateBodies = mutableListOf<String>()
+        val connectedAppCreateBodies = mutableListOf<String>()
+        val connectedAppUpdateBodies = mutableListOf<String>()
+        val connectedAppPublishBodies = mutableListOf<String>()
+        var deletedConnectedAppId: String? = null
+            private set
+        var installedMarketplaceAppId: String? = null
+            private set
+        var uninstalledMarketplaceAppId: String? = null
+            private set
         val inviteBodies = mutableListOf<String>()
         val joinLinkBodies = mutableListOf<String>()
         val agreementBodies = mutableListOf<String>()
@@ -675,6 +786,36 @@ class SettingsRepositoryDataSourceTest {
                 normalized == "auth/me" && method == "PATCH" -> {
                     accountUpdateBodies += bodyText.orEmpty()
                     response(accountJson)
+                }
+                normalized == "integrations/clients" && method == "GET" ->
+                    response(connectedAppClientsJson)
+                normalized == "integrations/clients" && method == "POST" -> {
+                    connectedAppCreateBodies += bodyText.orEmpty()
+                    response(connectedAppCreateJson)
+                }
+                normalized.matches(Regex("""integrations/clients/[^/]+$""")) && method == "PATCH" -> {
+                    connectedAppUpdateBodies += bodyText.orEmpty()
+                    response(connectedAppUpdateJson)
+                }
+                normalized.matches(Regex("""integrations/clients/[^/]+$""")) && method == "DELETE" -> {
+                    deletedConnectedAppId = normalized.split("/")[2]
+                    response(connectedAppDeleteJson)
+                }
+                normalized.matches(Regex("""integrations/clients/[^/]+/request-publish""")) && method == "POST" -> {
+                    connectedAppPublishBodies += bodyText.orEmpty()
+                    response(connectedAppPublishJson)
+                }
+                normalized == "integrations/built-in" && method == "GET" ->
+                    response(connectedAppBuiltInsJson)
+                normalized == "integrations/marketplace" && method == "GET" ->
+                    response(connectedAppMarketplaceJson)
+                normalized.matches(Regex("""integrations/marketplace/[^/]+/install""")) && method == "POST" -> {
+                    installedMarketplaceAppId = normalized.split("/")[2]
+                    response(connectedAppInstallJson)
+                }
+                normalized.matches(Regex("""integrations/marketplace/[^/]+/install""")) && method == "DELETE" -> {
+                    uninstalledMarketplaceAppId = normalized.split("/")[2]
+                    response(connectedAppUninstallJson)
                 }
                 normalized.matches(Regex("""servers/[^/]+/machines""")) && method == "GET" -> {
                     machinesServerId = normalized.split("/")[1]

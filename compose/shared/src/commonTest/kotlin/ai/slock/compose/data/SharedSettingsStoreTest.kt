@@ -34,6 +34,7 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.Account,
                 SharedSettingsDestination.Computers,
                 SharedSettingsDestination.Server,
+                SharedSettingsDestination.ConnectedApps,
                 SharedSettingsDestination.Billing,
                 SharedSettingsDestination.LanguageRegion,
                 SharedSettingsDestination.Mobile,
@@ -94,6 +95,60 @@ class SharedSettingsStoreTest {
         val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
         assertEquals("New Name", account.profile.displayName)
         assertEquals(listOf("account", "updateProfile:New Name"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun connectedAppsLoadAndRegisterUseTypedRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val block = BlockingCall()
+        val repository =
+            FakeSettingsRepository(
+                connectedAppsResult = DataResult.Content(connectedAppsSnapshot())
+            ).also {
+                it.registerConnectedAppBlock = block
+            }
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
+        val loaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
+        assertEquals(listOf("Calendar"), loaded.marketplace.map { it.name })
+
+        store.dispatch(
+            SharedSettingsIntent.RegisterConnectedApp(
+                SettingsConnectedAppRegisterRequest(
+                    name = "Mobile Client",
+                    clientId = "mobile-client",
+                    returnUrl = "https://example.com/callback"
+                )
+            )
+        )
+        block.awaitStarted()
+        store.dispatch(
+            SharedSettingsIntent.RegisterConnectedApp(
+                SettingsConnectedAppRegisterRequest(name = "Mobile Client", clientId = "mobile-client")
+            )
+        )
+
+        assertEquals(listOf("connectedApps", "registerConnectedApp:Mobile Client"), repository.calls)
+        assertEquals(SharedSettingsActionState(CONNECTED_APPS_ACTION_REGISTER, inProgress = true), store.state.value.actionState)
+
+        block.release()
+        yield()
+
+        val updated = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
+        assertEquals("secret_once", updated.oneTimeClientSecret?.clientSecret)
+        assertEquals(listOf("connectedApps", "registerConnectedApp:Mobile Client"), repository.calls)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertNull(store.state.value.actionState?.errorCode)
         scope.cancel()
     }
 
@@ -1136,6 +1191,7 @@ class SharedSettingsStoreTest {
 
     private class FakeSettingsRepository(
         var accountResult: DataResult<AccountSettingsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var connectedAppsResult: DataResult<SettingsConnectedAppsSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var computerDetailResult: DataResult<SettingsComputerDetailSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -1148,6 +1204,7 @@ class SharedSettingsStoreTest {
     ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
         val calls = mutableListOf<String>()
         var updateProfileBlock: BlockingCall? = null
+        var registerConnectedAppBlock: BlockingCall? = null
         var createServerInviteBlock: BlockingCall? = null
         var deleteServerBlock: BlockingCall? = null
         var deleteServerResult: DataResult<SettingsServerActionResult> = DataResult.Content(SettingsServerActionResult(success = true))
@@ -1173,6 +1230,156 @@ class SharedSettingsStoreTest {
             calls += "updateProfile:${request.displayName}"
             updateProfileBlock?.consume()
             return accountResult
+        }
+
+        override suspend fun getConnectedApps(): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "connectedApps"
+            return connectedAppsResult
+        }
+
+        override suspend fun registerConnectedApp(
+            request: SettingsConnectedAppRegisterRequest
+        ): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "registerConnectedApp:${request.name}"
+            registerConnectedAppBlock?.consume()
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        registered =
+                            current.registered +
+                                SettingsConnectedAppClientSnapshot(
+                                    id = "client-created",
+                                    serverId = "server-1",
+                                    clientId = request.clientId ?: "client-created",
+                                    appType = "server_local",
+                                    publishStatus = "draft",
+                                    category = "productivity",
+                                    name = request.name,
+                                    returnUrl = request.returnUrl
+                                ),
+                        oneTimeClientSecret =
+                            SettingsConnectedAppSecretSnapshot(
+                                clientId = request.clientId ?: "client-created",
+                                clientSecret = "secret_once"
+                            )
+                    )
+                )
+            return connectedAppsResult
+        }
+
+        override suspend fun updateConnectedApp(
+            request: SettingsConnectedAppUpdateRequest
+        ): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "updateConnectedApp:${request.id}:${request.name}"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        registered =
+                            current.registered.map {
+                                if (it.id == request.id) {
+                                    it.copy(
+                                        name = request.name,
+                                        description = request.description,
+                                        homepageUrl = request.homepageUrl,
+                                        returnUrl = request.returnUrl,
+                                        agentManifestUrl = request.agentManifestUrl
+                                    )
+                                } else {
+                                    it
+                                }
+                            },
+                        oneTimeClientSecret = null
+                    )
+                )
+            return connectedAppsResult
+        }
+
+        override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "deleteConnectedApp:$clientRecordId"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(current.copy(registered = current.registered.filterNot { it.id == clientRecordId }))
+            return connectedAppsResult
+        }
+
+        override suspend fun requestConnectedAppPublish(
+            request: SettingsConnectedAppPublishRequest
+        ): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "requestConnectedAppPublish:${request.id}:${request.category}"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        registered =
+                            current.registered.map {
+                                if (it.id == request.id) {
+                                    it.copy(
+                                        publishStatus = "pending_review",
+                                        category = request.category,
+                                        dataAccessSummary = request.dataAccessSummary
+                                    )
+                                } else {
+                                    it
+                                }
+                            }
+                    )
+                )
+            return connectedAppsResult
+        }
+
+        override suspend fun installMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "installMarketplaceApp:$clientRecordId"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            val installed =
+                current.marketplace.firstOrNull { it.id == clientRecordId }
+                    ?.let {
+                        SettingsConnectedAppInstalledSnapshot(
+                            id = it.id,
+                            clientId = it.clientId,
+                            name = it.name,
+                            developer = it.developer,
+                            description = it.description,
+                            homepageDomain = it.homepageDomain,
+                            callbackDomain = it.callbackDomain,
+                            logoUrl = it.logoUrl,
+                            origin = "marketplace"
+                        )
+                    }
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        marketplace = current.marketplace.map { if (it.id == clientRecordId) it.copy(installed = true) else it },
+                        installed = if (installed == null) current.installed else current.installed + installed
+                    )
+                )
+            return connectedAppsResult
+        }
+
+        override suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "uninstallMarketplaceApp:$clientRecordId"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        marketplace = current.marketplace.map { if (it.id == clientRecordId) it.copy(installed = false) else it },
+                        installed = current.installed.filterNot { it.id == clientRecordId }
+                    )
+                )
+            return connectedAppsResult
         }
 
         override suspend fun getComputers(): DataResult<SettingsComputersSnapshot> {
@@ -1804,6 +2011,51 @@ class SharedSettingsStoreTest {
             clearPreferredTimeFormat -> "timeFormat=null"
             else -> "empty"
         }
+
+    private fun connectedAppsSnapshot(): SettingsConnectedAppsSnapshot =
+        SettingsConnectedAppsSnapshot(
+            marketplace =
+                listOf(
+                    SettingsConnectedAppMarketplaceSnapshot(
+                        id = "market-1",
+                        clientId = "calendar",
+                        name = "Calendar",
+                        category = "productivity",
+                        developer = "Raft",
+                        description = "Sync reminders.",
+                        homepageDomain = "calendar.example",
+                        callbackDomain = "calendar.example",
+                        installed = false,
+                        dataAccessSummary = "Profile and reminders"
+                    )
+                ),
+            builtIn =
+                listOf(
+                    SettingsConnectedAppBuiltInSnapshot(
+                        id = "built-in-1",
+                        clientId = "raft-actions",
+                        name = "Raft Actions",
+                        description = "Built-in action callbacks."
+                    )
+                ),
+            installed = emptyList(),
+            registered =
+                listOf(
+                    SettingsConnectedAppClientSnapshot(
+                        id = "client-1",
+                        serverId = "server-1",
+                        clientId = "local-client",
+                        appType = "server_local",
+                        publishStatus = "draft",
+                        category = "productivity",
+                        dataAccessSummary = "Profile",
+                        name = "Local Client",
+                        description = "Private client.",
+                        returnUrl = "https://example.com/callback"
+                    )
+                ),
+            canManage = true
+        )
 
     private fun accountSnapshot(
         displayName: String = "Slock User",

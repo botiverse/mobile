@@ -87,6 +87,185 @@ private fun normalizeSharedLanguageRegionTimeFormat(value: String?): String? =
     value?.trim()?.lowercase()?.takeIf { it == "12h" || it == "24h" }
 
 @Serializable
+private data class WireConnectedAppClient(
+    val id: String,
+    val serverId: String? = null,
+    val clientId: String,
+    val appType: String = "server_local",
+    val publishStatus: String = "private",
+    val category: String = "Other",
+    val dataAccessSummary: String? = null,
+    val publishRejectionReason: String? = null,
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val returnUrl: String? = null,
+    val agentManifestUrl: String? = null,
+    val logoUrl: String? = null,
+    val installedAt: String? = null,
+    val publisherName: String? = null
+)
+
+@Serializable
+private data class WireConnectedAppBuiltIn(
+    val id: String,
+    val clientId: String,
+    val appType: String = "slock_builtin",
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val agentManifestUrl: String? = null,
+    val humanMarketplaceVisible: Boolean = false
+)
+
+@Serializable
+private data class WireConnectedAppCreateResponse(
+    val client: WireConnectedAppClient,
+    val clientSecret: String? = null
+)
+
+fun parseSharedSettingsConnectedAppClients(bodyText: String): List<SettingsConnectedAppClientSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireConnectedAppClient.serializer()), bodyText)
+        .map { it.toConnectedAppClientSnapshot() }
+}.getOrNull()
+
+fun parseSharedSettingsConnectedAppClient(bodyText: String): SettingsConnectedAppClientSnapshot? = runCatching {
+    settingsJson.decodeFromString(WireConnectedAppClient.serializer(), bodyText).toConnectedAppClientSnapshot()
+}.getOrNull()
+
+fun parseSharedSettingsConnectedAppCreateResult(
+    bodyText: String
+): Pair<SettingsConnectedAppClientSnapshot, SettingsConnectedAppSecretSnapshot?>? = runCatching {
+    val wire = settingsJson.decodeFromString(WireConnectedAppCreateResponse.serializer(), bodyText)
+    val client = wire.client.toConnectedAppClientSnapshot()
+    val secret =
+        wire.clientSecret
+            ?.takeIf { it.isNotBlank() }
+            ?.let { SettingsConnectedAppSecretSnapshot(clientId = client.clientId, clientSecret = it) }
+    client to secret
+}.getOrNull()
+
+fun parseSharedSettingsConnectedAppBuiltIns(bodyText: String): List<SettingsConnectedAppBuiltInSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireConnectedAppBuiltIn.serializer()), bodyText)
+        .map { it.toConnectedAppBuiltInSnapshot() }
+}.getOrNull()
+
+fun parseSharedSettingsConnectedAppMarketplace(
+    bodyText: String
+): List<SettingsConnectedAppMarketplaceSnapshot>? = runCatching {
+    settingsJson.decodeFromString(ListSerializer(WireConnectedAppClient.serializer()), bodyText)
+        .map { it.toConnectedAppMarketplaceSnapshot() }
+}.getOrNull()
+
+fun buildSettingsConnectedAppsSnapshot(
+    clients: List<SettingsConnectedAppClientSnapshot>,
+    builtIn: List<SettingsConnectedAppBuiltInSnapshot>,
+    marketplace: List<SettingsConnectedAppMarketplaceSnapshot>,
+    canManage: Boolean,
+    oneTimeClientSecret: SettingsConnectedAppSecretSnapshot? = null
+): SettingsConnectedAppsSnapshot {
+    val installed =
+        marketplace.filter { it.installed }.map {
+            SettingsConnectedAppInstalledSnapshot(
+                id = it.id,
+                clientId = it.clientId,
+                name = it.name,
+                developer = it.developer,
+                description = it.description,
+                homepageDomain = it.homepageDomain,
+                callbackDomain = it.callbackDomain,
+                logoUrl = it.logoUrl,
+                origin = "marketplace",
+                editable = false
+            )
+        } +
+            clients.filter { it.appType == "server_local" }.map {
+                SettingsConnectedAppInstalledSnapshot(
+                    id = it.id,
+                    clientId = it.clientId,
+                    name = it.name,
+                    developer = "This server",
+                    description = it.description,
+                    homepageDomain = it.homepageDomain,
+                    callbackDomain = it.callbackDomain,
+                    logoUrl = it.logoUrl,
+                    origin = "private",
+                    editable = true
+                )
+            }
+    return SettingsConnectedAppsSnapshot(
+        marketplace = marketplace,
+        builtIn = builtIn,
+        installed = installed,
+        registered = clients,
+        canManage = canManage,
+        oneTimeClientSecret = oneTimeClientSecret
+    )
+}
+
+private fun WireConnectedAppClient.toConnectedAppClientSnapshot(): SettingsConnectedAppClientSnapshot {
+    val homepage = homepageUrl?.takeIf { it.isNotBlank() }
+    val callback = returnUrl?.takeIf { it.isNotBlank() }
+    return SettingsConnectedAppClientSnapshot(
+        id = id,
+        serverId = serverId.orEmpty(),
+        clientId = clientId,
+        appType = appType,
+        publishStatus = publishStatus,
+        category = category,
+        dataAccessSummary = dataAccessSummary,
+        publishRejectionReason = publishRejectionReason,
+        name = name,
+        description = description,
+        homepageUrl = homepage,
+        homepageDomain = homepage.toSettingsDomainOrNull(),
+        returnUrl = callback,
+        callbackDomain = callback.toSettingsDomainOrNull(),
+        agentManifestUrl = agentManifestUrl?.takeIf { it.isNotBlank() },
+        logoUrl = logoUrl?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun WireConnectedAppClient.toConnectedAppMarketplaceSnapshot(): SettingsConnectedAppMarketplaceSnapshot {
+    val homepage = homepageUrl?.takeIf { it.isNotBlank() }
+    val callback = returnUrl?.takeIf { it.isNotBlank() }
+    return SettingsConnectedAppMarketplaceSnapshot(
+        id = id,
+        clientId = clientId,
+        name = name,
+        category = category,
+        developer = publisherName?.takeIf { it.isNotBlank() } ?: "Third-party developer",
+        description = description,
+        homepageUrl = homepage,
+        homepageDomain = homepage.toSettingsDomainOrNull() ?: "Not configured",
+        returnUrl = callback,
+        callbackDomain = callback.toSettingsDomainOrNull() ?: "Not configured",
+        logoUrl = logoUrl?.takeIf { it.isNotBlank() },
+        installed = !installedAt.isNullOrBlank(),
+        dataAccessSummary = dataAccessSummary?.takeIf { it.isNotBlank() } ?: "Profile and identity"
+    )
+}
+
+private fun WireConnectedAppBuiltIn.toConnectedAppBuiltInSnapshot(): SettingsConnectedAppBuiltInSnapshot {
+    val homepage = homepageUrl?.takeIf { it.isNotBlank() }
+    return SettingsConnectedAppBuiltInSnapshot(
+        id = id,
+        clientId = clientId,
+        name = name,
+        description = description,
+        homepageUrl = homepage,
+        homepageDomain = homepage.toSettingsDomainOrNull(),
+        agentManifestUrl = agentManifestUrl?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun String?.toSettingsDomainOrNull(): String? {
+    val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val withoutScheme = value.substringAfter("://", value)
+    return withoutScheme.substringBefore('/').substringBefore('?').takeIf { it.isNotBlank() }
+}
+
+@Serializable
 private data class WireSettingsAgent(
     val id: String,
     val name: String,

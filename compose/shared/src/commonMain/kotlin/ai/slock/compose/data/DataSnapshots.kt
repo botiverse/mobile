@@ -399,6 +399,78 @@ data class SettingsSnapshot(
     val settings: SettingsSummary
 )
 
+data class SettingsConnectedAppsSnapshot(
+    val marketplace: List<SettingsConnectedAppMarketplaceSnapshot> = emptyList(),
+    val builtIn: List<SettingsConnectedAppBuiltInSnapshot> = emptyList(),
+    val installed: List<SettingsConnectedAppInstalledSnapshot> = emptyList(),
+    val registered: List<SettingsConnectedAppClientSnapshot> = emptyList(),
+    val canManage: Boolean = true,
+    val oneTimeClientSecret: SettingsConnectedAppSecretSnapshot? = null
+)
+
+data class SettingsConnectedAppMarketplaceSnapshot(
+    val id: String,
+    val clientId: String,
+    val name: String,
+    val category: String,
+    val developer: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val homepageDomain: String? = null,
+    val returnUrl: String? = null,
+    val callbackDomain: String? = null,
+    val logoUrl: String? = null,
+    val installed: Boolean = false,
+    val dataAccessSummary: String = "Profile and identity"
+)
+
+data class SettingsConnectedAppBuiltInSnapshot(
+    val id: String,
+    val clientId: String,
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val homepageDomain: String? = null,
+    val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppInstalledSnapshot(
+    val id: String,
+    val clientId: String,
+    val name: String,
+    val developer: String,
+    val description: String? = null,
+    val homepageDomain: String? = null,
+    val callbackDomain: String? = null,
+    val logoUrl: String? = null,
+    val origin: String,
+    val editable: Boolean = false
+)
+
+data class SettingsConnectedAppClientSnapshot(
+    val id: String,
+    val serverId: String,
+    val clientId: String,
+    val appType: String,
+    val publishStatus: String,
+    val category: String,
+    val dataAccessSummary: String? = null,
+    val publishRejectionReason: String? = null,
+    val name: String,
+    val description: String? = null,
+    val homepageUrl: String? = null,
+    val homepageDomain: String? = null,
+    val returnUrl: String? = null,
+    val callbackDomain: String? = null,
+    val agentManifestUrl: String? = null,
+    val logoUrl: String? = null
+)
+
+data class SettingsConnectedAppSecretSnapshot(
+    val clientId: String,
+    val clientSecret: String
+)
+
 data class AccountSettingsSnapshot(
     val profile: AccountProfileSnapshot,
     val connectedAccounts: List<ConnectedAccountSnapshot>,
