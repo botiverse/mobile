@@ -726,6 +726,13 @@ private fun SharedTasksToolbar(
             onModeSelected = onModeSelected
         )
     }
+    val filterControls =
+        buildList {
+            if (showChannelFilter) add("channel")
+            add("creator")
+            add("assignee")
+            if (anyFilterActive) add("clear")
+        }
     Column(
         modifier =
             Modifier
@@ -739,19 +746,25 @@ private fun SharedTasksToolbar(
                     .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                items(filterControls.size, key = { index -> "tasks-filter-${filterControls[index]}" }) { index ->
+                    when (filterControls[index]) {
+                        "channel" -> channelChip()
+                        "creator" -> creatorChip()
+                        "assignee" -> assigneeChip()
+                        "clear" -> clearAllChip()
+                    }
+                }
+            }
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val rows =
-                    tasksToolbarRows(
-                        maxWidth = maxWidth,
-                        showChannelFilter = showChannelFilter,
-                        showClearAll = anyFilterActive,
-                        showCreateButton = showCreateButton
-                    )
-                rows.forEach { row ->
+                tasksToolbarActionRows(maxWidth = maxWidth, showCreateButton = showCreateButton).forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement =
-                            if (row.size == 1 && row.first() == TasksToolbarControl.ViewSwitch) {
+                            if (row.size == 1 && row.first() == TasksToolbarActionControl.ViewSwitch) {
                                 Arrangement.End
                             } else {
                                 Arrangement.spacedBy(SlockSpacing.Sm)
@@ -759,16 +772,12 @@ private fun SharedTasksToolbar(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         row.forEachIndexed { index, control ->
-                            if (control == TasksToolbarControl.ViewSwitch && index > 0) {
+                            if (control == TasksToolbarActionControl.ViewSwitch && index > 0) {
                                 Spacer(Modifier.weight(1f))
                             }
                             when (control) {
-                                TasksToolbarControl.ChannelFilter -> channelChip()
-                                TasksToolbarControl.CreatorFilter -> creatorChip()
-                                TasksToolbarControl.AssigneeFilter -> assigneeChip()
-                                TasksToolbarControl.ClearAll -> clearAllChip()
-                                TasksToolbarControl.NewTask -> newTaskButton()
-                                TasksToolbarControl.ViewSwitch -> viewSwitch()
+                                TasksToolbarActionControl.NewTask -> newTaskButton()
+                                TasksToolbarActionControl.ViewSwitch -> viewSwitch()
                             }
                         }
                     }
@@ -785,70 +794,25 @@ private fun SharedTasksToolbar(
     }
 }
 
-internal enum class TasksToolbarControl {
-    ChannelFilter,
-    CreatorFilter,
-    AssigneeFilter,
-    ClearAll,
+internal enum class TasksToolbarActionControl {
     NewTask,
     ViewSwitch
 }
 
-internal fun tasksToolbarRows(
+internal fun tasksToolbarActionRows(
     maxWidth: Dp,
-    showChannelFilter: Boolean,
-    showClearAll: Boolean,
     showCreateButton: Boolean
-): List<List<TasksToolbarControl>> {
-    val items =
-        buildList {
-            if (showChannelFilter) add(TasksToolbarControl.ChannelFilter)
-            add(TasksToolbarControl.CreatorFilter)
-            add(TasksToolbarControl.AssigneeFilter)
-            if (showClearAll) add(TasksToolbarControl.ClearAll)
-            if (showCreateButton) add(TasksToolbarControl.NewTask)
-            add(TasksToolbarControl.ViewSwitch)
-        }
-    val availableWidth = if (maxWidth < 0.dp) 0.dp else maxWidth
-    val rows = mutableListOf<List<TasksToolbarControl>>()
-    var currentRow = mutableListOf<TasksToolbarControl>()
-    var currentWidth = 0.dp
-    items.forEach { item ->
-        val nextWidth =
-            if (currentRow.isEmpty()) {
-                item.estimatedTasksToolbarWidth
-            } else {
-                currentWidth + SlockSpacing.Sm + item.estimatedTasksToolbarWidth
-            }
-        if (currentRow.isNotEmpty() && nextWidth > availableWidth) {
-            rows += currentRow.toList()
-            currentRow = mutableListOf()
-            currentWidth = 0.dp
-        }
-        currentRow += item
-        currentWidth =
-            if (currentWidth == 0.dp) {
-                item.estimatedTasksToolbarWidth
-            } else {
-                currentWidth + SlockSpacing.Sm + item.estimatedTasksToolbarWidth
-            }
+): List<List<TasksToolbarActionControl>> =
+    if (!showCreateButton) {
+        listOf(listOf(TasksToolbarActionControl.ViewSwitch))
+    } else if (maxWidth >= 480.dp) {
+        listOf(listOf(TasksToolbarActionControl.NewTask, TasksToolbarActionControl.ViewSwitch))
+    } else {
+        listOf(
+            listOf(TasksToolbarActionControl.NewTask),
+            listOf(TasksToolbarActionControl.ViewSwitch)
+        )
     }
-    if (currentRow.isNotEmpty()) {
-        rows += currentRow.toList()
-    }
-    return rows
-}
-
-private val TasksToolbarControl.estimatedTasksToolbarWidth: Dp
-    get() =
-        when (this) {
-            TasksToolbarControl.ChannelFilter -> 188.dp
-            TasksToolbarControl.CreatorFilter -> 188.dp
-            TasksToolbarControl.AssigneeFilter -> 200.dp
-            TasksToolbarControl.ClearAll -> 180.dp
-            TasksToolbarControl.NewTask -> 208.dp
-            TasksToolbarControl.ViewSwitch -> 264.dp
-        }
 
 /** Vertical board column. Header is always visible (so collapsed columns can re-expand). */
 @Composable

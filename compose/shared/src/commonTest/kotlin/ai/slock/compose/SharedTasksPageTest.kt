@@ -49,41 +49,37 @@ class SharedTasksPageTest {
     }
 
     @Test
-    fun tasksToolbarKeepsThreeFiltersTogetherWhenTheyFit() {
+    fun tasksToolbarActionRowKeepsCreateAndViewSwitchTogetherWhenTheyFit() {
         assertEquals(
-            listOf(
-                listOf(
-                    TasksToolbarControl.ChannelFilter,
-                    TasksToolbarControl.CreatorFilter,
-                    TasksToolbarControl.AssigneeFilter
-                ),
-                listOf(TasksToolbarControl.ViewSwitch)
-            ),
-            tasksToolbarRows(
+            listOf(listOf(TasksToolbarActionControl.NewTask, TasksToolbarActionControl.ViewSwitch)),
+            tasksToolbarActionRows(
                 maxWidth = 728.dp,
-                showChannelFilter = true,
-                showClearAll = false,
-                showCreateButton = false
+                showCreateButton = true
             )
         )
     }
 
     @Test
-    fun tasksToolbarWrapsViewSwitchWhenCreateButtonWouldOverlapIt() {
+    fun tasksToolbarActionRowWrapsViewSwitchAsGroupOnNarrowWidth() {
         assertEquals(
             listOf(
-                listOf(
-                    TasksToolbarControl.CreatorFilter,
-                    TasksToolbarControl.AssigneeFilter,
-                    TasksToolbarControl.NewTask
-                ),
-                listOf(TasksToolbarControl.ViewSwitch)
+                listOf(TasksToolbarActionControl.NewTask),
+                listOf(TasksToolbarActionControl.ViewSwitch)
             ),
-            tasksToolbarRows(
-                maxWidth = 728.dp,
-                showChannelFilter = false,
-                showClearAll = false,
+            tasksToolbarActionRows(
+                maxWidth = 420.dp,
                 showCreateButton = true
+            )
+        )
+    }
+
+    @Test
+    fun tasksToolbarActionRowOnlyShowsViewSwitchWhenCreateIsUnavailable() {
+        assertEquals(
+            listOf(listOf(TasksToolbarActionControl.ViewSwitch)),
+            tasksToolbarActionRows(
+                maxWidth = 728.dp,
+                showCreateButton = false
             )
         )
     }
