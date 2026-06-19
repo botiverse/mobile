@@ -1593,16 +1593,15 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     // accepted. Pressed wins over the default / hovered / focused
     // background but never overwrites a real Selected highlight.
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> if (pressed) SlockColor.EmptyStateGray else Color.Transparent
+        ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceCream
+        ChannelRowInteractionState.Pressed -> Color.Transparent
     }
     val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
+        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
-        ChannelRowInteractionState.Pressed -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
@@ -1652,10 +1651,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                         y = pos.y + size.height / 2f
                     )
                 }
-                .then(if (selected || pressed) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
     ) {
-        if (selected || pressed) {
+        if (selected) {
             Box(
                 modifier =
                     Modifier
@@ -1726,16 +1725,15 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
     val descriptionText = description?.takeIf { it.isNotBlank() }
     val rowBackground = when (interactionState) {
-        ChannelRowInteractionState.Default -> if (pressed) SlockColor.EmptyStateGray else Color.Transparent
+        ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceCream
+        ChannelRowInteractionState.Pressed -> Color.Transparent
     }
     val borderColor = when (interactionState) {
-        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
+        ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
-        ChannelRowInteractionState.Pressed -> SlockColor.BorderBlack
     }
     var rowAnchor by remember { mutableStateOf(Offset.Zero) }
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
@@ -1785,10 +1783,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         y = pos.y + size.height / 2f
                     )
                 }
-                .then(if (selected || pressed) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+                .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
     ) {
-        if (selected || pressed) {
+        if (selected) {
             Box(
                 modifier =
                     Modifier
