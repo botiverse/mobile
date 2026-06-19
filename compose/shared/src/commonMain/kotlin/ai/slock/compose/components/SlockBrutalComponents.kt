@@ -690,47 +690,72 @@ internal fun SlockToolbarChip(
     activeBackgroundColor: Color = SlockColor.AccentCyan,
     inactiveBackgroundColor: Color = SlockColor.SurfaceWhite,
     borderColor: Color = SlockColor.BorderBlack,
-    disabledBorderColor: Color = SlockColor.EmptyStateGray
+    disabledBorderColor: Color = SlockColor.EmptyStateGray,
+    activeShadowOffset: Dp = 0.dp,
+    reserveActiveShadowSpace: Boolean = false,
+    activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
+    val shouldDrawShadow = enabled && active && activeShadowOffset > 0.dp
+    val reservedShadowOffset =
+        if (shouldDrawShadow || reserveActiveShadowSpace) {
+            activeShadowOffset
+        } else {
+            0.dp
+        }
     Box(
         modifier =
             modifier
-                .heightIn(min = 30.dp)
-                .background(if (active) activeBackgroundColor else inactiveBackgroundColor)
-                .border(SlockStroke.Default, if (enabled) borderColor else disabledBorderColor)
-                .clickable(enabled = enabled, onClick = onClick)
-                .padding(horizontal = 10.dp, vertical = 6.dp),
-        contentAlignment = Alignment.Center
+                .padding(end = reservedShadowOffset, bottom = reservedShadowOffset)
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            iconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
-            }
-            Text(
-                text = if (uppercase) label.uppercase() else label,
-                style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+        if (shouldDrawShadow) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = activeShadowOffset, y = activeShadowOffset)
+                        .background(activeShadowColor)
             )
-            count?.let {
+        }
+        Box(
+            modifier =
+                Modifier
+                    .heightIn(min = 30.dp)
+                    .background(if (active) activeBackgroundColor else inactiveBackgroundColor)
+                    .border(SlockStroke.Default, if (enabled) borderColor else disabledBorderColor)
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                iconName?.let {
+                    SlockLucideIcon(it, modifier = Modifier.size(14.dp), color = "#FF000000")
+                }
                 Text(
-                    text = it.toString(),
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
-                    color = SlockColor.TextBlack,
-                    modifier =
-                        Modifier
-                            .background(SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(horizontal = 4.dp, vertical = 2.dp),
-                    maxLines = 1
+                    text = if (uppercase) label.uppercase() else label,
+                    style = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-            }
-            trailingIconName?.let {
-                SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                count?.let {
+                    Text(
+                        text = it.toString(),
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 10.sp),
+                        color = SlockColor.TextBlack,
+                        modifier =
+                            Modifier
+                                .background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        maxLines = 1
+                    )
+                }
+                trailingIconName?.let {
+                    SlockLucideIcon(it, modifier = Modifier.size(12.dp), color = "#FF000000")
+                }
             }
         }
     }
@@ -750,7 +775,10 @@ internal fun SlockAnchoredToolbarChip(
     activeBackgroundColor: Color = SlockColor.AccentCyan,
     inactiveBackgroundColor: Color = SlockColor.SurfaceWhite,
     borderColor: Color = SlockColor.BorderBlack,
-    disabledBorderColor: Color = SlockColor.EmptyStateGray
+    disabledBorderColor: Color = SlockColor.EmptyStateGray,
+    activeShadowOffset: Dp = 0.dp,
+    reserveActiveShadowSpace: Boolean = false,
+    activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
     val density = LocalDensity.current
     var anchor by remember { mutableStateOf<Offset?>(null) }
@@ -774,6 +802,9 @@ internal fun SlockAnchoredToolbarChip(
             inactiveBackgroundColor = inactiveBackgroundColor,
             borderColor = borderColor,
             disabledBorderColor = disabledBorderColor,
+            activeShadowOffset = activeShadowOffset,
+            reserveActiveShadowSpace = reserveActiveShadowSpace,
+            activeShadowColor = activeShadowColor,
             onClick = { anchor?.let(onClick) }
         )
     }
