@@ -178,7 +178,8 @@ class SettingsRepositoryDataSourceTest {
                     membersJson = """
                         [
                           {"userId":"user-1","displayName":"Owner","email":"owner@slock.ai","role":"owner"},
-                          {"userId":"admin-1","displayName":"Admin User","email":"admin@slock.ai","role":"admin"}
+                          {"userId":"admin-1","displayName":"Admin User","email":"admin@slock.ai","role":"admin"},
+                          {"userId":"member-1","displayName":"Member User","email":"member@slock.ai","role":"member"}
                         ]
                     """.trimIndent(),
                     usageJson = """{"machines":1,"agents":10,"channels":12}""",
@@ -201,8 +202,9 @@ class SettingsRepositoryDataSourceTest {
             listOf("admins", "billing", "pending_invites", "join_links", "onboarding_agent", "translation", "sidebar_order", "danger"),
             serverSnapshot.sections.map { it.key }
         )
-        assertEquals("Admin User", serverSnapshot.admins.single().name)
-        assertEquals("Admin", serverSnapshot.admins.single().role)
+        assertEquals(listOf("Owner", "Admin User", "Member User"), serverSnapshot.admins.map { it.name })
+        assertEquals(listOf("Owner", "Admin", "Member"), serverSnapshot.admins.map { it.role })
+        assertEquals("2 owner/admin members", serverSnapshot.sections.first { it.key == "admins" }.detail)
         assertTrue(serverSnapshot.usageRows.any { it.label == "Billing Status" && it.value == "Active" })
         assertTrue(serverSnapshot.usageRows.any { it.label == "Computers" && it.value == "1" })
         assertEquals(true, serverSnapshot.onboarding?.setupModalReminderOptOut)

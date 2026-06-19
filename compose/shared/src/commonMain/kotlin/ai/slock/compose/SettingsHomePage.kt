@@ -21,8 +21,6 @@ import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
-import ai.slock.compose.resources.MR
-import dev.icerock.moko.resources.compose.stringResource
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
 import ai.slock.compose.data.MOBILE_ACTION_NOTIFICATION_PREFERENCE
@@ -2161,6 +2159,8 @@ private fun SettingsAppShellContent(
     var serverInviteEmail by remember { mutableStateOf("") }
     var serverProfileName by remember { mutableStateOf("") }
     var serverDeleteConfirmation by remember { mutableStateOf("") }
+    var serverJoinLinkMaxUses by remember { mutableStateOf("") }
+    var serverJoinLinkExpiresAt by remember { mutableStateOf("") }
     val currentServerProfile = settingsState.server.currentContent()?.profile
     val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
     val currentServerSlug = currentServerProfile?.slug ?: session?.currentServerSummary()?.slug.orEmpty()
@@ -2169,6 +2169,8 @@ private fun SettingsAppShellContent(
     }
     LaunchedEffect(currentServerSlug) {
         serverDeleteConfirmation = ""
+        serverJoinLinkMaxUses = ""
+        serverJoinLinkExpiresAt = ""
     }
 
     if (selectedDestination == SettingsDestinationHome) {
@@ -2352,6 +2354,10 @@ private fun SettingsAppShellContent(
                     ),
                     inviteEmail = serverInviteEmail,
                     onInviteEmailChange = { serverInviteEmail = it },
+                    joinLinkMaxUses = serverJoinLinkMaxUses,
+                    onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
+                    joinLinkExpiresAt = serverJoinLinkExpiresAt,
+                    onJoinLinkExpiresAtChange = { serverJoinLinkExpiresAt = it },
                     profileName = serverProfileName,
                     onProfileNameChange = { serverProfileName = it },
                     serverSnapshot = settingsState.server.currentContent(),
@@ -2361,6 +2367,9 @@ private fun SettingsAppShellContent(
                     onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    onCreateJoinLink = { request ->
+                        onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
+                    },
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
@@ -2532,6 +2541,10 @@ private fun SharedSettingsServerContent(
     payload: KuiklySharedSettingsPayload,
     inviteEmail: String,
     onInviteEmailChange: (String) -> Unit,
+    joinLinkMaxUses: String,
+    onJoinLinkMaxUsesChange: (String) -> Unit,
+    joinLinkExpiresAt: String,
+    onJoinLinkExpiresAtChange: (String) -> Unit,
     profileName: String,
     onProfileNameChange: (String) -> Unit,
     serverSnapshot: SettingsServerSnapshot?,
@@ -2541,6 +2554,7 @@ private fun SharedSettingsServerContent(
     onDeleteConfirmationNameChange: (String) -> Unit,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
+    onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit,
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -2561,22 +2575,45 @@ private fun SharedSettingsServerContent(
             )
         }
         payload.sections.forEach { section ->
-            if (section.title == "Profile") {
-                return@forEach
-            }
-            if (section.title == "Danger Zone") {
-                return@forEach
-            }
-            item { SharedSettingsSectionCard(section, onAction) }
-            if (section.title == "Pending Invites") {
-                item {
-                    SettingsServerInviteFormCard(
-                        email = inviteEmail,
-                        actionState = actionState,
-                        onEmailChange = onInviteEmailChange,
-                        onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) }
-                    )
-                }
+            when (section.title) {
+                "Profile", "Danger Zone" -> Unit
+                "Admins" ->
+                    item {
+                        SettingsServerAdminsCard(
+                            members = serverSnapshot?.admins.orEmpty(),
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "admins" },
+                            actorRole = serverRole,
+                            actionState = actionState,
+                            onAction = onAction
+                        )
+                    }
+                "Pending Invites" ->
+                    item {
+                        SettingsServerInvitesCard(
+                            invites = serverSnapshot?.pendingInvites.orEmpty(),
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "pending_invites" },
+                            email = inviteEmail,
+                            actionState = actionState,
+                            onEmailChange = onInviteEmailChange,
+                            onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) },
+                            onAction = onAction
+                        )
+                    }
+                "Join Links" ->
+                    item {
+                        SettingsServerJoinLinksCard(
+                            links = serverSnapshot?.joinLinks.orEmpty(),
+                            section = serverSnapshot?.sections?.firstOrNull { it.key == "join_links" },
+                            maxUses = joinLinkMaxUses,
+                            expiresAt = joinLinkExpiresAt,
+                            actionState = actionState,
+                            onMaxUsesChange = onJoinLinkMaxUsesChange,
+                            onExpiresAtChange = onJoinLinkExpiresAtChange,
+                            onCreate = onCreateJoinLink,
+                            onAction = onAction
+                        )
+                    }
+                else -> item { SharedSettingsSectionCard(section, onAction) }
             }
         }
         item {
@@ -2709,7 +2746,7 @@ private fun SettingsServerDangerZoneCard(
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedSlug == expectedServerSlug
     SettingsFormSectionCard(iconName = "triangle-alert", title = "Danger Zone") {
         if (canLeave) {
-            SettingsServerDangerActionRow(
+            SettingsServerActionRow(
                 title = "Leave Server",
                 detail = "You will lose access to ${serverName.ifBlank { "this server" }} and all of its channels. You can be re-invited later.",
                 buttonLabel = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave Server"),
@@ -2727,7 +2764,7 @@ private fun SettingsServerDangerZoneCard(
             }
         }
         if (canDelete) {
-            SettingsServerDangerActionRow(
+            SettingsServerActionRow(
                 title = "Delete Server",
                 detail = "Permanently remove ${serverName.ifBlank { "this server" }} and all of its data. This cannot be undone.",
                 buttonLabel = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
@@ -2783,7 +2820,7 @@ private fun SettingsFormSectionCard(
 }
 
 @Composable
-private fun SettingsServerDangerActionRow(
+private fun SettingsServerActionRow(
     title: String,
     detail: String,
     buttonLabel: String,
@@ -2813,16 +2850,102 @@ private fun SettingsServerDangerActionRow(
 }
 
 @Composable
-private fun SettingsServerInviteFormCard(
+private fun SettingsServerAdminsCard(
+    members: List<SettingsServerAdminSnapshot>,
+    section: SettingsServerSectionSnapshot?,
+    actorRole: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onAction: (String, String?) -> Unit
+) {
+    val normalizedActorRole = actorRole.normalizedServerRole()
+    val admins =
+        members
+            .filter { it.isPrivilegedServerMember() }
+            .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
+    val candidates = members.filter { !it.isPrivilegedServerMember() }.sortedBy { it.name }
+    val ownerCount = admins.count { it.normalizedRole() == "owner" }
+    SettingsFormSectionCard(iconName = "shield", title = "Owners & Admins") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        if (candidates.isNotEmpty()) {
+            Text(
+                "Add owner/admin",
+                style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+            candidates.forEach { candidate ->
+                val targetRole = candidate.normalizedRole().ifBlank { "member" }
+                val canMakeOwner = canChangeServerMemberRole(normalizedActorRole, targetRole, "owner")
+                val canMakeAdmin = canChangeServerMemberRole(normalizedActorRole, targetRole, "admin")
+                if (canMakeOwner) {
+                    SettingsServerActionRow(
+                        title = candidate.name,
+                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
+                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Owner", candidate.id),
+                        buttonIcon = "shield-check",
+                        buttonColor = SlockColor.AccentPink,
+                        enabled = actionState?.inProgress != true,
+                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:owner") }
+                    )
+                }
+                if (canMakeAdmin) {
+                    SettingsServerActionRow(
+                        title = candidate.name,
+                        detail = candidate.detail.orEmpty().ifBlank { "Member" },
+                        buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Admin", candidate.id),
+                        buttonIcon = "shield-check",
+                        buttonColor = SlockColor.BrandYellow,
+                        enabled = actionState?.inProgress != true,
+                        onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:admin") }
+                    )
+                }
+            }
+            SettingsFormDivider()
+        }
+        if (admins.isEmpty()) {
+            SettingsFormEmptyText("No owners or admins yet.")
+        } else {
+            admins.forEach { admin ->
+                val targetRole = admin.normalizedRole()
+                val canDemote = canChangeServerMemberRole(normalizedActorRole, targetRole, "member") && !(targetRole == "owner" && ownerCount <= 1)
+                val fallback = if (targetRole == "owner") "Remove Owner" else "Remove Admin"
+                val disabledLabel =
+                    if (targetRole == "owner" && ownerCount <= 1) {
+                        "Last owner"
+                    } else {
+                        "Owner only"
+                    }
+                SettingsServerActionRow(
+                    title = admin.name,
+                    detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
+                    buttonLabel = if (canDemote) actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
+                    buttonIcon = "user-minus",
+                    buttonColor = SlockColor.SurfaceWhite,
+                    enabled = canDemote && actionState?.inProgress != true,
+                    onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${admin.id}:member") }
+                )
+            }
+        }
+        if (actionState?.action == SERVER_ACTION_MEMBER_ROLE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerInvitesCard(
+    invites: List<SettingsServerInviteSnapshot>,
+    section: SettingsServerSectionSnapshot?,
     email: String,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
     onEmailChange: (String) -> Unit,
-    onSubmit: () -> Unit
+    onSubmit: () -> Unit,
+    onAction: (String, String?) -> Unit
 ) {
     val trimmedEmail = email.trim()
     val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
     val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
-    SettingsFormSectionCard(iconName = "mail-plus", title = stringResource(MR.strings.settings_invite_by_email)) {
+    SettingsFormSectionCard(iconName = "mail-plus", title = "Pending Invites") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
             label = "Email",
             value = email,
@@ -2838,7 +2961,120 @@ private fun SettingsServerInviteFormCard(
             leadingIcon = "mail-plus",
             backgroundColor = SlockColor.BrandYellow
         )
+        SettingsFormDivider()
+        if (invites.isEmpty()) {
+            SettingsFormEmptyText("No pending invites.")
+        } else {
+            invites.forEach { invite ->
+                SettingsServerActionRow(
+                    title = invite.email,
+                    detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
+                    buttonLabel = actionState.serverStatusFor(SERVER_ACTION_INVITE_REVOKE, "Revoke", invite.id),
+                    buttonIcon = "x",
+                    buttonColor = SlockColor.SurfaceWhite,
+                    enabled = actionState?.inProgress != true,
+                    onClick = { onAction(SERVER_ACTION_INVITE_REVOKE, invite.id) }
+                )
+            }
+        }
+        if (actionState?.action == SERVER_ACTION_INVITE_REVOKE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
     }
+}
+
+@Composable
+private fun SettingsServerJoinLinksCard(
+    links: List<SettingsServerJoinLinkSnapshot>,
+    section: SettingsServerSectionSnapshot?,
+    maxUses: String,
+    expiresAt: String,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    onMaxUsesChange: (String) -> Unit,
+    onExpiresAtChange: (String) -> Unit,
+    onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
+    onAction: (String, String?) -> Unit
+) {
+    val trimmedMaxUses = maxUses.trim()
+    val parsedMaxUses = trimmedMaxUses.takeIf { it.isNotBlank() }?.toIntOrNull()
+    val maxUsesInvalid = trimmedMaxUses.isNotBlank() && (parsedMaxUses == null || parsedMaxUses <= 0)
+    val createBusy = actionState?.action == SERVER_ACTION_JOIN_LINK_CREATE && actionState.inProgress
+    val createEnabled = !createBusy && !maxUsesInvalid
+    SettingsFormSectionCard(iconName = "link-2", title = "Join Links") {
+        section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
+        SlockBrutalTextField(
+            label = "Max Uses",
+            value = maxUses,
+            placeholder = "Unlimited",
+            onValueChange = onMaxUsesChange,
+            optional = true,
+            enabled = !createBusy
+        )
+        SlockBrutalTextField(
+            label = "Expires At",
+            value = expiresAt,
+            placeholder = "2026-06-01T09:00:00Z",
+            onValueChange = onExpiresAtChange,
+            optional = true,
+            enabled = !createBusy
+        )
+        if (maxUsesInvalid) {
+            SettingsFormErrorText("Max Uses must be a positive number.")
+        }
+        SlockBrutalActionButton(
+            label = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, "Create Join Link"),
+            onClick = {
+                onCreate(
+                    SettingsServerJoinLinkCreateRequest(
+                        expiresAt = expiresAt.trim().ifBlank { null },
+                        maxUses = parsedMaxUses?.takeIf { it > 0 }
+                    )
+                )
+            },
+            enabled = createEnabled,
+            leadingIcon = "plus",
+            backgroundColor = SlockColor.AccentPink
+        )
+        SettingsFormDivider()
+        if (links.isEmpty()) {
+            SettingsFormEmptyText("No active join links.")
+        } else {
+            links.forEach { link ->
+                SettingsServerActionRow(
+                    title = link.url ?: link.label,
+                    detail = listOfNotNull(link.maxUsesLabel, link.usageLabel, link.expiresAtLabel).joinToString(" · "),
+                    buttonLabel = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, "Revoke", link.id),
+                    buttonIcon = "unlink",
+                    buttonColor = SlockColor.SurfaceWhite,
+                    enabled = actionState?.inProgress != true,
+                    onClick = { onAction(SERVER_ACTION_JOIN_LINK_REVOKE, link.id) }
+                )
+            }
+        }
+        if (actionState?.action == SERVER_ACTION_JOIN_LINK_REVOKE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+    }
+}
+
+@Composable
+private fun SettingsFormDetailText(text: String) {
+    Text(text, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+}
+
+@Composable
+private fun SettingsFormEmptyText(text: String) {
+    Text(text, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+}
+
+@Composable
+private fun SettingsFormErrorText(text: String) {
+    Text(text, style = SlockType.Caption.copy(color = SlockColor.AccentRed), color = SlockColor.AccentRed)
+}
+
+@Composable
+private fun SettingsFormDivider() {
+    Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable
@@ -4015,6 +4251,28 @@ private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
         enabled = available && nextOption != null && actionState?.inProgress != true
     )
 }
+
+private fun SettingsServerAdminSnapshot.normalizedRole(): String =
+    role.normalizedServerRole()
+
+private fun SettingsServerAdminSnapshot.isPrivilegedServerMember(): Boolean {
+    val normalizedRole = normalizedRole()
+    return normalizedRole == "owner" || normalizedRole == "admin"
+}
+
+private fun String?.normalizedServerRole(): String =
+    this?.trim()?.lowercase().orEmpty()
+
+private fun canChangeServerMemberRole(
+    actorRole: String,
+    targetRole: String,
+    nextRole: String
+): Boolean =
+    when (actorRole) {
+        "owner" -> targetRole.isNotBlank() && nextRole in setOf("owner", "admin", "member")
+        "admin" -> targetRole == "member" && nextRole == "admin"
+        else -> false
+    }
 
 private fun ai.slock.compose.data.SharedSettingsActionState?.statusFor(action: String, fallback: String): String =
     when {

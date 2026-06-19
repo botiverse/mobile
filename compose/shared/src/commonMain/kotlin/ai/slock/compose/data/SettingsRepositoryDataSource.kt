@@ -452,6 +452,7 @@ class RealSettingsRepository(
             }
 
         val admins = (members as? DataResult.Content)?.data.orEmpty()
+        val adminCount = admins.count { it.isPrivilegedServerRole() }
         val usageRows = mergeServerUsageRows(
             usage = (usage as? DataResult.Content)?.data,
             billing = (billing as? DataResult.Content)?.data
@@ -465,7 +466,7 @@ class RealSettingsRepository(
             SettingsServerSectionSnapshot(
                 key = "admins",
                 title = "Admins",
-                detail = adminsSectionDetail(members, admins.size),
+                detail = adminsSectionDetail(members, adminCount),
                 state = members.sectionState(admins.isEmpty())
             ),
             SettingsServerSectionSnapshot(
@@ -1589,11 +1590,16 @@ private fun <T> DataResult<T>.logMachineDetailSection(
 
 private fun adminsSectionDetail(result: DataResult<List<SettingsServerAdminSnapshot>>, count: Int): String =
     when (result) {
-        is DataResult.Content -> if (count == 0) "No admins yet." else "$count admin${if (count == 1) "" else "s"}"
+        is DataResult.Content -> if (count == 0) "No owners or admins yet." else "$count owner/admin member${if (count == 1) "" else "s"}"
         is DataResult.Empty -> "No admins yet."
         is DataResult.NoPermission -> "You do not have permission to view server members."
         is DataResult.Error -> "Admin list failed to load: ${result.error.code}"
     }
+
+private fun SettingsServerAdminSnapshot.isPrivilegedServerRole(): Boolean {
+    val normalizedRole = role?.lowercase().orEmpty()
+    return normalizedRole == "owner" || normalizedRole == "admin"
+}
 
 private fun billingSectionDetail(
     sessionPlan: String?,

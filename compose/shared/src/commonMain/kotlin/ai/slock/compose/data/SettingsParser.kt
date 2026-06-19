@@ -227,7 +227,6 @@ private data class WireSettingsServerMember(
 
 fun parseSharedSettingsServerAdmins(bodyText: String): List<SettingsServerAdminSnapshot>? = runCatching {
     settingsJson.decodeFromString(ListSerializer(WireSettingsServerMember.serializer()), bodyText)
-        .filter { it.role?.lowercase() == "admin" }
         .mapNotNull { it.toSettingsServerAdminSnapshot() }
 }.getOrNull()
 
