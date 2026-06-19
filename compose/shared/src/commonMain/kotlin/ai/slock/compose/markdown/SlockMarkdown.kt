@@ -19,7 +19,7 @@ import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
 import com.tencent.kuikly.compose.foundation.text.appendInlineContent
-import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -510,7 +510,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         style: TextStyle
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
-        Text(
+        KuiklyText(
             text = text,
             modifier = modifier,
             color = color,
@@ -553,7 +553,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         style: TextStyle
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
-        Text(
+        KuiklyText(
             text = text.withSlockMarkdownSpanFonts(resolvedStyle),
             modifier = modifier,
             color = color,
@@ -747,7 +747,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
                 .padding(start = 4.dp, end = 4.dp, top = 0.dp, bottom = 1.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        KuiklyText(
             label,
             modifier = Modifier.fillMaxWidth(),
             style =
@@ -767,7 +767,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
 
 @Composable
 private fun SlockMarkdownMentionText(label: String) {
-    Text(
+    KuiklyText(
         text = label,
         style =
             SlockType.Body
@@ -794,7 +794,7 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
                 .padding(start = 4.dp, end = 4.dp, top = 0.dp, bottom = 1.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
+        KuiklyText(
             code,
             modifier = Modifier.fillMaxWidth(),
             style =
