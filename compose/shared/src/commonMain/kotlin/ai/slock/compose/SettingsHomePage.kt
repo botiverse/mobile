@@ -866,12 +866,23 @@ private fun SlockAppShellContent() {
             SharedAuthGateViewModel(authDataSource)
         }
     val authGateState by authGateViewModel.state.collectAsState()
+    val homeSidebarOrderRepository =
+        remember {
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                logger = { message -> bridge.log("shared_home_sidebar_order $message") },
+                warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
+            )
+        }
     val homeViewModel: SharedHomeViewModel =
         viewModel(key = "shared-home") {
             SharedHomeViewModel(
                 authStore = authStore,
                 dataSource = homeDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
+                loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
+                updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) }
             )
         }
     val homeState by homeViewModel.state.collectAsState()
@@ -5340,6 +5351,9 @@ private fun SharedHomeScreen(
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = state.notifications.map { it.toHomeNotificationItem() },
+                pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
+                pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
+                pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
                 showBottomBar = false,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
@@ -5384,8 +5398,12 @@ private fun SharedHomeScreen(
                         onIntent(SharedHomeIntent.SelectConversation(threadId))
                     }
                 },
-                onChannelLongPress = { channelId ->
-                    bridge.toast("Long press: $channelId")
+                onChannelLongPress = { _, _ -> },
+                onPinnedSortModeChange = { mode ->
+                    onIntent(SharedHomeIntent.SetPinnedSortMode(mode))
+                },
+                onPinToggle = { conversationId ->
+                    onIntent(SharedHomeIntent.TogglePinned(conversationId))
                 }
             )
         }

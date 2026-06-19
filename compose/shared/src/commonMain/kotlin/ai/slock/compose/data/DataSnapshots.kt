@@ -60,7 +60,14 @@ data class HomeSnapshot(
      * Default is `UNKNOWN` so existing call sites that don't set it (test
      * fixtures, preview builders) keep compiling.
      */
-    val unreadSource: AppBadgeSource = AppBadgeSource.UNKNOWN
+    val unreadSource: AppBadgeSource = AppBadgeSource.UNKNOWN,
+    /**
+     * #211: per-server sidebar order snapshot, including pinned conversation
+     * ids, pinned order, and pinned sort mode. `null` means the sidebar
+     * order has not been loaded for this snapshot yet; the visual layer
+     * falls back to "no pinned items" until a non-null value arrives.
+     */
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null
 )
 
 data class ServerListSnapshot(
@@ -582,6 +589,7 @@ data class SettingsServerTranslationSnapshot(
     val detail: String
 )
 
+@Serializable
 data class SettingsServerSidebarOrderSnapshot(
     val channelOrder: List<String> = emptyList(),
     val agentOrder: List<String> = emptyList(),

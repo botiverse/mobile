@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.SlockSidebarSortMode
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
@@ -27,6 +28,26 @@ class SharedHomeStore(
     private val scope: CoroutineScope,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val presenceFlushDelayMillis: Long = 250L,
+    /**
+     * #211: load the current server's sidebar-order snapshot. The store
+     * calls this in parallel with the home payload load to populate the
+     * `sidebarOrder` field on `HomeSnapshot`. Default is a no-op that
+     * returns `DataResult.Empty(EmptyReason.NoSettingsAvailable)` so existing
+     * test fixtures and callers that don't pass a real provider keep
+     * compiling.
+     */
+    private val loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
+    /**
+     * #211: PATCH the sidebar-order and return the persisted snapshot. Used
+     * for both pin/unpin and pinned-sort-mode persistence with optimistic
+     * update + rollback. Default is a no-op (returns `Empty`) so existing
+     * tests keep compiling.
+     */
+    private val updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
     /**
      * #81: wall-clock source for [AppBadgeCount.lastUpdated]. Injected so
      * tests can pin a deterministic clock; production passes a
@@ -137,6 +158,10 @@ class SharedHomeStore(
             }
             is SharedHomeIntent.SetSurfaceVisible ->
                 setHomeSurfaceVisible(intent.visible)
+            is SharedHomeIntent.TogglePinned ->
+                togglePinned(intent.conversationId)
+            is SharedHomeIntent.SetPinnedSortMode ->
+                setPinnedSortMode(intent.mode)
         }
     }
 
@@ -551,6 +576,9 @@ class SharedHomeStore(
                 )
             )
             loadNotifications()
+            if (freshSnapshot != null) {
+                loadAndMergeSidebarOrder()
+            }
         }
     }
 
@@ -677,6 +705,97 @@ class SharedHomeStore(
         }
     }
 
+    /**
+     * #211: load the current server's sidebar-order snapshot and merge it
+     * into the active `HomeSnapshot`. Safe to call from any load path; if
+     * the active content is not `Content` (e.g. Loading / Empty / Error),
+     * the result is dropped because there is no snapshot to attach it to.
+     */
+    private suspend fun loadAndMergeSidebarOrder() {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        when (val result = loadSidebarOrder()) {
+            is DataResult.Content -> {
+                val nextSnapshot = current.snapshot.copy(sidebarOrder = result.data)
+                if (nextSnapshot.sidebarOrder == current.snapshot.sidebarOrder) return
+                reduceState(
+                    _state.value.copy(
+                        content = current.copy(
+                            snapshot = nextSnapshot,
+                            baseSnapshot = current.baseSnapshot.copy(sidebarOrder = result.data)
+                        )
+                    )
+                )
+            }
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> Unit
+        }
+    }
+
+    private fun currentSidebarOrderOrEmpty(): SettingsServerSidebarOrderSnapshot {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        return current?.snapshot?.sidebarOrder ?: SettingsServerSidebarOrderSnapshot()
+    }
+
+    private fun applySidebarOrderLocally(
+        next: SettingsServerSidebarOrderSnapshot
+    ): Boolean {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return false
+        if (current.snapshot.sidebarOrder == next) return false
+        reduceState(
+            _state.value.copy(
+                content = current.copy(
+                    snapshot = current.snapshot.copy(sidebarOrder = next),
+                    baseSnapshot = current.baseSnapshot.copy(sidebarOrder = next)
+                )
+            )
+        )
+        return true
+    }
+
+    private suspend fun togglePinned(conversationId: String) {
+        val previous = currentSidebarOrderOrEmpty()
+        val isCurrentlyPinned = previous.pinnedChannelIds.contains(conversationId)
+        val next = if (isCurrentlyPinned) {
+            previous.copy(
+                pinnedChannelIds = previous.pinnedChannelIds - conversationId,
+                pinnedOrder = previous.pinnedOrder.filterNot { it == conversationId }
+            )
+        } else {
+            previous.copy(
+                pinnedChannelIds = previous.pinnedChannelIds + conversationId,
+                pinnedOrder = previous.pinnedOrder + conversationId
+            )
+        }
+        applySidebarOrderLocally(next)
+        val request = SettingsServerSidebarOrderUpdateRequest(
+            pinnedChannelIds = next.pinnedChannelIds,
+            pinnedOrder = next.pinnedOrder
+        )
+        when (val result = updateSidebarOrder(request)) {
+            is DataResult.Content -> applySidebarOrderLocally(result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> applySidebarOrderLocally(previous)
+        }
+    }
+
+    private suspend fun setPinnedSortMode(mode: SlockSidebarSortMode) {
+        val previous = currentSidebarOrderOrEmpty()
+        if (previous.pinnedSortMode == mode.wireValue) return
+        val next = previous.copy(pinnedSortMode = mode.wireValue)
+        applySidebarOrderLocally(next)
+        val request = SettingsServerSidebarOrderUpdateRequest(
+            pinnedSortMode = mode.wireValue
+        )
+        when (val result = updateSidebarOrder(request)) {
+            is DataResult.Content -> applySidebarOrderLocally(result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> applySidebarOrderLocally(previous)
+        }
+    }
+
     private suspend fun dismissNotification(id: String) {
         val previous = _state.value.notifications
         val next = previous.filterNot { it.id == id }
@@ -701,11 +820,24 @@ class SharedHomeStore(
 class SharedHomeViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedHomeDataSource,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    loadSidebarOrder: suspend () -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
+    updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    }
 ) : ViewModel() {
     private val storeDelegate =
         lazy {
-            SharedHomeStore(authStore, dataSource, viewModelScope, diagnosticsLogger)
+            SharedHomeStore(
+                authStore = authStore,
+                dataSource = dataSource,
+                scope = viewModelScope,
+                diagnosticsLogger = diagnosticsLogger,
+                loadSidebarOrder = loadSidebarOrder,
+                updateSidebarOrder = updateSidebarOrder
+            )
         }
     private val store: SharedHomeStore by storeDelegate
     val state: StateFlow<SharedHomeState>
@@ -806,6 +938,18 @@ sealed interface SharedHomeIntent {
     data class DismissNotification(val id: String) : SharedHomeIntent
     data class ChannelCreated(val channel: ConversationSummary) : SharedHomeIntent
     data class SetSurfaceVisible(val visible: Boolean) : SharedHomeIntent
+    /**
+     * #211: pin or unpin a conversation. The store applies an optimistic
+     * local update to the in-memory sidebar-order snapshot, then issues a
+     * PATCH `/servers/:id/sidebar-order`. On failure the previous snapshot
+     * is restored and a transient error is recorded.
+     */
+    data class TogglePinned(val conversationId: String) : SharedHomeIntent
+    /**
+     * #211: change the Pinned section sort mode (Manual / Recent / A-Z).
+     * Persists through the same sidebar-order PATCH as pin/unpin.
+     */
+    data class SetPinnedSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -821,7 +965,9 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ApplyRealtimeEvent,
             is SharedHomeIntent.DismissNotification,
             is SharedHomeIntent.ChannelCreated,
-            is SharedHomeIntent.SetSurfaceVisible -> false
+            is SharedHomeIntent.SetSurfaceVisible,
+            is SharedHomeIntent.TogglePinned,
+            is SharedHomeIntent.SetPinnedSortMode -> false
         }
 
 sealed interface SharedHomeContentState {

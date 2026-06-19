@@ -49,6 +49,8 @@ import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
 import com.tencent.kuikly.compose.ui.layout.ContentScale
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
@@ -196,6 +198,9 @@ data class SlockHomeShellLabels(
     val channels: String = "CHANNELS",
     val jointChannels: String = "Joint Channels",
     val directMessages: String = "DIRECT MESSAGES",
+    val pinned: String = "PINNED",
+    val pin: String = "Pin",
+    val unpin: String = "Unpin",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
     val joinCommunityServer: String = "Join community server",
@@ -227,6 +232,9 @@ internal data class SlockHomePayload(
     val activitySelected: Boolean = false,
     val channelSortMode: String = "manual",
     val dmSortMode: String = "manual",
+    val pinnedChannelIds: List<String> = emptyList(),
+    val pinnedOrder: List<String> = emptyList(),
+    val pinnedSortMode: String = "manual",
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -280,6 +288,9 @@ private fun SlockHomePageContent() {
         activitySelected = payload.activitySelected,
         channelSortMode = payload.channelSortMode,
         dmSortMode = payload.dmSortMode,
+        pinnedChannelIds = payload.pinnedChannelIds,
+        pinnedOrder = payload.pinnedOrder,
+        pinnedSortMode = payload.pinnedSortMode,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -301,7 +312,14 @@ private fun SlockHomePageContent() {
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
         onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
         onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
-        onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) }
+        onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
+        onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) },
+        onChannelLongPress = { conversationId, _ ->
+            bridge.settingsEvent(payload.instanceId, "openPinMenu", conversationId)
+        },
+        onPinToggle = { conversationId ->
+            bridge.settingsEvent(payload.instanceId, "togglePinned", conversationId)
+        }
     )
 }
 
@@ -384,6 +402,9 @@ fun SlockStructuralHomeShell(
     savedSelected: Boolean = false,
     channelSortMode: String = "manual",
     dmSortMode: String = "manual",
+    pinnedChannelIds: List<String> = emptyList(),
+    pinnedOrder: List<String> = emptyList(),
+    pinnedSortMode: String = "manual",
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -404,22 +425,37 @@ fun SlockStructuralHomeShell(
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
+    onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onChannelClick: (String) -> Unit = {},
-    onChannelLongPress: (String) -> Unit = {}
+    onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
+    onPinToggle: (String) -> Unit = {},
+    onPinMenuDismiss: () -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var jointChannelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
+    var pinnedExpanded by remember(currentServerId) { mutableStateOf(true) }
     var channelSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(channelSortMode)) }
     var directMessageSortMode by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(dmSortMode)) }
+    var pinnedSortModeState by remember(currentServerId) { mutableStateOf(SlockSidebarSortMode.fromWireValue(pinnedSortMode)) }
     var activeSortMenu by remember(currentServerId) { mutableStateOf<SlockHomeSortSection?>(null) }
     var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
+    var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
+    var pinMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
     var pullRefreshActive by remember { mutableStateOf(false) }
-    LaunchedEffect(currentServerId, channelSortMode, dmSortMode) {
+    LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
+        pinnedSortModeState = SlockSidebarSortMode.fromWireValue(pinnedSortMode)
         activeSortMenu = null
+    }
+    LaunchedEffect(currentServerId, pinnedChannelIds) {
+        // If the active pin menu target was just unpinned (or removed), close the menu
+        val activeId = activePinMenuConversationId
+        if (activeId != null && activeId !in pinnedChannelIds) {
+            activePinMenuConversationId = null
+        }
     }
     LaunchedEffect(contentRefreshing) {
         refreshIndicatorTimedOut = false
@@ -429,9 +465,25 @@ fun SlockStructuralHomeShell(
         }
     }
     val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
-    val displayedChannels = remember(channels, channelSortModeState) { channels.filter { it.kind != "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
-    val displayedJointChannels = remember(channels, channelSortModeState) { channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name } }
-    val displayedDirectMessages = remember(directMessages, directMessageSortMode) { directMessages.sortedForSidebar(directMessageSortMode) { it.name } }
+    val pinnedIdSet = remember(pinnedChannelIds) { pinnedChannelIds.toSet() }
+    val displayedChannels = remember(channels, channelSortModeState, pinnedIdSet) {
+        channels.filter { it.kind != "joint" && it.id !in pinnedIdSet }.sortedForSidebar(channelSortModeState) { it.name }
+    }
+    val displayedJointChannels = remember(channels, channelSortModeState, pinnedIdSet) {
+        channels.filter { it.kind == "joint" && it.id !in pinnedIdSet }.sortedForSidebar(channelSortModeState) { it.name }
+    }
+    val displayedDirectMessages = remember(directMessages, directMessageSortMode, pinnedIdSet) {
+        directMessages.filter { it.id !in pinnedIdSet }.sortedForSidebar(directMessageSortMode) { it.name }
+    }
+    val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedOrder, pinnedSortModeState) {
+        pinnedItemsForSidebar(
+            channels = channels,
+            directMessages = directMessages,
+            pinnedIds = pinnedChannelIds,
+            pinnedOrder = pinnedOrder,
+            mode = pinnedSortModeState
+        )
+    }
     val sidebarSelection =
         homeSidebarSelection(
             selectedChannelId = selectedChannelId,
@@ -445,14 +497,17 @@ fun SlockStructuralHomeShell(
     val channelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Channel)
     val jointChannelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.JointChannel)
     val directMessageSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.DirectMessage)
+    val pinnedSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Pinned)
     val lazyItemCount =
         homeLazyItemCount(
             channelsCount = displayedChannels.size,
             jointCount = displayedJointChannels.size,
             directMessagesCount = displayedDirectMessages.size,
+            pinnedCount = displayedPinned.size,
             channelsExpanded = channelsExpanded,
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
+            pinnedExpanded = pinnedExpanded,
             contentRefreshEnabled = contentRefreshEnabled
         )
     val listState = rememberLazyListState()
@@ -520,6 +575,66 @@ fun SlockStructuralHomeShell(
                             )
                         }
                         item { SidebarActionRow("bookmark", labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                        if (displayedPinned.isNotEmpty()) {
+                            item { Spacer(Modifier.height(SlockSpacing.Xs)) }
+                            item {
+                                SlockCollapsibleSectionHeader(
+                                    label = labels.pinned,
+                                    count = displayedPinned.size,
+                                    expanded = pinnedExpanded,
+                                    onExpandedChange = { if (sidebarInteractionsEnabled) pinnedExpanded = it },
+                                    sortContentDescription = "Sort ${labels.pinned}",
+                                    onSortClick = { anchor ->
+                                        if (sidebarInteractionsEnabled) {
+                                            activeSortMenu = if (activeSortMenu == SlockHomeSortSection.Pinned) null else SlockHomeSortSection.Pinned
+                                            sortMenuAnchor = anchor
+                                        }
+                                    },
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
+                                )
+                            }
+                            if (pinnedExpanded) {
+                                items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].id}" }) { index ->
+                                    val pinned = displayedPinned[index]
+                                    val isJoint = pinned.kind.equals("joint", ignoreCase = true)
+                                    val isDirectMessage = pinned.kind.equals("directmessage", ignoreCase = true)
+                                    val rowInteractionState = if (pinnedSectionSelection.selects(pinned.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default
+                                    val handleLongPress: (Offset) -> Unit = { anchor ->
+                                        onChannelLongPress(pinned.id, anchor)
+                                        activePinMenuConversationId = pinned.id
+                                        pinMenuAnchor = anchor
+                                    }
+                                    if (isDirectMessage) {
+                                        DirectMessageRow(
+                                            name = pinned.name,
+                                            description = pinned.description,
+                                            avatarLabel = pinned.avatarLabel,
+                                            avatarWireValue = pinned.avatarWireValue,
+                                            peerType = pinned.peerType,
+                                            presence = pinned.presence,
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                            hasDraft = pinned.hasDraft,
+                                            badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
+                                            interactionState = rowInteractionState,
+                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null
+                                        )
+                                    } else {
+                                        ChannelRow(
+                                            name = pinned.name,
+                                            symbol = if (isJoint) "git-branch" else "#",
+                                            joined = pinned.joined,
+                                            hasDraft = pinned.hasDraft,
+                                            badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
+                                            modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                            interactionState = rowInteractionState,
+                                            onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(pinned.id) }) else null,
+                                            onLongPress = if (sidebarInteractionsEnabled) handleLongPress else null
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SlockCollapsibleSectionHeader(
@@ -550,7 +665,11 @@ fun SlockStructuralHomeShell(
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = if (channelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                     onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
-                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                        onChannelLongPress(channel.id, anchor)
+                                        activePinMenuConversationId = channel.id
+                                        pinMenuAnchor = anchor
+                                    }) else null
                                 )
                             }
                         }
@@ -577,7 +696,11 @@ fun SlockStructuralHomeShell(
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = if (jointChannelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
                                         onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
-                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
+                                        onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                            onChannelLongPress(channel.id, anchor)
+                                            activePinMenuConversationId = channel.id
+                                            pinMenuAnchor = anchor
+                                        }) else null
                                     )
                                 }
                             }
@@ -613,7 +736,12 @@ fun SlockStructuralHomeShell(
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
                                     interactionState = if (directMessageSectionSelection.selects(dm.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(dm.id) }) else null,
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ anchor ->
+                                        onChannelLongPress(dm.id, anchor)
+                                        activePinMenuConversationId = dm.id
+                                        pinMenuAnchor = anchor
+                                    }) else null
                                 )
                             }
                         }
@@ -632,6 +760,7 @@ fun SlockStructuralHomeShell(
                     selectedId = when (section) {
                         SlockHomeSortSection.Channels -> channelSortModeState.wireValue
                         SlockHomeSortSection.DirectMessages -> directMessageSortMode.wireValue
+                        SlockHomeSortSection.Pinned -> pinnedSortModeState.wireValue
                     },
                     onDismiss = { activeSortMenu = null },
                     onSelect = { selected ->
@@ -645,8 +774,34 @@ fun SlockStructuralHomeShell(
                                 directMessageSortMode = nextMode
                                 onDmSortModeChange(nextMode)
                             }
+                            SlockHomeSortSection.Pinned -> {
+                                pinnedSortModeState = nextMode
+                                onPinnedSortModeChange(nextMode)
+                            }
                         }
                         activeSortMenu = null
+                    }
+                )
+            }
+            val activePinId = activePinMenuConversationId
+            val pinTargetIsPinned = activePinId != null && activePinId in pinnedIdSet
+            val pinMenuItem = activePinId?.let { id ->
+                val label = if (pinTargetIsPinned) labels.unpin else labels.pin
+                val icon = if (pinTargetIsPinned) "pin-off" else "pin"
+                SlockBaseMenuItem(id = "toggle-pin", label = label, icon = icon)
+            }
+            if (activePinId != null && pinMenuItem != null) {
+                SlockBaseMenuOverlay(
+                    anchor = pinMenuAnchor,
+                    items = listOf(pinMenuItem),
+                    selectedId = "",
+                    onDismiss = {
+                        activePinMenuConversationId = null
+                        onPinMenuDismiss()
+                    },
+                    onSelect = { _ ->
+                        onPinToggle(activePinId)
+                        activePinMenuConversationId = null
                     }
                 )
             }
@@ -686,9 +841,11 @@ internal fun homeLazyItemCount(
     channelsCount: Int,
     jointCount: Int,
     directMessagesCount: Int,
+    pinnedCount: Int = 0,
     channelsExpanded: Boolean,
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
+    pinnedExpanded: Boolean = false,
     contentRefreshEnabled: Boolean
 ): Int {
     val fixedItems =
@@ -701,15 +858,18 @@ internal fun homeLazyItemCount(
             1 + // direct messages header
             1 // bottom spacer
     val jointSectionItems = if (jointCount > 0) 2 else 0 // spacer + header
+    val pinnedSectionItems = if (pinnedCount > 0) 2 else 0 // header + (rows below); rows counted conditionally
     return fixedItems +
         (if (contentRefreshEnabled) 1 else 0) +
         jointSectionItems +
+        pinnedSectionItems +
         (if (channelsExpanded) channelsCount else 0) +
         (if (jointChannelsExpanded) jointCount else 0) +
-        (if (directMessagesExpanded) directMessagesCount else 0)
+        (if (directMessagesExpanded) directMessagesCount else 0) +
+        (if (pinnedExpanded) pinnedCount else 0)
 }
 
-private enum class SlockHomeSortSection { Channels, DirectMessages }
+private enum class SlockHomeSortSection { Channels, DirectMessages, Pinned }
 
 private val SlockHomeSortMenuItems =
     SlockSidebarSortMode.entries.map { mode ->
@@ -805,6 +965,58 @@ internal fun List<SlockHomeConversationItem>.sortedForSidebar(
         SlockSidebarSortMode.Az ->
             sortedWith(compareBy<SlockHomeConversationItem> { label(it).trim().lowercase() }.thenBy { it.id })
     }
+
+/**
+ * Reconstruct the Pinned section from raw `pinnedChannelIds` and `pinnedOrder`
+ * (server side `SettingsServerSidebarOrderSnapshot`).
+ *
+ * Manual mode: items in `pinnedOrder` (drop unknown ids), then any remaining
+ * pinned ids not present in `pinnedOrder` appended in input order.
+ * Recent mode: sorted by `lastMessageAt ?: createdAt` desc, then name.
+ * A-Z mode: sorted by display name asc.
+ *
+ * Items must be present in either `channels` (regular or joint) or
+ * `directMessages`; pinned ids that no longer exist are dropped.
+ */
+internal fun pinnedItemsForSidebar(
+    channels: List<SlockHomeConversationItem>,
+    directMessages: List<SlockHomeConversationItem>,
+    pinnedIds: List<String>,
+    pinnedOrder: List<String>,
+    mode: SlockSidebarSortMode
+): List<SlockHomeConversationItem> {
+    if (pinnedIds.isEmpty()) return emptyList()
+    val byId: Map<String, SlockHomeConversationItem> = buildMap {
+        channels.forEach { put(it.id, it) }
+        directMessages.forEach { put(it.id, it) }
+    }
+    val pinnedSet = pinnedIds.toSet()
+    val existingPinned = pinnedIds.mapNotNull { byId[it] }
+    return when (mode) {
+        SlockSidebarSortMode.Manual -> {
+            val ordered = LinkedHashMap<String, SlockHomeConversationItem>()
+            pinnedOrder.forEach { id ->
+                byId[id]?.takeIf { it.id in pinnedSet }?.let { ordered.put(it.id, it) }
+            }
+            existingPinned.forEach { item ->
+                if (!ordered.containsKey(item.id)) {
+                    ordered.put(item.id, item)
+                }
+            }
+            ordered.values.toList()
+        }
+        SlockSidebarSortMode.Recent ->
+            existingPinned.sortedWith(
+                compareByDescending<SlockHomeConversationItem> {
+                    parseSlockTimestampEpochMillisOrNull(it.lastMessageAt ?: it.createdAt) ?: Long.MIN_VALUE
+                }.thenBy { it.name.trim().lowercase() }.thenBy { it.id }
+            )
+        SlockSidebarSortMode.Az ->
+            existingPinned.sortedWith(
+                compareBy<SlockHomeConversationItem> { it.name.trim().lowercase() }.thenBy { it.id }
+            )
+    }
+}
 @Composable
 private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
     Box(
@@ -1301,7 +1513,7 @@ private fun SidebarTrailingNumberText(text: String, color: Color) {
 }
 
 @Composable
-private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: (() -> Unit)? = null) {
+private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: String = "#", avatarLabel: String? = null, avatarUrl: String? = null, avatarWireValue: String? = avatarUrl, presence: SlockPresence? = null, showPresence: Boolean = true, badge: String? = null, hasDraft: Boolean = false, joined: Boolean = true, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val rowBackground = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1313,12 +1525,13 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    var rowAnchor by remember { mutableStateOf(Offset.Zero) }
     val clickModifier = remember(onClick, onLongPress) {
         if (onLongPress != null) {
             Modifier.pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onClick?.invoke() },
-                    onLongPress = { onLongPress.invoke() }
+                    onLongPress = { onLongPress.invoke(rowAnchor) }
                 )
             }
         } else if (onClick != null) {
@@ -1331,6 +1544,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         modifier =
             modifier
                 .fillMaxWidth()
+                .onGloballyPositioned { coordinates -> rowAnchor = coordinates.positionInRoot() }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
     ) {
@@ -1398,7 +1612,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null) {
     val selected = interactionState == ChannelRowInteractionState.Selected
     val unread = badge != null
     val isAgent = peerType?.equals("agent", ignoreCase = true) == true
@@ -1413,12 +1627,28 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default, ChannelRowInteractionState.Hovered -> Color.Transparent
         ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
+    var rowAnchor by remember { mutableStateOf(Offset.Zero) }
+    val clickModifier = remember(onClick, onLongPress) {
+        if (onLongPress != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onTap = { onClick?.invoke() },
+                    onLongPress = { onLongPress.invoke(rowAnchor) }
+                )
+            }
+        } else if (onClick != null) {
+            Modifier.clickable(onClick = onClick)
+        } else {
+            Modifier
+        }
+    }
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
+                .onGloballyPositioned { coordinates -> rowAnchor = coordinates.positionInRoot() }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
-                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                .then(clickModifier)
     ) {
         if (selected) {
             Box(

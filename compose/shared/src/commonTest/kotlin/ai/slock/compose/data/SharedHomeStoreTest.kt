@@ -1,5 +1,7 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.SlockSidebarSortMode
+import ai.slock.compose.homeLazyItemCount
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -1674,4 +1676,151 @@ class SharedHomeStoreTest {
             kind = MemberKind.Human,
             presence = Presence.Active
         )
+
+    // #211 ----------------------------------------------------------------
+
+    @Test
+    fun togglePinnedOptimisticallyUpdatesAndPatchesSidebarOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = emptyList(),
+            pinnedOrder = emptyList(),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1")
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(initial = initial, updateResult = DataResult.Content(updatedSnapshot), updateCalls = updateCalls),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(emptyList(), (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder?.pinnedChannelIds)
+
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-1"), after?.pinnedChannelIds)
+        assertEquals(listOf("channel-1"), after?.pinnedOrder)
+        assertEquals(1, updateCalls.size)
+        assertEquals(listOf("channel-1"), updateCalls.first().pinnedChannelIds)
+        assertEquals(listOf("channel-1"), updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun togglePinnedRollsBackWhenPatchFails() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1"),
+            pinnedSortMode = "manual"
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(
+                initial = initial,
+                updateResult = DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true))
+            ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { DataResult.Error(ScreenError(code = "sidebar_order_patch_failed", retryable = true)) }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.TogglePinned("channel-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-1"), after?.pinnedChannelIds, "rollback should restore the previous pinned ids")
+        assertEquals(listOf("channel-1"), after?.pinnedOrder, "rollback should restore the previous pinned order")
+        scope.cancel()
+    }
+
+    @Test
+    fun setPinnedSortModePersistsAndPatchesSidebarOrder() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1"),
+            pinnedSortMode = "manual"
+        )
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val updatedSnapshot = initial.copy(pinnedSortMode = "az")
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = sourceWithSidebarOrder(
+                initial = initial,
+                updateResult = DataResult.Content(updatedSnapshot),
+                updateCalls = updateCalls
+            ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(updatedSnapshot)
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.SetPinnedSortMode(SlockSidebarSortMode.Az))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals("az", after?.pinnedSortMode)
+        assertEquals(1, updateCalls.size)
+        assertEquals("az", updateCalls.first().pinnedSortMode)
+        assertEquals(null, updateCalls.first().pinnedChannelIds)
+        assertEquals(null, updateCalls.first().pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
+    fun pinnedLazyItemCountGrowsWhenPinnedItemsArePresent() {
+        val collapsed = homeLazyItemCount(
+            channelsCount = 3,
+            jointCount = 0,
+            directMessagesCount = 2,
+            pinnedCount = 2,
+            channelsExpanded = false,
+            jointChannelsExpanded = false,
+            directMessagesExpanded = false,
+            pinnedExpanded = false,
+            contentRefreshEnabled = true
+        )
+        // 8 fixed + 1 refresh + 0 joint section + 2 pinned section items (header + spacer) = 11
+        assertEquals(11, collapsed)
+        val expanded = homeLazyItemCount(
+            channelsCount = 3,
+            jointCount = 0,
+            directMessagesCount = 2,
+            pinnedCount = 2,
+            channelsExpanded = false,
+            jointChannelsExpanded = false,
+            directMessagesExpanded = false,
+            pinnedExpanded = true,
+            contentRefreshEnabled = true
+        )
+        assertEquals(13, expanded)
+    }
+
+    private fun sourceWithSidebarOrder(
+        initial: SettingsServerSidebarOrderSnapshot,
+        updateResult: DataResult<SettingsServerSidebarOrderSnapshot>,
+        updateCalls: MutableList<SettingsServerSidebarOrderUpdateRequest> = mutableListOf()
+    ): SharedHomeDataSource =
+        SharedHomeDataSource(
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            api = RecordingHomeApi(),
+            parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = initial)) }
+        )
+
+    // end #211 --------------------------------------------------------------
 }
