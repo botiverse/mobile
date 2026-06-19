@@ -100,15 +100,17 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun highlightedUserMentionUsesReactYellowChipColor() {
-        assertEquals(
-            SlockColor.BrandYellow,
-            slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true)
-        )
-        assertEquals(
-            SlockColor.AccentLavender,
-            slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention)
-        )
+    fun markdownReferenceTagsUseSingleReactChipColor() {
+        val referenceColor = slockMarkdownTagColor(ThreadMarkdownTagKind.Channel)
+
+        assertEquals(SlockColor.SurfaceCream, referenceColor)
+        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
+        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
+        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
+        assertFalse(referenceColor == SlockColor.BrandYellow)
+        assertFalse(referenceColor == SlockColor.AccentCyan)
+        assertFalse(referenceColor == SlockColor.AccentOrange)
+        assertFalse(referenceColor == SlockColor.AccentLavender)
     }
 
     @Test
