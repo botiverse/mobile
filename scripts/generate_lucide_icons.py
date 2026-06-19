@@ -196,6 +196,10 @@ BRAND_SVGS = {
     ),
 }
 
+ANDROID_FILLED_ICON_VARIANTS = {
+    "bookmark": "filled-bookmark",
+}
+
 DEFAULT_ANDROID_OUTPUT = os.path.join(
     REPO_ROOT,
     "compose",
@@ -497,6 +501,22 @@ def strip_ns(tag):
     return tag.replace(f"{{{SVG_NS}}}", "")
 
 
+def android_filled_variant_svg(icon_name, svg_text):
+    normalized = normalize_icon_name(icon_name)
+    if normalized != "bookmark":
+        raise ValueError(f"Unsupported filled Android icon variant: {icon_name}")
+
+    ET.register_namespace("", SVG_NS)
+    root = ET.fromstring(svg_text)
+    root.set("fill", "currentColor")
+    root.set("stroke", "currentColor")
+    for element in root.iter():
+        if strip_ns(element.tag) == "path":
+            element.set("fill", "currentColor")
+            element.set("stroke", "currentColor")
+    return ET.tostring(root, encoding="unicode")
+
+
 def resolve_paint(value):
     if not value:
         return None
@@ -612,26 +632,45 @@ def collect_imports(kt_content):
     return [line for line in kt_content.splitlines() if line.startswith("import ")]
 
 
+def android_vector_entry(icon_file_name, prop, svg, tmpdir, package):
+    svg_path = os.path.join(tmpdir, f"{icon_file_name}.svg")
+    with open(svg_path, "w", encoding="utf-8") as file:
+        file.write(svg)
+
+    out_path = os.path.join(tmpdir, f"{prop}.kt")
+    run_s2c(svg_path, out_path, package)
+    with open(out_path, "r", encoding="utf-8") as file:
+        kt_content = file.read()
+
+    return collect_imports(kt_content), extract_builder_block(kt_content, prop)
+
+
 def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
     package = "ai.slock.android.ui.icons"
     entries = []
+    variant_entries = []
     all_imports = set()
 
     with tempfile.TemporaryDirectory() as tmpdir:
         for name in icons:
             prop = pascal_name(name)
             svg = read_lucide_svg(name, version, fallback_dir=fallback_dir, lucide_source_dir=lucide_source_dir)
-            svg_path = os.path.join(tmpdir, f"{name}.svg")
-            with open(svg_path, "w", encoding="utf-8") as file:
-                file.write(svg)
+            imports, block = android_vector_entry(name, prop, svg, tmpdir, package)
+            all_imports.update(imports)
+            entries.append((name, prop, block))
 
-            out_path = os.path.join(tmpdir, f"{prop}.kt")
-            run_s2c(svg_path, out_path, package)
-            with open(out_path, "r", encoding="utf-8") as file:
-                kt_content = file.read()
-
-            all_imports.update(collect_imports(kt_content))
-            entries.append((name, prop, extract_builder_block(kt_content, prop)))
+            variant_name = ANDROID_FILLED_ICON_VARIANTS.get(name)
+            if variant_name:
+                variant_prop = pascal_name(variant_name)
+                variant_imports, variant_block = android_vector_entry(
+                    variant_name,
+                    variant_prop,
+                    android_filled_variant_svg(name, svg),
+                    tmpdir,
+                    package,
+                )
+                all_imports.update(variant_imports)
+                variant_entries.append((variant_name, variant_prop, variant_block))
 
     sorted_imports = sorted(all_imports)
     sorted_imports.append("import java.util.Locale")
@@ -646,7 +685,7 @@ def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
         f'    const val Version: String = "{version}"',
         "",
     ]
-    for _, prop, block in entries:
+    for _, prop, block in [*entries, *variant_entries]:
         indented = "\n".join("        " + line if line.strip() else "" for line in block.splitlines())
         lines.extend([f"    val {prop}: ImageVector by lazy {{", indented, "    }", ""])
 
@@ -687,7 +726,10 @@ def generate_android(icons, version, output, fallback_dir, lucide_source_dir):
     os.makedirs(os.path.dirname(output), exist_ok=True)
     with open(output, "w", encoding="utf-8") as file:
         file.write("\n".join(lines))
-    print(f"Generated {len(entries)} Android icons -> {output}")
+    if variant_entries:
+        print(f"Generated {len(entries)} Android icons + {len(variant_entries)} variants -> {output}")
+    else:
+        print(f"Generated {len(entries)} Android icons -> {output}")
 
 
 def parse_dimension(raw):

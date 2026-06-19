@@ -33,26 +33,64 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
     }
 
     override fun setProp(propKey: String, propValue: Any): Boolean {
-        when (propKey) {
-            PROP_NAME -> iconName = propValue.toString()
-            PROP_COLOR -> tint = parseColor(propValue)
-            PROP_FILL -> fillTint = parseOptionalColor(propValue)
-            PROP_STROKE_WIDTH -> strokeWidthOverride = parseStrokeWidth(propValue)
-            else -> return super.setProp(propKey, propValue)
+        val changed =
+                when (propKey) {
+                    PROP_NAME -> updateIconName(propValue.toString())
+                    PROP_COLOR -> updateTint(parseColor(propValue))
+                    PROP_FILL -> updateFillTint(parseOptionalColor(propValue))
+                    PROP_STROKE_WIDTH -> updateStrokeWidth(parseStrokeWidth(propValue))
+                    else -> return super.setProp(propKey, propValue)
+                }
+        if (changed) {
+            renderIcon()
         }
-        renderIcon()
         return true
     }
 
     override fun resetProp(propKey: String): Boolean {
-        when (propKey) {
-            PROP_NAME -> iconName = ""
-            PROP_COLOR -> tint = Color.Black
-            PROP_FILL -> fillTint = null
-            PROP_STROKE_WIDTH -> strokeWidthOverride = null
-            else -> return super.resetProp(propKey)
+        val changed =
+                when (propKey) {
+                    PROP_NAME -> updateIconName("")
+                    PROP_COLOR -> updateTint(Color.Black)
+                    PROP_FILL -> updateFillTint(null)
+                    PROP_STROKE_WIDTH -> updateStrokeWidth(null)
+                    else -> return super.resetProp(propKey)
+                }
+        if (changed) {
+            renderIcon()
         }
-        renderIcon()
+        return true
+    }
+
+    private fun updateIconName(next: String): Boolean {
+        if (iconName == next) {
+            return false
+        }
+        iconName = next
+        return true
+    }
+
+    private fun updateTint(next: Color): Boolean {
+        if (tint == next) {
+            return false
+        }
+        tint = next
+        return true
+    }
+
+    private fun updateFillTint(next: Color?): Boolean {
+        if (fillTint == next) {
+            return false
+        }
+        fillTint = next
+        return true
+    }
+
+    private fun updateStrokeWidth(next: Float?): Boolean {
+        if (strokeWidthOverride == next) {
+            return false
+        }
+        strokeWidthOverride = next
         return true
     }
 
@@ -63,12 +101,7 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
 
     private fun renderIcon() {
         val resolvedFillTint = fillTint
-        val vector =
-                if (resolvedFillTint != null && iconName.equals("bookmark", ignoreCase = true)) {
-                    FilledBookmarkIcon
-                } else {
-                    vectorFor(iconName, strokeWidthOverride)
-                }
+        val vector = vectorFor(iconName, strokeWidthOverride, resolvedFillTint != null)
         composeView.setContent {
             if (vector != null) {
                 LucideVectorIcon(vector = vector, tint = resolvedFillTint ?: tint)
@@ -76,9 +109,13 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         }
     }
 
-    private fun vectorFor(name: String, strokeWidth: Float?): ImageVector? {
+    private fun vectorFor(name: String, strokeWidth: Float?, fillEnabled: Boolean): ImageVector? {
+        val iconKey = name.toIconKey()
+        if (fillEnabled && iconKey == "bookmark") {
+            return LucideIcons.FilledBookmark
+        }
         val requestedWidth = strokeWidth?.takeIf { it > 0f }
-        if (name.toIconKey() == "check" && requestedWidth != null) {
+        if (iconKey == "check" && requestedWidth != null) {
             return checkVector(requestedWidth)
         }
         return LucideIcons.byName(name)
@@ -152,77 +189,5 @@ internal class SlockLucideIconRenderView(context: Context) : KRView(context) {
         private const val PROP_COLOR = "color"
         private const val PROP_FILL = "fill"
         private const val PROP_STROKE_WIDTH = "strokeWidth"
-
-        private val FilledBookmarkIcon: ImageVector by lazy {
-            ImageVector.Builder(
-                            name = "SlockFilledBookmark",
-                            defaultWidth = 24.0.dp,
-                            defaultHeight = 24.0.dp,
-                            viewportWidth = 24.0f,
-                            viewportHeight = 24.0f,
-                    )
-                    .apply {
-                        path(
-                                fill = SolidColor(Color.Black),
-                                stroke = SolidColor(Color.Black),
-                                strokeLineCap = StrokeCap.Round,
-                                strokeLineJoin = StrokeJoin.Round,
-                                strokeLineWidth = 2.0f,
-                        ) {
-                            moveTo(x = 17.0f, y = 3.0f)
-                            arcToRelative(
-                                    a = 2.0f,
-                                    b = 2.0f,
-                                    theta = 0.0f,
-                                    isMoreThanHalf = false,
-                                    isPositiveArc = true,
-                                    dx1 = 2.0f,
-                                    dy1 = 2.0f,
-                            )
-                            verticalLineToRelative(dy = 15.0f)
-                            arcToRelative(
-                                    a = 1.0f,
-                                    b = 1.0f,
-                                    theta = 0.0f,
-                                    isMoreThanHalf = false,
-                                    isPositiveArc = true,
-                                    dx1 = -1.496f,
-                                    dy1 = 0.868f,
-                            )
-                            lineToRelative(dx = -4.512f, dy = -2.578f)
-                            arcToRelative(
-                                    a = 2.0f,
-                                    b = 2.0f,
-                                    theta = 0.0f,
-                                    isMoreThanHalf = false,
-                                    isPositiveArc = false,
-                                    dx1 = -1.984f,
-                                    dy1 = 0.0f,
-                            )
-                            lineToRelative(dx = -4.512f, dy = 2.578f)
-                            arcTo(
-                                    horizontalEllipseRadius = 1.0f,
-                                    verticalEllipseRadius = 1.0f,
-                                    theta = 0.0f,
-                                    isMoreThanHalf = false,
-                                    isPositiveArc = true,
-                                    x1 = 5.0f,
-                                    y1 = 20.0f,
-                            )
-                            verticalLineTo(y = 5.0f)
-                            arcToRelative(
-                                    a = 2.0f,
-                                    b = 2.0f,
-                                    theta = 0.0f,
-                                    isMoreThanHalf = false,
-                                    isPositiveArc = true,
-                                    dx1 = 2.0f,
-                                    dy1 = -2.0f,
-                            )
-                            close()
-                        }
-                    }
-                    .build()
-        }
     }
 }

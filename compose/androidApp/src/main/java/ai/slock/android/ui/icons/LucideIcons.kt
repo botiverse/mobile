@@ -5651,6 +5651,36 @@ object LucideIcons {
                 }.build()
     }
 
+    val FilledBookmark: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFilledBookmark",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        fill = SolidColor(Color(0xFF000000)),
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.0f, y = 3.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 15.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.496f, dy1 = 0.868f)
+                        lineToRelative(dx = -4.512f, dy = -2.578f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.984f, dy1 = 0.0f)
+                        lineToRelative(dx = -4.512f, dy = 2.578f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5.0f, y1 = 20.0f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                }.build()
+    }
+
     val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-ring", "blocks", "bookmark", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "eraser", "external-link", "eye", "eye-off", "file", "file-check", "file-code", "file-text", "flag", "flame", "folder-open", "funnel", "git-branch", "globe", "hash", "heart", "house", "image", "image-plus", "inbox", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pencil", "pin", "pin-off", "play", "plus", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
 
     fun byName(name: String): ImageVector? {
