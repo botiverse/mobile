@@ -670,6 +670,62 @@ private fun SharedTasksToolbar(
     onCreateClick: () -> Unit
 ) {
     val anyFilterActive = selectedChannels.isNotEmpty() || selectedCreatorIds.isNotEmpty() || selectedAssigneeIds.isNotEmpty()
+    val channelChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
+            iconName = SlockLucideIconName.Hash,
+            active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
+            enabled = channelOptions.isNotEmpty(),
+            borderColor = SlockColor.EmptyStateGray,
+            onClick = onChannelChipClick
+        )
+    }
+    val creatorChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
+            iconName = SlockLucideIconName.CircleUser,
+            active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
+            enabled = creatorOptions.isNotEmpty(),
+            borderColor = SlockColor.EmptyStateGray,
+            onClick = onCreatorChipClick
+        )
+    }
+    val assigneeChip: @Composable () -> Unit = {
+        SlockAnchoredToolbarChip(
+            label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
+            iconName = SlockLucideIconName.User,
+            active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
+            enabled = assigneeOptions.isNotEmpty(),
+            borderColor = SlockColor.EmptyStateGray,
+            onClick = onAssigneeChipClick
+        )
+    }
+    val clearAllChip: @Composable () -> Unit = {
+        SlockToolbarChip(
+            label = "Clear all",
+            iconName = SlockLucideIconName.X,
+            active = false,
+            onClick = onClearAll
+        )
+    }
+    val newTaskButton: @Composable () -> Unit = {
+        SlockBrutalActionButton(
+            label = "NEW TASK",
+            leadingIcon = SlockLucideIconName.Plus,
+            backgroundColor = SlockColor.AccentPink,
+            minWidth = 0.dp,
+            minHeight = 30.dp,
+            shadowOffset = 2.dp,
+            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            onClick = onCreateClick
+        )
+    }
+    val viewSwitch: @Composable () -> Unit = {
+        SharedTasksSegmentedControl(
+            selectedMode = selectedMode,
+            onModeSelected = onModeSelected
+        )
+    }
     Column(
         modifier =
             Modifier
@@ -683,77 +739,63 @@ private fun SharedTasksToolbar(
                     .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (showChannelFilter) {
-                    item {
-                        SlockAnchoredToolbarChip(
-                            label = if (selectedChannels.isEmpty()) "Channel" else "Channel · ${selectedChannels.size}",
-                            iconName = SlockLucideIconName.Hash,
-                            active = openFilterId == "channel" || selectedChannels.isNotEmpty(),
-                            enabled = channelOptions.isNotEmpty(),
-                            borderColor = SlockColor.EmptyStateGray,
-                            onClick = onChannelChipClick
-                        )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val singleLine = maxWidth >= 640.dp
+                val compact = maxWidth < 360.dp
+                if (singleLine) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (showChannelFilter) channelChip()
+                        creatorChip()
+                        assigneeChip()
+                        if (anyFilterActive) clearAllChip()
+                        if (showCreateButton) newTaskButton()
+                        Spacer(Modifier.weight(1f))
+                        viewSwitch()
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (showChannelFilter) channelChip()
+                            creatorChip()
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            assigneeChip()
+                            if (compact && anyFilterActive) clearAllChip()
+                        }
+                        if ((!compact && anyFilterActive) || showCreateButton) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (!compact && anyFilterActive) clearAllChip()
+                                if (showCreateButton) newTaskButton()
+                            }
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            viewSwitch()
+                        }
                     }
                 }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = if (selectedCreatorIds.isEmpty()) "Creator" else "Creator · ${selectedCreatorIds.size}",
-                        iconName = SlockLucideIconName.CircleUser,
-                        active = openFilterId == "creator" || selectedCreatorIds.isNotEmpty(),
-                        enabled = creatorOptions.isNotEmpty(),
-                        borderColor = SlockColor.EmptyStateGray,
-                        onClick = onCreatorChipClick
-                    )
-                }
-                item {
-                    SlockAnchoredToolbarChip(
-                        label = if (selectedAssigneeIds.isEmpty()) "Assignee" else "Assignee · ${selectedAssigneeIds.size}",
-                        iconName = SlockLucideIconName.User,
-                        active = openFilterId == "assignee" || selectedAssigneeIds.isNotEmpty(),
-                        enabled = assigneeOptions.isNotEmpty(),
-                        borderColor = SlockColor.EmptyStateGray,
-                        onClick = onAssigneeChipClick
-                    )
-                }
-                if (anyFilterActive) {
-                    item {
-                        SlockToolbarChip(
-                            label = "Clear all",
-                            iconName = SlockLucideIconName.X,
-                            active = false,
-                            onClick = onClearAll
-                        )
-                    }
-                }
-                if (showCreateButton) {
-                    item {
-                        SlockBrutalActionButton(
-                            label = "NEW TASK",
-                            leadingIcon = SlockLucideIconName.Plus,
-                            backgroundColor = SlockColor.AccentPink,
-                            minWidth = 0.dp,
-                            minHeight = 30.dp,
-                            shadowOffset = 2.dp,
-                            textStyle = SlockType.TabLabel.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                            onClick = onCreateClick
-                        )
-                    }
-                }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
-                SharedTasksSegmentedControl(
-                    selectedMode = selectedMode,
-                    onModeSelected = onModeSelected
-                )
             }
         }
         Box(
