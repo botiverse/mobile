@@ -1612,7 +1612,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> Color.Transparent
+        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
     }
     val borderColor = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1754,7 +1754,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Selected -> SlockColor.AccentPink
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> Color.Transparent
+        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
