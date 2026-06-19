@@ -9,6 +9,8 @@ import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalPanelShell
 import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockBrutalSectionLabel
+import ai.slock.compose.components.SlockBrutalSelectField
+import ai.slock.compose.components.SlockBrutalSelectOption
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockLinkButton
 import ai.slock.compose.components.SlockToolbarChip
@@ -28,6 +30,7 @@ import ai.slock.compose.data.MOBILE_ACTION_PERMISSION
 import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
 import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
 import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
+import ai.slock.compose.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -160,6 +163,8 @@ import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
+import ai.slock.compose.data.SettingsAppearanceSnapshot
+import ai.slock.compose.data.SettingsAppearanceUpdateRequest
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
@@ -342,6 +347,8 @@ private const val SettingsDestinationServer = "server"
 private const val SettingsDestinationConnectedApps = "connected-apps"
 private const val SettingsDestinationBilling = "billing"
 private const val SettingsDestinationLanguageRegion = "language-region"
+private const val SettingsDestinationAppearance = "appearance"
+private const val SettingsDestinationNotifications = "notifications"
 private const val SettingsDestinationMobile = "mobile"
 private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
@@ -2286,8 +2293,15 @@ private fun SettingsAppShellContent(
     var connectedAppManifestUrl by remember { mutableStateOf("") }
     var connectedAppPublishCategory by remember { mutableStateOf("productivity") }
     var connectedAppPublishDataAccess by remember { mutableStateOf("") }
+    var languageRegionLanguageDraft by remember { mutableStateOf("") }
+    var languageRegionDisplayDraft by remember { mutableStateOf("translated") }
+    var languageRegionTimezoneDraft by remember { mutableStateOf("") }
+    var languageRegionTimeFormatDraft by remember { mutableStateOf("") }
+    var appearanceMessageFontSizeDraft by remember { mutableStateOf("md") }
     val currentServerSnapshot = settingsState.server.currentContent()
     val currentConnectedAppsSnapshot = settingsState.connectedApps.currentContent()
+    val currentLanguageRegionSnapshot = settingsState.languageRegion.currentContent()
+    val currentAppearanceSnapshot = settingsState.appearance.currentContent()
     val currentServerProfile = settingsState.server.currentContent()?.profile
     val currentServerName = currentServerProfile?.name ?: session?.currentServerSummary()?.name.orEmpty()
     val currentServerSlug = currentServerProfile?.slug ?: session?.currentServerSummary()?.slug.orEmpty()
@@ -2307,6 +2321,24 @@ private fun SettingsAppShellContent(
     LaunchedEffect(currentOnboarding?.onboardingAgentId, currentOnboarding?.agentAllChannelGreetingEnabled) {
         serverOnboardingAgentId = currentOnboarding?.onboardingAgentId.orEmpty()
         serverOnboardingGreetingEnabled = currentOnboarding?.agentAllChannelGreetingEnabled ?: true
+    }
+    LaunchedEffect(
+        currentLanguageRegionSnapshot?.browserLanguage?.selectedKey,
+        currentLanguageRegionSnapshot?.autoTranslation?.enabled,
+        currentLanguageRegionSnapshot?.timezone?.selectedKey,
+        currentLanguageRegionSnapshot?.timeFormat?.selectedKey
+    ) {
+        currentLanguageRegionSnapshot?.let { snapshot ->
+            languageRegionLanguageDraft = snapshot.browserLanguage.selectedKey
+            languageRegionDisplayDraft = if (snapshot.autoTranslation.enabled) "translated" else "original"
+            languageRegionTimezoneDraft = snapshot.timezone.selectedKey
+            languageRegionTimeFormatDraft = snapshot.timeFormat.selectedKey
+        }
+    }
+    LaunchedEffect(currentAppearanceSnapshot?.messageBodyFontSize?.selectedKey) {
+        currentAppearanceSnapshot?.let { snapshot ->
+            appearanceMessageFontSizeDraft = snapshot.messageBodyFontSize.selectedKey
+        }
     }
     LaunchedEffect(currentServerSlug) {
         serverDeleteConfirmation = ""
@@ -2474,53 +2506,73 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding
                 ) { _, _ -> }
             SettingsDestinationLanguageRegion ->
-                SharedSettingsSectionContent(
-                    settingsState.languageRegion.toLanguageRegionPayload(
-                        actionState = settingsState.actionState,
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.LanguageRegion)
-                    ),
-                    bottomContentPadding = bottomContentPadding
-                ) { action, itemId ->
-                    when (action) {
-                        LANGUAGE_REGION_ACTION_SERVER_TRANSLATION ->
-                            onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(itemId == "true"))
-                        LANGUAGE_REGION_ACTION_AUTO_TRANSLATION ->
+                SettingsLanguageRegionContent(
+                    state = settingsState.languageRegion,
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.LanguageRegion),
+                    languageDraft = languageRegionLanguageDraft,
+                    displayDraft = languageRegionDisplayDraft,
+                    timezoneDraft = languageRegionTimezoneDraft,
+                    timeFormatDraft = languageRegionTimeFormatDraft,
+                    bottomContentPadding = bottomContentPadding,
+                    onLanguageDraftChange = { languageRegionLanguageDraft = it },
+                    onDisplayDraftChange = { languageRegionDisplayDraft = it },
+                    onTimezoneDraftChange = { languageRegionTimezoneDraft = it },
+                    onTimeFormatDraftChange = { languageRegionTimeFormatDraft = it },
+                    onServerTranslationChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetLanguageRegionServerTranslation(enabled))
+                    },
+                    onSaveLanguage = {
+                        val selected = languageRegionLanguageDraft.takeIf { it.isNotBlank() }
+                        onSettingsIntent(
+                            SharedSettingsIntent.UpdateLanguageRegionPreference(
+                                if (selected == null || selected == "other") {
+                                    SettingsLanguageRegionPreferenceUpdateRequest(
+                                        clearPreferredLanguage = true,
+                                        autoTranslationEnabled = languageRegionDisplayDraft == "translated"
+                                    )
+                                } else {
+                                    SettingsLanguageRegionPreferenceUpdateRequest(
+                                        preferredLanguage = selected,
+                                        autoTranslationEnabled = languageRegionDisplayDraft == "translated"
+                                    )
+                                }
+                            )
+                        )
+                    },
+                    onSaveTime = {
+                        val timezone = languageRegionTimezoneDraft.takeIf { it.isNotBlank() }
+                        val timeFormat = languageRegionTimeFormatDraft.takeIf { it.isNotBlank() }
+                        if (timezone != null || timeFormat != null) {
                             onSettingsIntent(
                                 SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                    SettingsLanguageRegionPreferenceUpdateRequest(autoTranslationEnabled = itemId == "true")
+                                    SettingsLanguageRegionPreferenceUpdateRequest(
+                                        preferredTimezone = timezone,
+                                        preferredTimeFormat = timeFormat
+                                    )
                                 )
                             )
-                        LANGUAGE_REGION_ACTION_LANGUAGE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(
-                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                        if (it == "other") {
-                                            SettingsLanguageRegionPreferenceUpdateRequest(clearPreferredLanguage = true)
-                                        } else {
-                                            SettingsLanguageRegionPreferenceUpdateRequest(preferredLanguage = it)
-                                        }
-                                    )
-                                )
-                            }
-                        LANGUAGE_REGION_ACTION_TIMEZONE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(
-                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                        SettingsLanguageRegionPreferenceUpdateRequest(preferredTimezone = it)
-                                    )
-                                )
-                            }
-                        LANGUAGE_REGION_ACTION_TIME_FORMAT ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(
-                                    SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                        SettingsLanguageRegionPreferenceUpdateRequest(preferredTimeFormat = it)
-                                    )
-                                )
-                            }
-                        else -> onSettingsAction(action, itemId)
-                    }
-                }
+                        }
+                    },
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.LanguageRegion)) }
+                )
+            SettingsDestinationAppearance ->
+                SettingsAppearanceContent(
+                    state = settingsState.appearance,
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Appearance),
+                    fontSizeDraft = appearanceMessageFontSizeDraft,
+                    bottomContentPadding = bottomContentPadding,
+                    onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
+                    onSave = {
+                        onSettingsIntent(
+                            SharedSettingsIntent.UpdateAppearance(
+                                SettingsAppearanceUpdateRequest(appearanceMessageFontSizeDraft)
+                            )
+                        )
+                    },
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Appearance)) }
+                )
             SettingsDestinationServer ->
                 SharedSettingsServerContent(
                     payload = settingsState.server.toServerPayload(
@@ -2718,6 +2770,23 @@ private fun SettingsAppShellContent(
                     onRefresh = {
                         onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
                     }
+                )
+            SettingsDestinationNotifications ->
+                SettingsNotificationsContent(
+                    state = settingsState.mobile,
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Notifications),
+                    bottomContentPadding = bottomContentPadding,
+                    onNotificationPreferenceChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
+                    },
+                    onServerMuteChange = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetServerMute(enabled))
+                    },
+                    onPermission = { onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission) },
+                    onSettings = { onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings) },
+                    onTest = { onSettingsIntent(SharedSettingsIntent.SendTestNotification) },
+                    onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications)) }
                 )
             SettingsDestinationMobile ->
                 SharedSettingsSectionContent(
@@ -3138,6 +3207,547 @@ private fun SettingsConnectedAppsContent(
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
 }
+
+@Composable
+private fun SettingsLanguageRegionContent(
+    state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
+    actionState: SharedSettingsActionState?,
+    refreshing: Boolean,
+    languageDraft: String,
+    displayDraft: String,
+    timezoneDraft: String,
+    timeFormatDraft: String,
+    bottomContentPadding: Dp,
+    onLanguageDraftChange: (String) -> Unit,
+    onDisplayDraftChange: (String) -> Unit,
+    onTimezoneDraftChange: (String) -> Unit,
+    onTimeFormatDraftChange: (String) -> Unit,
+    onServerTranslationChange: (Boolean) -> Unit,
+    onSaveLanguage: () -> Unit,
+    onSaveTime: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val payload =
+        KuiklySharedSettingsPayload(
+            title = "Language & Region",
+            detail =
+                if (refreshing) {
+                    "Refreshing language and region settings..."
+                } else {
+                    "Manage language, message display, timezone, and timestamp format."
+                },
+            heroIconName = SlockLucideIconName.Languages,
+            heroLabel = "Language & Region"
+        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(payload) }
+        when (state) {
+            ScreenLoadState.Loading ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading language and region settings.", null, onRetry)
+                }
+            is ScreenLoadState.Empty ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Languages, "Unavailable", state.reason.name, "Retry", onRetry)
+                }
+            is ScreenLoadState.Error ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Language Error", state.error.code, "Retry", onRetry)
+                }
+            is ScreenLoadState.NoPermission ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                }
+            is ScreenLoadState.Content -> {
+                val snapshot = state.data
+                item {
+                    SettingsLanguagePreferenceCard(
+                        snapshot = snapshot,
+                        languageDraft = languageDraft,
+                        displayDraft = displayDraft,
+                        actionState = actionState,
+                        onLanguageDraftChange = onLanguageDraftChange,
+                        onDisplayDraftChange = onDisplayDraftChange,
+                        onSubmit = onSaveLanguage
+                    )
+                }
+                item {
+                    SettingsDateTimePreferenceCard(
+                        snapshot = snapshot,
+                        timezoneDraft = timezoneDraft,
+                        timeFormatDraft = timeFormatDraft,
+                        actionState = actionState,
+                        onTimezoneDraftChange = onTimezoneDraftChange,
+                        onTimeFormatDraftChange = onTimeFormatDraftChange,
+                        onSubmit = onSaveTime
+                    )
+                }
+                item {
+                    SettingsServerTranslationPreferenceCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onServerTranslationChange = onServerTranslationChange
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsLanguagePreferenceCard(
+    snapshot: SettingsLanguageRegionSnapshot,
+    languageDraft: String,
+    displayDraft: String,
+    actionState: SharedSettingsActionState?,
+    onLanguageDraftChange: (String) -> Unit,
+    onDisplayDraftChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val languageBusy = actionState?.action == LANGUAGE_REGION_ACTION_LANGUAGE && actionState.inProgress
+    val displayBusy = actionState?.action == LANGUAGE_REGION_ACTION_AUTO_TRANSLATION && actionState.inProgress
+    val busy = languageBusy || displayBusy
+    val currentDisplay = if (snapshot.autoTranslation.enabled) "translated" else "original"
+    val dirty = languageDraft != snapshot.browserLanguage.selectedKey || displayDraft != currentDisplay
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
+        SettingsFormDetailText("Choose your preferred language and whether messages display translated or original text.")
+        SlockBrutalSectionLabel(label = "Preferred language")
+        SlockBrutalSelectField(
+            options = snapshot.browserLanguage.toSelectOptions(),
+            selectedId = languageDraft.ifBlank { snapshot.browserLanguage.selectedKey },
+            selectedLabel = snapshot.browserLanguage.labelFor(languageDraft),
+            onSelect = { onLanguageDraftChange(it.id) },
+            enabled = snapshot.browserLanguage.available && !busy
+        )
+        SlockBrutalSectionLabel(label = "Message display")
+        SegmentedControl(
+            selectedValue = displayDraft.ifBlank { currentDisplay },
+            options =
+                listOf(
+                    SegmentedControlOption("translated", "Translated", SlockLucideIconName.Languages),
+                    SegmentedControlOption("original", "Original", SlockLucideIconName.FileText)
+                ),
+            onValueSelected = onDisplayDraftChange,
+            enabled = snapshot.autoTranslation.available && !busy
+        )
+        if (!snapshot.autoTranslation.available) {
+            SettingsFormDetailText(snapshot.autoTranslation.detail)
+        }
+        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION) && it.errorCode != null } == true) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+        SlockBrutalActionButton(
+            label = actionState.statusFor(LANGUAGE_REGION_ACTION_LANGUAGE, "Save language"),
+            onClick = onSubmit,
+            enabled = dirty && !busy,
+            leadingIcon = SlockLucideIconName.Save,
+            backgroundColor = SlockColor.BrandYellow
+        )
+    }
+}
+
+@Composable
+private fun SettingsDateTimePreferenceCard(
+    snapshot: SettingsLanguageRegionSnapshot,
+    timezoneDraft: String,
+    timeFormatDraft: String,
+    actionState: SharedSettingsActionState?,
+    onTimezoneDraftChange: (String) -> Unit,
+    onTimeFormatDraftChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val timezoneBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIMEZONE && actionState.inProgress
+    val timeFormatBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIME_FORMAT && actionState.inProgress
+    val busy = timezoneBusy || timeFormatBusy
+    val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = "Date & Time") {
+        SettingsFormDetailText("Timezone and time format affect timestamps across channels, threads, and Settings.")
+        SlockBrutalSectionLabel(label = "Timezone")
+        SlockBrutalSelectField(
+            options = snapshot.timezone.toSelectOptions(),
+            selectedId = timezoneDraft.ifBlank { snapshot.timezone.selectedKey },
+            selectedLabel = snapshot.timezone.labelFor(timezoneDraft),
+            onSelect = { onTimezoneDraftChange(it.id) },
+            enabled = snapshot.timezone.available && !busy
+        )
+        SlockBrutalSectionLabel(label = "Time format")
+        SegmentedControl(
+            selectedValue = timeFormatDraft.ifBlank { snapshot.timeFormat.selectedKey },
+            options =
+                listOf(
+                    SegmentedControlOption("12h", "12-hour", SlockLucideIconName.Clock3),
+                    SegmentedControlOption("24h", "24-hour", SlockLucideIconName.Clock)
+                ),
+            onValueSelected = onTimeFormatDraftChange,
+            enabled = snapshot.timeFormat.available && !busy
+        )
+        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT) && it.errorCode != null } == true) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+        SlockBrutalActionButton(
+            label = actionState.statusFor(LANGUAGE_REGION_ACTION_TIMEZONE, "Save time"),
+            onClick = onSubmit,
+            enabled = dirty && !busy,
+            leadingIcon = SlockLucideIconName.Save,
+            backgroundColor = SlockColor.BrandYellow
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerTranslationPreferenceCard(
+    snapshot: SettingsLanguageRegionSnapshot,
+    actionState: SharedSettingsActionState?,
+    onServerTranslationChange: (Boolean) -> Unit
+) {
+    val busy = actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.inProgress
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Wand, title = "Workspace translation") {
+        SettingsFormDetailText(snapshot.serverTranslation.detail)
+        SegmentedControl(
+            selectedValue = if (snapshot.serverTranslation.enabled) "on" else "off",
+            options =
+                listOf(
+                    SegmentedControlOption("on", "On", SlockLucideIconName.CircleCheck),
+                    SegmentedControlOption("off", "Off", SlockLucideIconName.X)
+                ),
+            onValueSelected = { onServerTranslationChange(it == "on") },
+            enabled = snapshot.serverTranslation.available && !busy
+        )
+        if (actionState?.action == LANGUAGE_REGION_ACTION_SERVER_TRANSLATION && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+    }
+}
+
+@Composable
+private fun SettingsAppearanceContent(
+    state: ScreenLoadState<SettingsAppearanceSnapshot>,
+    actionState: SharedSettingsActionState?,
+    refreshing: Boolean,
+    fontSizeDraft: String,
+    bottomContentPadding: Dp,
+    onFontSizeDraftChange: (String) -> Unit,
+    onSave: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val payload =
+        KuiklySharedSettingsPayload(
+            title = "Appearance",
+            detail =
+                if (refreshing) {
+                    "Refreshing appearance settings..."
+                } else {
+                    "Adjust message body text without changing chrome, buttons, labels, or code blocks."
+                },
+            heroIconName = SlockLucideIconName.Type,
+            heroLabel = "Appearance"
+        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(payload) }
+        when (state) {
+            ScreenLoadState.Loading ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading appearance settings.", null, onRetry)
+                }
+            is ScreenLoadState.Empty ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Type, "Unavailable", state.reason.name, "Retry", onRetry)
+                }
+            is ScreenLoadState.Error ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Appearance Error", state.error.code, "Retry", onRetry)
+                }
+            is ScreenLoadState.NoPermission ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                }
+            is ScreenLoadState.Content ->
+                item {
+                    SettingsAppearanceFontSizeCard(
+                        snapshot = state.data,
+                        fontSizeDraft = fontSizeDraft,
+                        actionState = actionState,
+                        onFontSizeDraftChange = onFontSizeDraftChange,
+                        onSubmit = onSave
+                    )
+                }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsAppearanceFontSizeCard(
+    snapshot: SettingsAppearanceSnapshot,
+    fontSizeDraft: String,
+    actionState: SharedSettingsActionState?,
+    onFontSizeDraftChange: (String) -> Unit,
+    onSubmit: () -> Unit
+) {
+    val busy = actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.inProgress
+    val selected = fontSizeDraft.ifBlank { snapshot.messageBodyFontSize.selectedKey }
+    val dirty = selected != snapshot.messageBodyFontSize.selectedKey
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = "Message font size") {
+        SettingsFormDetailText(snapshot.messageBodyFontSize.detail)
+        SegmentedControl(
+            selectedValue = selected,
+            options =
+                snapshot.messageBodyFontSize.options.map {
+                    SegmentedControlOption(it.key, it.label, SlockLucideIconName.Type)
+                },
+            onValueSelected = onFontSizeDraftChange,
+            enabled = snapshot.messageBodyFontSize.available && !busy
+        )
+        if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+        SlockBrutalActionButton(
+            label = actionState.statusFor(APPEARANCE_ACTION_MESSAGE_FONT_SIZE, "Save"),
+            onClick = onSubmit,
+            enabled = dirty && !busy,
+            leadingIcon = SlockLucideIconName.Save,
+            backgroundColor = SlockColor.AccentPink
+        )
+        SettingsFormDivider()
+        SettingsAppearancePreview(fontSizeKey = selected)
+    }
+}
+
+@Composable
+private fun SettingsAppearancePreview(fontSizeKey: String) {
+    val bodyStyle =
+        when (fontSizeKey) {
+            "sm" -> SlockType.Body.copy(fontSize = 12.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+            "lg" -> SlockType.Body.copy(fontSize = 16.sp, lineHeight = 22.sp, color = SlockColor.TextBlack)
+            else -> SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack)
+        }
+    Column(
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            "Preview",
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Top) {
+            SlockAvatar(avatarWireValue = "letter:AI", label = "AI", avatarSize = 28.dp)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Onboarding Assistant", style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+                Text(
+                    "@Joy #proj-uiux love the new design — doing a git pull now to try it locally.",
+                    style = bodyStyle,
+                    color = SlockColor.TextBlack
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsNotificationsContent(
+    state: ScreenLoadState<SettingsMobileSnapshot>,
+    actionState: SharedSettingsActionState?,
+    refreshing: Boolean,
+    bottomContentPadding: Dp,
+    onNotificationPreferenceChange: (Boolean) -> Unit,
+    onServerMuteChange: (Boolean) -> Unit,
+    onPermission: () -> Unit,
+    onSettings: () -> Unit,
+    onTest: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val payload =
+        KuiklySharedSettingsPayload(
+            title = "Notifications",
+            detail =
+                if (refreshing) {
+                    "Refreshing notification settings..."
+                } else {
+                    "Manage push status, test notifications, and workspace mute."
+                },
+            heroIconName = SlockLucideIconName.Bell,
+            heroLabel = "Notifications"
+        )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item { SharedSettingsHero(payload) }
+        when (state) {
+            ScreenLoadState.Loading ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Loader, "Loading", "Loading notification settings.", null, onRetry)
+                }
+            is ScreenLoadState.Empty ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Bell, "Unavailable", state.reason.name, "Retry", onRetry)
+                }
+            is ScreenLoadState.Error ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.TriangleAlert, "Notification Error", state.error.code, "Retry", onRetry)
+                }
+            is ScreenLoadState.NoPermission ->
+                item {
+                    SettingsLoadStateCard(SlockLucideIconName.Lock, "Permission Required", state.blocker.code, null, onRetry)
+                }
+            is ScreenLoadState.Content -> {
+                val snapshot = state.data
+                item { SettingsPwaInstallCard() }
+                item {
+                    SettingsPushStatusCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onNotificationPreferenceChange = onNotificationPreferenceChange,
+                        onPermission = onPermission,
+                        onSettings = onSettings,
+                        onTest = onTest
+                    )
+                }
+                item {
+                    SettingsServerMuteCard(
+                        snapshot = snapshot,
+                        actionState = actionState,
+                        onServerMuteChange = onServerMuteChange
+                    )
+                }
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsPwaInstallCard() {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
+        SettingsFormDetailText("Install prompts are managed by browser PWA APIs on web. Native Android and OHOS builds use their platform app install flow.")
+        SettingsFormEmptyText("No install prompt is available inside this native Settings surface.")
+    }
+}
+
+@Composable
+private fun SettingsPushStatusCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onNotificationPreferenceChange: (Boolean) -> Unit,
+    onPermission: () -> Unit,
+    onSettings: () -> Unit,
+    onTest: () -> Unit
+) {
+    val preferenceBusy = actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && actionState.inProgress
+    SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Push status") {
+        SettingsFormDetailText(snapshot.pushNotifications.detail)
+        SegmentedControl(
+            selectedValue = if (snapshot.pushNotifications.enabled) "enabled" else "disabled",
+            options =
+                listOf(
+                    SegmentedControlOption("enabled", "Enabled", SlockLucideIconName.BellRing),
+                    SegmentedControlOption("disabled", "Disabled", SlockLucideIconName.Bell)
+                ),
+            onValueSelected = { onNotificationPreferenceChange(it == "enabled") },
+            enabled = snapshot.pushNotifications.available && !preferenceBusy
+        )
+        SettingsFormDetailText("Current status: ${actionState.statusFor(MOBILE_ACTION_NOTIFICATION_PREFERENCE, snapshot.pushNotifications.statusLabel)}")
+        SettingsFormDivider()
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            SlockBrutalActionButton(
+                label = actionState.statusFor(MOBILE_ACTION_PERMISSION, "Enable"),
+                onClick = onPermission,
+                enabled = snapshot.notificationPermission.available && actionState?.inProgress != true,
+                leadingIcon = SlockLucideIconName.Bell,
+                backgroundColor = SlockColor.BrandYellow,
+                minWidth = 0.dp
+            )
+            SlockBrutalActionButton(
+                label = actionState.statusFor(MOBILE_ACTION_SETTINGS, "Settings"),
+                onClick = onSettings,
+                enabled = snapshot.notificationSettings.available && actionState?.inProgress != true,
+                leadingIcon = SlockLucideIconName.Settings,
+                backgroundColor = SlockColor.SurfaceWhite,
+                minWidth = 0.dp
+            )
+            SlockBrutalActionButton(
+                label = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, "Test"),
+                onClick = onTest,
+                enabled = snapshot.testNotification.available && actionState?.inProgress != true,
+                leadingIcon = SlockLucideIconName.Send,
+                backgroundColor = SlockColor.AccentPink,
+                minWidth = 0.dp
+            )
+        }
+        if (actionState?.let { it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS, MOBILE_ACTION_TEST_NOTIFICATION) && it.errorCode != null } == true) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerMuteCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onServerMuteChange: (Boolean) -> Unit
+) {
+    var muteDraft by remember(snapshot.muteServer.enabled) { mutableStateOf(snapshot.muteServer.enabled) }
+    val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
+    val dirty = muteDraft != snapshot.muteServer.enabled
+    SettingsFormSectionCard(iconName = SlockLucideIconName.VolumeX, title = "Workspace mute") {
+        SettingsFormDetailText(snapshot.muteServer.detail)
+        SegmentedControl(
+            selectedValue = if (muteDraft) "muted" else "unmuted",
+            options =
+                listOf(
+                    SegmentedControlOption("unmuted", "Unmuted", SlockLucideIconName.BellRing),
+                    SegmentedControlOption("muted", "Muted", SlockLucideIconName.VolumeX)
+                ),
+            onValueSelected = { muteDraft = it == "muted" },
+            enabled = snapshot.muteServer.available && !busy
+        )
+        if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode)
+        }
+        SlockBrutalActionButton(
+            label = actionState.statusFor(MOBILE_ACTION_SERVER_MUTE, "Save mute"),
+            onClick = { onServerMuteChange(muteDraft) },
+            enabled = snapshot.muteServer.available && dirty && !busy,
+            leadingIcon = SlockLucideIconName.Save,
+            backgroundColor = SlockColor.BrandYellow
+        )
+    }
+}
+
+@Composable
+private fun SettingsLoadStateCard(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String,
+    retryLabel: String?,
+    onRetry: () -> Unit
+) {
+    SettingsFormSectionCard(iconName = iconName, title = title) {
+        SettingsFormDetailText(detail)
+        retryLabel?.let {
+            SlockBrutalActionButton(
+                label = it,
+                onClick = onRetry,
+                leadingIcon = SlockLucideIconName.RefreshCw,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+        }
+    }
+}
+
+private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalSelectOption> =
+    options.map { SlockBrutalSelectOption(it.key, it.label) }
+
+private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
+    options.firstOrNull { it.key == key }?.label ?: selectedLabel
 
 @Composable
 private fun SettingsConnectedAppSecretCard(secret: SettingsConnectedAppSecretSnapshot) {
@@ -4475,9 +5085,23 @@ private fun appShellSettingsHomePayload(
                     selected = selectedDestination == SettingsDestinationLanguageRegion
                 ),
                 SlockTabItemPayload(
+                    key = SettingsDestinationAppearance,
+                    title = "Appearance",
+                    subtitle = "Message font size and reading density",
+                    iconName = SlockLucideIconName.Type,
+                    selected = selectedDestination == SettingsDestinationAppearance
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationNotifications,
+                    title = "Notifications",
+                    subtitle = "Push status and workspace mute",
+                    iconName = SlockLucideIconName.Bell,
+                    selected = selectedDestination == SettingsDestinationNotifications
+                ),
+                SlockTabItemPayload(
                     key = SettingsDestinationMobile,
                     title = "Mobile",
-                    subtitle = "Push notifications, language, layout",
+                    subtitle = "Device language and message alignment",
                     iconName = SlockLucideIconName.Smartphone,
                     selected = selectedDestination == SettingsDestinationMobile
                 ),
@@ -5938,6 +6562,8 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationConnectedApps -> "Connected Apps"
         SettingsDestinationBilling -> "Billing"
         SettingsDestinationLanguageRegion -> "Language & Region"
+        SettingsDestinationAppearance -> "Appearance"
+        SettingsDestinationNotifications -> "Notifications"
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
@@ -5955,7 +6581,9 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationConnectedApps -> "Marketplace, installed apps, OAuth clients"
         SettingsDestinationBilling -> "Plan and usage"
         SettingsDestinationLanguageRegion -> "Language, timezone, translation"
-        SettingsDestinationMobile -> "Phone and language"
+        SettingsDestinationAppearance -> "Message font size and preview"
+        SettingsDestinationNotifications -> "Push status and workspace mute"
+        SettingsDestinationMobile -> "Device language and message alignment"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
@@ -5972,6 +6600,8 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationConnectedApps -> SlockLucideIconName.Blocks
         SettingsDestinationBilling -> SlockLucideIconName.ShieldCheck
         SettingsDestinationLanguageRegion -> SlockLucideIconName.Languages
+        SettingsDestinationAppearance -> SlockLucideIconName.Type
+        SettingsDestinationNotifications -> SlockLucideIconName.Bell
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
         SettingsDestinationAbout -> SlockLucideIconName.Bug
@@ -5989,6 +6619,8 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
         SettingsDestinationConnectedApps -> SharedSettingsDestination.ConnectedApps
         SettingsDestinationBilling -> SharedSettingsDestination.Billing
         SettingsDestinationLanguageRegion -> SharedSettingsDestination.LanguageRegion
+        SettingsDestinationAppearance -> SharedSettingsDestination.Appearance
+        SettingsDestinationNotifications -> SharedSettingsDestination.Notifications
         SettingsDestinationMobile -> SharedSettingsDestination.Mobile
         SettingsDestinationStorage -> SharedSettingsDestination.Storage
         SettingsDestinationAbout -> SharedSettingsDestination.About
@@ -9961,6 +10593,8 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Plan & Billing", "Plan and workspace usage", SlockLucideIconName.CreditCard)
         "language-region" ->
             SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
+        "appearance" ->
+            SettingsVisualSpec(variant, "Appearance", "Message font size and reading density", SlockLucideIconName.Type)
         "notifications" ->
             SettingsVisualSpec(variant, "Notifications", "Push notification preferences", SlockLucideIconName.Bell)
         "connected-apps" ->
@@ -9987,6 +10621,7 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
         "administration-translation" -> SettingsVisualServerFocusedContent(spec.variant)
         "billing" -> SettingsVisualBillingContent()
         "language-region" -> SettingsVisualLanguageRegionContent()
+        "appearance" -> SettingsVisualAppearanceContent()
         "notifications" -> SettingsVisualNotificationsContent()
         "connected-apps" -> SettingsVisualConnectedAppsContent()
         else -> SettingsVisualAccountContent(spec.variant)
@@ -10197,29 +10832,56 @@ private fun SettingsVisualBillingContent() {
 
 @Composable
 private fun SettingsVisualLanguageRegionContent() {
-    SharedSettingsSectionContent(
-        payload =
-            ScreenLoadState.Content(settingsVisualLanguageRegionSnapshot())
-                .toLanguageRegionPayload(actionState = null, refreshing = false),
-        onAction = { _, _ -> }
+    val snapshot = settingsVisualLanguageRegionSnapshot()
+    SettingsLanguageRegionContent(
+        state = ScreenLoadState.Content(snapshot),
+        actionState = null,
+        refreshing = false,
+        languageDraft = snapshot.browserLanguage.selectedKey,
+        displayDraft = if (snapshot.autoTranslation.enabled) "translated" else "original",
+        timezoneDraft = snapshot.timezone.selectedKey,
+        timeFormatDraft = snapshot.timeFormat.selectedKey,
+        bottomContentPadding = SlockSpacing.Lg,
+        onLanguageDraftChange = {},
+        onDisplayDraftChange = {},
+        onTimezoneDraftChange = {},
+        onTimeFormatDraftChange = {},
+        onServerTranslationChange = {},
+        onSaveLanguage = {},
+        onSaveTime = {},
+        onRetry = {}
+    )
+}
+
+@Composable
+private fun SettingsVisualAppearanceContent() {
+    val snapshot = settingsVisualAppearanceSnapshot()
+    SettingsAppearanceContent(
+        state = ScreenLoadState.Content(snapshot),
+        actionState = null,
+        refreshing = false,
+        fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
+        bottomContentPadding = SlockSpacing.Lg,
+        onFontSizeDraftChange = {},
+        onSave = {},
+        onRetry = {}
     )
 }
 
 @Composable
 private fun SettingsVisualNotificationsContent() {
-    val payload =
-        ScreenLoadState.Content(settingsVisualMobileSnapshot())
-            .toMobilePayload(actionState = null, refreshing = false)
-            .copy(
-                title = "Notifications",
-                heroLabel = "Notification preferences",
-                heroIconName = SlockLucideIconName.Bell,
-                sections =
-                    ScreenLoadState.Content(settingsVisualMobileSnapshot())
-                        .toMobilePayload(actionState = null, refreshing = false)
-                        .sections.take(1)
-            )
-    SharedSettingsSectionContent(payload = payload, onAction = { _, _ -> })
+    SettingsNotificationsContent(
+        state = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
+        actionState = null,
+        refreshing = false,
+        bottomContentPadding = SlockSpacing.Lg,
+        onNotificationPreferenceChange = {},
+        onServerMuteChange = {},
+        onPermission = {},
+        onSettings = {},
+        onTest = {},
+        onRetry = {}
+    )
 }
 
 @Composable
@@ -10396,6 +11058,23 @@ private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapsh
                 selectedLabel = "24-hour",
                 statusLabel = "24h",
                 detail = "Use 14:30 instead of 2:30 PM."
+        )
+    )
+
+private fun settingsVisualAppearanceSnapshot(): SettingsAppearanceSnapshot =
+    SettingsAppearanceSnapshot(
+        messageBodyFontSize =
+            settingsVisualSelection(
+                selectedKey = "md",
+                selectedLabel = "Medium",
+                statusLabel = "Medium",
+                detail = "Adjusts message body text only. Buttons, labels, sidebars, and code blocks keep fixed UI sizes.",
+                options =
+                    listOf(
+                        "sm" to "Small",
+                        "md" to "Medium",
+                        "lg" to "Large"
+                    )
             )
     )
 
@@ -10514,7 +11193,8 @@ private fun settingsVisualSelection(
     selectedKey: String,
     selectedLabel: String,
     statusLabel: String,
-    detail: String
+    detail: String,
+    options: List<Pair<String, String>>? = null
 ): SettingsMobileSelectionSnapshot =
     SettingsMobileSelectionSnapshot(
         selectedKey = selectedKey,
@@ -10522,10 +11202,11 @@ private fun settingsVisualSelection(
         statusLabel = statusLabel,
         detail = detail,
         options =
-            listOf(
-                SettingsMobileSelectionOptionSnapshot(selectedKey, selectedLabel),
-                SettingsMobileSelectionOptionSnapshot("system", "System default")
-            )
+            options?.map { SettingsMobileSelectionOptionSnapshot(it.first, it.second) }
+                ?: listOf(
+                    SettingsMobileSelectionOptionSnapshot(selectedKey, selectedLabel),
+                    SettingsMobileSelectionOptionSnapshot("system", "System default")
+                )
     )
 
 private val homeSearchVisualServer = ServerSummary(

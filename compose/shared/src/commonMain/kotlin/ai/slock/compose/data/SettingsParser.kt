@@ -35,6 +35,7 @@ private data class WireAccountUser(
     val autoTranslationEnabled: Boolean? = null,
     val preferredTimeFormat: String? = null,
     val timeFormat: String? = null,
+    val preferredMessageBodyFontSize: String? = null,
 )
 
 @Serializable
@@ -156,8 +157,45 @@ fun parseSharedLanguageRegionAccountPreferences(
     )
 }.getOrNull()
 
+fun parseSharedAppearanceSettingsSnapshot(bodyText: String): SettingsAppearanceSnapshot? = runCatching {
+    val user = settingsJson.decodeFromString(WireAccountUser.serializer(), bodyText)
+    user.preferredMessageBodyFontSize.toSettingsAppearanceSnapshot()
+}.getOrNull()
+
 private fun String.titleLabel(): String =
     replaceFirstChar { it.uppercase() }
+
+internal fun String?.toSettingsAppearanceSnapshot(): SettingsAppearanceSnapshot {
+    val selectedKey = normalizeSettingsMessageBodyFontSize(this)
+    return SettingsAppearanceSnapshot(
+        messageBodyFontSize =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = selectedKey,
+                selectedLabel = settingsMessageBodyFontSizeLabel(selectedKey),
+                statusLabel = settingsMessageBodyFontSizeLabel(selectedKey),
+                detail = "Adjusts message body text only. Buttons, labels, sidebars, and code blocks keep fixed UI sizes.",
+                options =
+                    listOf(
+                        SettingsMobileSelectionOptionSnapshot("sm", "Small"),
+                        SettingsMobileSelectionOptionSnapshot("md", "Medium"),
+                        SettingsMobileSelectionOptionSnapshot("lg", "Large")
+                    )
+            )
+    )
+}
+
+internal fun normalizeSettingsMessageBodyFontSize(value: String?): String =
+    when (value?.trim()?.lowercase()) {
+        "sm", "lg" -> value.trim().lowercase()
+        else -> "md"
+    }
+
+private fun settingsMessageBodyFontSizeLabel(value: String): String =
+    when (value) {
+        "sm" -> "Small"
+        "lg" -> "Large"
+        else -> "Medium"
+    }
 
 private fun normalizeSharedLanguageRegionLanguage(value: String?): String? =
     value?.trim()?.lowercase()?.takeIf { it == "en" }

@@ -808,6 +808,26 @@ data class SettingsLanguageRegionPreferenceUpdateRequest(
     val clearPreferredTimeFormat: Boolean = false
 )
 
+data class SettingsAppearanceSnapshot(
+    val messageBodyFontSize: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = "md",
+            selectedLabel = "Medium",
+            statusLabel = "Medium",
+            detail = "Adjusts message body text only.",
+            options =
+                listOf(
+                    SettingsMobileSelectionOptionSnapshot("sm", "Small"),
+                    SettingsMobileSelectionOptionSnapshot("md", "Medium"),
+                    SettingsMobileSelectionOptionSnapshot("lg", "Large")
+                )
+        )
+)
+
+data class SettingsAppearanceUpdateRequest(
+    val preferredMessageBodyFontSize: String
+)
+
 enum class SettingsSectionAvailability {
     Available,
     Empty,

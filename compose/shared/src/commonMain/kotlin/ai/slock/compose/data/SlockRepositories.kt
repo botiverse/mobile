@@ -65,6 +65,8 @@ interface SettingsRepository {
     suspend fun updateServerProfile(request: SettingsServerProfileUpdateRequest): DataResult<SettingsServerSnapshot>
     suspend fun createServerInvite(request: SettingsServerInviteCreateRequest): DataResult<SettingsServerActionResult>
     suspend fun deleteServer(request: SettingsServerDeleteRequest): DataResult<SettingsServerActionResult>
+    suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot>
+    suspend fun updateAppearanceSettings(request: SettingsAppearanceUpdateRequest): DataResult<SettingsAppearanceSnapshot>
     suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot>
     suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot>
     suspend fun updateLanguageRegionPreference(

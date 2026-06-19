@@ -37,6 +37,8 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.ConnectedApps,
                 SharedSettingsDestination.Billing,
                 SharedSettingsDestination.LanguageRegion,
+                SharedSettingsDestination.Appearance,
+                SharedSettingsDestination.Notifications,
                 SharedSettingsDestination.Mobile,
                 SharedSettingsDestination.Storage,
                 SharedSettingsDestination.About
@@ -269,6 +271,38 @@ class SharedSettingsStoreTest {
                 "updateServerTranslation:false",
                 "languageRegion"
             ),
+            repository.calls
+        )
+        scope.cancel()
+    }
+
+    @Test
+    fun appearanceLoadsAndUpdatesMessageBodyFontSizeThroughRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                appearanceResult = DataResult.Content("md".toSettingsAppearanceSnapshot())
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Appearance))
+        val loaded = assertIs<ScreenLoadState.Content<SettingsAppearanceSnapshot>>(store.state.value.appearance).data
+        assertEquals("md", loaded.messageBodyFontSize.selectedKey)
+
+        store.accept(SharedSettingsIntent.UpdateAppearance(SettingsAppearanceUpdateRequest("lg")))
+
+        val updated = assertIs<ScreenLoadState.Content<SettingsAppearanceSnapshot>>(store.state.value.appearance).data
+        assertEquals("lg", updated.messageBodyFontSize.selectedKey)
+        assertEquals(
+            listOf("appearance", "updateAppearance:lg"),
             repository.calls
         )
         scope.cancel()
@@ -1242,6 +1276,7 @@ class SharedSettingsStoreTest {
         var billingResult: DataResult<SettingsBillingSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var serverResult: DataResult<SettingsServerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var languageRegionResult: DataResult<SettingsLanguageRegionSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var appearanceResult: DataResult<SettingsAppearanceSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var mobileResult: DataResult<SettingsMobileSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var renameComputerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
         var deleteComputerResult: DataResult<SettingsComputerActionResult> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
@@ -1756,6 +1791,19 @@ class SharedSettingsStoreTest {
                     )
                 )
             return languageRegionResult
+        }
+
+        override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> {
+            calls += "appearance"
+            return appearanceResult
+        }
+
+        override suspend fun updateAppearanceSettings(
+            request: SettingsAppearanceUpdateRequest
+        ): DataResult<SettingsAppearanceSnapshot> {
+            calls += "updateAppearance:${request.preferredMessageBodyFontSize}"
+            appearanceResult = DataResult.Content(request.preferredMessageBodyFontSize.toSettingsAppearanceSnapshot())
+            return appearanceResult
         }
 
         override suspend fun setServerMute(enabled: Boolean): DataResult<SettingsMobileSnapshot> {

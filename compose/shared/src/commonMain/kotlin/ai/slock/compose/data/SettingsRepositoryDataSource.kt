@@ -1074,6 +1074,41 @@ class RealSettingsRepository(
         return settingsLeaveServer(serverId)
     }
 
+    override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            source = "settings_appearance_account",
+            warningLogger = warningLogger,
+            block = { networkClient.settingsAccount(DataRequestPriority.Visible) },
+            mapper = { bodyText ->
+                parseSharedAppearanceSettingsSnapshot(bodyText)
+                    ?: throw IllegalStateException("Appearance settings response missing preferences")
+            }
+        )
+    }
+
+    override suspend fun updateAppearanceSettings(
+        request: SettingsAppearanceUpdateRequest
+    ): DataResult<SettingsAppearanceSnapshot> {
+        sessionStore.readSession() ?: return authRequired()
+        return executeSettings(
+            emptyReason = EmptyReason.NoSettingsAvailable,
+            source = "settings_appearance_update",
+            warningLogger = warningLogger,
+            block = {
+                networkClient.updateSettingsAccount(
+                    DataRequestPriority.Foreground,
+                    buildSharedAppearanceUpdateBody(request)
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedAppearanceSettingsSnapshot(bodyText)
+                    ?: throw IllegalStateException("Appearance update response missing preferences")
+            }
+        )
+    }
+
     override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
         sessionStore.readSession() ?: return authRequired()
         val serverMute =
@@ -2404,6 +2439,11 @@ data class AccountProfileUpdateRequestBody(
 )
 
 @Serializable
+data class SettingsAppearanceUpdateRequestBody(
+    val preferredMessageBodyFontSize: String
+)
+
+@Serializable
 data class AccountPasswordChangeRequestBody(
     val currentPassword: String,
     val newPassword: String
@@ -2420,6 +2460,13 @@ fun buildSharedAccountProfileUpdateBody(request: AccountProfileUpdateRequest): S
             displayName = request.displayName,
             handle = request.handle,
             email = request.email
+        )
+    )
+
+fun buildSharedAppearanceUpdateBody(request: SettingsAppearanceUpdateRequest): String =
+    settingsRepositoryJson.encodeToString(
+        SettingsAppearanceUpdateRequestBody(
+            preferredMessageBodyFontSize = normalizeSettingsMessageBodyFontSize(request.preferredMessageBodyFontSize)
         )
     )
 

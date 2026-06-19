@@ -351,6 +351,11 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsAppearancePage() {
+        captureKmpSettingsPageCase("settings.appearance.page", "appearance")
+    }
+
+    @Test
     fun captureSettingsNotificationsPage() {
         captureKmpSettingsPageCase("settings.notifications.page", "notifications")
     }

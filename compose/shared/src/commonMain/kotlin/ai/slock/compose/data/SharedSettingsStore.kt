@@ -25,6 +25,8 @@ enum class SharedSettingsDestination {
     ConnectedApps,
     Billing,
     LanguageRegion,
+    Appearance,
+    Notifications,
     Mobile,
     Storage,
     About,
@@ -47,6 +49,7 @@ data class SharedSettingsState(
     val connectedApps: ScreenLoadState<SettingsConnectedAppsSnapshot> = ScreenLoadState.Loading,
     val billing: ScreenLoadState<SettingsBillingSnapshot> = ScreenLoadState.Loading,
     val languageRegion: ScreenLoadState<SettingsLanguageRegionSnapshot> = ScreenLoadState.Loading,
+    val appearance: ScreenLoadState<SettingsAppearanceSnapshot> = ScreenLoadState.Loading,
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
@@ -234,6 +237,9 @@ sealed interface SharedSettingsIntent {
     data class SetLanguageRegionServerTranslation(val enabled: Boolean) : SharedSettingsIntent
     data class UpdateLanguageRegionPreference(
         val request: SettingsLanguageRegionPreferenceUpdateRequest
+    ) : SharedSettingsIntent
+    data class UpdateAppearance(
+        val request: SettingsAppearanceUpdateRequest
     ) : SharedSettingsIntent
     data class CompleteSystemNotificationAction(
         val action: String,
@@ -441,6 +447,15 @@ class SharedSettingsDataSource(
         request: SettingsLanguageRegionPreferenceUpdateRequest
     ): DataResult<SettingsLanguageRegionSnapshot> =
         settingsRepository?.updateLanguageRegionPreference(request)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadAppearance(): DataResult<SettingsAppearanceSnapshot> =
+        settingsRepository?.getAppearanceSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateAppearance(
+        request: SettingsAppearanceUpdateRequest
+    ): DataResult<SettingsAppearanceSnapshot> =
+        settingsRepository?.updateAppearanceSettings(request)
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun setLanguageRegionServerTranslation(enabled: Boolean): DataResult<SettingsLanguageRegionSnapshot> =
@@ -981,6 +996,11 @@ class SharedSettingsStore(
                     dataSource.updateLanguageRegionPreference(intent.request).applyLanguageRegionActionResult(action)
                 }
             }
+            is SharedSettingsIntent.UpdateAppearance -> {
+                runAction(APPEARANCE_ACTION_MESSAGE_FONT_SIZE) {
+                    dataSource.updateAppearance(intent.request).applyAppearanceActionResult(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
+                }
+            }
             is SharedSettingsIntent.SetLocale -> {
                 _state.value =
                     _state.value.copy(
@@ -1078,6 +1098,10 @@ class SharedSettingsStore(
                 dataSource.loadBilling().applyToState(destination) { copy(billing = it) }
             SharedSettingsDestination.LanguageRegion ->
                 dataSource.loadLanguageRegion().applyToState(destination) { copy(languageRegion = it) }
+            SharedSettingsDestination.Appearance ->
+                dataSource.loadAppearance().applyToState(destination) { copy(appearance = it) }
+            SharedSettingsDestination.Notifications ->
+                dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Mobile ->
                 dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Storage -> loadStorage()
@@ -1265,6 +1289,25 @@ class SharedSettingsStore(
                         errorCode = nextLanguageRegion.routeErrorCode()
                     ),
                 routeErrorCode = nextLanguageRegion.routeErrorCode()
+            )
+    }
+
+    private fun DataResult<SettingsAppearanceSnapshot>.applyAppearanceActionResult(action: String) {
+        val nextAppearance = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                appearance =
+                    when (nextAppearance) {
+                        is ScreenLoadState.Content -> nextAppearance
+                        else -> _state.value.appearance
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        inProgress = false,
+                        errorCode = nextAppearance.routeErrorCode()
+                    ),
+                routeErrorCode = nextAppearance.routeErrorCode()
             )
     }
 
@@ -1556,6 +1599,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetServerMute,
             is SharedSettingsIntent.SetLanguageRegionServerTranslation,
             is SharedSettingsIntent.UpdateLanguageRegionPreference,
+            is SharedSettingsIntent.UpdateAppearance,
             is SharedSettingsIntent.CompleteSystemNotificationAction,
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
@@ -1620,6 +1664,8 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.ConnectedApps -> connectedApps is ScreenLoadState.Content
         SharedSettingsDestination.Billing -> billing is ScreenLoadState.Content
         SharedSettingsDestination.LanguageRegion -> languageRegion is ScreenLoadState.Content
+        SharedSettingsDestination.Appearance -> appearance is ScreenLoadState.Content
+        SharedSettingsDestination.Notifications -> mobile is ScreenLoadState.Content
         SharedSettingsDestination.Mobile -> mobile is ScreenLoadState.Content
         SharedSettingsDestination.Storage -> storage is ScreenLoadState.Content
         SharedSettingsDestination.About -> about is ScreenLoadState.Content
@@ -1642,6 +1688,7 @@ internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAuto
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
 internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
 internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
+internal const val APPEARANCE_ACTION_MESSAGE_FONT_SIZE = "appearanceMessageFontSize"
 internal const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
 internal const val CONNECTED_APPS_ACTION_UPDATE = "connectedAppsUpdate"
 internal const val CONNECTED_APPS_ACTION_DELETE = "connectedAppsDelete"
@@ -1676,10 +1723,10 @@ internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExpo
 
 private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction(): String =
     when {
-        autoTranslationEnabled != null -> LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
         preferredLanguage != null || clearPreferredLanguage -> LANGUAGE_REGION_ACTION_LANGUAGE
         preferredTimezone != null || clearPreferredTimezone -> LANGUAGE_REGION_ACTION_TIMEZONE
         preferredTimeFormat != null || clearPreferredTimeFormat -> LANGUAGE_REGION_ACTION_TIME_FORMAT
+        autoTranslationEnabled != null -> LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
         else -> "languageRegionPreference"
     }
 
@@ -1796,7 +1843,9 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Blocks, null, selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.ShieldCheck, server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
+                nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Device language and message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination)
             )

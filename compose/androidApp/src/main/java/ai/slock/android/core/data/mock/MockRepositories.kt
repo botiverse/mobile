@@ -82,7 +82,11 @@ import ai.slock.compose.data.SettingsConnectedAppsSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
+import ai.slock.compose.data.SettingsAppearanceSnapshot
+import ai.slock.compose.data.SettingsAppearanceUpdateRequest
 import ai.slock.compose.data.SettingsPlanUsageSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionOptionSnapshot
+import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
 import ai.slock.compose.data.SettingsLanguageRegionSnapshot
@@ -386,6 +390,30 @@ class MockSettingsRepository(
 
     override suspend fun getLanguageRegionSettings(): DataResult<SettingsLanguageRegionSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { MockSeedData.settingsLanguageRegionSnapshot }
+
+    override suspend fun getAppearanceSettings(): DataResult<SettingsAppearanceSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { SettingsAppearanceSnapshot() }
+
+    override suspend fun updateAppearanceSettings(
+        request: SettingsAppearanceUpdateRequest
+    ): DataResult<SettingsAppearanceSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            SettingsAppearanceSnapshot(
+                messageBodyFontSize =
+                    SettingsMobileSelectionSnapshot(
+                        selectedKey = request.preferredMessageBodyFontSize,
+                        selectedLabel = request.preferredMessageBodyFontSize,
+                        statusLabel = request.preferredMessageBodyFontSize,
+                        detail = "Adjusts message body text only.",
+                        options =
+                            listOf(
+                                SettingsMobileSelectionOptionSnapshot("sm", "Small"),
+                                SettingsMobileSelectionOptionSnapshot("md", "Medium"),
+                                SettingsMobileSelectionOptionSnapshot("lg", "Large")
+                            )
+                    )
+            )
+        }
 
     override suspend fun updateLanguageRegionPreference(
         request: SettingsLanguageRegionPreferenceUpdateRequest

@@ -279,6 +279,24 @@ class SettingsRepositoryDataSourceTest {
     }
 
     @Test
+    fun appearanceUsesAuthMePreferredMessageBodyFontSize() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                accountJson = """{"id":"user-1","email":"user@slock.ai","name":"slock-user","preferredMessageBodyFontSize":"sm"}"""
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val loaded = repository.getAppearanceSettings()
+        val updated = repository.updateAppearanceSettings(SettingsAppearanceUpdateRequest("lg"))
+
+        assertTrue(loaded is DataResult.Content)
+        assertEquals("sm", loaded.data.messageBodyFontSize.selectedKey)
+        assertTrue(updated is DataResult.Content)
+        assertEquals("sm", updated.data.messageBodyFontSize.selectedKey)
+        assertEquals("""{"preferredMessageBodyFontSize":"lg"}""", network.accountUpdateBodies.single())
+    }
+
+    @Test
     fun billingMapsReadablePlanStateAndRequiresOwnerPermission() = runBlocking {
         val billing =
             RealSettingsRepository(
