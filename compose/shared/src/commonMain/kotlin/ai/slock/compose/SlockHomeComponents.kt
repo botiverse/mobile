@@ -404,7 +404,8 @@ fun SlockStructuralHomeShell(
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
-    onChannelClick: (String) -> Unit = {}
+    onChannelClick: (String) -> Unit = {},
+    onChannelLongPress: (String) -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
     var directMessagesExpanded by remember { mutableStateOf(true) }
@@ -539,7 +540,8 @@ fun SlockStructuralHomeShell(
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     interactionState = if (channelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
+                                    onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
                                 )
                             }
                         }
@@ -565,7 +567,8 @@ fun SlockStructuralHomeShell(
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
                                         modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                         interactionState = if (jointChannelSectionSelection.selects(channel.id)) ChannelRowInteractionState.Selected else ChannelRowInteractionState.Default,
-                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null
+                                        onClick = if (sidebarInteractionsEnabled) ({ onChannelClick(channel.id) }) else null,
+                                    onLongPress = if (sidebarInteractionsEnabled) ({ onChannelLongPress(channel.id) }) else null
                                     )
                                 }
                             }
