@@ -122,6 +122,41 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeSidebarSelectionPrefersPinnedSectionForPinnedIdEvenWhenInChannelOrDm() {
+        // #211: a pinned id that is still listed in `channels` /
+        // `directMessages` (the server returns the full set; the visual
+        // layer hides the original copies) must resolve to the Pinned
+        // section. Otherwise the original row would be highlighted while
+        // the Pinned row is not.
+        assertEquals(
+            SlockHomeSidebarSelection(conversationId = "channel-1", conversationSection = SlockHomeConversationSection.Pinned),
+            homeSidebarSelection(
+                selectedChannelId = "channel-1",
+                selectedConversationSection = null,
+                channels = listOf(SlockHomeConversationItem(id = "channel-1", name = "home")),
+                directMessages = emptyList(),
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = false,
+                pinnedChannelIds = setOf("channel-1")
+            )
+        )
+        assertEquals(
+            SlockHomeSidebarSelection(conversationId = "dm-1", conversationSection = SlockHomeConversationSection.Pinned),
+            homeSidebarSelection(
+                selectedChannelId = "dm-1",
+                selectedConversationSection = null,
+                channels = emptyList(),
+                directMessages = listOf(SlockHomeConversationItem(id = "dm-1", name = "artin")),
+                searchSelected = false,
+                activitySelected = false,
+                savedSelected = false,
+                pinnedChannelIds = setOf("dm-1")
+            )
+        )
+    }
+
+    @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
             14,

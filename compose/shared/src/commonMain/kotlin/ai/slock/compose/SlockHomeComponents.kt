@@ -492,7 +492,8 @@ fun SlockStructuralHomeShell(
             directMessages = directMessages,
             searchSelected = searchSelected,
             activitySelected = activitySelected,
-            savedSelected = savedSelected
+            savedSelected = savedSelected,
+            pinnedChannelIds = pinnedIdSet
         )
     val channelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.Channel)
     val jointChannelSectionSelection = sidebarSelection.sectionSelection(SlockHomeConversationSection.JointChannel)
@@ -897,7 +898,8 @@ internal fun homeSidebarSelection(
     directMessages: List<SlockHomeConversationItem>,
     searchSelected: Boolean,
     activitySelected: Boolean,
-    savedSelected: Boolean
+    savedSelected: Boolean,
+    pinnedChannelIds: Set<String> = emptySet()
 ): SlockHomeSidebarSelection =
     when {
         searchSelected -> SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Search)
@@ -909,7 +911,8 @@ internal fun homeSidebarSelection(
                     ?: homeConversationSectionForSelection(
                         selectedChannelId = selectedChannelId,
                         channels = channels,
-                        directMessages = directMessages
+                        directMessages = directMessages,
+                        pinnedChannelIds = pinnedChannelIds
                     )
             SlockHomeSidebarSelection(
                 conversationId = selectedChannelId,
@@ -922,8 +925,19 @@ internal fun homeSidebarSelection(
 internal fun homeConversationSectionForSelection(
     selectedChannelId: String,
     channels: List<SlockHomeConversationItem>,
-    directMessages: List<SlockHomeConversationItem>
+    directMessages: List<SlockHomeConversationItem>,
+    pinnedChannelIds: Set<String> = emptySet()
 ): SlockHomeConversationSection? {
+    // #211: a pinned id should always resolve to the Pinned section, even
+    // if it is still present in the raw `channels` / `directMessages` lists
+    // (server returns the full set, the visual layer hides the original
+    // copies). Otherwise the section-aware selection would point at the
+    // Channel / JointChannel / DirectMessage row and the Pinned row would
+    // not be highlighted, leaving the user with two un-highlighted sections
+    // and one phantom highlight in the original section.
+    if (selectedChannelId in pinnedChannelIds) {
+        return SlockHomeConversationSection.Pinned
+    }
     val channel = channels.firstOrNull { it.id == selectedChannelId }
     if (channel != null) {
         return if (channel.kind.equals("joint", ignoreCase = true)) {
