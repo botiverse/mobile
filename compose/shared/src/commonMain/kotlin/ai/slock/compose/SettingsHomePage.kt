@@ -7332,117 +7332,111 @@ private fun SharedHomeSearchPanel(
             modifier
                 .background(SlockColor.SurfaceWhite)
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            item {
-                SharedHomeSearchToolbar(
-                    query = state.query,
-                    loading = state.loading,
-                    onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
-                    onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
-                    onClose = onClose,
-                    interactive = interactiveSearchField,
-                    topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
-                )
-            }
-            item {
-                SharedHomeSearchDivider()
-            }
-            item {
-                SharedHomeSearchFilters(
-                    state = state,
-                    channelFilters = channelFilters,
-                    senderAnchorChanged = { senderAnchor = it },
-                    channelAnchorChanged = { channelAnchor = it },
-                    timeAnchorChanged = { timeAnchor = it },
-                    sortAnchorChanged = { sortAnchor = it },
-                    onOpenFilter = { openFilterId = it },
-                    onIntent = onIntent,
-                    showSenderFilter = showSenderFilter
-                )
-            }
-            item {
-                SharedHomeSearchDivider()
-            }
-            item {
-                if (state.loading || state.errorCode != null || state.noPermissionCode != null) {
-                    SharedHomePanelStatus(
-                        loading = state.loading,
-                        loadingText = "Searching…",
-                        errorCode = state.errorCode,
-                        noPermissionCode = state.noPermissionCode,
-                        empty = false,
-                        emptyTitle = "",
-                        emptyDetail = "",
-                        onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
-                    )
-                } else if (!state.searched && state.items.isEmpty() && entityResults.isEmpty()) {
-                    SharedHomeSearchEmptyState(
-                        title = "Search everything",
-                        detail = "Search channels, DMs, people, agents, and message history."
-                    )
-                } else if (state.empty || (state.searched && state.items.isEmpty() && entityResults.isEmpty())) {
-                    val trimmedQuery = state.query.trim()
-                    SharedHomeSearchEmptyState(
-                        title = if (trimmedQuery.isNotBlank()) "No results for \"$trimmedQuery\"" else "No matching messages",
-                        detail = if (trimmedQuery.isNotBlank()) "Try different keywords or a shorter phrase." else "Try a different filter set."
-                    )
-                } else {
-                    SharedHomeSearchResultsCount(state.totalCount + entityResults.size)
-                }
-            }
-            if (entityResults.isNotEmpty()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SharedHomeSearchToolbar(
+                query = state.query,
+                loading = state.loading,
+                onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
+                onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
+                onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
+                onClose = onClose,
+                interactive = interactiveSearchField,
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+            )
+            SharedHomeSearchDivider()
+            SharedHomeSearchFilters(
+                state = state,
+                channelFilters = channelFilters,
+                senderAnchorChanged = { senderAnchor = it },
+                channelAnchorChanged = { channelAnchor = it },
+                timeAnchorChanged = { timeAnchor = it },
+                sortAnchorChanged = { sortAnchor = it },
+                onOpenFilter = { openFilterId = it },
+                onIntent = onIntent,
+                showSenderFilter = showSenderFilter
+            )
+            SharedHomeSearchDivider()
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                verticalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
                 item {
-                    SharedHomeSearchSectionLabel("Channels & DMs")
-                }
-                items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
-                    SharedHomeSearchEntityRow(
-                        result = entityResults[index],
-                        onOpen = { onOpenEntity(entityResults[index]) }
-                    )
-                }
-            }
-            if (groupedResults.isNotEmpty()) {
-                item {
-                    SharedHomeSearchSectionLabel("Messages")
-                }
-            }
-            groupedResults.forEach { group ->
-                when (group) {
-                    is HomeSearchResultGroup.Message -> {
-                        item(key = group.item.key) {
-                            SharedHomeSearchMessageResultRow(
-                                item = group.item,
-                                timeContext = timeContext,
-                                onOpen = { onOpenItem(group.item) }
-                            )
-                        }
+                    if (state.loading || state.errorCode != null || state.noPermissionCode != null) {
+                        SharedHomePanelStatus(
+                            loading = state.loading,
+                            loadingText = "Searching…",
+                            errorCode = state.errorCode,
+                            noPermissionCode = state.noPermissionCode,
+                            empty = false,
+                            emptyTitle = "",
+                            emptyDetail = "",
+                            onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSearch) }
+                        )
+                    } else if (!state.searched && state.items.isEmpty() && entityResults.isEmpty()) {
+                        SharedHomeSearchEmptyState(
+                            title = "Search everything",
+                            detail = "Search channels, DMs, people, agents, and message history."
+                        )
+                    } else if (state.empty || (state.searched && state.items.isEmpty() && entityResults.isEmpty())) {
+                        val trimmedQuery = state.query.trim()
+                        SharedHomeSearchEmptyState(
+                            title = if (trimmedQuery.isNotBlank()) "No results for \"$trimmedQuery\"" else "No matching messages",
+                            detail = if (trimmedQuery.isNotBlank()) "Try different keywords or a shorter phrase." else "Try a different filter set."
+                        )
+                    } else {
+                        SharedHomeSearchResultsCount(state.totalCount + entityResults.size)
                     }
-                    is HomeSearchResultGroup.Thread -> {
-                        item(key = group.key) {
-                            SharedHomeThreadResultGroup(
-                                group = group,
-                                timeContext = timeContext,
-                                onOpenItem = onOpenItem
-                            )
+                }
+                if (entityResults.isNotEmpty()) {
+                    item {
+                        SharedHomeSearchSectionLabel("Channels & DMs")
+                    }
+                    items(entityResults.size, key = { index -> entityResults[index].key }) { index ->
+                        SharedHomeSearchEntityRow(
+                            result = entityResults[index],
+                            onOpen = { onOpenEntity(entityResults[index]) }
+                        )
+                    }
+                }
+                if (groupedResults.isNotEmpty()) {
+                    item {
+                        SharedHomeSearchSectionLabel("Messages")
+                    }
+                }
+                groupedResults.forEach { group ->
+                    when (group) {
+                        is HomeSearchResultGroup.Message -> {
+                            item(key = group.item.key) {
+                                SharedHomeSearchMessageResultRow(
+                                    item = group.item,
+                                    timeContext = timeContext,
+                                    onOpen = { onOpenItem(group.item) }
+                                )
+                            }
+                        }
+                        is HomeSearchResultGroup.Thread -> {
+                            item(key = group.key) {
+                                SharedHomeThreadResultGroup(
+                                    group = group,
+                                    timeContext = timeContext,
+                                    onOpenItem = onOpenItem
+                                )
+                            }
                         }
                     }
                 }
-            }
-            if (state.hasMore) {
-                item {
-                    SharedHomeLoadMoreRow(
-                        loading = state.loadingMore,
-                        label = "Load more results",
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
-                    )
+                if (state.hasMore) {
+                    item {
+                        SharedHomeLoadMoreRow(
+                            loading = state.loadingMore,
+                            label = "Load more results",
+                            onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSearch) }
+                        )
+                    }
                 }
-            }
-            item {
-                Spacer(Modifier.height(bottomContentPadding))
+                item {
+                    Spacer(Modifier.height(bottomContentPadding))
+                }
             }
         }
         when (openFilterId) {
