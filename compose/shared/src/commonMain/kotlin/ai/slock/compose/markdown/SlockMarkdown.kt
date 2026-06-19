@@ -10,8 +10,10 @@ import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -26,6 +28,7 @@ import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.Placeholder
 import com.tencent.kuikly.compose.ui.text.SpanStyle
@@ -55,6 +58,7 @@ import com.tencent.kuiklybase.markdown.model.markdownPadding
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
+import kotlin.time.TimeSource
 
 data class ThreadMarkdownTag(
     val label: String,
@@ -396,8 +400,10 @@ fun slockMarkdownAnnotator(
     content: String,
     highlightedMentions: Set<String> = emptySet(),
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    onDiagnostics: ((Int, Int, Long) -> Unit)? = null
 ): MarkdownAnnotator {
+    val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val highlightedMentionKeys = highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
     val inlineTagMatches = content.threadInlineTagMatches()
     val inlineTagById = inlineTagMatches.associateBy { it.id }
@@ -410,6 +416,13 @@ fun slockMarkdownAnnotator(
         inlineCodeMatches
             .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
             .associateBy { it.id }
+    if (diagnosticsStartedAt != null) {
+        onDiagnostics.invoke(
+            inlineTagMatches.size,
+            inlineCodeMatches.size,
+            diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
+        )
+    }
     return markdownAnnotator(
         annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
@@ -613,21 +626,45 @@ fun SlockMarkdownBody(
     highlightedMentions: Set<String> = emptySet(),
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
-    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null
+    resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    performanceKey: String? = null,
+    performanceLogger: (String) -> Unit = {}
 ) {
-    val content = remember(body) {
-        body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+    val content = remember(body, performanceKey) {
+        if (performanceKey == null) {
+            body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+        } else {
+            val startedAt = TimeSource.Monotonic.markNow()
+            body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+                .also { normalized ->
+                    performanceLogger(
+                        "thread_markdown_prepare stage=normalize key=$performanceKey " +
+                            "bodyLength=${body.length} contentLength=${normalized.length} " +
+                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
+                    )
+                }
+        }
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = slockMarkdownColors()
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
-    val annotator = remember(content, highlightedMentions) {
+    val annotator = remember(content, highlightedMentions, performanceKey) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
             onOpenTag = { tag -> currentOnOpenTag(tag) },
-            resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) }
+            resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) },
+            onDiagnostics =
+                performanceKey?.let { key ->
+                    { inlineTagCount, inlineCodeCount, durationMs ->
+                        performanceLogger(
+                            "thread_markdown_prepare stage=annotator key=$key " +
+                                "inlineTags=$inlineTagCount inlineCode=$inlineCodeCount " +
+                                "contentLength=${content.length} durationMs=$durationMs"
+                        )
+                    }
+                }
         )
     }
     val padding = remember {
@@ -637,6 +674,22 @@ fun SlockMarkdownBody(
             codeBlock = PaddingValues(SlockSpacing.Sm)
         )
     }
+    var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
+    val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
+    val markdownModifier =
+        performanceKey?.let { key ->
+            modifier
+                .fillMaxWidth()
+                .onGloballyPositioned {
+                    if (!layoutLogged) {
+                        layoutLogged = true
+                        performanceLogger(
+                            "thread_markdown_layout key=$key contentLength=${content.length} " +
+                                "durationMs=${layoutStartedAt.elapsedNow().inWholeMilliseconds}"
+                        )
+                    }
+                }
+        } ?: modifier.fillMaxWidth()
     CompositionLocalProvider(
         LocalTextProvider provides SlockMarkdownTextProvider,
         LocalUriHandler provides
@@ -658,7 +711,7 @@ fun SlockMarkdownBody(
             textProvider = SlockMarkdownTextProvider,
             annotator = annotator,
             padding = padding,
-            modifier = modifier.fillMaxWidth()
+            modifier = markdownModifier
         )
     }
 }

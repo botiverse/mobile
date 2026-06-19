@@ -29,7 +29,8 @@ import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.SharedMembersIntent
-import ai.slock.compose.data.SharedMembersState
+import ai.slock.compose.data.SharedMembersChannelSuggestionSlice
+import ai.slock.compose.data.SharedMembersMemberSuggestionSlice
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
@@ -149,7 +150,8 @@ private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_p
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
-private const val ThreadMessagesMaxBeyondBoundsItemCount = 8
+private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
+private const val ThreadPerformanceSlowThresholdMs = 4L
 
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
@@ -1226,10 +1228,6 @@ internal fun SharedThreadRouteContent(
             )
     }
     val tasksState by tasksViewModel.state.collectAsState()
-    val emptyMembersStateFlow = remember { MutableStateFlow(SharedMembersState()) }
-    val membersState by remember(membersStore) {
-        membersStore?.state ?: emptyMembersStateFlow
-    }.collectAsState()
     val memberSuggestionScopePayload =
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
@@ -1239,9 +1237,24 @@ internal fun SharedThreadRouteContent(
             payload
         } else {
             initialPayload
-        }
+    }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
+    val emptyMemberSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersMemberSuggestionSlice()) }
+    val memberSuggestionSlice by remember(
+        membersStore,
+        memberSuggestionScopeChannelId,
+        memberSuggestionScopedMentions
+    ) {
+        membersStore?.memberSuggestionSliceFlow(
+            mentionChannelId = memberSuggestionScopeChannelId,
+            memberScopedMentions = memberSuggestionScopedMentions
+        ) ?: emptyMemberSuggestionSliceFlow
+    }.collectAsState(SharedMembersMemberSuggestionSlice())
+    val emptyChannelSuggestionSliceFlow = remember { MutableStateFlow(SharedMembersChannelSuggestionSlice()) }
+    val channelSuggestionSlice by remember(membersStore) {
+        membersStore?.channelSuggestionSliceFlow() ?: emptyChannelSuggestionSliceFlow
+    }.collectAsState(SharedMembersChannelSuggestionSlice())
     val filesRouteKey =
         initialPayload.sourceThreadId
             ?: initialPayload.streamChannelId
@@ -1471,8 +1484,8 @@ internal fun SharedThreadRouteContent(
             payload.resolveThreadComposer()
         }
     val loadedMemberSuggestions =
-        remember(membersState.memberSuggestions) {
-            membersState.memberSuggestions.map { suggestion ->
+        remember(memberSuggestionSlice.suggestions) {
+            memberSuggestionSlice.suggestions.map { suggestion ->
                 KuiklyComposerMemberItem(
                     displayName = suggestion.displayName,
                     handle = suggestion.handle
@@ -1480,8 +1493,8 @@ internal fun SharedThreadRouteContent(
             }
         }
     val loadedChannelSuggestions =
-        remember(membersState.channelSuggestions) {
-            membersState.channelSuggestions.map { suggestion ->
+        remember(channelSuggestionSlice.suggestions) {
+            channelSuggestionSlice.suggestions.map { suggestion ->
                 KuiklyComposerChannelItem(
                     name = suggestion.name,
                     subtitle = suggestion.subtitle
@@ -3593,6 +3606,20 @@ private fun ThreadMessagesList(
         }
     var pendingOlderPageAnchor by remember(payload.instanceId) { mutableStateOf<ThreadVisibleMessageAnchor?>(null) }
     var previousOlderMessagesStatus by remember(payload.instanceId) { mutableStateOf(payload.olderMessagesStatus) }
+    LaunchedEffect(payload.instanceId, payload.messages.size, lazyItemCount) {
+        repeat(ThreadBottomAnchorMinimumAttempts + 1) { attempt ->
+            listState.awaitThreadMessagesLayoutFrame()
+            val stats = listState.threadLazyWindowStats(payload, lazyItemCount)
+            if (stats.visibleItems > 0) {
+                diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
+                return@LaunchedEffect
+            }
+            if (attempt >= ThreadBottomAnchorMinimumAttempts) {
+                diagnosticsLogger(stats.toDiagnosticsString(result = "missing_layout"))
+            }
+            delay(ThreadLayoutStabilityFrameDelayMs)
+        }
+    }
     LaunchedEffect(payload.instanceId, latestItemIndex) {
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
@@ -3770,11 +3797,24 @@ private fun ThreadMessagesList(
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
+                val messagePerformanceKey = threadMessagePerformanceKey(message.id, index)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val actionCardSignature =
                     remember(message.id, message.metadata) { message.threadActionCardSignature() }
                 val actionCard =
-                    remember(actionCardSignature) { message.threadActionCard() }
+                    remember(actionCardSignature, messagePerformanceKey) {
+                        val startedAt = TimeSource.Monotonic.markNow()
+                        message.threadActionCard()
+                            .also { card ->
+                                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                if (card != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                                    diagnosticsLogger(
+                                        "thread_action_card_parse key=$messagePerformanceKey " +
+                                            "hasActionCard=${card != null} durationMs=$durationMs"
+                                    )
+                                }
+                            }
+                    }
                 // Phase 1 (#172) instrumentation: one-shot per-row log gated
                 // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
                 // not a hot path. Fires on first composition of this row
@@ -3793,7 +3833,20 @@ private fun ThreadMessagesList(
                     }
                 }
                 val linkedTask = linkedTasksByMessageId[message.id]
-                val displayMessage = remember(message, linkedTask) { message.withLinkedTask(linkedTask) }
+                val displayMessage =
+                    remember(message, linkedTask, messagePerformanceKey) {
+                        val startedAt = TimeSource.Monotonic.markNow()
+                        message.withLinkedTask(linkedTask)
+                            .also {
+                                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                if (linkedTask != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                                    diagnosticsLogger(
+                                        "thread_row_heavy_work stage=linked_task key=$messagePerformanceKey " +
+                                            "hasLinkedTask=${linkedTask != null} durationMs=$durationMs"
+                                    )
+                                }
+                            }
+                    }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                 if (isSystemMessage && actionCard == null) {
                     ThreadSystemMessageRow(
@@ -3818,6 +3871,8 @@ private fun ThreadMessagesList(
                     ThreadMessageCard(
                         message = displayMessage,
                         actionCard = actionCard,
+                        messageIndex = index,
+                        diagnosticsLogger = diagnosticsLogger,
                         highlightedMentions = highlightedMentions,
                         alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                         showReplyAction = payload.showReplyActions,
@@ -3967,6 +4022,54 @@ internal fun threadMessagesLazyItemCount(
 internal fun threadMessagesBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceAtLeast(0)
         .coerceAtMost(ThreadMessagesMaxBeyondBoundsItemCount)
+
+private data class ThreadLazyWindowStats(
+    val totalItems: Int,
+    val totalMessages: Int,
+    val beyondBoundsItems: Int,
+    val visibleItems: Int,
+    val firstVisibleItem: Int,
+    val lastVisibleItem: Int,
+    val firstVisibleMessage: Int,
+    val lastVisibleMessage: Int,
+    val visibleMessages: Int
+)
+
+private fun threadMessagePerformanceKey(messageId: String, index: Int): String =
+    "message:$index:${messageId.take(8)}"
+
+private fun LazyListState.threadLazyWindowStats(
+    payload: KuiklyThreadScreenPayload,
+    lazyItemCount: Int
+): ThreadLazyWindowStats {
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val firstVisibleItem = visibleItems.firstOrNull()?.index ?: -1
+    val lastVisibleItem = visibleItems.lastOrNull()?.index ?: -1
+    val firstMessageListItemIndex = payload.firstMessageListItemIndex()
+    val visibleMessageIndexes =
+        visibleItems.mapNotNull { item ->
+            (item.index - firstMessageListItemIndex)
+                .takeIf { it in payload.messages.indices }
+        }
+    return ThreadLazyWindowStats(
+        totalItems = lazyItemCount,
+        totalMessages = payload.messages.size,
+        beyondBoundsItems = threadMessagesBeyondBoundsItemCount(lazyItemCount),
+        visibleItems = visibleItems.size,
+        firstVisibleItem = firstVisibleItem,
+        lastVisibleItem = lastVisibleItem,
+        firstVisibleMessage = visibleMessageIndexes.firstOrNull() ?: -1,
+        lastVisibleMessage = visibleMessageIndexes.lastOrNull() ?: -1,
+        visibleMessages = visibleMessageIndexes.size
+    )
+}
+
+private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
+    "thread_lazy_window result=$result totalItems=$totalItems totalMessages=$totalMessages " +
+        "beyondBounds=$beyondBoundsItems visibleItems=$visibleItems " +
+        "visibleItemRange=$firstVisibleItem..$lastVisibleItem " +
+        "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
+        "visibleMessages=$visibleMessages"
 
 internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
     latestItemIndex.coerceAtLeast(0)
@@ -4341,6 +4444,8 @@ private fun ThreadHistoryStatusRow(
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
     actionCard: ThreadActionCard? = message.threadActionCard(),
+    messageIndex: Int = -1,
+    diagnosticsLogger: (String) -> Unit = {},
     highlightedMentions: Set<String> = emptySet(),
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
@@ -4446,6 +4551,8 @@ private fun ThreadMessageCard(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
                                 modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                diagnosticsLogger = diagnosticsLogger,
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (message.body.isNotBlank()) {
@@ -4461,7 +4568,9 @@ private fun ThreadMessageCard(
                                     highlightedMentions = highlightedMentions,
                                     resolveTagLabel = resolveMarkdownTagLabel,
                                     onOpenTag = onOpenMarkdownTag,
-                                    onOpenUrl = onOpenMarkdownUrl
+                                    onOpenUrl = onOpenMarkdownUrl,
+                                    performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                    performanceLogger = diagnosticsLogger
                                 )
                             }
                         }
@@ -4533,13 +4642,43 @@ private fun ThreadMessageBookmarkButton(
     }
 }
 
+private data class ThreadActionCardRenderCopy(
+    val title: String,
+    val details: String,
+    val pendingLabel: String,
+    val verb: String,
+    val committedLabel: String
+)
+
 @Composable
 private fun ThreadActionCardView(
     card: ThreadActionCard,
     pending: Boolean,
     modifier: Modifier = Modifier,
+    performanceKey: String? = null,
+    diagnosticsLogger: (String) -> Unit = {},
     onCommit: () -> Unit
 ) {
+    val renderCopy =
+        remember(card, performanceKey) {
+            val startedAt = TimeSource.Monotonic.markNow()
+            ThreadActionCardRenderCopy(
+                title = card.actionCardTitle(),
+                details = card.actionCardDetails(),
+                pendingLabel = card.actionCardPendingLabel(),
+                verb = card.actionCardVerb(),
+                committedLabel = card.actionCardCommittedLabel()
+            ).also { copy ->
+                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                if (performanceKey != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                    diagnosticsLogger(
+                        "thread_action_card_compute key=${performanceKey.orEmpty()} " +
+                            "type=${card.type} titleLength=${copy.title.length} " +
+                            "detailsLength=${copy.details.length} durationMs=$durationMs"
+                    )
+                }
+            }
+        }
     Column(
         modifier =
             modifier
@@ -4554,7 +4693,7 @@ private fun ThreadActionCardView(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
             Text(
-                text = card.actionCardTitle(),
+                text = renderCopy.title,
                 style = SlockType.Button.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 modifier = Modifier.weight(1f),
@@ -4565,7 +4704,7 @@ private fun ThreadActionCardView(
                 ThreadActionCardDoneBadge()
             }
         }
-        val details = card.actionCardDetails()
+        val details = renderCopy.details
         if (details.isNotBlank()) {
             Text(
                 text = details,
@@ -4585,7 +4724,7 @@ private fun ThreadActionCardView(
             )
         }
         if (card.isExecuted) {
-            val committed = card.actionCardCommittedLabel()
+            val committed = renderCopy.committedLabel
             if (committed.isNotBlank()) {
                 Text(
                     text = committed,
@@ -4595,7 +4734,7 @@ private fun ThreadActionCardView(
             }
         } else {
             SlockBrutalActionButton(
-                label = if (pending) card.actionCardPendingLabel() else card.actionCardVerb(),
+                label = if (pending) renderCopy.pendingLabel else renderCopy.verb,
                 onClick = onCommit,
                 enabled = !pending && card.isSupportedCommitAction(),
                 backgroundColor = SlockColor.AccentPink,
