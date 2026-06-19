@@ -46,6 +46,7 @@ import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -53,6 +54,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.pager.Pager
 
 private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog_visual"
 
@@ -74,6 +76,19 @@ internal data class SharedCreateAgentDialogSubmit(
 
 @Composable
 private fun CreateAgentDialogVisualContent() {
+    val params = (LocalActivity.current.getPager() as Pager).pageData.params
+    val runtime = params.optString("runtime").ifBlank { "codex" }
+    val providerMode =
+        if (params.optString("providerMode") == RUNTIME_PROVIDER_MODE_CUSTOM) {
+            RUNTIME_PROVIDER_MODE_CUSTOM
+        } else {
+            RUNTIME_PROVIDER_MODE_DEFAULT
+        }
+    val machineRuntimes = (listOf(runtime, "codex", "claude") + RUNTIMES.map { it.id }).distinct()
+    val runtimeModels =
+        RUNTIME_MODELS[runtime].orEmpty().map { model ->
+            SharedCreateAgentRuntimeModelOption(model.id, model.label, model.verified)
+        }
     Box(
         modifier =
             Modifier
@@ -83,8 +98,17 @@ private fun CreateAgentDialogVisualContent() {
         SharedCreateAgentDialog(
             submitting = false,
             errorMessage = null,
-            initialName = "Product-QA-Bot",
+            initialName = params.optString("name").ifBlank { "Product-QA-Bot" },
             initialDescription = "Watches release screenshots and reports visual regressions before merge.",
+            initialRuntime = runtime,
+            initialModel = params.optString("model").ifBlank { getDefaultModel(runtime) },
+            initialProviderMode = providerMode,
+            initialProviderApiUrl = params.optString("providerApiUrl"),
+            initialProviderApiKey = params.optString("providerApiKey"),
+            initialFastMode = params.optBoolean("fastMode"),
+            initialReasoningEffort = params.optString("reasoningEffort").takeIf { it.isNotBlank() },
+            initialCommand = params.optString("command"),
+            initialAdvancedOpen = params.optBoolean("advancedOpen"),
             suggestedComputer = "computer-mbp",
             machines =
                 listOf(
@@ -92,7 +116,7 @@ private fun CreateAgentDialogVisualContent() {
                         id = "computer-mbp",
                         name = "Jiachengs-MacBook-Pro",
                         status = "online",
-                        runtimes = listOf("codex", "claude")
+                        runtimes = machineRuntimes
                     ),
                     SharedCreateAgentMachineOption(
                         id = "computer-studio",
@@ -103,11 +127,7 @@ private fun CreateAgentDialogVisualContent() {
                 ),
             runtimeModelsByMachineAndRuntime =
                 mapOf(
-                    ("computer-mbp" to "codex") to
-                        listOf(
-                            SharedCreateAgentRuntimeModelOption("gpt-5-codex", "GPT-5 Codex"),
-                            SharedCreateAgentRuntimeModelOption("gpt-5-mini", "GPT-5 mini")
-                        )
+                    ("computer-mbp" to runtime) to runtimeModels
                 ),
             currentAgentCount = 4,
             maxAgents = 12,
@@ -231,6 +251,15 @@ internal fun SharedCreateAgentDialog(
     errorMessage: String?,
     initialName: String = "",
     initialDescription: String = "",
+    initialRuntime: String = "",
+    initialModel: String? = null,
+    initialProviderMode: RuntimeProviderMode = RUNTIME_PROVIDER_MODE_DEFAULT,
+    initialProviderApiUrl: String = "",
+    initialProviderApiKey: String = "",
+    initialFastMode: Boolean = false,
+    initialReasoningEffort: String? = null,
+    initialCommand: String = "",
+    initialAdvancedOpen: Boolean = false,
     draftHint: String? = null,
     suggestedComputer: String? = null,
     requiredComputer: String? = null,
@@ -245,21 +274,21 @@ internal fun SharedCreateAgentDialog(
 ) {
     var name by remember(initialName) { mutableStateOf(initialName) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
-    var runtime by remember { mutableStateOf(RUNTIMES.first().id) }
-    var model by remember(runtime) { mutableStateOf(getDefaultModel(runtime)) }
+    var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
+    var model by remember(runtime, initialModel) { mutableStateOf(initialModel ?: getDefaultModel(runtime)) }
     var customModelMode by remember { mutableStateOf(false) }
     var customModelName by remember { mutableStateOf("") }
-    var providerMode by remember { mutableStateOf<RuntimeProviderMode>(RUNTIME_PROVIDER_MODE_DEFAULT) }
-    var providerApiUrl by remember { mutableStateOf("") }
-    var providerApiKey by remember { mutableStateOf("") }
+    var providerMode by remember(initialProviderMode) { mutableStateOf(initialProviderMode) }
+    var providerApiUrl by remember(initialProviderApiUrl) { mutableStateOf(initialProviderApiUrl) }
+    var providerApiKey by remember(initialProviderApiKey) { mutableStateOf(initialProviderApiKey) }
     var showApiKey by remember { mutableStateOf(false) }
-    var fastMode by remember { mutableStateOf(false) }
-    var reasoningEffort by remember { mutableStateOf<String?>(null) }
-    var command by remember { mutableStateOf("") }
+    var fastMode by remember(initialFastMode) { mutableStateOf(initialFastMode) }
+    var reasoningEffort by remember(initialReasoningEffort) { mutableStateOf(initialReasoningEffort) }
+    var command by remember(initialCommand) { mutableStateOf(initialCommand) }
     var envVarEntries by remember {
         mutableStateOf(listOf<Pair<String, String>>())
     }
-    var advancedOpen by remember { mutableStateOf(false) }
+    var advancedOpen by remember(initialAdvancedOpen) { mutableStateOf(initialAdvancedOpen) }
     var selectedMachineId by remember {
         mutableStateOf<String?>(
             createAgentInitialMachineSelection(
@@ -269,7 +298,7 @@ internal fun SharedCreateAgentDialog(
             )
         )
     }
-    var machineRuntimeInitialized by remember { mutableStateOf(false) }
+    var machineRuntimeInitialized by remember(initialRuntime) { mutableStateOf(initialRuntime.isNotBlank()) }
     val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
 
     fun resetRuntimeForMachine(machineId: String) {

@@ -683,7 +683,7 @@
     },
     {
       "id": "members.create-agent.dialog",
-      "title": "Members Create Agent Dialog",
+      "title": "Members Create Agent Dialog - Codex CLI",
       "surface": "members",
       "fixture": "fixtures/members.create-agent.dialog.json",
       "viewport": {
@@ -702,6 +702,82 @@
             "description": "Watches release screenshots and reports visual regressions before merge.",
             "machine": "Jiachengs-MacBook-Pro",
             "runtime": "codex"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/agent/CreateAgentDialog.tsx",
+      "androidCaseHint": "compose_create_agent_dialog_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "members.create-agent.claude-dialog",
+      "title": "Members Create Agent Dialog - Claude Code",
+      "surface": "members",
+      "fixture": "fixtures/members.create-agent.claude-dialog.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "prefilled-claude-runtime",
+          "name": "Create Agent Claude Runtime",
+          "props": {
+            "name": "Product-QA-Bot",
+            "description": "Watches release screenshots and reports visual regressions before merge.",
+            "machine": "Jiachengs-MacBook-Pro",
+            "runtime": "claude"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "body",
+        "crop": "element",
+        "contract": "modal-viewport"
+      },
+      "reactPathHint": "packages/web/src/components/agent/CreateAgentDialog.tsx",
+      "androidCaseHint": "compose_create_agent_dialog_visual",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "members.create-agent.claude-custom-provider-dialog",
+      "title": "Members Create Agent Dialog - Claude Custom Provider",
+      "surface": "members",
+      "fixture": "fixtures/members.create-agent.claude-custom-provider-dialog.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "prefilled-claude-custom-provider",
+          "name": "Create Agent Claude Custom Provider",
+          "props": {
+            "name": "Product-QA-Bot",
+            "description": "Watches release screenshots and reports visual regressions before merge.",
+            "machine": "Jiachengs-MacBook-Pro",
+            "runtime": "claude",
+            "providerMode": "custom",
+            "advancedOpen": true
           }
         }
       ],
@@ -1688,11 +1764,16 @@
     },
     {
       "id": "members.create-agent.dialog",
-      "title": "Members Create Agent Dialog",
+      "title": "Members Create Agent Dialog - Runtime Matrix",
       "surface": "members",
       "group": "product-members",
       "status": "baseline",
-      "notes": "Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Baseline covers the prefilled managed-agent dialog with computer, name, description, runtime, model, advanced toggle, and action buttons.",
+      "notes": "Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Matrix covers Codex CLI default, Claude Code default, and Claude custom-provider/advanced configuration because each runtime exposes different selectable fields.",
+      "caseIds": [
+        "members.create-agent.dialog",
+        "members.create-agent.claude-dialog",
+        "members.create-agent.claude-custom-provider-dialog"
+      ],
       "providers": [
         {
           "id": "react",
@@ -1704,7 +1785,7 @@
             "RuntimeConfigFields"
           ],
           "path": "packages/web/src/components/agent/CreateAgentDialog.tsx",
-          "fixture": "fixtures/members.create-agent.dialog.json"
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx"
         },
         {
           "id": "android",
@@ -1717,7 +1798,7 @@
             "SlockUnifiedDialog"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedCreateAgentDialog.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersCreateAgentDialog"
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersCreateAgent*Dialog"
         },
         {
           "id": "harmony",

@@ -177,10 +177,41 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureMembersCreateAgentDialog() {
+    fun captureMembersCreateAgentCodexDialog() {
         captureKmpComponentCase(
             caseId = "members.create-agent.dialog",
             pageName = "compose_create_agent_dialog_visual",
+            pageData = createAgentDialogPageData(runtime = "codex"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentClaudeDialog() {
+        captureKmpComponentCase(
+            caseId = "members.create-agent.claude-dialog",
+            pageName = "compose_create_agent_dialog_visual",
+            pageData = createAgentDialogPageData(runtime = "claude"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersCreateAgentClaudeCustomProviderDialog() {
+        captureKmpComponentCase(
+            caseId = "members.create-agent.claude-custom-provider-dialog",
+            pageName = "compose_create_agent_dialog_visual",
+            pageData =
+                createAgentDialogPageData(
+                    runtime = "claude",
+                    providerMode = "custom",
+                    providerApiUrl = "https://gateway.example.com",
+                    providerApiKey = "visual-test-key",
+                    advancedOpen = true,
+                    command = "claude"
+                ),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
         )
@@ -490,6 +521,22 @@ class KmpVisualScreenshotCaptureTest {
                     .put(JSONObject().put("name", "design").put("subtitle", "Product and UI decisions"))
                     .put(JSONObject().put("name", "android-artifacts").put("subtitle", "Builds and screenshots"))
             )
+
+    private fun createAgentDialogPageData(
+        runtime: String,
+        providerMode: String = "default",
+        providerApiUrl: String = "",
+        providerApiKey: String = "",
+        advancedOpen: Boolean = false,
+        command: String = ""
+    ): JSONObject =
+        JSONObject()
+            .put("runtime", runtime)
+            .put("providerMode", providerMode)
+            .put("providerApiUrl", providerApiUrl)
+            .put("providerApiKey", providerApiKey)
+            .put("advancedOpen", advancedOpen)
+            .put("command", command)
 
     private fun threadMessageRowPayload(): JSONObject =
         JSONObject()
