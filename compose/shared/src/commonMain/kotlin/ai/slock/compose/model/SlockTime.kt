@@ -20,7 +20,7 @@ data class SlockTimeContext(
     fun formatTimestampLabel(value: String?): String {
         val trimmed = value?.trim().orEmpty()
         if (trimmed.isEmpty()) return ""
-        val today = todayEpochDay ?: return trimmed
+        val today = todayEpochDay ?: nowEpochMillis?.toLocalEpochDay(localOffsetMinutes) ?: return trimmed
         return formatSlockTimestampLabel(trimmed, localOffsetMinutes, today, timeFormat)
     }
 
@@ -144,6 +144,9 @@ fun slockStartOfDayUtcIso(epochDay: Long, localOffsetMinutes: Int): String {
 
 fun slockEpochMillisUtcIso(epochMillis: Long): String =
     formatEpochMillisAsUtcIso(epochMillis)
+
+private fun Long.toLocalEpochDay(localOffsetMinutes: Int): Long =
+    floorDiv(this + localOffsetMinutes.toLong() * MillisPerMinute, MillisPerDay)
 
 private val SlockTimestampRegex =
     Regex("""^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,9}))?)?(?:\s*(Z|[+-]\d{2}(?::?\d{2})?))?)?$""")

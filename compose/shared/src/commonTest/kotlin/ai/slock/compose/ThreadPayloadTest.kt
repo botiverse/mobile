@@ -1080,6 +1080,17 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun formatsMessageTimestampWhenHostOmitsTodayEpochDay() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                localOffsetMinutes = 480,
+                nowEpochMillis = 1779206400000L
+            )
+
+        assertEquals("00:00", payload.formatTimestampLabel("2026-05-19T16:00:00Z"))
+    }
+
+    @Test
     fun parsesCanonicalAgentSenderRow() {
         val base =
             KuiklyThreadScreenPayload(

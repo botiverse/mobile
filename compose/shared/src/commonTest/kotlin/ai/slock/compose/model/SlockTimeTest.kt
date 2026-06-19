@@ -82,8 +82,12 @@ class SlockTimeTest {
             formatSlockTimestampClockWithSeconds("2026-06-10 13:55:27.466929+00", context)
         )
         assertEquals(
+            "10:00 PM",
+            formatSlockTimestampLabel("2026-05-09T22:00:00+08:00", context.copy(todayEpochDay = null))
+        )
+        assertEquals(
             "raw value",
-            formatSlockTimestampLabel("raw value", context.copy(todayEpochDay = null))
+            formatSlockTimestampLabel("raw value", context.copy(todayEpochDay = null, nowEpochMillis = null))
         )
     }
 

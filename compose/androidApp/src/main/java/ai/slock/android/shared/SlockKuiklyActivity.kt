@@ -115,6 +115,7 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -756,7 +757,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             clearTask: Boolean = false
         ) {
             SlockKuiklyAdapters.init(context.applicationContext)
-            val hostPageData = pageData.withAndroidAuthCapabilities(pageName)
+            val hostPageData = pageData.withAndroidHostPageData(pageName)
             val starter =
                     Intent(context, SlockKuiklyActivity::class.java)
                             .putExtra(KEY_PAGE_NAME, pageName)
@@ -781,12 +782,27 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)
         }
 
-        private fun JSONObject.withAndroidAuthCapabilities(pageName: String): JSONObject =
+        private fun JSONObject.withAndroidHostPageData(pageName: String): JSONObject =
                 JSONObject(toString()).apply {
+                    putAndroidTimeContextIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
                         put("slockSocialAuthProviders", "google")
                     }
                 }
+
+        private fun JSONObject.putAndroidTimeContextIfMissing() {
+            val nowMillis = System.currentTimeMillis()
+            val offsetMinutes = TimeZone.getDefault().getOffset(nowMillis) / 60_000
+            if (!has("localOffsetMinutes")) {
+                put("localOffsetMinutes", offsetMinutes)
+            }
+            if (!has("todayEpochDay")) {
+                put("todayEpochDay", Math.floorDiv(nowMillis + offsetMinutes.toLong() * 60_000L, 86_400_000L))
+            }
+            if (!has("nowEpochMillis")) {
+                put("nowEpochMillis", nowMillis)
+            }
+        }
     }
 }
 

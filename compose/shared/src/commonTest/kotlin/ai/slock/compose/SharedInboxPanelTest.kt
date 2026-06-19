@@ -29,6 +29,22 @@ class SharedInboxPanelTest {
     }
 
     @Test
+    fun activityTimeLabelFormatsWhenHostOmitsTodayEpochDay() {
+        val item =
+            activityItem(
+                latestActivityAt = "2026-06-18T09:12:00Z",
+                lastMessageAt = "2026-06-18T08:05:00Z"
+            )
+        val context =
+            SlockTimeContext(
+                localOffsetMinutes = 480,
+                nowEpochMillis = 1781760000000L
+            )
+
+        assertEquals("17:12", item.activityTimeLabel(context))
+    }
+
+    @Test
     fun activityTimeLabelFormatsLastMessageFallbackBeforeRendering() {
         val item =
             activityItem(

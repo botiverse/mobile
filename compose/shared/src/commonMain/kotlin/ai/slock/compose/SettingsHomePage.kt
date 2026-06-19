@@ -1965,6 +1965,7 @@ private fun SlockAppShellContent() {
                                     }
                                 },
                                 bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                timeContext = threadTimeContext,
                                 onLogout = {
                                     authGateMessage = null
                                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
@@ -2140,6 +2141,7 @@ private fun SettingsAppShellContent(
     onDiagnosticsFeedbackRefresh: () -> Unit,
     onDiagnosticsFeedbackChannelSelected: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp,
+    timeContext: SlockTimeContext?,
     onLogout: () -> Unit
 ) {
     LaunchedEffect(selectedDestination, selectedComputerId) {
@@ -2362,7 +2364,10 @@ private fun SettingsAppShellContent(
                 }
             SettingsDestinationComputers ->
                 SettingsComputersContent(
-                    settingsState.computers.toComputersPayload(settingsState.isRefreshing(SharedSettingsDestination.Computers)),
+                    settingsState.computers.toComputersPayload(
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),
+                        timeContext = timeContext
+                    ),
                     bottomContentPadding = bottomContentPadding
                 ) { action, itemId ->
                     when (action) {
@@ -2373,7 +2378,7 @@ private fun SettingsAppShellContent(
                 }
             SettingsDestinationComputerDetail ->
                 SettingsComputerDetailContent(
-                    payload = settingsState.computerDetail.toComputerDetailPayload(selectedComputerId),
+                    payload = settingsState.computerDetail.toComputerDetailPayload(selectedComputerId, timeContext),
                     actionState = settingsState.actionState?.toComputerActionState(),
                     bottomContentPadding = bottomContentPadding
                 ) { action, itemId ->
@@ -2425,7 +2430,7 @@ private fun SettingsAppShellContent(
                 }
             SettingsDestinationBilling ->
                 SettingsBillingContent(
-                    settingsState.billing.toBillingPayload(session),
+                    settingsState.billing.toBillingPayload(session, timeContext),
                     bottomContentPadding = bottomContentPadding
                 ) { _, _ -> }
             SettingsDestinationLanguageRegion ->
@@ -2481,7 +2486,8 @@ private fun SettingsAppShellContent(
                     payload = settingsState.server.toServerPayload(
                         session = session,
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Server),
-                        actionState = settingsState.actionState
+                        actionState = settingsState.actionState,
+                        timeContext = timeContext
                     ),
                     inviteEmail = serverInviteEmail,
                     onInviteEmailChange = { serverInviteEmail = it },
@@ -2504,6 +2510,7 @@ private fun SettingsAppShellContent(
                     onboardingGreetingEnabled = serverOnboardingGreetingEnabled,
                     onOnboardingGreetingEnabledChange = { serverOnboardingGreetingEnabled = it },
                     serverSnapshot = currentServerSnapshot,
+                    timeContext = timeContext,
                     serverRole = session?.currentServerSummary()?.role.orEmpty(),
                     expectedServerSlug = currentServerSlug,
                     deleteConfirmationName = serverDeleteConfirmation,
@@ -2797,6 +2804,7 @@ private fun SharedSettingsServerContent(
     onboardingGreetingEnabled: Boolean,
     onOnboardingGreetingEnabledChange: (Boolean) -> Unit,
     serverSnapshot: SettingsServerSnapshot?,
+    timeContext: SlockTimeContext?,
     serverRole: String,
     expectedServerSlug: String,
     deleteConfirmationName: String,
@@ -2843,6 +2851,7 @@ private fun SharedSettingsServerContent(
                             section = serverSnapshot?.sections?.firstOrNull { it.key == "pending_invites" },
                             email = inviteEmail,
                             actionState = actionState,
+                            timeContext = timeContext,
                             onEmailChange = onInviteEmailChange,
                             onSubmit = { onAction(SERVER_ACTION_INVITE_CREATE, inviteEmail.trim()) },
                             onAction = onAction
@@ -2856,6 +2865,7 @@ private fun SharedSettingsServerContent(
                             maxUses = joinLinkMaxUses,
                             expiresAt = joinLinkExpiresAt,
                             actionState = actionState,
+                            timeContext = timeContext,
                             onMaxUsesChange = onJoinLinkMaxUsesChange,
                             onExpiresAtChange = onJoinLinkExpiresAtChange,
                             onCreate = onCreateJoinLink,
@@ -3750,6 +3760,7 @@ private fun SettingsServerInvitesCard(
     section: SettingsServerSectionSnapshot?,
     email: String,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?,
     onEmailChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onAction: (String, String?) -> Unit
@@ -3781,7 +3792,11 @@ private fun SettingsServerInvitesCard(
             invites.forEach { invite ->
                 SettingsServerActionRow(
                     title = invite.email,
-                    detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
+                    detail =
+                        listOfNotNull(
+                            invite.inviterName?.let { "Invited by $it" },
+                            formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                        ).joinToString(" · "),
                     buttonLabel = actionState.serverStatusFor(SERVER_ACTION_INVITE_REVOKE, "Revoke", invite.id),
                     buttonIcon = SlockLucideIconName.X,
                     buttonColor = SlockColor.SurfaceWhite,
@@ -3803,6 +3818,7 @@ private fun SettingsServerJoinLinksCard(
     maxUses: String,
     expiresAt: String,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?,
     onMaxUsesChange: (String) -> Unit,
     onExpiresAtChange: (String) -> Unit,
     onCreate: (SettingsServerJoinLinkCreateRequest) -> Unit,
@@ -3855,7 +3871,12 @@ private fun SettingsServerJoinLinksCard(
             links.forEach { link ->
                 SettingsServerActionRow(
                     title = link.url ?: link.label,
-                    detail = listOfNotNull(link.maxUsesLabel, link.usageLabel, link.expiresAtLabel).joinToString(" · "),
+                    detail =
+                        listOfNotNull(
+                            link.maxUsesLabel,
+                            link.usageLabel,
+                            formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                        ).joinToString(" · "),
                     buttonLabel = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, "Revoke", link.id),
                     buttonIcon = SlockLucideIconName.Unlink,
                     buttonColor = SlockColor.SurfaceWhite,
@@ -4504,11 +4525,12 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
 }
 
 private fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
-    refreshing: Boolean
+    refreshing: Boolean,
+    timeContext: SlockTimeContext?
 ): KuiklySettingsComputersPayload =
     when (this) {
         is ScreenLoadState.Content ->
-            data.toComputersPayload(refreshing)
+            data.toComputersPayload(refreshing, timeContext)
         is ScreenLoadState.Error ->
             KuiklySettingsComputersPayload(
                 instanceId = "shared-shell-settings-computers",
@@ -4539,22 +4561,26 @@ private fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
             )
     }
 
-private fun SettingsComputersSnapshot.toComputersPayload(refreshing: Boolean): KuiklySettingsComputersPayload =
+private fun SettingsComputersSnapshot.toComputersPayload(
+    refreshing: Boolean,
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputersPayload =
     KuiklySettingsComputersPayload(
         instanceId = "shared-shell-settings-computers",
         status = if (refreshing) "refreshing" else "content",
-        computers = computers.map { it.toComputerItem() },
+        computers = computers.map { it.toComputerItem(timeContext) },
         canAddComputer = canAddComputer,
         addComputerUnavailableReason = addComputerUnavailableReason,
         latestDaemonVersion = latestDaemonVersion
     )
 
 private fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayload(
-    selectedComputerId: String?
+    selectedComputerId: String?,
+    timeContext: SlockTimeContext?
 ): KuiklySettingsComputerDetailPayload =
     when (this) {
         is ScreenLoadState.Content ->
-            data.toComputerDetailPayload()
+            data.toComputerDetailPayload(timeContext)
         is ScreenLoadState.Error ->
             loadingComputerDetailPayload(
                 selectedComputerId = selectedComputerId,
@@ -4585,11 +4611,13 @@ private fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayl
             )
     }
 
-private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(): KuiklySettingsComputerDetailPayload =
+private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerDetailPayload =
     KuiklySettingsComputerDetailPayload(
         instanceId = "shared-shell-settings-computer-${computer.id}",
-        computer = computer.toComputerItem(),
-        workspaces = workspaces.map { it.toWorkspaceItem() },
+        computer = computer.toComputerItem(timeContext),
+        workspaces = workspaces.map { it.toWorkspaceItem(timeContext) },
         agents = agents.map { it.toAgentItem() },
         workspacesErrorCode = workspacesError?.code,
         workspacesRetryable = workspacesError?.retryable ?: false,
@@ -4614,7 +4642,9 @@ private fun loadingComputerDetailPayload(
         agentsRetryable = agentsRetryable
     )
 
-private fun SettingsComputerSnapshot.toComputerItem(): KuiklySettingsComputerItem =
+private fun SettingsComputerSnapshot.toComputerItem(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerItem =
     KuiklySettingsComputerItem(
         id = id,
         name = name,
@@ -4622,9 +4652,9 @@ private fun SettingsComputerSnapshot.toComputerItem(): KuiklySettingsComputerIte
         online = online,
         hostname = hostname,
         platform = platform,
-        lastSeenLabel = lastSeenLabel,
+        lastSeenLabel = formatSettingsTimestampLabel(lastSeenLabel, timeContext),
         runtimes = runtimes,
-        createdAt = createdAt,
+        createdAt = formatSettingsTimestampLabel(createdAt, timeContext),
         apiKeyPrefix = apiKeyPrefix,
         statusVersion = statusVersion
     )
@@ -4637,13 +4667,15 @@ private fun SharedSettingsActionState.toComputerActionState(): KuiklySettingsCom
         errorCode = errorCode
     )
 
-private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(): KuiklySettingsWorkspaceItem =
+private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
+    timeContext: SlockTimeContext?
+): KuiklySettingsWorkspaceItem =
     KuiklySettingsWorkspaceItem(
         id = id,
         name = name,
         path = path,
         statusLabel = statusLabel,
-        lastActiveLabel = lastActiveLabel
+        lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext)
     )
 
 private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
@@ -4719,7 +4751,10 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
         else -> SlockLucideIconName.Archive
     }
 
-private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
+private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
+    session: StoredAuthSession?,
+    timeContext: SlockTimeContext?
+): KuiklySettingsBillingPayload {
     val billing = (this as? ScreenLoadState.Content<SettingsBillingSnapshot>)?.data
     val fallbackPlan = session?.currentServerSummary()?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Hobby"
     return KuiklySettingsBillingPayload(
@@ -4737,7 +4772,12 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: S
                 planName = billing?.currentPlan?.planName ?: fallbackPlan,
                 usageRows =
                     billing?.currentPlan?.usageRows
-                        ?.map { KuiklySettingsPlanUsageRow(label = it.label, value = it.value) }
+                        ?.map { row ->
+                            KuiklySettingsPlanUsageRow(
+                                label = row.label,
+                                value = row.value.formatSettingsBillingUsageValue(timeContext)
+                            )
+                        }
                         .orEmpty(),
                 trialActive = billing?.currentPlan?.trialActive ?: false
             ),
@@ -4760,7 +4800,8 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: S
 private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     session: StoredAuthSession?,
     refreshing: Boolean,
-    actionState: ai.slock.compose.data.SharedSettingsActionState?
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?
 ): KuiklySharedSettingsPayload {
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
@@ -4806,11 +4847,11 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                 ),
                 KuiklySharedSettingsSection(
                     title = "Pending Invites",
-                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState)
+                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
                 ),
                 KuiklySharedSettingsSection(
                     title = "Join Links",
-                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState)
+                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
                 ),
                 KuiklySharedSettingsSection(
                     title = "Pre-join Agreement",
@@ -4884,7 +4925,8 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
 
 private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     section: SettingsServerSectionSnapshot?,
-    actionState: ai.slock.compose.data.SharedSettingsActionState?
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?
 ): List<KuiklySharedSettingsRow> {
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
@@ -4898,7 +4940,11 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
                 key = "invite:${invite.id}",
                 iconName = SlockLucideIconName.MailPlus,
                 title = invite.email,
-                detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
+                detail =
+                    listOfNotNull(
+                        invite.inviterName?.let { "Invited by $it" },
+                        formatSettingsTimestampLabel(invite.createdAtLabel, timeContext)
+                    ).joinToString(" · "),
                 status = "Pending",
                 enabled = false
             ),
@@ -4917,7 +4963,8 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
 
 private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     section: SettingsServerSectionSnapshot?,
-    actionState: ai.slock.compose.data.SharedSettingsActionState?
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?
 ): List<KuiklySharedSettingsRow> {
     val links = this.orEmpty()
     val createRow =
@@ -4938,7 +4985,12 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
                 key = "joinLink:${link.id}",
                 iconName = SlockLucideIconName.Link2,
                 title = link.label,
-                detail = listOfNotNull(link.url, link.maxUsesLabel, link.expiresAtLabel).joinToString(" · "),
+                detail =
+                    listOfNotNull(
+                        link.url,
+                        link.maxUsesLabel,
+                        formatSettingsTimestampLabel(link.expiresAtLabel, timeContext)
+                    ).joinToString(" · "),
                 status = link.usageLabel.orEmpty(),
                 enabled = false
             ),
@@ -9163,6 +9215,17 @@ internal typealias AppShellThreadTimeContext = SlockTimeContext
 
 private fun String.formatSavedTimestamp(timeContext: AppShellThreadTimeContext?): String =
     timeContext?.formatTimestampLabel(this) ?: this
+
+internal fun formatSettingsTimestampLabel(
+    value: String?,
+    timeContext: SlockTimeContext?
+): String? {
+    val trimmed = value?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return timeContext?.formatTimestampLabel(trimmed)?.takeIf { it.isNotBlank() } ?: trimmed
+}
+
+private fun String.formatSettingsBillingUsageValue(timeContext: SlockTimeContext?): String =
+    formatSettingsTimestampLabel(this, timeContext) ?: this
 
 private fun AppShellTimeContext?.withTimeFormat(timeFormat: String?): AppShellTimeContext? =
     this?.withTimeFormat(timeFormat)
