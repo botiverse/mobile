@@ -510,6 +510,7 @@ internal fun MembersPageContent() {
             bridge.copyToPasteboard(it.id.value)
             bridge.toast("Copied member id")
         },
+        onOpenUrl = { bridge.openUrl(it) },
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = machines,
@@ -612,6 +613,7 @@ internal fun MembersRouteContent(
     onAddHuman: () -> Unit,
     onOpenDirectMessage: (MemberProfile) -> Unit,
     onCopyMemberId: (MemberProfile) -> Unit,
+    onOpenUrl: (String) -> Unit = {},
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
     agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
@@ -694,6 +696,7 @@ internal fun MembersRouteContent(
             onBack = { selectedMemberId = null },
             onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
             onCopyMemberId = { onCopyMemberId(selectedMember) },
+            onOpenUrl = onOpenUrl,
             onUpdateAgentProfile = onUpdateAgentProfile,
             onAgentLifecycleAction = onAgentLifecycleAction,
             agentWorkspaceTreeLoader = agentWorkspaceTreeLoader,
@@ -979,6 +982,7 @@ private fun MembersDetailContent(
     onBack: () -> Unit,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
+    onOpenUrl: (String) -> Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
@@ -1283,6 +1287,7 @@ private fun MembersDetailContent(
                                 onSelectFile = { selectWorkspaceFile(it) },
                                 onBackToTree = { workspaceFileState = MembersAgentWorkspaceFileState.None },
                                 onViewModeChange = { workspaceViewMode = it },
+                                onOpenUrl = onOpenUrl,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         MembersAgentDetailTab.Apps ->
@@ -1297,6 +1302,7 @@ private fun MembersDetailContent(
                                 diagnosticActionState = diagnosticActionState,
                                 onCopyDiagnostics = { copyDiagnostics() },
                                 timeContext = timeContext,
+                                onOpenUrl = onOpenUrl,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                     }
@@ -2037,6 +2043,7 @@ private fun MembersAgentWorkspaceTab(
     onSelectFile: (String) -> Unit,
     onBackToTree: () -> Unit,
     onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
+    onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     MembersDetailSection(title = "WORKSPACE", modifier = modifier) {
@@ -2057,7 +2064,8 @@ private fun MembersAgentWorkspaceTab(
                         fileState = fileState,
                         viewMode = viewMode,
                         onBackToTree = onBackToTree,
-                        onViewModeChange = onViewModeChange
+                        onViewModeChange = onViewModeChange,
+                        onOpenUrl = onOpenUrl
                     )
                 } else {
                     MembersWorkspaceTreeView(
@@ -2213,7 +2221,8 @@ private fun MembersWorkspaceFileViewer(
     fileState: MembersAgentWorkspaceFileState,
     viewMode: MembersWorkspaceViewMode,
     onBackToTree: () -> Unit,
-    onViewModeChange: (MembersWorkspaceViewMode) -> Unit
+    onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
+    onOpenUrl: (String) -> Unit
 ) {
     val path = fileState.membersWorkspaceSelectedPath().orEmpty()
     Row(
@@ -2251,7 +2260,8 @@ private fun MembersWorkspaceFileViewer(
             MembersWorkspacePreviewContent(
                 preview = fileState.snapshot.preview,
                 viewMode = viewMode,
-                onViewModeChange = onViewModeChange
+                onViewModeChange = onViewModeChange,
+                onOpenUrl = onOpenUrl
             )
     }
 }
@@ -2260,7 +2270,8 @@ private fun MembersWorkspaceFileViewer(
 private fun MembersWorkspacePreviewContent(
     preview: SlockWorkspaceFilePreview,
     viewMode: MembersWorkspaceViewMode,
-    onViewModeChange: (MembersWorkspaceViewMode) -> Unit
+    onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
+    onOpenUrl: (String) -> Unit
 ) {
     when (preview) {
         is SlockWorkspaceFilePreview.Text -> {
@@ -2300,7 +2311,8 @@ private fun MembersWorkspacePreviewContent(
                 if (preview.markdown && viewMode == MembersWorkspaceViewMode.Preview) {
                     SlockMarkdownBody(
                         body = preview.content,
-                        textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp)
+                        textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                        onOpenUrl = onOpenUrl
                     )
                 } else {
                     Text(
@@ -2389,6 +2401,7 @@ private fun MembersAgentActivityTab(
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
     timeContext: SlockTimeContext,
+    onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     MembersDetailSection(title = "ACTIVITY", modifier = modifier) {
@@ -2450,7 +2463,7 @@ private fun MembersAgentActivityTab(
                 beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
                 items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                    MembersAgentActivityRow(rows[index], timeContext)
+                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
                 }
             }
         }
@@ -2460,7 +2473,8 @@ private fun MembersAgentActivityTab(
 @Composable
 private fun MembersAgentActivityRow(
     activity: AgentActivityEntry,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    onOpenUrl: (String) -> Unit
 ) {
     val key = activity.activityTimelineKey()
     var expanded by remember(key) { mutableStateOf(false) }
@@ -2523,6 +2537,7 @@ private fun MembersAgentActivityRow(
                     SlockMarkdownBody(
                         body = displayBody,
                         textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        onOpenUrl = onOpenUrl,
                     )
                 } else {
                     Text(

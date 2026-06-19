@@ -3,6 +3,8 @@ package ai.slock.compose.markdown
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.LinkAnnotation
+import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
 import com.tencent.kuikly.compose.ui.text.SpanStyle
 import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
@@ -236,7 +238,48 @@ class SlockMarkdownTest {
         assertTrue(inlineContent.containsKey("slock:35"))
     }
 
+    @Test
+    fun rawMarkdownUrlsKeepClickListener() {
+        var openedUrl: String? = null
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "Open https://raft.build now",
+                LinkInteractionListener { link ->
+                    openedUrl = (link as? LinkAnnotation.Url)?.url
+                }
+            )
+        val link = annotated.getLinkAnnotations(0, annotated.length).single().item as LinkAnnotation.Url
+
+        assertEquals("https://raft.build", link.url)
+        link.linkInteractionListener?.onClick(link)
+        assertEquals("https://raft.build", openedUrl)
+    }
+
+    @Test
+    fun inlineMarkdownUrlsKeepClickListener() {
+        var openedUrl: String? = null
+        val annotated =
+            buildSlockMarkdownParagraphAnnotatedString(
+                "Open [Raft](https://raft.build) now",
+                LinkInteractionListener { link ->
+                    openedUrl = (link as? LinkAnnotation.Url)?.url
+                }
+            )
+        val link = annotated.getLinkAnnotations(0, annotated.length).single().item as LinkAnnotation.Url
+
+        assertEquals("https://raft.build", link.url)
+        link.linkInteractionListener?.onClick(link)
+        assertEquals("https://raft.build", openedUrl)
+    }
+
     private fun renderSlockMarkdownParagraphText(content: String): String {
+        return buildSlockMarkdownParagraphAnnotatedString(content).text
+    }
+
+    private fun buildSlockMarkdownParagraphAnnotatedString(
+        content: String,
+        linkInteractionListener: LinkInteractionListener? = null
+    ): AnnotatedString {
         val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
         val paragraph = parsedTree.children.first { it.type == MarkdownElementTypes.PARAGRAPH }
         val annotator = slockMarkdownAnnotator(content)
@@ -244,10 +287,11 @@ class SlockMarkdownTest {
             DefaultAnnotatorSettings(
                 linkTextSpanStyle = TextLinkStyles(style = SpanStyle()),
                 codeSpanStyle = SpanStyle(),
-                annotator = annotator
+                annotator = annotator,
+                linkInteractionListener = linkInteractionListener
             )
         return buildAnnotatedString {
             buildMarkdownAnnotatedString(content, paragraph, settings)
-        }.text
+        }
     }
 }

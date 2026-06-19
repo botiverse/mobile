@@ -5201,6 +5201,7 @@ private fun SharedMembersScreen(
                     bridge.copyToPasteboard(it.id.value)
                     bridge.toast("Copied member id")
                 },
+                onOpenUrl = { bridge.openUrl(it) },
                 agentDetailLoader = { agentId ->
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },

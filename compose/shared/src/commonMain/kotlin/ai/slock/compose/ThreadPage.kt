@@ -4144,12 +4144,11 @@ private fun ThreadMessageCard(
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (message.body.isNotBlank()) {
-                            Button(
+                            Box(
                                 modifier =
                                     Modifier
                                         .threadMessageContentWidth(messageMaxWidthFraction)
-                                        .background(Color.Transparent),
-                                pressFeedback = false
+                                        .background(Color.Transparent)
                             ) {
                                 SlockMarkdownBody(
                                     body = message.body,
