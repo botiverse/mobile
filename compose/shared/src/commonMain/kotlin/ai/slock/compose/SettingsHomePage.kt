@@ -830,7 +830,8 @@ private fun SlockAppShellContent() {
     val tasksDataSource =
         remember {
             SharedTasksDataSource(
-                api = NetworkSlockTasksApi(appShellNetworkClient)
+                api = NetworkSlockTasksApi(appShellNetworkClient),
+                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
@@ -940,10 +941,12 @@ private fun SlockAppShellContent() {
         viewModel(key = "shared-tasks") {
             SharedTasksViewModel(
                 authStore = authStore,
-                dataSource = tasksDataSource
+                dataSource = tasksDataSource,
+                diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }
     val tasksState by tasksViewModel.state.collectAsState()
+    var tasksFirstRenderLoggedKey by remember { mutableStateOf<String?>(null) }
     val settingsViewModel: SharedSettingsViewModel =
         viewModel(key = "shared-settings") {
             SharedSettingsViewModel(settingsDataSource)
@@ -1450,8 +1453,51 @@ private fun SlockAppShellContent() {
 
     LaunchedEffect(selectedTab) {
         if (selectedTab == "tasks") {
+            val hasSnapshot = tasksState.loadState is ScreenLoadState.Content
+            bridge.performanceMarker(
+                phase = "tasks_screen_enter",
+                routeName = "kuikly_tasks",
+                event = "instant",
+                metadata =
+                    mapOf(
+                        "hasSnapshot" to hasSnapshot.toString(),
+                        "refreshing" to tasksState.refreshing.toString(),
+                        "filter" to tasksState.selectedFilter?.name.orEmpty()
+                    )
+            )
             tasksViewModel.dispatch(SharedTasksRouteIntent.Start)
         }
+    }
+    LaunchedEffect(selectedTab, tasksState.loadState, tasksState.refreshing) {
+        if (selectedTab != "tasks") {
+            tasksFirstRenderLoggedKey = null
+            return@LaunchedEffect
+        }
+        val (result, taskCount) =
+            when (val loadState = tasksState.loadState) {
+                is ScreenLoadState.Content -> "content" to loadState.data.tasks.size
+                is ScreenLoadState.Empty -> "empty:${loadState.reason.name}" to 0
+                is ScreenLoadState.Error -> "error:${loadState.error.code}" to 0
+                is ScreenLoadState.NoPermission -> "no_permission:${loadState.blocker.code}" to 0
+                ScreenLoadState.Loading -> "loading" to 0
+            }
+        val key = "$result:$taskCount:${tasksState.refreshing}"
+        if (tasksFirstRenderLoggedKey == key) {
+            return@LaunchedEffect
+        }
+        tasksFirstRenderLoggedKey = key
+        bridge.performanceMarker(
+            phase = "tasks_first_render",
+            routeName = "kuikly_tasks",
+            event = "instant",
+            metadata =
+                mapOf(
+                    "result" to result,
+                    "tasks" to taskCount.toString(),
+                    "refreshing" to tasksState.refreshing.toString()
+                )
+        )
+        bridge.log("tasks_first_render result=$result tasks=$taskCount refreshing=${tasksState.refreshing}")
     }
 
     fun loadCreateChannelMembers() {
@@ -1913,24 +1959,27 @@ private fun SlockAppShellContent() {
                                 }
                             )
                         }
-                        "tasks" -> SharedTasksScreen(
-                            state = tasksState,
-                            onIntent = tasksViewModel::dispatch,
-                            onOpenTask = { task ->
-                                appShellCoroutineScope.launch {
-                                    openAppShellTaskThread(
-                                        task = task,
-                                        dataSource = threadDataSource,
-                                        timeContext = threadTimeContext,
-                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                        onOpenThreadPayload = { payload -> openThreadPayload(payload) },
-                                        onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
-                                        onAuthRequired = { payload -> requireSessionReauth(payload) },
-                                        onFailure = { bridge.toast("Unable to open task") }
-                                    )
+                        "tasks" -> {
+                            PerformanceSceneEffect(bridge, "kuikly_tasks")
+                            SharedTasksScreen(
+                                state = tasksState,
+                                onIntent = tasksViewModel::dispatch,
+                                onOpenTask = { task ->
+                                    appShellCoroutineScope.launch {
+                                        openAppShellTaskThread(
+                                            task = task,
+                                            dataSource = threadDataSource,
+                                            timeContext = threadTimeContext,
+                                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                            onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                                            onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
+                                            onAuthRequired = { payload -> requireSessionReauth(payload) },
+                                            onFailure = { bridge.toast("Unable to open task") }
+                                        )
+                                    }
                                 }
-                            }
-                        )
+                            )
+                        }
                         "members" ->
                             SharedMembersScreen(
                                 bridge = bridge,

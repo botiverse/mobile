@@ -200,6 +200,50 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun tasksRefreshGateSkipsDuplicateInFlightAndFreshSnapshotButAllowsManualRefresh() {
+        assertEquals(
+            TasksRefreshSkipReason.InFlight,
+            tasksRefreshSkipReason(
+                inFlight = true,
+                hasSnapshot = false,
+                snapshotAgeMs = null,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+        assertEquals(
+            TasksRefreshSkipReason.FreshSnapshot,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+        assertEquals(
+            null,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = true
+            )
+        )
+        assertEquals(
+            null,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = true,
+                snapshotAgeMs = 15_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+    }
+
+    @Test
     fun sharedTasksStoreUsesMviRuntimeNoopGateAndTransitionLog() {
         val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
@@ -538,6 +582,43 @@ class SharedTasksStoreTest {
         assertEquals("user:user-1", task.creator?.tasksIdentityFilterId())
         assertEquals("KMP-专家", task.tasksAssigneeDisplayName())
         assertEquals(1, content.data.summaryCounts[TaskStatus.InReview])
+    }
+
+    @Test
+    fun taskNetworkResponseOffUiParseEmitsRefreshDiagnosticsMarkers() = runBlocking {
+        val logs = mutableListOf<String>()
+        val response =
+            HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "tasks": [
+                        {
+                          "id": "task-65",
+                          "channelId": "channel-kmp",
+                          "channelName": "KMP",
+                          "taskNumber": 65,
+                          "title": "migrate Android UI to shared MVI",
+                          "status": "in_review"
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+
+        val result =
+            response.toTasksResultOffUi(
+                source = "tasks_server",
+                diagnosticsLogger = logs::add
+            )
+
+        val content = assertIs<DataResult.Content<TaskSnapshot>>(result)
+        assertEquals(1, content.data.tasks.size)
+        assertTrue(logs.any { it.contains("tasks_network_body_received source=tasks_server") })
+        assertTrue(logs.any { it.contains("tasks_parse_start source=tasks_server") && it.contains("dispatcher=Default") })
+        assertTrue(logs.any { it.contains("tasks_parse_result source=tasks_server result=content tasks=1") })
+        assertTrue(logs.any { it.contains("tasks_map_result source=tasks_server result=content tasks=1") })
     }
 
     @Test

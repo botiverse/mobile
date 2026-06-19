@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 data class TasksUiState(
     val loadState: ScreenLoadState<TasksContent>,
@@ -141,6 +143,8 @@ class SharedTasksViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedTasksDataSource,
     private val scope: SharedTasksScope = SharedTasksScope.Server,
+    private val diagnosticsLogger: (String) -> Unit = {},
+    private val staleWindowMs: Long = 15_000L,
     private val useCase: SharedTasksUseCase =
         SharedTasksUseCase(
             authStore = authStore,
@@ -166,6 +170,7 @@ class SharedTasksViewModel(
     private var loadJob: Job? = null
     private var observeJob: Job? = null
     private var statusJob: Job? = null
+    private var lastRefreshCompletedAt: TimeMark? = null
 
     private var createJob: Job? = null
 
@@ -173,13 +178,8 @@ class SharedTasksViewModel(
         when (action) {
             SharedTasksRouteIntent.Start,
             SharedTasksRouteIntent.Refresh,
-            is SharedTasksRouteIntent.SelectFilter -> {
-                loadJob?.cancel()
-                loadJob =
-                    viewModelScope.launch {
-                        load(action)
-                    }
-            }
+            is SharedTasksRouteIntent.SelectFilter ->
+                load(action)
             is SharedTasksRouteIntent.UpdateStatus -> {
                 statusJob?.cancel()
                 statusJob =
@@ -201,7 +201,7 @@ class SharedTasksViewModel(
         }
     }
 
-    private suspend fun load(intent: SharedTasksRouteIntent) {
+    private fun load(intent: SharedTasksRouteIntent) {
         val selectedFilter =
             when (intent) {
                 is SharedTasksRouteIntent.SelectFilter -> intent.status
@@ -209,13 +209,78 @@ class SharedTasksViewModel(
             }
         val request = TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
         observeTasks(request, selectedFilter)
+        val currentState = state.value
+        val hasSnapshot = currentState.loadState is ScreenLoadState.Content
+        val reason = intent.tasksRefreshReason()
+        val snapshotAgeMs = lastRefreshCompletedAt?.elapsedNow()?.inWholeMilliseconds
+        diagnosticsLogger(
+            "tasks_screen_enter reason=$reason hasSnapshot=$hasSnapshot " +
+                "snapshotAgeMs=${snapshotAgeMs ?: -1L} filter=${selectedFilter?.name.orEmpty()}"
+        )
+        val forceRefresh = intent == SharedTasksRouteIntent.Refresh
+        when (
+            tasksRefreshSkipReason(
+                inFlight = loadJob?.isActive == true,
+                hasSnapshot = hasSnapshot,
+                snapshotAgeMs = snapshotAgeMs,
+                staleWindowMs = staleWindowMs,
+                forceRefresh = forceRefresh
+            )
+        ) {
+            TasksRefreshSkipReason.InFlight -> {
+                diagnosticsLogger(
+                    "tasks_refresh_skip reason=$reason skip=in_flight hasSnapshot=$hasSnapshot " +
+                        "filter=${selectedFilter?.name.orEmpty()}"
+                )
+                return
+            }
+            TasksRefreshSkipReason.FreshSnapshot -> {
+                diagnosticsLogger(
+                    "tasks_refresh_skip reason=$reason skip=fresh_snapshot hasSnapshot=true " +
+                        "snapshotAgeMs=$snapshotAgeMs filter=${selectedFilter?.name.orEmpty()}"
+                )
+                return
+            }
+            null -> Unit
+        }
         store.accept(SharedTasksIntent.StartLoading(selectedFilter))
+        loadJob =
+            viewModelScope.launch {
+                refreshTasks(
+                    request = request,
+                    selectedFilter = selectedFilter,
+                    reason = reason,
+                    mergeResult = intent == SharedTasksRouteIntent.Refresh || hasSnapshot
+                )
+            }
+    }
+
+    private suspend fun refreshTasks(
+        request: TasksLoadRequest,
+        selectedFilter: TaskStatus?,
+        reason: String,
+        mergeResult: Boolean
+    ) {
+        val startedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger(
+            "tasks_refresh_start reason=$reason filter=${selectedFilter?.name.orEmpty()} " +
+                "hasSnapshot=${state.value.loadState is ScreenLoadState.Content}"
+        )
         try {
             val result = useCase.refreshTasks(request)
-            if (result !is DataResult.Content) {
+            val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+            diagnosticsLogger(
+                "tasks_refresh_result reason=$reason ${result.tasksDiagnosticsSummary()} durationMs=$durationMs"
+            )
+            if (result is DataResult.Content) {
+                lastRefreshCompletedAt = TimeSource.Monotonic.markNow()
+                if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
+                    diagnosticsLogger("tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}")
+                }
+            } else {
                 result.failureCodeOrNull()?.let { events.emit(SharedTasksEvent.OperationFailed(it)) }
                 store.accept(
-                    if (intent == SharedTasksRouteIntent.Refresh || state.value.loadState is ScreenLoadState.Content) {
+                    if (mergeResult || state.value.loadState is ScreenLoadState.Content) {
                         SharedTasksIntent.MergeRefreshResult(result, selectedFilter)
                     } else {
                         SharedTasksIntent.SetResult(result, selectedFilter)
@@ -225,6 +290,7 @@ class SharedTasksViewModel(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
+            diagnosticsLogger("tasks_refresh_result reason=$reason result=exception code=tasks_network")
             events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
@@ -235,7 +301,9 @@ class SharedTasksViewModel(
         observeJob =
             viewModelScope.launch {
                 useCase.observeTasks(request).collect { result ->
-                    store.accept(SharedTasksIntent.SetResult(result, selectedFilter))
+                    if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
+                        diagnosticsLogger("tasks_snapshot_commit source=local_observe ${result.tasksDiagnosticsSummary()}")
+                    }
                 }
             }
     }
@@ -302,6 +370,48 @@ class SharedTasksViewModel(
         super.onCleared()
     }
 }
+
+internal enum class TasksRefreshSkipReason {
+    InFlight,
+    FreshSnapshot
+}
+
+internal fun tasksRefreshSkipReason(
+    inFlight: Boolean,
+    hasSnapshot: Boolean,
+    snapshotAgeMs: Long?,
+    staleWindowMs: Long,
+    forceRefresh: Boolean
+): TasksRefreshSkipReason? {
+    if (inFlight) return TasksRefreshSkipReason.InFlight
+    if (!forceRefresh && hasSnapshot && snapshotAgeMs != null && snapshotAgeMs in 0 until staleWindowMs) {
+        return TasksRefreshSkipReason.FreshSnapshot
+    }
+    return null
+}
+
+private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
+    when (this) {
+        SharedTasksRouteIntent.Start -> "start"
+        SharedTasksRouteIntent.Refresh -> "manual"
+        is SharedTasksRouteIntent.SelectFilter -> "filter"
+        is SharedTasksRouteIntent.UpdateStatus -> "status"
+        SharedTasksRouteIntent.ClearNavigationError -> "navigation"
+        is SharedTasksRouteIntent.SeedContent -> "seed"
+        is SharedTasksRouteIntent.CreateTasks -> "create"
+    }
+
+private fun DataResult<TaskSnapshot>.tasksDiagnosticsSummary(): String =
+    when (this) {
+        is DataResult.Content ->
+            "result=content tasks=${data.tasks.size} counts=${data.summaryCounts.values.sum()}"
+        is DataResult.Empty ->
+            "result=empty code=${reason.name} tasks=0"
+        is DataResult.Error ->
+            "result=error code=${error.code} tasks=0"
+        is DataResult.NoPermission ->
+            "result=no_permission code=${blocker.code} tasks=0"
+    }
 
 class SharedTasksStore(
     initialState: TasksUiState = TasksUiState(ScreenLoadState.Loading),

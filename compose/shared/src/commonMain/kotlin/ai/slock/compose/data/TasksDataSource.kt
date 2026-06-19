@@ -12,9 +12,12 @@ import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadId
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val tasksJson = Json {
     ignoreUnknownKeys = true
@@ -23,9 +26,10 @@ private val tasksJson = Json {
 }
 
 class SharedTasksDataSource(
-    private val api: SlockTasksApi
+    private val api: SlockTasksApi,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) : SharedTasksRemoteDataSource {
-    private val typedApi = SlockTasksApiClient(api)
+    private val typedApi = SlockTasksApiClient(api, diagnosticsLogger)
 
     override suspend fun loadTasks(
         serverId: ServerId,
@@ -274,16 +278,18 @@ fun buildSharedTaskConvertBody(messageId: MessageId): String =
     tasksJson.encodeToString(TaskConvertRequestBody(messageId.value))
 
 internal class SlockTasksApiClient(
-    private val transport: SlockTasksApi
+    private val transport: SlockTasksApi,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     suspend fun serverTasks(
         serverId: ServerId,
         priority: DataRequestPriority,
         filter: TaskFilter = TaskFilter()
     ): DataResult<TaskSnapshot> =
-        transport.serverTasks(serverId, priority).toTasksResult(
+        transport.serverTasks(serverId, priority).toTasksResultOffUi(
             filter = filter,
-            source = "tasks_server"
+            source = "tasks_server",
+            diagnosticsLogger = diagnosticsLogger
         )
 
     suspend fun channelTasks(
@@ -291,9 +297,10 @@ internal class SlockTasksApiClient(
         priority: DataRequestPriority,
         filter: TaskFilter = TaskFilter()
     ): DataResult<TaskSnapshot> =
-        transport.channelTasks(channelId, priority).toTasksResult(
+        transport.channelTasks(channelId, priority).toTasksResultOffUi(
             filter = filter,
-            source = "tasks_channel"
+            source = "tasks_channel",
+            diagnosticsLogger = diagnosticsLogger
         )
 
     suspend fun taskByNumber(
@@ -308,7 +315,10 @@ internal class SlockTasksApiClient(
         drafts: List<TaskCreateDraft>,
         priority: DataRequestPriority
     ): DataResult<TaskSnapshot> =
-        transport.createTasks(channelId, drafts, priority).toTasksResult(source = "tasks_create")
+        transport.createTasks(channelId, drafts, priority).toTasksResultOffUi(
+            source = "tasks_create",
+            diagnosticsLogger = diagnosticsLogger
+        )
 
     suspend fun claimTask(taskId: TaskId): DataResult<TaskActionResult> =
         transport.claimTask(taskId).toTaskActionResult(source = "tasks_claim")
@@ -348,6 +358,42 @@ internal fun HomeNetworkResponse.toTasksResult(
     } else {
         DataResult.Content(snapshot)
     }
+}
+
+internal suspend fun HomeNetworkResponse.toTasksResultOffUi(
+    filter: TaskFilter = TaskFilter(),
+    source: String = "tasks",
+    diagnosticsLogger: (String) -> Unit = {}
+): DataResult<TaskSnapshot> {
+    val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
+    diagnosticsLogger(
+        "tasks_network_body_received source=$source code=$code responseBytes=$responseBytes " +
+            "hasBody=${bodyText != null}"
+    )
+    val parseStartedAt = TimeSource.Monotonic.markNow()
+    diagnosticsLogger("tasks_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    val result =
+        withContext(Dispatchers.Default) {
+            toTasksResult(filter = filter, source = source)
+        }
+    val durationMs = parseStartedAt.elapsedNow().inWholeMilliseconds
+    val taskCount = (result as? DataResult.Content)?.data?.tasks?.size ?: 0
+    val resultLabel =
+        when (result) {
+            is DataResult.Content -> "content"
+            is DataResult.Empty -> "empty:${result.reason.name}"
+            is DataResult.Error -> "error:${result.error.code}"
+            is DataResult.NoPermission -> "no_permission:${result.blocker.code}"
+        }
+    diagnosticsLogger(
+        "tasks_parse_result source=$source result=$resultLabel tasks=$taskCount " +
+            "durationMs=$durationMs dispatcher=Default"
+    )
+    diagnosticsLogger(
+        "tasks_map_result source=$source result=$resultLabel tasks=$taskCount " +
+            "durationMs=$durationMs dispatcher=Default"
+    )
+    return result
 }
 
 internal fun HomeNetworkResponse.toTaskActionResult(source: String = "tasks_action"): DataResult<TaskActionResult> {
