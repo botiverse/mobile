@@ -1,6 +1,5 @@
 package ai.slock.compose
 
-import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -125,12 +124,26 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
-    fun dropdownSurfaceHeightIncludesBrutalShadowOffset() {
-        assertEquals(110.dp, createAgentDropdownListHeight(itemCount = 3, rowHeight = 36.dp))
-        assertEquals(114.dp, createAgentDropdownSurfaceHeight(itemCount = 3, rowHeight = 36.dp))
+    fun providerDropdownUsesDefaultAndCustomOptions() {
+        val items = createAgentProviderDropdownItems()
+
         assertEquals(
-            createAgentDropdownListHeight(itemCount = 12, rowHeight = 36.dp) + CreateAgentDropdownShadowOffset,
-            createAgentDropdownSurfaceHeight(itemCount = 12, rowHeight = 36.dp)
+            listOf("default", "custom"),
+            items.map { it.id }
+        )
+        assertEquals(listOf("Default", "Custom"), items.map { it.label })
+    }
+
+    @Test
+    fun reasoningDropdownIncludesDefaultFirst() {
+        val items = createAgentReasoningDropdownItems()
+
+        assertTrue(items.size > 1)
+        assertEquals(CREATE_AGENT_DEFAULT_REASONING_ID, items.first().id)
+        assertEquals("Default", items.first().label)
+        assertEquals(
+            listOf("low", "medium", "high", "xhigh"),
+            items.drop(1).map { it.id }
         )
     }
 }

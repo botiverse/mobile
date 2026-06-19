@@ -161,6 +161,13 @@ where the branch is), then push. Do not push a divergent / non-fast-forward
   disabled behavior, and icon treatment unless the product spec explicitly
   calls out a variant. If a repeated variant is needed, promote it to a shared
   component instead of copying per-page styling.
+- Iron rule: when React parity or Product feedback identifies a reusable
+  control pattern (select/dropdown, textarea counter, clear action, refresh
+  affordance, section label accessory, etc.), first add or extend a shared
+  component under `compose/shared/src/commonMain/kotlin/ai/slock/compose/components/`
+  and then wire pages to that component. Do not fix the same visual primitive
+  separately inside each page; page-local UI is only allowed for one-off layout
+  composition around shared controls.
 - Members/detail pages in particular should use the shared brutal buttons for
   top-left back navigation and all action buttons. Do not reintroduce bespoke
   members-only button metrics such as custom 30dp icon buttons, 1dp shadows, or

@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalSelectField
+import ai.slock.compose.components.SlockBrutalSelectOption
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.model.RuntimeConfig
@@ -31,25 +33,18 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
-import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
-import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
-import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
-import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.compose.setContent
@@ -166,6 +161,7 @@ internal data class SharedCreateAgentRuntimeModelOption(
 )
 
 internal const val CREATE_AGENT_CUSTOM_MODEL_ID = "__custom_model__"
+internal const val CREATE_AGENT_DEFAULT_REASONING_ID = "__default_reasoning_effort__"
 
 internal data class CreateAgentModelDropdownItem(
     val id: String,
@@ -179,8 +175,6 @@ internal data class CreateAgentDropdownItem(
     val custom: Boolean = false,
     val enabled: Boolean = true
 )
-
-internal val CreateAgentDropdownShadowOffset = 4.dp
 
 private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
 
@@ -244,6 +238,21 @@ internal fun createAgentModelSelectionForValue(
         false to trimmed.ifBlank { getDefaultModel(runtime) }
     }
 }
+
+internal fun createAgentProviderDropdownItems(): List<CreateAgentDropdownItem> =
+    listOf(
+        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_DEFAULT, label = "Default"),
+        CreateAgentDropdownItem(id = RUNTIME_PROVIDER_MODE_CUSTOM, label = "Custom")
+    )
+
+internal fun createAgentReasoningDropdownItems(): List<CreateAgentDropdownItem> =
+    listOf(CreateAgentDropdownItem(id = CREATE_AGENT_DEFAULT_REASONING_ID, label = "Default")) +
+        REASONING_EFFORTS.map { (id, label) ->
+            CreateAgentDropdownItem(id = id, label = label)
+        }
+
+private fun List<CreateAgentDropdownItem>.toBrutalSelectOptions(): List<SlockBrutalSelectOption> =
+    map { item -> SlockBrutalSelectOption(id = item.id, label = item.label, enabled = item.enabled) }
 
 @Composable
 internal fun SharedCreateAgentDialog(
@@ -442,7 +451,7 @@ internal fun SharedCreateAgentDialog(
                     text = "${description.length}/$DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH",
                     style = SlockType.Caption,
                     color = SlockColor.TextMutedGray,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.End)
                 )
             }
             if (!external) {
@@ -616,20 +625,16 @@ private fun MachinePicker(
             }
             else -> {
                 val machineItems = createAgentMachineDropdownItems(machines, requiredComputer)
-                CreateAgentDropdownField(
-                    items = machineItems,
+                SlockBrutalSelectField(
+                    options = machineItems.toBrutalSelectOptions(),
                     selectedId = selectedMachineId.orEmpty(),
                     selectedLabel =
                         machineItems.firstOrNull { it.id == selectedMachineId }?.label
                             ?: "Select computer",
-                    emptyLabel = "Select computer",
+                    placeholder = "Select computer",
                     enabled = enabled,
                     rowHeight = 40.dp,
-                    onSelect = { item ->
-                        if (item.enabled) {
-                            onSelect(item.id)
-                        }
-                    }
+                    onSelect = { item -> onSelect(item.id) }
                 )
             }
         }
@@ -690,32 +695,117 @@ private fun AdvancedRuntimeSection(
     val providerKeyInvalid = providerUrlRequired && providerApiKey.isBlank()
 
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SlockBrutalSectionLabel(label = "Runtime", required = true)
-        CreateAgentDropdownField(
-            items = runtimeOptions,
+        SlockBrutalSectionLabel(label = "Runtime")
+        SlockBrutalSelectField(
+            options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
             selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: getRuntimeDisplayName(runtime),
-            emptyLabel = "Select runtime",
+            placeholder = "Select runtime",
             enabled = enabled,
             rowHeight = 36.dp,
-            onSelect = { onRuntimeChange(it.id) }
+            onSelect = { option -> onRuntimeChange(option.id) }
         )
-        SlockBrutalSectionLabel(label = "Model", required = true)
-        CreateAgentDropdownField(
-            items = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) },
-            selectedId = model,
+        if (supportsRuntimeApiUrl(runtime)) {
+            SlockBrutalSectionLabel(label = "Provider", required = false)
+            val providerOptions = createAgentProviderDropdownItems()
+            SlockBrutalSelectField(
+                options = providerOptions.toBrutalSelectOptions(),
+                selectedId = providerMode,
+                selectedLabel = providerOptions.firstOrNull { it.id == providerMode }?.label ?: "Default",
+                placeholder = "Select provider",
+                enabled = enabled,
+                rowHeight = 36.dp,
+                onSelect = { option ->
+                    onProviderModeChange(option.id)
+                    if (option.id != RUNTIME_PROVIDER_MODE_CUSTOM) {
+                        onProviderApiUrlChange("")
+                        onProviderApiKeyChange("")
+                    }
+                }
+            )
+            Text(
+                text = "Default leaves Claude Code provider settings untouched. Custom sets ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY for this agent.",
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray
+            )
+            if (providerMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
+                SlockBrutalTextField(
+                    label = "API URL",
+                    required = true,
+                    value = providerApiUrl,
+                    onValueChange = { onProviderApiUrlChange(it) },
+                    placeholder = "https://gateway.example.com",
+                    enabled = enabled
+                )
+                if (providerApiUrl.isNotBlank() && providerUrlInvalid) {
+                    Text(
+                        text = "Provider URL must start with http:// or https://",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                        color = SlockColor.AccentRed
+                    )
+                }
+                SlockBrutalTextField(
+                    label = "API Key",
+                    required = true,
+                    value = providerApiKey,
+                    // Task #43 QA-4 fix (artin's instruction: same component
+                    // shape as the login page password field): use a
+                    // native password-typed text field via
+                    // `password = !showApiKey`. The showApiKey flag only
+                    // toggles the visual transformation; the underlying
+                    // value is never overwritten with bullet characters.
+                    password = !showApiKey,
+                    onValueChange = { onProviderApiKeyChange(it) },
+                    placeholder = if (showApiKey) "sk-ant-..." else "",
+                    enabled = enabled
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onShowApiKeyChange(!showApiKey) }.padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = if (showApiKey) "\u25be" else "\u25b8",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        text = if (showApiKey) "Hide" else "Show",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                if (providerKeyInvalid) {
+                    Text(
+                        text = "Provider API key is required for custom provider",
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                        color = SlockColor.AccentRed
+                    )
+                }
+            }
+        }
+        CreateAgentSectionLabelWithAction(
+            label = "Model",
+            required = false,
+            actionIcon = SlockLucideIconName.RefreshCw,
+            actionEnabled = enabled,
+            onAction = {}
+        )
+        val modelSelectItems = modelOptions.map { CreateAgentDropdownItem(id = it.id, label = it.label, custom = it.custom) }
+        SlockBrutalSelectField(
+            options = modelSelectItems.toBrutalSelectOptions(),
+            selectedId = if (customModelMode) CREATE_AGENT_CUSTOM_MODEL_ID else model,
             selectedLabel =
                 if (customModelMode) {
                     customModelName.trim().ifBlank { "Custom..." }
                 } else {
                     modelOptions.firstOrNull { it.id == model }?.label ?: model.ifBlank { "Select model" }
                 },
-            emptyLabel = "Select model",
-            selectedIsCustom = customModelMode,
+            placeholder = "Select model",
             enabled = enabled,
             rowHeight = 36.dp,
             onSelect = { item ->
-                if (item.custom) {
+                if (item.id == CREATE_AGENT_CUSTOM_MODEL_ID) {
                     onCustomModelModeChange(true)
                 } else {
                     onModelChange(item.id)
@@ -747,82 +837,26 @@ private fun AdvancedRuntimeSection(
                 color = SlockColor.TextMutedGray
             )
         }
-        if (supportsRuntimeApiUrl(runtime)) {
-            SlockBrutalSectionLabel(label = "Provider", required = false)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                RuntimeChip(
-                    label = "Default",
-                    selected = providerMode == RUNTIME_PROVIDER_MODE_DEFAULT,
-                    enabled = enabled,
-                    onClick = { onProviderModeChange(RUNTIME_PROVIDER_MODE_DEFAULT) }
-                )
-                RuntimeChip(
-                    label = "Custom",
-                    selected = providerMode == RUNTIME_PROVIDER_MODE_CUSTOM,
-                    enabled = enabled,
-                    onClick = { onProviderModeChange(RUNTIME_PROVIDER_MODE_CUSTOM) }
-                )
-            }
-            if (providerMode == RUNTIME_PROVIDER_MODE_CUSTOM) {
-                SlockBrutalTextField(
-                    label = "Provider API URL",
-                    required = true,
-                    value = providerApiUrl,
-                    onValueChange = { onProviderApiUrlChange(it) },
-                    placeholder = "https://api.example.com",
-                    enabled = enabled
-                )
-                if (providerApiUrl.isNotBlank() && providerUrlInvalid) {
-                    Text(
-                        text = "Provider URL must start with http:// or https://",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
+        if (supportsRuntimeReasoningEffort(runtime)) {
+            SlockBrutalSectionLabel(label = "Reasoning")
+            val reasoningOptions = createAgentReasoningDropdownItems()
+            val reasoningSelectedId = reasoningEffort ?: CREATE_AGENT_DEFAULT_REASONING_ID
+            SlockBrutalSelectField(
+                options = reasoningOptions.toBrutalSelectOptions(),
+                selectedId = reasoningSelectedId,
+                selectedLabel = reasoningOptions.firstOrNull { it.id == reasoningSelectedId }?.label ?: "Default",
+                placeholder = "Default",
+                enabled = enabled,
+                rowHeight = 36.dp,
+                onSelect = { option ->
+                    onReasoningEffortChange(
+                        if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
                     )
                 }
-                SlockBrutalTextField(
-                    label = "Provider API key",
-                    required = true,
-                    value = providerApiKey,
-                    // Task #43 QA-4 fix (artin's instruction: same component
-                    // shape as the login page password field): use a
-                    // native password-typed text field via
-                    // `password = !showApiKey`. The showApiKey flag only
-                    // toggles the visual transformation; the underlying
-                    // value is never overwritten with bullet characters.
-                    password = !showApiKey,
-                    onValueChange = { onProviderApiKeyChange(it) },
-                    placeholder = if (showApiKey) "sk_..." else "",
-                    enabled = enabled
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onShowApiKeyChange(!showApiKey) }.padding(vertical = 2.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = if (showApiKey) "\u25be" else "\u25b8",
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray
-                    )
-                    Text(
-                        text = if (showApiKey) "Hide" else "Show",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextMutedGray
-                    )
-                }
-                if (providerKeyInvalid) {
-                    Text(
-                        text = "Provider API key is required for custom provider",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
-                        color = SlockColor.AccentRed
-                    )
-                }
-            }
+            )
         }
         if (supportsRuntimeFastMode(runtime)) {
+            SlockBrutalSectionLabel(label = "Mode")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -852,24 +886,6 @@ private fun AdvancedRuntimeSection(
                     .padding(SlockSpacing.Sm),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (supportsRuntimeReasoningEffort(runtime)) {
-                    SlockBrutalSectionLabel(label = "Reasoning effort")
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        REASONING_EFFORTS.forEach { (id, label) ->
-                            RuntimeChip(
-                                label = label,
-                                selected = reasoningEffort == id,
-                                enabled = enabled,
-                                onClick = {
-                                    onReasoningEffortChange(if (reasoningEffort == id) null else id)
-                                }
-                            )
-                        }
-                    }
-                }
                 EnvVarsEditor(
                     entries = envVarEntries,
                     onChange = onEnvVarEntriesChange,
@@ -905,10 +921,10 @@ private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(
-            text = if (open) "▾" else "▸",
-            style = SlockType.Caption,
-            color = SlockColor.TextMutedGray
+        SlockLucideIcon(
+            if (open) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+            modifier = Modifier.size(16.dp),
+            color = SlockColor.TextMutedGrayArgb
         )
         Text(
             text = "Advanced",
@@ -919,130 +935,33 @@ private fun AdvancedToggleButton(open: Boolean, onToggle: () -> Unit) {
 }
 
 @Composable
-private fun RuntimeChip(label: String, selected: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(
-                when {
-                    !enabled -> SlockColor.SurfaceCream
-                    selected -> SlockColor.BrandYellow
-                    else -> SlockColor.SurfaceWhite
-                }
-            )
-            .let { if (enabled) it.clickable { onClick() } else it }
-            .padding(horizontal = 10.dp, vertical = 6.dp)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-            color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
-        )
-    }
-}
-
-@Composable
-private fun CreateAgentDropdownField(
-    items: List<CreateAgentDropdownItem>,
-    selectedId: String,
-    selectedLabel: String,
-    emptyLabel: String,
-    selectedIsCustom: Boolean = false,
-    enabled: Boolean,
-    rowHeight: Dp,
-    onSelect: (CreateAgentDropdownItem) -> Unit
+private fun CreateAgentSectionLabelWithAction(
+    label: String,
+    required: Boolean = false,
+    actionIcon: SlockLucideIconName,
+    actionEnabled: Boolean,
+    onAction: () -> Unit
 ) {
-    var expanded by remember { mutableStateOf(false) }
-    val displayLabel = selectedLabel.ifBlank { emptyLabel }
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                .let { if (enabled) it.clickable { expanded = !expanded } else it }
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockBrutalSectionLabel(label = label, required = required, modifier = Modifier.weight(1f))
+        Box(
+            modifier =
+                Modifier
+                    .size(22.dp)
+                    .clickable(enabled = actionEnabled) { onAction() },
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = displayLabel,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+            SlockLucideIcon(
+                actionIcon,
+                modifier = Modifier.size(13.dp),
+                color = if (actionEnabled) SlockColor.TextMutedGrayArgb else "#33000000"
             )
-            Text(
-                text = if (expanded) "▴" else "▾",
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray
-            )
-        }
-        if (expanded) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(createAgentDropdownSurfaceHeight(items.size, rowHeight))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(createAgentDropdownListHeight(items.size, rowHeight))
-                        .offset(x = CreateAgentDropdownShadowOffset, y = CreateAgentDropdownShadowOffset)
-                        .background(SlockColor.ShadowBlack)
-                )
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(createAgentDropdownListHeight(items.size, rowHeight))
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .background(SlockColor.SurfaceWhite)
-                ) {
-                    items(items.size, key = { idx -> items[idx].id }) { idx ->
-                        val item = items[idx]
-                        val selected =
-                            if (item.custom) selectedIsCustom else !selectedIsCustom && selectedId == item.id
-                        val rowEnabled = enabled && item.enabled
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = rowEnabled) {
-                                    expanded = false
-                                    onSelect(item)
-                                }
-                                .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = if (selected) "✓" else " ",
-                                style = SlockType.Caption,
-                                color = SlockColor.TextBlack,
-                                modifier = Modifier.width(14.dp)
-                            )
-                            Text(
-                                text = item.label,
-                                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                color = if (rowEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-                }
-            }
         }
     }
 }
-
-internal fun createAgentDropdownListHeight(itemCount: Int, rowHeight: Dp): Dp =
-    ((itemCount * rowHeight.value) + 2f).dp.coerceAtMost(220.dp)
-
-internal fun createAgentDropdownSurfaceHeight(itemCount: Int, rowHeight: Dp): Dp =
-    createAgentDropdownListHeight(itemCount, rowHeight) + CreateAgentDropdownShadowOffset
 
 @Composable
 private fun EnvVarsEditor(
