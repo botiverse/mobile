@@ -147,6 +147,19 @@ branch, fast-forward `main` to that branch tip (`git checkout main && git merge
 where the branch is), then push. Do not push a divergent / non-fast-forward
 `main` to origin; if divergence is needed, open a PR instead.
 
+### Non-interactive Git commands
+
+- Prefer non-interactive Git invocations in agent sessions. For commands that
+  may page output, set `GIT_PAGER=cat` or `PAGER=cat` instead of letting Git
+  open `less`.
+- If a rebase, cherry-pick, revert, or commit continuation could open an editor,
+  set `GIT_EDITOR=true` for non-interactive continuation commands. For
+  interactive rebase todo editing, set `GIT_SEQUENCE_EDITOR=true` only when the
+  intended todo file requires no manual edits.
+- Do not let agent work block inside vim or another terminal editor. If a
+  command unexpectedly enters an editor, exit without changing the file and
+  rerun with explicit pager/editor environment variables.
+
 ## Shared UI Component Discipline
 
 - Product/page code must prefer the existing shared brutal components for
