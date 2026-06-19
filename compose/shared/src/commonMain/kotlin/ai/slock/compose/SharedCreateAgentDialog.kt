@@ -98,7 +98,8 @@ internal data class CreateAgentModelDropdownItem(
 internal data class CreateAgentDropdownItem(
     val id: String,
     val label: String,
-    val custom: Boolean = false
+    val custom: Boolean = false,
+    val enabled: Boolean = true
 )
 
 internal val CreateAgentDropdownShadowOffset = 4.dp
@@ -109,6 +110,33 @@ internal fun createAgentRuntimeDropdownItems(): List<CreateAgentDropdownItem> =
     RUNTIMES.filter { it.supported }.map { runtime ->
         CreateAgentDropdownItem(id = runtime.id, label = runtime.displayName)
     }
+
+internal fun createAgentMachineDropdownItems(
+    machines: List<SharedCreateAgentMachineOption>,
+    requiredComputer: String?
+): List<CreateAgentDropdownItem> =
+    machines.map { machine ->
+        val isOffline = machine.status != "online"
+        val blockedByRequired = !requiredComputer.isNullOrBlank() && machine.id != requiredComputer
+        CreateAgentDropdownItem(
+            id = machine.id,
+            label = machine.name + if (isOffline) " (offline)" else "",
+            enabled = !isOffline && !blockedByRequired
+        )
+    }
+
+internal fun createAgentInitialMachineSelection(
+    machines: List<SharedCreateAgentMachineOption>,
+    requiredComputer: String?,
+    suggestedComputer: String?
+): String? {
+    fun online(id: String?): String? =
+        id?.takeIf { candidate -> machines.any { it.id == candidate && it.status == "online" } }
+    if (!requiredComputer.isNullOrBlank()) {
+        return online(requiredComputer)
+    }
+    return online(suggestedComputer) ?: machines.firstOrNull { it.status == "online" }?.id
+}
 
 internal fun createAgentModelDropdownItems(
     runtime: String,
@@ -176,10 +204,48 @@ internal fun SharedCreateAgentDialog(
     var advancedOpen by remember { mutableStateOf(false) }
     var selectedMachineId by remember {
         mutableStateOf<String?>(
-            (requiredComputer ?: suggestedComputer)?.takeIf { id ->
-                machines.any { it.id == id }
-            }
+            createAgentInitialMachineSelection(
+                machines = machines,
+                requiredComputer = requiredComputer,
+                suggestedComputer = suggestedComputer
+            )
         )
+    }
+    var machineRuntimeInitialized by remember { mutableStateOf(false) }
+    val supportedRuntimeIds = remember { RUNTIMES.filter { it.supported }.map { it.id }.toSet() }
+
+    fun resetRuntimeForMachine(machineId: String) {
+        val machine = machines.firstOrNull { it.id == machineId }
+        val newRuntime = machine?.runtimes?.firstOrNull { it in supportedRuntimeIds }
+            ?: machine?.runtimes?.firstOrNull()
+            ?: runtime
+        if (newRuntime != runtime) {
+            runtime = newRuntime
+        }
+        if (!customModelMode) {
+            model = getDefaultModel(newRuntime)
+        }
+        customModelMode = false
+        providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
+        providerApiUrl = ""
+        providerApiKey = ""
+        fastMode = false
+        command = ""
+        reasoningEffort = null
+    }
+
+    LaunchedEffect(machines, requiredComputer, suggestedComputer, selectedMachineId) {
+        if (external) return@LaunchedEffect
+        val nextMachineId = selectedMachineId
+            ?: createAgentInitialMachineSelection(machines, requiredComputer, suggestedComputer)
+            ?: return@LaunchedEffect
+        if (selectedMachineId == null) {
+            selectedMachineId = nextMachineId
+        }
+        if (!machineRuntimeInitialized) {
+            resetRuntimeForMachine(nextMachineId)
+            machineRuntimeInitialized = true
+        }
     }
 
     // Reset model when runtime changes if current model not in new runtime's catalog.
@@ -197,13 +263,18 @@ internal fun SharedCreateAgentDialog(
     val descriptionTooLong = description.length > DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH
     val atLimit = !external && maxAgents >= 0 && currentAgentCount >= maxAgents
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
+    val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
+    val selectedMachineBlocked = !external &&
+        (selectedMachine == null ||
+            selectedMachine.status != "online" ||
+            (!requiredComputer.isNullOrBlank() && selectedMachine.id != requiredComputer))
     val canSubmit = trimmedName.isNotBlank() &&
         inlineNameError == null &&
         !descriptionTooLong &&
         !customModelMissing &&
         !atLimit &&
         !submitting &&
-        (external || selectedMachineId != null)
+        !selectedMachineBlocked
     val showMachinePicker = !external
 
     SlockUnifiedDialog(
@@ -238,9 +309,7 @@ internal fun SharedCreateAgentDialog(
                     onSelect = { id ->
                         if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
                             selectedMachineId = id
-                            val newRuntime = machines.firstOrNull { it.id == id }
-                                ?.runtimes?.firstOrNull { r -> r == runtime } ?: runtime
-                            if (newRuntime != runtime) runtime = newRuntime
+                            resetRuntimeForMachine(id)
                         }
                     }
                 )
@@ -458,40 +527,23 @@ private fun MachinePicker(
                     color = SlockColor.TextMutedGray
                 )
             }
-            else -> LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(((machines.size * 42) + 8).dp.coerceAtMost(160.dp))
-            ) {
-                items(count = machines.size, key = { idx -> machines[idx].id }) { idx ->
-                    val machine = machines[idx]
-                    val isOffline = machine.status != "online"
-                    val blockedByRequired = !requiredComputer.isNullOrBlank() && machine.id != requiredComputer
-                    val isSelected = machine.id == selectedMachineId
-                    val isSelectable = enabled && !isOffline && !blockedByRequired
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(enabled = isSelectable) { onSelect(machine.id) }
-                            .background(if (isSelected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                            .padding(horizontal = SlockSpacing.Sm, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = if (isSelected) "✓" else " ",
-                            style = SlockType.Caption,
-                            color = SlockColor.TextBlack,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Text(
-                            text = machine.name + if (isOffline) " (offline)" else "",
-                            style = SlockType.Caption,
-                            color = if (isSelectable) SlockColor.TextBlack else SlockColor.TextMutedGray
-                        )
+            else -> {
+                val machineItems = createAgentMachineDropdownItems(machines, requiredComputer)
+                CreateAgentDropdownField(
+                    items = machineItems,
+                    selectedId = selectedMachineId.orEmpty(),
+                    selectedLabel =
+                        machineItems.firstOrNull { it.id == selectedMachineId }?.label
+                            ?: "Select computer",
+                    emptyLabel = "Select computer",
+                    enabled = enabled,
+                    rowHeight = 40.dp,
+                    onSelect = { item ->
+                        if (item.enabled) {
+                            onSelect(item.id)
+                        }
                     }
-                }
+                )
             }
         }
         if (!requiredComputer.isNullOrBlank()) {
@@ -864,10 +916,11 @@ private fun CreateAgentDropdownField(
                         val item = items[idx]
                         val selected =
                             if (item.custom) selectedIsCustom else !selectedIsCustom && selectedId == item.id
+                        val rowEnabled = enabled && item.enabled
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable(enabled = enabled) {
+                                .clickable(enabled = rowEnabled) {
                                     expanded = false
                                     onSelect(item)
                                 }
@@ -885,7 +938,7 @@ private fun CreateAgentDropdownField(
                             Text(
                                 text = item.label,
                                 style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold),
-                                color = SlockColor.TextBlack,
+                                color = if (rowEnabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f)

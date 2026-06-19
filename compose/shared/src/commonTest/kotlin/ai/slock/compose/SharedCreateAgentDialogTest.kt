@@ -20,6 +20,64 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun machineDropdownDisablesOfflineAndNonRequiredComputers() {
+        val items =
+            createAgentMachineDropdownItems(
+                machines =
+                    listOf(
+                        SharedCreateAgentMachineOption(
+                            id = "machine-online",
+                            name = "Maria Laptop",
+                            status = "online"
+                        ),
+                        SharedCreateAgentMachineOption(
+                            id = "machine-offline",
+                            name = "Build Mini",
+                            status = "offline"
+                        ),
+                        SharedCreateAgentMachineOption(
+                            id = "machine-other",
+                            name = "Lab Tower",
+                            status = "online"
+                        )
+                    ),
+                requiredComputer = "machine-online"
+            )
+
+        assertEquals(listOf("machine-online", "machine-offline", "machine-other"), items.map { it.id })
+        assertEquals("Build Mini (offline)", items[1].label)
+        assertTrue(items[0].enabled)
+        assertFalse(items[1].enabled)
+        assertFalse(items[2].enabled)
+    }
+
+    @Test
+    fun initialMachineSelectionDoesNotFallbackWhenRequiredComputerIsOffline() {
+        val machines =
+            listOf(
+                SharedCreateAgentMachineOption("required", "Required", "offline"),
+                SharedCreateAgentMachineOption("fallback", "Fallback", "online")
+            )
+
+        assertEquals(
+            null,
+            createAgentInitialMachineSelection(
+                machines = machines,
+                requiredComputer = "required",
+                suggestedComputer = null
+            )
+        )
+        assertEquals(
+            "fallback",
+            createAgentInitialMachineSelection(
+                machines = machines,
+                requiredComputer = null,
+                suggestedComputer = "required"
+            )
+        )
+    }
+
+    @Test
     fun modelDropdownKeepsCustomAsLastOption() {
         val items = createAgentModelDropdownItems("claude")
 
