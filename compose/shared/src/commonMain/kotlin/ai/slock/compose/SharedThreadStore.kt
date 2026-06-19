@@ -464,11 +464,10 @@ internal class SharedThreadDataSource(
                 ?: return authSessionRequiredResult()
         val payloadResult =
             if (conversationRepository != null) {
-                fetchThreadPayloadFromRepository(
+                fetchInitialThreadPayloadFromRepository(
                     session = session,
-                    fallbackCode = "thread_network",
-                    call = { repository -> repository.getThread(ThreadId(threadId), limit = SharedThreadPaging.initialPageSize) },
-                    transform = { snapshot -> snapshot.toKuiklyThreadPayload(resolvedBasePayload, session.user.id) }
+                    basePayload = resolvedBasePayload,
+                    threadId = ThreadId(threadId)
                 )
             } else {
                 val response =
@@ -514,6 +513,16 @@ internal class SharedThreadDataSource(
         if (!basePayload.needsReplyThreadStreamResolution()) {
             return DataResult.Content(basePayload)
         }
+        return createOrOpenReplyThreadStream(basePayload, repository)
+    }
+
+    private suspend fun createOrOpenReplyThreadStream(
+        basePayload: KuiklyThreadScreenPayload,
+        repository: ConversationRepository? = conversationRepository
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val resolvedRepository =
+            repository
+                ?: return DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Content(basePayload)
         val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
@@ -521,7 +530,7 @@ internal class SharedThreadDataSource(
             ?: return DataResult.Content(basePayload)
         val actionResult =
             try {
-                repository.createOrOpenThread(ChannelId(parentChannelId), MessageId(parentMessageId))
+                resolvedRepository.createOrOpenThread(ChannelId(parentChannelId), MessageId(parentMessageId))
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -1176,6 +1185,75 @@ internal class SharedThreadDataSource(
         call: suspend (ConversationRepository) -> DataResult<ThreadSnapshot>,
         transform: (ThreadSnapshot) -> KuiklyThreadScreenPayload
     ): DataResult<KuiklyThreadScreenPayload> {
+        val result = fetchThreadSnapshotFromRepository(fallbackCode, call)
+        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
+    }
+
+    private suspend fun fetchInitialThreadPayloadFromRepository(
+        session: StoredAuthSession,
+        basePayload: KuiklyThreadScreenPayload,
+        threadId: ThreadId
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val initialResult =
+            fetchThreadSnapshotFromRepository("thread_network") { repository ->
+                repository.getThread(threadId, limit = SharedThreadPaging.initialPageSize)
+            }
+        val verified =
+            when (initialResult) {
+                is DataResult.Content ->
+                    if (!basePayload.hasUntrustedReplyThreadStreamHint() ||
+                        initialResult.data.matchesReplyThreadParent(basePayload)
+                    ) {
+                        DataResult.Content(basePayload to initialResult.data)
+                    } else {
+                        fetchResolvedReplyThreadSnapshot(basePayload)
+                    }
+                is DataResult.Empty -> return initialResult
+                is DataResult.Error -> return initialResult
+                is DataResult.NoPermission -> return initialResult
+            }
+        return verified.map { (verifiedBase, snapshot) ->
+            snapshot
+                .toKuiklyThreadPayload(verifiedBase, session.user.id)
+                .withCachedSenderProfiles(session)
+        }
+    }
+
+    private suspend fun fetchResolvedReplyThreadSnapshot(
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot>> {
+        val resolvedBasePayload =
+            when (val resolved = createOrOpenReplyThreadStream(basePayload)) {
+                is DataResult.Content -> resolved.data
+                is DataResult.Empty -> return resolved
+                is DataResult.Error -> return resolved
+                is DataResult.NoPermission -> return resolved
+            }
+        val resolvedThreadId =
+            resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
+                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+        val resolvedResult =
+            fetchThreadSnapshotFromRepository("thread_network") { repository ->
+                repository.getThread(ThreadId(resolvedThreadId), limit = SharedThreadPaging.initialPageSize)
+            }
+        return when (resolvedResult) {
+            is DataResult.Content ->
+                if (resolvedResult.data.matchesReplyThreadParent(resolvedBasePayload)) {
+                    DataResult.Content(resolvedBasePayload to resolvedResult.data)
+                } else {
+                    DataResult.Error(ScreenError(code = "thread_parent_mismatch", retryable = true))
+                }
+            is DataResult.Empty -> resolvedResult
+            is DataResult.Error -> resolvedResult
+            is DataResult.NoPermission -> resolvedResult
+        }
+    }
+
+    private suspend fun fetchThreadSnapshotFromRepository(
+        fallbackCode: String,
+        call: suspend (ConversationRepository) -> DataResult<ThreadSnapshot>
+    ): DataResult<ThreadSnapshot> {
         val repository =
             conversationRepository
                 ?: return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
@@ -1187,7 +1265,7 @@ internal class SharedThreadDataSource(
             } catch (_: Throwable) {
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
-        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
+        return result
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
@@ -2059,6 +2137,35 @@ private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolea
     return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
         parentMessage.isNotBlank() &&
         (streamCandidate == null || streamCandidate == parentChannel)
+}
+
+private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boolean {
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
+    parentMessageId?.takeIf { it.isNotBlank() }
+        ?: originParentMessageId?.takeIf { it.isNotBlank() }
+        ?: return false
+    val streamCandidate =
+        streamChannelId?.takeIf { it.isNotBlank() }
+            ?: sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: return false
+    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        streamCandidate != parentChannel
+}
+
+private fun ThreadSnapshot.matchesReplyThreadParent(base: KuiklyThreadScreenPayload): Boolean {
+    val expectedParentChannelId = base.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
+    val expectedParentMessageId =
+        base.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: base.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return true
+    val thread = conversation.thread
+    if (thread != null) {
+        return thread.parentChannelId.value == expectedParentChannelId &&
+            thread.parentMessageId.value == expectedParentMessageId
+    }
+    val parent = parentMessage ?: return false
+    return parent.channelId?.value == expectedParentChannelId &&
+        parent.id.value == expectedParentMessageId
 }
 
 private fun KuiklyThreadScreenPayload.hasResolvedReplyThreadStreamFrom(base: KuiklyThreadScreenPayload): Boolean {

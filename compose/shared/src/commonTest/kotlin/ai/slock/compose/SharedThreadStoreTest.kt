@@ -919,6 +919,101 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchReplyThreadPayloadVerifiesStreamHintBeforeEmitting() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResultsById =
+                    mapOf(
+                        ThreadId("wrong-thread") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "wrong-thread",
+                                    body = "wrong reply body",
+                                    id = "wrong-reply",
+                                    conversation =
+                                        conversationSummary("wrong-thread").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("wrong-thread"),
+                                            name = "wrong",
+                                            subtitle = "#wrong",
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("other-channel"),
+                                                    parentMessageId = MessageId("other-message"),
+                                                    streamChannelId = ChannelId("wrong-thread")
+                                                )
+                                        )
+                                )
+                            ),
+                        ThreadId("thread-m1") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "thread-m1",
+                                    body = "reply body",
+                                    id = "reply-1",
+                                    messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                                    parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                                    conversation =
+                                        conversationSummary("thread-m1").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("thread-m1"),
+                                            name = "general",
+                                            subtitle = "#general",
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("channel-1"),
+                                                    parentMessageId = MessageId("m1"),
+                                                    streamChannelId = ChannelId("thread-m1")
+                                                )
+                                        )
+                                )
+                            )
+                    ),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-m1"),
+                            changed = false,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 2
+                        )
+                    )
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "wrong-thread",
+                streamChannelId = "wrong-thread",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1"
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+    }
+
+    @Test
     fun startWithUnresolvedActivityReplyThreadCreatesStreamBeforeLoadingReplies() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -1871,6 +1966,17 @@ class SharedThreadStoreTest {
                                 listOf(
                                     message(threadId = "thread-m1", id = "m1", seq = 10, body = "parent body"),
                                     message(threadId = "thread-m1", id = "reply-1", seq = 11, body = "reply body")
+                                ),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
                                 )
                         )
                     )
@@ -1913,7 +2019,18 @@ class SharedThreadStoreTest {
                         threadId = "thread-m1",
                         body = "reply body",
                         id = "reply-1",
-                        seq = 11
+                        seq = 11,
+                        conversation =
+                            conversationSummary("thread-m1").copy(
+                                kind = ConversationKind.Thread,
+                                channelId = ChannelId("thread-m1"),
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = ChannelId("channel-1"),
+                                        parentMessageId = MessageId("m1"),
+                                        streamChannelId = ChannelId("thread-m1")
+                                    )
+                            )
                     )
                 ),
             createThreadResult =
@@ -2434,6 +2551,7 @@ class SharedThreadStoreTest {
 
     private class FakeConversationRepository(
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
+        var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
         var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
@@ -2463,7 +2581,7 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             getThreadRequests += threadId
             getThreadLimits += limit
-            return threadResult
+            return threadResultsById[threadId] ?: threadResult
         }
 
         override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
