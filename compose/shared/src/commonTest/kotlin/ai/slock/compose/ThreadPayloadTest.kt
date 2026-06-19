@@ -610,6 +610,8 @@ class ThreadPayloadTest {
                 parentChannelName = "general",
                 parentMessageId = MessageId("message-1"),
                 parentMessagePreview = "Parent message preview",
+                parentMessageSenderId = "user-1",
+                parentMessageSenderKind = MemberKind.Human,
                 latestActivityPreview = "Latest reply"
             ).toHomeMessageOpenRequest()
         val conversation = request.conversation
@@ -626,10 +628,40 @@ class ThreadPayloadTest {
         assertEquals("channel-1", payload.parentChannelId)
         assertEquals("message-1", payload.parentMessageId)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals("Parent message preview", payload.originPreview)
+        assertEquals("message-1", payload.originMessage?.id)
+        assertEquals("Parent message preview", payload.originMessage?.body)
+        assertEquals("user-1", payload.originMessage?.authorId)
+        assertEquals("user-1", payload.originMessage?.authorName)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
         assertEquals(true, payload.showOpenInChannelAction)
+    }
+
+    @Test
+    fun appShellActivityThreadItemShowsMissingOriginFallbackWhenPreviewIsUnavailable() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("channel-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                latestActivityPreview = "Latest reply"
+            ).toHomeMessageOpenRequest()
+
+        val payload = buildAppShellThreadPayload(request.conversation, anchorMessageId = request.anchorMessageId)
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("missing", payload.originStatus)
+        assertEquals(null, payload.originMessage)
+        assertEquals(null, payload.originPreview)
     }
 
     @Test

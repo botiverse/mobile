@@ -796,7 +796,11 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
         firstUnreadMessageId = firstUnreadMessageId,
         lastMessagePreview = latestActivityPreview ?: lastMessagePreview,
         lastMessageAt = latestActivityAt ?: lastMessageAt,
-        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName
+        lastMessageSenderName = latestActivitySenderName ?: lastMessageSenderName,
+        originMessagePreview = parentMessagePreview,
+        originMessageSenderId = parentMessageSenderId,
+        originMessageSenderKind = parentMessageSenderKind,
+        originMessageExpected = kind == InboxItemKind.Thread && parentId != null
     )
 }
 

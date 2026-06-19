@@ -9328,6 +9328,7 @@ internal fun buildAppShellThreadPayload(
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
     val canSend = conversation.joined && conversation.permissions.canSend
+    val originMessage = conversation.toAppShellOriginMessage()
     val supportsChannelTasks =
         conversation.permissions.canCreateTask &&
             !conversation.channelType.equals("joint", ignoreCase = true)
@@ -9365,6 +9366,8 @@ internal fun buildAppShellThreadPayload(
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
         showOpenInChannelAction = isReplyThread && parentMessageId != null,
+        originMessage = originMessage,
+        originPreview = conversation.originMessagePreview,
         joined = conversation.joined,
         canSend = canSend,
         membersCount = conversation.memberCount ?: 0,
@@ -9376,10 +9379,42 @@ internal fun buildAppShellThreadPayload(
         showSettingsAction = !isReplyThread,
         showTaskOpenActions = supportsChannelTasks,
         showTaskStatusActions = supportsChannelTasks,
+        originStatus =
+            when {
+                originMessage != null -> "loaded"
+                isReplyThread && conversation.originMessageExpected -> "missing"
+                else -> "none"
+            },
         settingsActions = if (isReplyThread) emptyList() else defaultThreadSettingsChannelActionCapabilities(),
         emptyTitle = "Loading conversation",
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
+    )
+}
+
+private fun ConversationSummary.toAppShellOriginMessage(): KuiklyThreadMessageItem? {
+    val parentId = threadParentMessageId()?.takeIf { it.isNotBlank() } ?: return null
+    val body = originMessagePreview?.takeIf { it.isNotBlank() } ?: return null
+    val senderKind = originMessageSenderKind ?: MemberKind.Human
+    val senderId = originMessageSenderId?.takeIf { it.isNotBlank() } ?: "unknown"
+    val senderName = lastMessageSenderName
+        ?.takeIf { lastMessageId?.value == parentId && it.isNotBlank() }
+        ?: senderId.takeUnless { it == "unknown" }
+        ?: "Unknown"
+    return KuiklyThreadMessageItem(
+        id = parentId,
+        authorId = senderId,
+        authorName = senderName,
+        authorKind =
+            when (senderKind) {
+                MemberKind.Agent -> "agent"
+                MemberKind.System -> "system"
+                else -> "human"
+            },
+        avatarLabel = senderName.take(1).uppercase(),
+        timestampLabel = lastMessageAt?.takeIf { lastMessageId?.value == parentId } ?: "",
+        body = body,
+        threadChannelId = threadStreamChannelId(),
     )
 }
 

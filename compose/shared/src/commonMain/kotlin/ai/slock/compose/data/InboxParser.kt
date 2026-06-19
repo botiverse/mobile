@@ -205,6 +205,8 @@ private fun WireInboxItem.toThreadDomain(): InboxItem? {
         parentChannelKind = parentChannelType?.toConversationKind(),
         parentMessageId = parentMessageId?.let(::MessageId),
         parentMessagePreview = parentMessagePreview,
+        parentMessageSenderId = parentMessageSenderId,
+        parentMessageSenderKind = parentMessageSenderType.toSenderKind(),
         latestActivityMessageId = latestActivityMessageId?.let(::MessageId),
         latestActivityPreview = latestActivityPreview,
         latestActivityAt = lastActivityAt ?: lastReplyAt,

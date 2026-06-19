@@ -25,6 +25,8 @@ data class InboxItem(
     val parentChannelKind: ConversationKind? = null,
     val parentMessageId: MessageId? = null,
     val parentMessagePreview: String? = null,
+    val parentMessageSenderId: String? = null,
+    val parentMessageSenderKind: MemberKind? = null,
     val latestActivityMessageId: MessageId? = null,
     val latestActivityPreview: String? = null,
     val latestActivityAt: String? = null,

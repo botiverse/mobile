@@ -93,6 +93,8 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("channel-1", item.parentChannelId?.value)
         assertEquals(ConversationKind.Channel, item.parentChannelKind)
         assertEquals("inline code 也有这个问题", item.parentMessagePreview)
+        assertEquals("user-1", item.parentMessageSenderId)
+        assertEquals(MemberKind.Human, item.parentMessageSenderKind)
         assertEquals("收到，我会修 inline code", item.latestActivityPreview)
         assertEquals("2026-05-10T21:26:00+08:00", item.latestActivityAt)
         assertEquals("agent-1", item.latestActivitySenderId)
