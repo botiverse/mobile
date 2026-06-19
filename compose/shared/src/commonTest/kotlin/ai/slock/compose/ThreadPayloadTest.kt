@@ -45,6 +45,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.serialization.ExperimentalSerializationApi
 
 class ThreadPayloadTest {
     @Test
@@ -197,7 +198,7 @@ class ThreadPayloadTest {
         assertEquals("visibility", payload.settingsActions.first().id)
         assertEquals("archive", payload.settingsActions[1].id)
         assertEquals("delete", payload.settingsActions[2].id)
-        assertEquals(true, payload.settingsActions.all { it.destructive })
+        assertEquals(true, payload.settingsActions.normalizedThreadSettingsChannelActions().all { it.destructive })
     }
 
     @Test
@@ -210,13 +211,113 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun sourceThreadPayloadIsTreatedAsStoreBackedLaunchState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-launch-1",
+                      "title": "general",
+                      "status": "content",
+                      "sourceThreadId": "channel-1",
+                      "streamChannelId": "channel-1",
+                      "membersCount": 2,
+                      "messages": [{"id": "m1", "authorId": "u1", "authorName": "Artin", "body": "heavy"}],
+                      "tasks": [{"id": "t1", "title": "Task", "status": "Todo"}],
+                      "members": [{"id": "u1", "displayName": "Artin"}],
+                      "memberCandidates": [{"id": "u2", "displayName": "Cindy"}],
+                      "filesPayload": "{\"status\":\"content\",\"items\":[{\"id\":\"file-1\",\"name\":\"heavy.png\"}]}",
+                      "composer": {"seedText": "should not leak", "seedAsTask": true},
+                      "settingsActions": [
+                        {"id": "archive", "title": "Archive Channel", "icon": "archive", "destructive": true}
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        assertEquals("thread-launch-1", payload.instanceId)
+        assertEquals("general", payload.title)
+        assertEquals("loading", payload.status)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(2, payload.membersCount)
+        assertEquals(emptyList<KuiklyThreadMessageItem>(), payload.messages)
+        assertEquals(emptyList<KuiklyThreadTaskItem>(), payload.tasks)
+        assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.members)
+        assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.memberCandidates)
+        assertEquals("{}", payload.filesPayload)
+        assertEquals("", payload.resolveThreadComposer().seedText)
+        assertEquals(false, payload.resolveThreadComposer().seedAsTask)
+        assertEquals("archive", payload.settingsActions.single().id)
+        assertEquals(true, payload.settingsActions.single().enabled)
+    }
+
+    @Test
+    @OptIn(ExperimentalSerializationApi::class)
+    fun launchWireSchemaExcludesBigThreadStateFields() {
+        val descriptor = WireThreadLaunchPayload.serializer().descriptor
+        val names = (0 until descriptor.elementsCount)
+            .map { index -> descriptor.getElementName(index) }
+            .toSet()
+
+        listOf(
+            "messages",
+            "tasks",
+            "members",
+            "memberCandidates",
+            "filesPayload",
+            "composer"
+        ).forEach { forbidden ->
+            assertFalse(forbidden in names, "$forbidden must stay outside compose_thread launch pageData")
+        }
+
+        val settingsDescriptor = WireThreadSettingsActionPayload.serializer().descriptor
+        val settingsNames = (0 until settingsDescriptor.elementsCount)
+            .map { index -> settingsDescriptor.getElementName(index) }
+            .toSet()
+
+        listOf("title", "subtitle", "icon", "destructive").forEach { forbidden ->
+            assertFalse(forbidden in settingsNames, "$forbidden must stay outside thread settings action launch wire")
+        }
+    }
+
+    @Test
+    fun launchPayloadCanUseThreadIdAliasFromPageData() {
+        val payload =
+            parseThreadScreenPayload(
+                payload = "",
+                fallbackPageData =
+                    """
+                    {
+                      "instanceId": "page-1",
+                      "threadId": "dm-1",
+                      "title": "@cindy",
+                      "surfaceKind": "dm",
+                      "selectedTab": "files",
+                      "canSend": false
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("page-1", payload.instanceId)
+        assertEquals("@cindy", payload.title)
+        assertEquals("dm-1", payload.sourceThreadId)
+        assertEquals("dm-1", payload.streamChannelId)
+        assertEquals("files", payload.selectedTab)
+        assertEquals(false, payload.canSend)
+        assertEquals(false, payload.resolveThreadComposer().enabled)
+    }
+
+    @Test
     fun threadSettingsActionsDropLegacyLeaveFallback() {
         val actions =
             listOf(
                 KuiklyThreadSettingsAction(
-                    id = "leave",
-                    title = "Leave Channel",
-                    destructive = true
+                    id = "leave"
                 )
             ).normalizedThreadSettingsChannelActions()
 
@@ -227,6 +328,82 @@ class ThreadPayloadTest {
         assertEquals(
             listOf("Make Private", "Archive Channel", "Delete Channel"),
             actions.map { it.title }
+        )
+    }
+
+    @Test
+    fun threadSettingsDisabledRecognizedActionsDoNotFallbackToDefaults() {
+        val actions =
+            listOf(
+                KuiklyThreadSettingsAction(id = "visibility", enabled = false),
+                KuiklyThreadSettingsAction(id = "archive", enabled = true),
+                KuiklyThreadSettingsAction(id = "delete", enabled = false)
+            ).normalizedThreadSettingsChannelActions()
+
+        assertEquals(listOf("archive"), actions.map { it.id })
+    }
+
+    @Test
+    fun threadSettingsKnownActionsUseCanonicalUiModel() {
+        val actions =
+            listOf(
+                KuiklyThreadSettingsAction(id = "visibility"),
+                KuiklyThreadSettingsAction(id = "archive"),
+                KuiklyThreadSettingsAction(id = "delete")
+            ).normalizedThreadSettingsChannelActions()
+
+        assertEquals(
+            listOf("visibility", "archive", "delete"),
+            actions.map { it.id }
+        )
+        assertEquals(
+            listOf("Make Private", "Archive Channel", "Delete Channel"),
+            actions.map { it.title }
+        )
+        assertEquals(
+            listOf(
+                "Restrict this channel to selected members",
+                "Freeze writes and hide from sidebars",
+                "Permanently remove this channel"
+            ),
+            actions.map { it.subtitle }
+        )
+        assertEquals(
+            listOf(SlockLucideIconName.Lock, SlockLucideIconName.Archive, SlockLucideIconName.Trash),
+            actions.map { it.icon }
+        )
+        assertEquals(true, actions.all { it.destructive })
+    }
+
+    @Test
+    fun launchSettingsActionVisualFieldsAreIgnoredAtBoundary() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-settings-boundary",
+                      "sourceThreadId": "channel-1",
+                      "settingsActions": [
+                        {
+                          "id": "visibility",
+                          "enabled": false,
+                          "title": "Wrong label",
+                          "subtitle": "Wrong subtitle",
+                          "icon": "trash",
+                          "destructive": false
+                        }
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        assertEquals(listOf(KuiklyThreadSettingsAction(id = "visibility", enabled = false)), payload.settingsActions)
+        assertEquals(
+            emptyList(),
+            payload.settingsActions.normalizedThreadSettingsChannelActions()
         )
     }
 
