@@ -28,6 +28,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -262,7 +263,11 @@ class SharedHomeStoreTest {
         assertEquals(true, cachedContent.contentRefreshing)
 
         blockedRefresh.release()
-        yield()
+        awaitCondition {
+            val refreshedContent = store.state.value.content
+            refreshedContent is SharedHomeContentState.Content &&
+                refreshedContent.snapshot.channels.single().name == "network"
+        }
 
         val refreshedContent = store.state.value.content
         assertTrue(refreshedContent is SharedHomeContentState.Content)
@@ -1001,7 +1006,8 @@ class SharedHomeStoreTest {
                     localWriteThrough = ComposeLocalWriteThrough(localStore, logger = logs::add),
                     parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
                 ),
-            scope = scope
+            scope = scope,
+            diagnosticsLogger = logs::add
         )
         store.accept(SharedHomeIntent.Start)
         val observedStates = mutableListOf<SharedHomeState>()
@@ -1014,8 +1020,122 @@ class SharedHomeStoreTest {
         store.accept(SharedHomeIntent.Start)
 
         assertEquals(countBeforeStart, observedStates.size)
-        assertEquals(1, logs.count { it.startsWith("write_home_skip source=shared_home_data_source reason=unchanged") })
+        assertEquals(1, logs.count { it.contains("home_refresh_skip") && it.contains("reason=fresh_snapshot") })
         observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun cachedHomeStartSkipsFreshBackgroundRefreshButManualRefreshForcesNetwork() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        var now = 1_000L
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = RecordingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add,
+            nowMillis = { now }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(4, api.calls.size)
+        logs.clear()
+
+        store.accept(SharedHomeIntent.Start)
+
+        assertEquals(4, api.calls.size)
+        assertEquals(1, logs.count { it.contains("home_refresh_skip") && it.contains("reason=fresh_snapshot") })
+
+        store.accept(SharedHomeIntent.Refresh)
+
+        awaitCondition { api.calls.size >= 8 }
+        assertEquals(8, api.calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun cachedHomeStartRefreshesAfterFreshnessWindowExpires() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var now = 1_000L
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = RecordingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+                ),
+            scope = scope,
+            nowMillis = { now }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(4, api.calls.size)
+
+        now += 31_000L
+        store.accept(SharedHomeIntent.Start)
+
+        awaitCondition { api.calls.size >= 8 }
+        assertEquals(8, api.calls.size)
+        scope.cancel()
+    }
+
+    @Test
+    fun dispatchStartDoesNotCancelInFlightHomeBackgroundRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val logs = mutableListOf<String>()
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val api = BlockingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(
+                            sampleHome(payload.serverId).copy(
+                                channels = listOf(channel("channel-network", "network"))
+                            )
+                        )
+                    }
+                ),
+            scope = scope,
+            diagnosticsLogger = logs::add
+        )
+        val blockedRefresh = api.blockNextChannels()
+
+        store.dispatch(SharedHomeIntent.Start)
+        blockedRefresh.awaitStarted()
+        logs.clear()
+
+        store.dispatch(SharedHomeIntent.Start)
+
+        assertEquals(1, logs.count { it.contains("home_refresh_skip") && it.contains("reason=in_flight") })
+        blockedRefresh.release()
+        awaitCondition {
+            val refreshedContent = store.state.value.content
+            refreshedContent is SharedHomeContentState.Content &&
+                refreshedContent.snapshot.channels.single().name == "network"
+        }
+
+        val refreshedContent = store.state.value.content
+        assertTrue(refreshedContent is SharedHomeContentState.Content)
+        assertEquals("network", refreshedContent.snapshot.channels.single().name)
         scope.cancel()
     }
 
@@ -1380,6 +1500,14 @@ class SharedHomeStoreTest {
 
         fun release() {
             released.complete(Unit)
+        }
+    }
+
+    private suspend fun awaitCondition(condition: () -> Boolean) {
+        withTimeout(1_000L) {
+            while (!condition()) {
+                delay(1)
+            }
         }
     }
 

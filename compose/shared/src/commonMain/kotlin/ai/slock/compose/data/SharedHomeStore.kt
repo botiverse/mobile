@@ -24,6 +24,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
+private const val HOME_BACKGROUND_REFRESH_FRESHNESS_MILLIS = 30_000L
+
 class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedHomeDataSource,
@@ -81,11 +83,15 @@ class SharedHomeStore(
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
     private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
     private var hiddenHomeSnapshotDirty: Boolean = false
+    private var lastHomeNetworkRefreshServerId: ServerId? = null
+    private var lastHomeNetworkRefreshAtMillis: Long = 0L
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
             loadJob?.cancel()
-            refreshJob?.cancel()
+            if (intent.cancelsBackgroundRefresh) {
+                refreshJob?.cancel()
+            }
             loadJob =
                 scope.launch {
                     accept(intent)
@@ -108,6 +114,8 @@ class SharedHomeStore(
         pendingPresenceServerId = null
         presenceFactsByServer.clear()
         hiddenHomeSnapshotDirty = false
+        lastHomeNetworkRefreshServerId = null
+        lastHomeNetworkRefreshAtMillis = 0L
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
@@ -115,12 +123,17 @@ class SharedHomeStore(
             SharedHomeIntent.Start ->
                 load(
                     _state.value.serverSwitchState,
-                    showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content
+                    showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.SkipFreshSnapshot
                 )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
                 reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-                load(nextSwitch, showRefreshAffordance = true)
+                load(
+                    nextSwitch,
+                    showRefreshAffordance = true,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                )
             }
             SharedHomeIntent.ToggleServerSwitcher ->
                 reduceState(_state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded))
@@ -168,7 +181,11 @@ class SharedHomeStore(
                         appBadgeCount = AppBadgeCount.DISABLED
                     )
                 )
-                load(nextSwitch, showRefreshAffordance = true)
+                load(
+                    nextSwitch,
+                    showRefreshAffordance = true,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                )
             }
             is SharedHomeIntent.SetSurfaceVisible ->
                 setHomeSurfaceVisible(intent.visible)
@@ -232,7 +249,11 @@ class SharedHomeStore(
         if (event is DirectMessageCreated) {
             val nextSwitch = _state.value.serverSwitchState.refresh()
             reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-            load(nextSwitch, showRefreshAffordance = false)
+            load(
+                nextSwitch,
+                showRefreshAffordance = false,
+                backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+            )
             return
         }
         if (result is DataResult.Content) {
@@ -309,7 +330,11 @@ class SharedHomeStore(
                         serverSwitchState = nextSwitch
                     )
                 )
-                load(nextSwitch, showRefreshAffordance = false)
+                load(
+                    nextSwitch,
+                    showRefreshAffordance = false,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                )
                 return
             }
             val nextContent =
@@ -351,14 +376,19 @@ class SharedHomeStore(
                 diagnosticsLogger("home_realtime_refresh scope=${event.scope} reason=${event.reason}")
                 val nextSwitch = _state.value.serverSwitchState.refresh()
                 reduceState(_state.value.copy(serverSwitchState = nextSwitch))
-                load(nextSwitch, showRefreshAffordance = false)
+                load(
+                    nextSwitch,
+                    showRefreshAffordance = false,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                )
             }
         }
     }
 
     private suspend fun load(
         request: HomeServerSwitchState,
-        showRefreshAffordance: Boolean
+        showRefreshAffordance: Boolean,
+        backgroundRefreshPolicy: HomeBackgroundRefreshPolicy
     ) {
         diagnosticsLogger("home_ui_load_start refreshAffordance=$showRefreshAffordance")
         val previous = _state.value.content
@@ -454,7 +484,8 @@ class SharedHomeStore(
                         launchNetworkRefresh(
                             request = request,
                             activeSession = activeSession,
-                            activeServer = activeServer ?: cachedServerId
+                            activeServer = activeServer ?: cachedServerId,
+                            policy = backgroundRefreshPolicy
                         )
                         return
                     }
@@ -483,8 +514,22 @@ class SharedHomeStore(
     private fun launchNetworkRefresh(
         request: HomeServerSwitchState,
         activeSession: StoredAuthSession,
-        activeServer: ServerId
+        activeServer: ServerId,
+        policy: HomeBackgroundRefreshPolicy
     ) {
+        if (policy == HomeBackgroundRefreshPolicy.SkipFreshSnapshot) {
+            if (refreshJob?.isActive == true) {
+                diagnosticsLogger("home_refresh_skip serverId=${activeServer.value} reason=in_flight")
+                return
+            }
+            val snapshotAgeMillis = currentHomeNetworkRefreshAgeMillis(activeServer)
+            if (snapshotAgeMillis != null && snapshotAgeMillis <= HOME_BACKGROUND_REFRESH_FRESHNESS_MILLIS) {
+                diagnosticsLogger(
+                    "home_refresh_skip serverId=${activeServer.value} reason=fresh_snapshot ageMs=$snapshotAgeMillis"
+                )
+                return
+            }
+        }
         refreshJob?.cancel()
         refreshJob =
             scope.launch {
@@ -561,6 +606,10 @@ class SharedHomeStore(
             // `isStale = true`. The original `dataResult` is the source of
             // truth for whether the network actually succeeded.
             val freshSnapshot = (dataResult as? DataResult.Content)?.data
+            if (freshSnapshot != null) {
+                lastHomeNetworkRefreshServerId = freshSnapshot.server.id
+                lastHomeNetworkRefreshAtMillis = nowMillis()
+            }
             val nextBadge =
                 if (freshSnapshot != null) {
                     val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)
@@ -872,6 +921,17 @@ class SharedHomeStore(
         _state.value = nextState
         return true
     }
+
+    private fun currentHomeNetworkRefreshAgeMillis(serverId: ServerId): Long? {
+        if (lastHomeNetworkRefreshServerId != serverId) return null
+        if (lastHomeNetworkRefreshAtMillis <= 0L) return null
+        return (nowMillis() - lastHomeNetworkRefreshAtMillis).coerceAtLeast(0L)
+    }
+}
+
+private enum class HomeBackgroundRefreshPolicy {
+    SkipFreshSnapshot,
+    Force
 }
 
 class SharedHomeViewModel(
@@ -1015,6 +1075,24 @@ private val SharedHomeIntent.loadsHome: Boolean
     get() =
         when (this) {
             SharedHomeIntent.Start,
+            SharedHomeIntent.Refresh,
+            is SharedHomeIntent.SelectServer -> true
+            SharedHomeIntent.ToggleServerSwitcher,
+            SharedHomeIntent.DismissServerSwitcher,
+            is SharedHomeIntent.SelectConversation,
+            is SharedHomeIntent.SelectTopAction,
+            is SharedHomeIntent.ApplyRealtimeEvent,
+            is SharedHomeIntent.DismissNotification,
+            is SharedHomeIntent.ChannelCreated,
+            is SharedHomeIntent.SetSurfaceVisible,
+            is SharedHomeIntent.TogglePinned,
+            is SharedHomeIntent.SetPinnedSortMode -> false
+        }
+
+private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
+    get() =
+        when (this) {
+            SharedHomeIntent.Start -> false
             SharedHomeIntent.Refresh,
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
