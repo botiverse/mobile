@@ -340,6 +340,12 @@ data class SearchQueryOptions(
     val beforeIso: String? = null
 )
 
+fun SearchQueryOptions.hasMeaningfulFilter(): Boolean =
+    !senderId.isNullOrBlank() ||
+        (channelId?.value?.isNotBlank() == true) ||
+        !afterIso.isNullOrBlank() ||
+        !beforeIso.isNullOrBlank()
+
 enum class SearchSort {
     Relevance,
     Recent;

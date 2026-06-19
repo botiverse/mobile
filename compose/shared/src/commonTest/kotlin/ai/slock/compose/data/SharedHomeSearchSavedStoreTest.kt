@@ -6,11 +6,14 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -48,6 +51,7 @@ class SharedHomeSearchSavedStoreTest {
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
+                searchDebounceMillis = 0L,
                 timeRangeBoundsProvider = { range ->
                     when (range) {
                         SearchTimeRange.Today ->
@@ -78,6 +82,94 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun searchQueryChangeAutoRefreshesWithoutSubmit() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-auto")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+
+        assertEquals("release", search.query)
+        assertEquals(listOf("message-auto"), store.state.value.search.items.map { it.key })
+        assertEquals(true, store.state.value.search.searched)
+        scope.cancel()
+    }
+
+    @Test
+    fun blankQueryWithFilterAutoBrowsesServerResults() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-filter-only")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
+
+        assertEquals("", search.query)
+        assertEquals("user-1", search.options?.senderId)
+        assertEquals(listOf("message-filter-only"), store.state.value.search.items.map { it.key })
+        assertEquals(true, store.state.value.search.searched)
+        scope.cancel()
+    }
+
+    @Test
+    fun blankQueryWithoutFiltersClearsResultsWithoutServerRequest() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-clear")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged(""))
+
+        assertEquals(listOf("release"), search.calls.map { it.query })
+        assertEquals(emptyList(), store.state.value.search.items)
+        assertEquals(false, store.state.value.search.searched)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleSearchResultCannotOverwriteLatestQuery() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = DeferredSearchRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("old"))
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("new"))
+        search.complete("new", "message-new")
+        search.complete("old", "message-old")
+
+        assertEquals(listOf("message-new"), store.state.value.search.items.map { it.key })
+        assertEquals(listOf("old", "new"), search.calls.map { it.query })
+        scope.cancel()
+    }
+
+    @Test
     fun clearSearchFiltersResetsSharedSearchParityState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-3")))
@@ -87,6 +179,7 @@ class SharedHomeSearchSavedStoreTest {
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
                 scope = scope,
+                searchDebounceMillis = 0L,
                 timeRangeBoundsProvider = { range ->
                     when (range) {
                         SearchTimeRange.Last7Days ->
@@ -125,7 +218,8 @@ class SharedHomeSearchSavedStoreTest {
                 authStore = InMemorySlockAuthSessionStore(sampleSession()),
                 savedRepository = FakeSavedRepository(),
                 searchRepository = search,
-                scope = scope
+                scope = scope,
+                searchDebounceMillis = 0L
             )
 
         store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("handoff"))
@@ -164,6 +258,7 @@ class SharedHomeSearchSavedStoreTest {
     ) : SearchRepository {
         var query: String? = null
         var options: SearchQueryOptions? = null
+        val calls = mutableListOf<SearchInvocation>()
 
         override suspend fun search(
             serverId: ServerId,
@@ -174,9 +269,52 @@ class SharedHomeSearchSavedStoreTest {
         ): DataResult<SearchSnapshot> {
             this.query = query
             this.options = options
+            calls += SearchInvocation(query = query, offset = offset, limit = limit, options = options)
             return DataResult.Content(SearchSnapshot(server = testServer(serverId), query = query, items = items))
         }
     }
+
+    private inner class DeferredSearchRepository : SearchRepository {
+        val calls = mutableListOf<SearchInvocation>()
+        private val results = mutableMapOf<String, CompletableDeferred<DataResult<SearchSnapshot>>>()
+
+        override suspend fun search(
+            serverId: ServerId,
+            query: String,
+            offset: Int,
+            limit: Int,
+            options: SearchQueryOptions
+        ): DataResult<SearchSnapshot> {
+            calls += SearchInvocation(query = query, offset = offset, limit = limit, options = options)
+            return withContext(NonCancellable) {
+                results.getOrPut(query) { CompletableDeferred() }.await()
+            }
+        }
+
+        fun complete(
+            query: String,
+            messageId: String
+        ) {
+            results
+                .getOrPut(query) { CompletableDeferred() }
+                .complete(
+                    DataResult.Content(
+                        SearchSnapshot(
+                            server = testServer(ServerId("server-1")),
+                            query = query,
+                            items = listOf(inboxItem(messageId))
+                        )
+                    )
+                )
+        }
+    }
+
+    private data class SearchInvocation(
+        val query: String,
+        val offset: Int,
+        val limit: Int,
+        val options: SearchQueryOptions
+    )
 
     private fun sampleSession(): StoredAuthSession =
         StoredAuthSession(

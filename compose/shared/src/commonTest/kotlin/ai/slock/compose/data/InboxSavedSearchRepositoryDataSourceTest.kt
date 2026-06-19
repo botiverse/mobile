@@ -131,7 +131,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
-    fun savedAndSearchMapItemsAndBlankSearchReturnsEmpty() = runBlocking {
+    fun savedAndSearchMapItems() = runBlocking {
         val network =
             FakeInboxNetworkClient(
                 savedJson = """{"saved":[{"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Saved note","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"}],"hasMore":false}""",
@@ -141,7 +141,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
         val saved = RealSavedRepository(store, network).loadInitial(ServerId("server-1"))
         val search = RealSearchRepository(store, network).search(ServerId("server-1"), "query")
-        val blank = RealSearchRepository(store, network).search(ServerId("server-1"), " ")
 
         assertTrue(saved is DataResult.Content)
         assertEquals("Saved note", saved.data.items.single().lastMessagePreview)
@@ -151,7 +150,50 @@ class InboxSavedSearchRepositoryDataSourceTest {
         assertEquals("Search hit", search.data.items.single().lastMessagePreview)
         assertEquals("user-1", search.data.items.single().lastMessageSenderId)
         assertEquals(MemberKind.Human, search.data.items.single().lastMessageSenderKind)
+    }
+
+    @Test
+    fun blankSearchWithoutFiltersReturnsEmptyWithoutServerRequest() = runBlocking {
+        val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
+
+        val blank = RealSearchRepository(sampleStore(), network).search(ServerId("server-1"), " ")
+
         assertTrue(blank is DataResult.Empty)
+        assertEquals(emptyList(), network.searchCalls)
+    }
+
+    @Test
+    fun blankSearchWithFiltersCallsMessagesSearch() = runBlocking {
+        val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
+
+        val result =
+            RealSearchRepository(sampleStore(), network).search(
+                serverId = ServerId("server-1"),
+                query = " ",
+                options =
+                    SearchQueryOptions(
+                        senderId = "user-1",
+                        channelId = ChannelId("channel-1"),
+                        afterIso = "2026-05-14T16:00:00.000Z"
+                    )
+            )
+
+        assertTrue(result is DataResult.Empty)
+        assertEquals(
+            listOf(
+                SearchCall(
+                    query = "",
+                    limit = 30,
+                    offset = 0,
+                    sort = null,
+                    senderId = "user-1",
+                    channelId = "channel-1",
+                    after = "2026-05-14T16:00:00.000Z",
+                    before = null
+                )
+            ),
+            network.searchCalls
+        )
     }
 
     @Test

@@ -72,7 +72,18 @@ class SlockApiClientContractTest {
         client.attachmentPreview(SlockRequestPriority.Visible, "attachment-1")
         client.attachmentHtmlPreviewUrl(SlockRequestPriority.Visible, "attachment-1")
         client.messageContext(SlockRequestPriority.Visible, "short123", channelId = "channel-1")
-        client.searchMessages(SlockRequestPriority.Visible, query = "release", limit = 10, offset = 20, sort = "recent")
+        client.searchMessages(
+            SlockRequestPriority.Visible,
+            query = "release",
+            limit = 10,
+            offset = 20,
+            sort = "recent",
+            senderId = "user-1",
+            channelId = "channel-1",
+            after = "2026-05-14T16:00:00.000Z",
+            before = "2026-05-15T15:04:43.904Z"
+        )
+        client.searchMessages(SlockRequestPriority.Visible, query = "", limit = 10, offset = 0, senderId = "user-1")
 
         assertEquals("/api/channels/channel-1/files", requests[0].url.encodedPath)
         assertEquals("25", requests[0].url.parameters["limit"])
@@ -86,6 +97,13 @@ class SlockApiClientContractTest {
         assertEquals("/api/messages/search", requests[5].url.encodedPath)
         assertEquals("release", requests[5].url.parameters["q"])
         assertEquals("recent", requests[5].url.parameters["sort"])
+        assertEquals("user-1", requests[5].url.parameters["senderId"])
+        assertEquals("channel-1", requests[5].url.parameters["channelId"])
+        assertEquals("2026-05-14T16:00:00.000Z", requests[5].url.parameters["after"])
+        assertEquals("2026-05-15T15:04:43.904Z", requests[5].url.parameters["before"])
+        assertEquals("/api/messages/search", requests[6].url.encodedPath)
+        assertEquals("", requests[6].url.parameters["q"])
+        assertEquals("user-1", requests[6].url.parameters["senderId"])
     }
 
     @Test

@@ -250,7 +250,9 @@ class RealSearchRepository(
         options: SearchQueryOptions
     ): DataResult<SearchSnapshot> {
         val trimmedQuery = query.trim()
-        if (trimmedQuery.isBlank()) return DataResult.Empty(EmptyReason.NoSearchResults)
+        if (trimmedQuery.isBlank() && !options.hasMeaningfulFilter()) {
+            return DataResult.Empty(EmptyReason.NoSearchResults)
+        }
         val context = sessionStore.serverContext(serverId) ?: return authRequired()
         return executeInboxLike(
             emptyReason = EmptyReason.NoSearchResults,
@@ -271,7 +273,7 @@ class RealSearchRepository(
                     ?: throw IllegalStateException("Search response missing results")
                 SearchSnapshot(
                     server = context.server,
-                    query = query,
+                    query = trimmedQuery,
                     items = parsed.items,
                     totalCount = parsed.items.size,
                     hasMore = parsed.hasMore,
