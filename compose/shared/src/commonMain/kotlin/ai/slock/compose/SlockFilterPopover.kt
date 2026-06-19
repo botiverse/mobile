@@ -42,8 +42,7 @@ private const val SlockFilterPopoverVerticalOffsetValue = 8f
 internal data class SlockFilterOption(
     val id: String,
     val label: String,
-    /** Optional Lucide icon name. Must already be registered in `SlockLucideIcons.Names`. */
-    val icon: String? = null
+    val icon: SlockLucideIconName? = null
 )
 
 /**
@@ -224,7 +223,7 @@ internal fun SlockFilterPopover(
                                             modifier = Modifier.weight(1f)
                                         )
                                         if (selected) {
-                                            SlockLucideIcon("check", modifier = Modifier.size(12.dp), color = "#FF000000")
+                                            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
                                         }
                                     }
                                     if (index < filtered.lastIndex) {

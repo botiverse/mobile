@@ -172,7 +172,7 @@ private fun SettingsAccountSectionHeader(title: String) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon("user", color = "#FF737373", modifier = Modifier.size(14.dp))
+        SlockLucideIcon(SlockLucideIconName.User, color = "#FF737373", modifier = Modifier.size(14.dp))
         Text(
             title.uppercase(),
             style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
@@ -197,7 +197,7 @@ private fun SettingsAccountProfileCard(
                 modifier = Modifier.size(56.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon("user", modifier = Modifier.size(24.dp))
+                SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(24.dp))
             }
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -319,7 +319,7 @@ private fun SettingsEmailField(
                 overflow = TextOverflow.Ellipsis
             )
             if (verified) {
-                SettingsStatusBadge(verifiedLabel.uppercase(), SlockColor.AccentLime, "shield")
+                SettingsStatusBadge(verifiedLabel.uppercase(), SlockColor.AccentLime, SlockLucideIconName.Shield)
             }
         }
     }
@@ -365,7 +365,7 @@ private fun SettingsPasswordDisclosure(title: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon("chevron-right", modifier = Modifier.size(14.dp))
+        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(14.dp))
         Text(title, style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -408,7 +408,7 @@ private fun SettingsConnectedAccountRow(
 }
 
 @Composable
-private fun SettingsDisclosureRow(iconName: String, title: String, subtitle: String) {
+private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, subtitle: String) {
     Row(
         modifier = Modifier.fillMaxWidth().heightIn(min = 62.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -419,7 +419,7 @@ private fun SettingsDisclosureRow(iconName: String, title: String, subtitle: Str
             Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        SlockLucideIcon("chevron-right", modifier = Modifier.size(16.dp))
+        SlockLucideIcon(SlockLucideIconName.ChevronRight, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -441,7 +441,7 @@ private fun SettingsLogoutAction(detail: String, label: String, onClick: () -> U
 }
 
 @Composable
-private fun SettingsMetaRow(iconName: String, text: String) {
+private fun SettingsMetaRow(iconName: SlockLucideIconName, text: String) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockLucideIcon(iconName, color = "#FF737373", modifier = Modifier.size(14.dp))
         Text(text, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -454,7 +454,7 @@ private fun SettingsAccountSectionTitle(text: String) {
 }
 
 @Composable
-private fun SettingsStatusBadge(text: String, color: Color, iconName: String? = null) {
+private fun SettingsStatusBadge(text: String, color: Color, iconName: SlockLucideIconName? = null) {
     Row(
         modifier = Modifier.background(color).border(1.dp, SlockColor.BorderBlack).padding(horizontal = 6.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -476,7 +476,7 @@ private fun SettingsInlineButton(text: String, color: Color, enabled: Boolean, m
 }
 
 @Composable
-private fun IconBox(iconName: String, color: Color, invert: Boolean = false) {
+private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean = false) {
     Box(
         modifier = Modifier.size(38.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
@@ -485,11 +485,11 @@ private fun IconBox(iconName: String, color: Color, invert: Boolean = false) {
     }
 }
 
-private fun providerIcon(provider: String): String =
+private fun providerIcon(provider: String): SlockLucideIconName =
     when {
-        provider.lowercase().contains("github") -> "key"
-        provider.lowercase().contains("google") -> "mail"
-        else -> "key"
+        provider.lowercase().contains("github") -> SlockLucideIconName.Key
+        provider.lowercase().contains("google") -> SlockLucideIconName.Mail
+        else -> SlockLucideIconName.Key
     }
 
 @Composable
@@ -503,10 +503,10 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
     }
 }
 
-private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, String?> =
+private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, SlockLucideIconName?> =
     when (status) {
-        "connected" -> Triple(payload.connectedLabel, SlockColor.AccentCyan, "link")
-        "loading" -> Triple(payload.connectingLabel, SlockColor.BrandYellow, "link")
+        "connected" -> Triple(payload.connectedLabel, SlockColor.AccentCyan, SlockLucideIconName.Link)
+        "loading" -> Triple(payload.connectingLabel, SlockColor.BrandYellow, SlockLucideIconName.Link)
         "failed" -> Triple(payload.failedLabel, SlockColor.AccentPink, null)
         else -> Triple(payload.connectLabel, SlockColor.SurfaceWhite, null)
     }

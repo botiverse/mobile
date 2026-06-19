@@ -37,7 +37,7 @@ private val SectionHeaderActionIconSize = 16.dp
 internal fun SlockTopPageHeader(
     title: String,
     subtitle: String? = null,
-    iconName: String? = null,
+    iconName: SlockLucideIconName? = null,
     iconBackground: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
@@ -140,7 +140,7 @@ internal fun SlockCollapsibleSectionHeader(
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
         SlockLucideIcon(
-            if (expanded) "chevron-down" else "chevron-right",
+            if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
             Modifier.size(SectionChevronSize)
         )
         Text(
@@ -158,7 +158,7 @@ internal fun SlockCollapsibleSectionHeader(
         Spacer(Modifier.weight(1f))
         if (sortContentDescription != null && onSortClick != null) {
             SlockSectionHeaderIconAction(
-                icon = "arrow-up-down",
+                icon = SlockLucideIconName.ArrowUpDown,
                 contentDescription = sortContentDescription,
                 onClick2 = onSortClick
             )
@@ -172,7 +172,7 @@ internal fun SlockCollapsibleSectionHeader(
 @Suppress("UNUSED_PARAMETER")
 @Composable
 internal fun SlockSectionHeaderIconAction(
-    icon: String,
+    icon: SlockLucideIconName,
     contentDescription: String,
     onClick: () -> Unit = {},
     onClick2: (Offset) -> Unit = {}
@@ -188,7 +188,7 @@ internal fun SlockSectionHeaderIconAction(
 
 @Composable
 internal fun SlockHeaderIconAction(
-    icon: String,
+    icon: SlockLucideIconName,
     contentDescription: String,
     onClick: () -> Unit,
     label: String? = null,

@@ -24,7 +24,7 @@ internal fun SlockEmptyState(
     title: String,
     modifier: Modifier = Modifier,
     detail: String? = null,
-    iconName: String = "inbox",
+    iconName: SlockLucideIconName = SlockLucideIconName.Inbox,
     iconSize: Dp = 36.dp,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
@@ -69,7 +69,7 @@ internal fun SlockEmptyState(
                 SlockBrutalActionButton(
                     label = actionLabel,
                     onClick = onAction,
-                    leadingIcon = "refresh-cw",
+                    leadingIcon = SlockLucideIconName.RefreshCw,
                     backgroundColor = SlockColor.SurfaceWhite
                 )
             }

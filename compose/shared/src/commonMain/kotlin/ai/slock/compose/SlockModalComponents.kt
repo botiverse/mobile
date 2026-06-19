@@ -134,7 +134,7 @@ internal fun SlockUnifiedDialog(
                         )
                         SlockBrutalIconButton(
                             enabled = dismissEnabled,
-                            iconName = "x",
+                            iconName = SlockLucideIconName.X,
                             onClick = onDismiss,
                             size = 34.dp,
                             shadowOffset = 3.dp
@@ -161,7 +161,7 @@ private fun SlockModalHeader(
 
 @Composable
 internal fun SlockModalIconButton(
-    icon: String,
+    icon: SlockLucideIconName,
     onClick: () -> Unit
 ) {
     SlockBrutalIconButton(iconName = icon, onClick = onClick, size = 34.dp, shadowOffset = 0.dp)
@@ -171,7 +171,7 @@ internal fun SlockModalIconButton(
 internal fun SlockActionSheetRow(
     title: String,
     subtitle: String = "",
-    icon: String,
+    icon: SlockLucideIconName,
     destructive: Boolean = false,
     onClick: () -> Unit
 ) {
@@ -201,7 +201,7 @@ internal fun SlockModalTextField(
     modifier: Modifier = Modifier,
     required: Boolean = false,
     isError: Boolean = required && value.isBlank(),
-    leadingIcon: String? = null,
+    leadingIcon: SlockLucideIconName? = null,
     enabled: Boolean = true,
     fieldHeight: Dp = 42.dp,
     maxLines: Int = 1,
@@ -226,7 +226,7 @@ internal fun SlockModalTextField(
 @Composable
 internal fun SlockModalActionButton(
     label: String,
-    icon: String,
+    icon: SlockLucideIconName,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
@@ -246,7 +246,7 @@ internal fun SlockModalActionButton(
 @Composable
 internal fun SlockModalFullWidthActionButton(
     label: String,
-    icon: String,
+    icon: SlockLucideIconName,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
@@ -297,7 +297,7 @@ internal fun SlockModalFullWidthActionButton(
 
 @Composable
 internal fun SlockModalSquareActionButton(
-    icon: String,
+    icon: SlockLucideIconName,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     color: Color = SlockColor.SurfaceWhite,
@@ -340,7 +340,7 @@ internal fun SlockModalCompactMemberRow(
     enabled: Boolean = true,
     avatarSize: Dp = 30.dp,
     trailingText: String = "",
-    trailingIcon: String? = null,
+    trailingIcon: SlockLucideIconName? = null,
     onTrailingClick: (() -> Unit)? = null,
     onClick: () -> Unit = {}
 ) {

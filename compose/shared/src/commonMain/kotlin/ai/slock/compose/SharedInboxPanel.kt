@@ -305,7 +305,7 @@ private fun SharedActivityHeader(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (onClose != null) {
-                SlockBrutalIconButton(iconName = "arrow-left", onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
+                SlockBrutalIconButton(iconName = SlockLucideIconName.ArrowLeft, onClick = onClose, size = 32.dp, shadowOffset = 2.dp)
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -440,7 +440,7 @@ private fun SharedActivityRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (item.kind == InboxItemKind.Thread) {
-                    SlockLucideIcon("message-square", modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                    SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
                 }
                 Text(
                     text = item.primaryPreviewText(),
@@ -468,7 +468,7 @@ private fun SharedActivityRow(
             }
             SharedActivityFooter(item)
         }
-        SharedActivitySmallIconButton(iconName = "check", onClick = onClick)
+        SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onClick)
     }
 }
 
@@ -491,7 +491,7 @@ private fun SharedActivityFooter(item: InboxItem) {
             )
         }
         if (item.hasMention && item.unreadCount > 0) {
-            SharedActivityCountPill("you", iconName = "at-sign", backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+            SharedActivityCountPill("you", iconName = SlockLucideIconName.AtSign, backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
         }
         if (item.unreadCount > 0) {
             SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
@@ -522,7 +522,7 @@ private fun SharedActivityTaskBadge(item: InboxItem) {
 @Composable
 private fun SharedActivityCountPill(
     text: String,
-    iconName: String? = null,
+    iconName: SlockLucideIconName? = null,
     backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.AccentPink,
     textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack,
     modifier: Modifier = Modifier
@@ -541,16 +541,7 @@ private fun SharedActivityCountPill(
             horizontalArrangement = Arrangement.spacedBy(if (iconName != null) 4.dp else 0.dp)
         ) {
             iconName?.let { name ->
-                if (name == "at-sign") {
-                    Text(
-                        text = "@",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 10.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1
-                    )
-                } else {
-                    SlockLucideIcon(name, modifier = Modifier.size(10.dp), color = "#FF000000")
-                }
+                SlockLucideIcon(name, modifier = Modifier.size(10.dp), color = "#FF000000")
             }
             Text(
                 text = text,
@@ -565,7 +556,7 @@ private fun SharedActivityCountPill(
 
 @Composable
 private fun SharedActivitySmallIconButton(
-    iconName: String,
+    iconName: SlockLucideIconName,
     onClick: () -> Unit
 ) {
     SlockBrutalIconButton(iconName = iconName, onClick = onClick, size = 28.dp, shadowOffset = 2.dp)
@@ -574,7 +565,7 @@ private fun SharedActivitySmallIconButton(
 @Composable
 private fun SharedActivitySmallButton(
     label: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     onClick: () -> Unit
 ) {
     SlockBrutalActionButton(
@@ -615,14 +606,14 @@ private fun SharedActivityStateBody(
                     .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(if (loading) "refresh-cw" else "activity", modifier = Modifier.size(22.dp), color = "#FF000000")
+            SlockLucideIcon(if (loading) SlockLucideIconName.RefreshCw else SlockLucideIconName.Activity, modifier = Modifier.size(22.dp), color = "#FF000000")
         }
         Spacer(Modifier.height(14.dp))
         Text(title, style = SlockType.PageTitle, color = SlockColor.TextBlack, maxLines = 2, overflow = TextOverflow.Ellipsis)
         Text(detail, style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 3, overflow = TextOverflow.Ellipsis)
         if (actionLabel != null) {
             Spacer(Modifier.height(16.dp))
-            SharedActivitySmallButton(label = actionLabel, iconName = "refresh-cw", onClick = onAction)
+            SharedActivitySmallButton(label = actionLabel, iconName = SlockLucideIconName.RefreshCw, onClick = onAction)
         }
     }
 }
@@ -756,13 +747,13 @@ private fun InboxItem.secondaryPreviewText(): String? =
             senderDisplayName()?.let { "$it: $preview" } ?: preview
         }
 
-private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): String =
+private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): SlockLucideIconName =
     when (this) {
-        ai.slock.compose.model.TaskStatus.Todo -> "circle"
-        ai.slock.compose.model.TaskStatus.InProgress -> "play"
-        ai.slock.compose.model.TaskStatus.InReview -> "eye"
-        ai.slock.compose.model.TaskStatus.Done -> "circle-check-big"
-        ai.slock.compose.model.TaskStatus.Closed -> "ban"
+        ai.slock.compose.model.TaskStatus.Todo -> SlockLucideIconName.Circle
+        ai.slock.compose.model.TaskStatus.InProgress -> SlockLucideIconName.Play
+        ai.slock.compose.model.TaskStatus.InReview -> SlockLucideIconName.Eye
+        ai.slock.compose.model.TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
+        ai.slock.compose.model.TaskStatus.Closed -> SlockLucideIconName.Ban
     }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {

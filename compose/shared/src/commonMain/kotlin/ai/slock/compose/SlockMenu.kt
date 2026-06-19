@@ -34,7 +34,7 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal data class SlockBaseMenuItem(
     val id: String,
     val label: String,
-    val icon: String? = null
+    val icon: SlockLucideIconName? = null
 )
 
 private val SlockBaseMenuWidth = 136.dp
@@ -126,7 +126,7 @@ private fun SlockBaseMenuRow(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             if (selected) {
-                SlockLucideIcon("check", modifier = Modifier.size(12.dp), color = "#FF000000")
+                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
             } else {
                 Spacer(modifier = Modifier.width(12.dp))
             }
@@ -143,7 +143,7 @@ private fun SlockBaseMenuRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            item.icon?.takeIf { it.isNotBlank() }?.let { icon ->
+            item.icon?.let { icon ->
                 SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#80000000")
             }
         }

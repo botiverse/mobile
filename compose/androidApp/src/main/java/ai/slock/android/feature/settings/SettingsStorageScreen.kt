@@ -6,6 +6,7 @@ import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.icons.LucideIcons
+import ai.slock.compose.SlockLucideIconName
 import ai.slock.android.ui.components.SlockKeySurface
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockShadow
@@ -279,7 +280,7 @@ private fun StorageManagementSnapshot.toKuiklyStoragePageData(
                                                 .put(
                                                         storageRowJson(
                                                                 target = "database",
-                                                                iconName = "archive",
+                                                                iconName = SlockLucideIconName.Archive,
                                                                 title = labels.databaseTitle,
                                                                 detail = labels.databaseDetail,
                                                                 size = localDatabaseBytes,
@@ -291,7 +292,7 @@ private fun StorageManagementSnapshot.toKuiklyStoragePageData(
                                                 .put(
                                                         storageRowJson(
                                                                 target = "imageCache",
-                                                                iconName = "image",
+                                                                iconName = SlockLucideIconName.Image,
                                                                 title = labels.imageCacheTitle,
                                                                 detail = labels.imageCacheDetail,
                                                                 size = imageCacheBytes,
@@ -306,7 +307,7 @@ private fun StorageManagementSnapshot.toKuiklyStoragePageData(
                                                 .put(
                                                         storageRowJson(
                                                                 target = "temporaryAndLogs",
-                                                                iconName = "file-text",
+                                                                iconName = SlockLucideIconName.FileText,
                                                                 title = labels.tempLogsTitle,
                                                                 detail = labels.tempLogsDetail,
                                                                 size = temporaryAndLogBytes,
@@ -325,7 +326,7 @@ private fun StorageManagementSnapshot.toKuiklyStoragePageData(
 
 private fun storageRowJson(
         target: String,
-        iconName: String,
+        iconName: SlockLucideIconName,
         title: String,
         detail: String,
         size: Long,
@@ -335,7 +336,7 @@ private fun storageRowJson(
 ): JSONObject =
         JSONObject()
                 .put("target", target)
-                .put("iconName", iconName)
+                .put("iconName", iconName.wireName)
                 .put("title", title)
                 .put("detail", detail)
                 .put("size", size.formatStorageSize())

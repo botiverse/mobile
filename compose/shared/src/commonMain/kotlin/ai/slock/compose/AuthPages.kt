@@ -364,10 +364,10 @@ private fun AuthDiagnosticsScreen() {
         SlockTopPageHeader(
             title = "Diagnostics",
             subtitle = "Auth and network",
-            iconName = "activity",
+            iconName = SlockLucideIconName.Activity,
             leadingContent = {
                 SlockBrutalIconButton(
-                    iconName = "arrow-left",
+                    iconName = SlockLucideIconName.ArrowLeft,
                     onClick = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
                     size = 30.dp,
                     shadowOffset = 2.dp
@@ -376,13 +376,13 @@ private fun AuthDiagnosticsScreen() {
             trailingContent = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SlockBrutalIconButton(
-                        iconName = "copy",
+                        iconName = SlockLucideIconName.Copy,
                         onClick = { copyNonce += 1 },
                         size = 30.dp,
                         shadowOffset = 2.dp
                     )
                     SlockBrutalIconButton(
-                        iconName = "refresh-cw",
+                        iconName = SlockLucideIconName.RefreshCw,
                         onClick = { refreshNonce += 1 },
                         enabled = !state.loading,
                         size = 30.dp,
@@ -399,14 +399,14 @@ private fun AuthDiagnosticsScreen() {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     SlockBrutalActionButton(
                         label = "Copy",
-                        leadingIcon = "copy",
+                        leadingIcon = SlockLucideIconName.Copy,
                         onClick = { copyNonce += 1 },
                         backgroundColor = SlockColor.BrandYellow,
                         minWidth = 94.dp
                     )
                     SlockBrutalActionButton(
                         label = if (state.loading) "Loading" else "Refresh",
-                        leadingIcon = "refresh-cw",
+                        leadingIcon = SlockLucideIconName.RefreshCw,
                         onClick = { refreshNonce += 1 },
                         enabled = !state.loading,
                         minWidth = 104.dp
@@ -898,7 +898,7 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
         ) {
-            if (checked) SlockLucideIcon("check", Modifier.size(13.dp))
+            if (checked) SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(13.dp))
         }
         Spacer(Modifier.width(10.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {

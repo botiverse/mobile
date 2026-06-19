@@ -187,7 +187,7 @@ internal fun SettingsBillingContent(
                     item { PlanTrialBanner(payload.labels.trialActive, payload.labels.trialDetail) }
                 }
                 item { CurrentPlanCard(payload) }
-                item { SettingsBillingSectionHeader("credit-card", payload.labels.currentPlan) }
+                item { SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, payload.labels.currentPlan) }
                 items(payload.plans.size, key = { index -> "plan-$index-${payload.plans[index].id}" }) { index ->
                     val plan = payload.plans[index]
                     PlanCard(
@@ -235,7 +235,7 @@ private fun CurrentPlanCard(payload: KuiklySettingsBillingPayload) {
             )
             SettingsStatusBadge(payload.currentPlan.planName.uppercase(), SlockColor.BrandYellow)
         }
-        SettingsBillingSectionHeader("bar-chart-3", payload.labels.usage)
+        SettingsBillingSectionHeader(SlockLucideIconName.ChartBar, payload.labels.usage)
         payload.currentPlan.usageRows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -308,7 +308,7 @@ private fun PlanCard(
                     verticalAlignment = Alignment.Top,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    SlockLucideIcon("check", modifier = Modifier.padding(top = 3.dp).size(14.dp))
+                    SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.padding(top = 3.dp).size(14.dp))
                     Text(
                         feature,
                         style = SlockType.Body.copy(color = SlockColor.TextBlack),
@@ -368,7 +368,7 @@ private fun PlanActionButton(
 }
 
 @Composable
-private fun SettingsBillingSectionHeader(iconName: String, label: String) {
+private fun SettingsBillingSectionHeader(iconName: SlockLucideIconName, label: String) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)

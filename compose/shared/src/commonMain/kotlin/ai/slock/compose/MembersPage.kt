@@ -150,17 +150,17 @@ private enum class MembersWorkspaceViewMode {
 internal enum class MembersAgentLifecycleAction(
     val actionKey: String,
     val label: String,
-    val iconName: String,
+    val iconName: SlockLucideIconName,
     val successLabel: String,
     val destructive: Boolean = false
 ) {
-    Start("start", "Start", "play", "Started"),
-    Stop("stop", "Stop", "square", "Stopped"),
-    Restart("restart", "Restart", "rotate-cw", "Restarted"),
-    ResetSession("reset_session", "Reset session", "refresh-cw", "Session reset"),
-    ResetFull("reset_full", "Full reset", "eraser", "Full reset"),
-    Delete("delete", "Delete Agent", "trash-2", "Deleted", destructive = true),
-    UnassignMachine("assign_machine", "Unassign machine", "monitor-x", "Machine unassigned");
+    Start("start", "Start", SlockLucideIconName.Play, "Started"),
+    Stop("stop", "Stop", SlockLucideIconName.Square, "Stopped"),
+    Restart("restart", "Restart", SlockLucideIconName.RotateCw, "Restarted"),
+    ResetSession("reset_session", "Reset session", SlockLucideIconName.RefreshCw, "Session reset"),
+    ResetFull("reset_full", "Full reset", SlockLucideIconName.Eraser, "Full reset"),
+    Delete("delete", "Delete Agent", SlockLucideIconName.Trash2, "Deleted", destructive = true),
+    UnassignMachine("assign_machine", "Unassign machine", SlockLucideIconName.MonitorX, "Machine unassigned");
 
     val resetMode: AgentResetMode?
         get() =
@@ -796,7 +796,7 @@ internal fun MembersListContent(
                     trailingContent = {
                         if (canCreateAgents) {
                             SlockSectionHeaderIconAction(
-                                icon = "plus",
+                                icon = SlockLucideIconName.Plus,
                                 contentDescription = "Create agent",
                                 onClick = {
                                     if (createAgentSubmit != null) {
@@ -842,7 +842,7 @@ internal fun MembersListContent(
                     modifier = Modifier.padding(horizontal = MembersPageInset),
                     trailingContent = {
                         SlockSectionHeaderIconAction(
-                            icon = "plus",
+                            icon = SlockLucideIconName.Plus,
                             contentDescription = "Invite human",
                             onClick = { activeInviteHuman = true }
                         )
@@ -1383,7 +1383,7 @@ private fun MembersDetailHeader(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             SlockBrutalIconButton(
-                iconName = "arrow-left",
+                iconName = SlockLucideIconName.ArrowLeft,
                 onClick = onBack,
                 size = MembersActionSize
             )
@@ -1426,20 +1426,20 @@ private fun MembersDetailHeader(
             }
             MembersSmallActionButton(
                 label = "Message",
-                iconName = "message-square",
+                iconName = SlockLucideIconName.MessageSquare,
                 enabled = member.kind != MemberKind.System && !deleted,
                 modifier = Modifier.width(92.dp),
                 onClick = onOpenDirectMessage
             )
             if (member.kind == MemberKind.Agent) {
                 SlockBrutalIconButton(
-                    iconName = if (managementExpanded) "chevron-up" else "more-horizontal",
+                    iconName = if (managementExpanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.Ellipsis,
                     onClick = onToggleManagement,
                     size = MembersActionSize
                 )
             } else {
                 SlockBrutalIconButton(
-                    iconName = "copy",
+                    iconName = SlockLucideIconName.Copy,
                     onClick = onCopyMemberId,
                     size = MembersActionSize
                 )
@@ -1536,14 +1536,14 @@ private fun MembersDetailActions(
     ) {
         MembersDetailActionButton(
             label = "Message",
-            iconName = "message-square",
+            iconName = SlockLucideIconName.MessageSquare,
             enabled = member.kind != MemberKind.System && !deleted,
             onClick = onOpenDirectMessage,
             modifier = Modifier.weight(1f)
         )
         MembersDetailActionButton(
             label = "Copy ID",
-            iconName = "copy",
+            iconName = SlockLucideIconName.Copy,
             enabled = true,
             onClick = onCopyMemberId,
             modifier = Modifier.weight(1f)
@@ -1631,7 +1631,7 @@ private fun MembersAgentLifecycleSection(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                     MembersSmallActionButton(
                         label = copyState?.successLabel ?: "Copy diagnostics",
-                        iconName = "clipboard",
+                        iconName = SlockLucideIconName.Clipboard,
                         enabled = diagnosticActionState?.inProgress != true,
                         modifier = Modifier.weight(1f),
                         onClick = onCopyDiagnostics
@@ -1645,7 +1645,7 @@ private fun MembersAgentLifecycleSection(
                                     reportState?.successLabel != null -> reportState.successLabel
                                     else -> "Report issue"
                                 },
-                            iconName = if (reportState?.inProgress == true) "loader" else "message-square-plus",
+                            iconName = if (reportState?.inProgress == true) SlockLucideIconName.Loader else SlockLucideIconName.MessageSquarePlus,
                             enabled = diagnosticActionState?.inProgress != true,
                             modifier = Modifier.weight(1f),
                             onClick = reportIssue
@@ -1694,7 +1694,7 @@ private fun MembersLifecycleActionButton(
         }
     SlockBrutalActionButton(
         label = label,
-        leadingIcon = if (current?.inProgress == true) "loader" else action.iconName,
+        leadingIcon = if (current?.inProgress == true) SlockLucideIconName.Loader else action.iconName,
         onClick = onClick,
         modifier = modifier,
         enabled = enabled,
@@ -1731,14 +1731,14 @@ private fun MembersLifecycleConfirmation(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             MembersSmallActionButton(
                 label = "Cancel",
-                iconName = "x",
+                iconName = SlockLucideIconName.X,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onCancel
             )
             MembersSmallActionButton(
                 label = "Confirm",
-                iconName = "check",
+                iconName = SlockLucideIconName.Check,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onConfirm
@@ -1911,7 +1911,7 @@ private fun MembersAgentProfileTab(
                 )
                 SlockBrutalActionButton(
                     label = actionLabel ?: "Save profile",
-                    leadingIcon = if (saving) "loader" else "check",
+                    leadingIcon = if (saving) SlockLucideIconName.Loader else SlockLucideIconName.Check,
                     onClick = { saveProfile() },
                     enabled = !saving,
                     backgroundColor = SlockColor.BrandYellow,
@@ -1926,18 +1926,18 @@ private fun MembersAgentProfileTab(
             MembersDetailField("Current", member.avatarUrl ?: member.avatar?.wireValue ?: "Default")
             if (canManage && !deleted) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton("Robot", "bot", enabled = !saving, modifier = Modifier.weight(1f)) {
+                    MembersSmallActionButton("Robot", SlockLucideIconName.Bot, enabled = !saving, modifier = Modifier.weight(1f)) {
                         saveProfile(avatarUrl = "pixel:robot", includeAvatarUrl = true)
                     }
-                    MembersSmallActionButton("Heart", "heart", enabled = !saving, modifier = Modifier.weight(1f)) {
+                    MembersSmallActionButton("Heart", SlockLucideIconName.Heart, enabled = !saving, modifier = Modifier.weight(1f)) {
                         saveProfile(avatarUrl = "pixel:heart", includeAvatarUrl = true)
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton("Upload", "upload", enabled = !saving, modifier = Modifier.weight(1f)) {
+                    MembersSmallActionButton("Upload", SlockLucideIconName.Upload, enabled = !saving, modifier = Modifier.weight(1f)) {
                         onUnavailableAction("Avatar upload is not available yet.")
                     }
-                    MembersSmallActionButton("Clear", "x", enabled = !saving, modifier = Modifier.weight(1f)) {
+                    MembersSmallActionButton("Clear", SlockLucideIconName.X, enabled = !saving, modifier = Modifier.weight(1f)) {
                         saveProfile(avatarUrl = null, includeAvatarUrl = true)
                     }
                 }
@@ -2115,7 +2115,7 @@ private fun MembersWorkspaceTreeView(
         )
         MembersSmallActionButton(
             label = "Refresh",
-            iconName = "refresh-cw",
+            iconName = SlockLucideIconName.RefreshCw,
             enabled = true,
             modifier = Modifier.width(92.dp),
             onClick = onRefresh
@@ -2174,7 +2174,10 @@ private fun MembersWorkspaceNodeRow(
         ) {
             Spacer(Modifier.width((row.depth * 14).dp))
             if (node.kind == SlockWorkspaceFileKind.Folder) {
-                SlockLucideIcon(if (expanded) "chevron-down" else "chevron-right", Modifier.size(13.dp))
+                SlockLucideIcon(
+                    if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+                    Modifier.size(13.dp),
+                )
             } else {
                 Spacer(Modifier.width(13.dp))
             }
@@ -2232,7 +2235,7 @@ private fun MembersWorkspaceFileViewer(
     ) {
         MembersSmallActionButton(
             label = "Files",
-            iconName = "arrow-left",
+            iconName = SlockLucideIconName.ArrowLeft,
             enabled = true,
             modifier = Modifier.width(96.dp),
             onClick = onBackToTree
@@ -2279,14 +2282,14 @@ private fun MembersWorkspacePreviewContent(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
                     MembersSmallActionButton(
                         label = "Raw",
-                        iconName = "file-code",
+                        iconName = SlockLucideIconName.FileCode,
                         enabled = true,
                         modifier = Modifier.weight(1f),
                         onClick = { onViewModeChange(MembersWorkspaceViewMode.Raw) }
                     )
                     MembersSmallActionButton(
                         label = "Preview",
-                        iconName = "eye",
+                        iconName = SlockLucideIconName.Eye,
                         enabled = true,
                         modifier = Modifier.weight(1f),
                         onClick = { onViewModeChange(MembersWorkspaceViewMode.Preview) }
@@ -2361,7 +2364,7 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("Files", message)
     MembersSmallActionButton(
         label = "Retry",
-        iconName = "refresh-cw",
+        iconName = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -2373,7 +2376,7 @@ private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("State", message)
     MembersSmallActionButton(
         label = "Retry",
-        iconName = "refresh-cw",
+        iconName = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -2421,7 +2424,7 @@ private fun MembersAgentActivityTab(
             )
             MembersSmallActionButton(
                 label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy Diagnostic Info",
-                iconName = "clipboard",
+                iconName = SlockLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
                 modifier = Modifier.width(168.dp),
                 onClick = onCopyDiagnostics
@@ -2572,7 +2575,7 @@ private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: 
 @Composable
 private fun MembersSmallActionButton(
     label: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
@@ -2603,7 +2606,7 @@ private fun MemberKindBadge(kind: MemberKind) {
 @Composable
 private fun MembersDetailActionButton(
     label: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -2674,7 +2677,7 @@ private fun MembersPageHeader(title: String) {
     SlockTopPageHeader(
         title = title,
         subtitle = "Workspace members",
-        iconName = "users"
+        iconName = SlockLucideIconName.Users
     )
 }
 

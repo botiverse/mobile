@@ -629,10 +629,10 @@ internal fun ThreadComposerContent(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             if (state.attachmentActionsEnabled) {
-                                ComposerIconButton("image-plus", composerEnabled) {
+                                ComposerIconButton(SlockLucideIconName.ImagePlus, composerEnabled) {
                                     onEvent("attachImage", null, null, null)
                                 }
-                                ComposerIconButton("paperclip", composerEnabled) {
+                                ComposerIconButton(SlockLucideIconName.Paperclip, composerEnabled) {
                                     onEvent("attachFile", null, null, null)
                                 }
                             }
@@ -781,7 +781,7 @@ private fun ComposerSuggestionRow(
 
 @Composable
 private fun ComposerIconButton(
-    icon: String,
+    icon: SlockLucideIconName,
     enabled: Boolean,
     modifier: Modifier = Modifier,
     backgroundColor: Color = SlockColor.SurfaceWhite,
@@ -824,7 +824,7 @@ private fun ComposerAsTaskToggle(
             contentAlignment = Alignment.Center
         ) {
             if (checked) {
-                SlockLucideIcon("check", modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
+                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
             }
         }
         val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
@@ -844,7 +844,7 @@ private fun ComposerSendButton(
 ) {
     val disabledAlpha = if (sending) 1f else 0.3f
     ComposerIconButton(
-        icon = if (sending) "refresh-cw" else "send",
+        icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink,
         disabledBackgroundColor = SlockColor.AccentPink,

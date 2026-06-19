@@ -155,7 +155,7 @@ internal fun SharedTasksPanel(
                 SharedTasksStateBody(
                     title = emptyCopy.title,
                     detail = emptyCopy.description,
-                    iconName = "square-check-big"
+                    iconName = SlockLucideIconName.SquareCheckBig
                 )
             }
             is ScreenLoadState.Error -> {
@@ -187,7 +187,7 @@ private fun SharedTasksHeader(subtitle: String = "Channel tasks") {
     SlockTopPageHeader(
         title = "Tasks",
         subtitle = subtitle,
-        iconName = "square-check-big"
+        iconName = SlockLucideIconName.SquareCheckBig
     )
 }
 
@@ -355,13 +355,13 @@ private fun SharedTasksLoadedBodyContent(
     var assigneeAnchor by remember { mutableStateOf(Offset.Zero) }
     var createDialogOpen by remember { mutableStateOf(false) }
     val channelFilterOptions = remember(visibleContent.channelOptions) {
-        visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = "hash") }
+        visibleContent.channelOptions.map { name -> SlockFilterOption(id = name, label = name, icon = SlockLucideIconName.Hash) }
     }
     val creatorFilterOptions = remember(visibleContent.creatorOptions) {
-        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = "circle-user") }
+        visibleContent.creatorOptions.map { SlockFilterOption(id = it.tasksIdentityFilterId(), label = it.displayName, icon = SlockLucideIconName.CircleUser) }
     }
     val assigneeFilterOptions = remember(visibleContent.assigneeOptions) {
-        visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = "user") }
+        visibleContent.assigneeOptions.map { SlockFilterOption(id = it.id.value, label = it.displayName, icon = SlockLucideIconName.User) }
     }
     SlockBackHandler(
         enabled = createDialogOpen || statusMenuTask != null || presentationState.openFilterId != null
@@ -485,7 +485,7 @@ private fun SharedTasksLoadedBodyContent(
                             SharedTasksStateBody(
                                 title = emptyCopy.title,
                                 detail = emptyCopy.description,
-                                iconName = "square-check-big"
+                                iconName = SlockLucideIconName.SquareCheckBig
                             )
                         } else {
                             LazyColumn(
@@ -690,7 +690,7 @@ private fun SharedTasksToolbar(
                 if (showCreateButton) {
                     SlockBrutalActionButton(
                         label = "NEW TASK",
-                        leadingIcon = "plus",
+                        leadingIcon = SlockLucideIconName.Plus,
                         backgroundColor = SlockColor.AccentPink,
                         minWidth = 0.dp,
                         minHeight = 30.dp,
@@ -1044,8 +1044,8 @@ private fun SharedTasksSegmentedControl(
         selectedValue = selectedMode.name,
         options =
             listOf(
-                SegmentedControlOption(value = TasksViewMode.Board.name, label = "Board", iconName = "columns-3"),
-                SegmentedControlOption(value = TasksViewMode.List.name, label = "List", iconName = "layout-list")
+                SegmentedControlOption(value = TasksViewMode.Board.name, label = "Board", iconName = SlockLucideIconName.Columns3),
+                SegmentedControlOption(value = TasksViewMode.List.name, label = "List", iconName = SlockLucideIconName.LayoutList)
             ),
         onValueSelected = { value ->
             when (value) {
@@ -1081,7 +1081,7 @@ private fun SharedTasksStateBody(
     title: String,
     detail: String?,
     loading: Boolean = false,
-    iconName: String = "square-check-big",
+    iconName: SlockLucideIconName = SlockLucideIconName.SquareCheckBig,
     actionLabel: String? = null,
     onAction: (() -> Unit)? = null
 ) {
@@ -1128,15 +1128,15 @@ private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
             TaskStatus.Closed -> SlockColor.EmptyStateGray
         }
 
-private val TaskStatus.iconName: String
+private val TaskStatus.iconName: SlockLucideIconName
     get() =
         when (this) {
-            TaskStatus.Todo -> "circle"
-            TaskStatus.InProgress -> "play"
-            TaskStatus.InReview -> "eye"
+            TaskStatus.Todo -> SlockLucideIconName.Circle
+            TaskStatus.InProgress -> SlockLucideIconName.Play
+            TaskStatus.InReview -> SlockLucideIconName.Eye
             // Registry only ships "circle-check-big"; the smaller variant is not bundled.
-            TaskStatus.Done -> "circle-check-big"
-            TaskStatus.Closed -> "ban"
+            TaskStatus.Done -> SlockLucideIconName.CircleCheckBig
+            TaskStatus.Closed -> SlockLucideIconName.Ban
         }
 
 private fun TaskStatus.nextStatus(): TaskStatus =

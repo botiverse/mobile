@@ -565,7 +565,7 @@ fun SlockStructuralHomeShell(
                             }
                         }
                         item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                        item { SidebarActionRow("search", labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
+                        item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                         item {
                             SidebarActivityRow(
                                 labels.inbox,
@@ -575,7 +575,7 @@ fun SlockStructuralHomeShell(
                                 onClick = if (sidebarInteractionsEnabled) onInboxClick else null
                             )
                         }
-                        item { SidebarActionRow("bookmark", labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                        item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
                         if (displayedPinned.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
@@ -652,7 +652,7 @@ fun SlockStructuralHomeShell(
                                 },
                                 modifier = Modifier.padding(horizontal = HomeListHorizontalPadding)
                             ) {
-                                SlockSectionHeaderIconAction("plus", labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
+                                SlockSectionHeaderIconAction(SlockLucideIconName.Plus, labels.addChannel, if (sidebarInteractionsEnabled) onCreateChannelClick else disabledListAction)
                             }
                         }
                         if (channelsExpanded) {
@@ -788,7 +788,7 @@ fun SlockStructuralHomeShell(
             val pinTargetIsPinned = activePinId != null && activePinId in pinnedIdSet
             val pinMenuItem = activePinId?.let { id ->
                 val label = if (pinTargetIsPinned) labels.unpin else labels.pin
-                val icon = if (pinTargetIsPinned) "pin-off" else "pin"
+                val icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
                 SlockBaseMenuItem(id = "toggle-pin", label = label, icon = icon)
             }
             if (activePinId != null && pinMenuItem != null) {
@@ -810,10 +810,10 @@ fun SlockStructuralHomeShell(
         if (showBottomBar) {
             SlockAppBottomTabBarHost(
                 items = listOf(
-                    SlockBottomTabItemPayload("home", "HOME", "house", selected = selectedTabKey == "home"),
-                    SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = selectedTabKey == "tasks"),
-                    SlockBottomTabItemPayload("members", "MEMBERS", "users", selected = selectedTabKey == "members"),
-                    SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedTabKey == "settings")
+                    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = selectedTabKey == "home"),
+                    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
+                    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users, selected = selectedTabKey == "members"),
+                    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedTabKey == "settings")
                 ),
                 onSelect = onTabSelected,
                 modifier = Modifier.fillMaxWidth(),
@@ -1151,7 +1151,7 @@ private fun SlockLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 260.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("chevron-down", Modifier.size(18.dp), color = SlockColor.BrandYellowArgb)
+                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(18.dp), color = SlockColor.BrandYellowArgb)
             }
         }
     }
@@ -1201,7 +1201,7 @@ private fun SlockRotatedLogoBadge(
             Text(text, color = SlockColor.BrandYellow, style = textStyle, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp))
             if (showDropdown) {
                 Spacer(Modifier.width(4.dp))
-                SlockLucideIcon("chevron-down", Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
+                SlockLucideIcon(SlockLucideIconName.ChevronDown, Modifier.size(15.dp).rotate(2f), color = SlockColor.BrandYellowArgb)
             }
         }
         if (unread) ServerUnreadMarker(modifier = Modifier.align(Alignment.TopEnd))
@@ -1277,7 +1277,7 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
                     .clickable { expanded = !expanded },
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon("triangle-alert", Modifier.size(16.dp))
+                SlockLucideIcon(SlockLucideIconName.TriangleAlert, Modifier.size(16.dp))
             }
         }
         ServerUnreadMarker(Modifier.align(Alignment.TopEnd))
@@ -1301,7 +1301,14 @@ private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationIte
 private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView: () -> Unit, onDismiss: () -> Unit) {
     com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(SlockSpacing.Md), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor()).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
-            SlockLucideIcon(when (notification.kind) { SlockHomeNotificationKind.Warning -> "circle-arrow-up"; SlockHomeNotificationKind.Info -> "bell-ring"; SlockHomeNotificationKind.Error -> "triangle-alert" }, Modifier.size(16.dp))
+            SlockLucideIcon(
+                when (notification.kind) {
+                    SlockHomeNotificationKind.Warning -> SlockLucideIconName.CircleArrowUp
+                    SlockHomeNotificationKind.Info -> SlockLucideIconName.BellRing
+                    SlockHomeNotificationKind.Error -> SlockLucideIconName.TriangleAlert
+                },
+                Modifier.size(16.dp)
+            )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Text(notification.title, style = SlockType.Button, color = SlockColor.TextBlack, overflow = TextOverflow.Ellipsis, maxLines = 3)
@@ -1394,7 +1401,7 @@ private fun ServerSwitcherRow(server: SlockServerSwitcherItem, selected: Boolean
         Box(modifier = Modifier.width(14.dp), contentAlignment = Alignment.Center) {
             when {
                 pending -> Text("...", style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 14.sp), color = SlockColor.TextBlack, maxLines = 1, textAlign = TextAlign.Center)
-                selected -> SlockLucideIcon("check", Modifier.size(14.dp))
+                selected -> SlockLucideIcon(SlockLucideIconName.Check, Modifier.size(14.dp))
                 else -> Spacer(Modifier.size(14.dp))
             }
         }
@@ -1425,7 +1432,7 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SlockLucideIcon("plus", Modifier.size(14.dp))
+        SlockLucideIcon(SlockLucideIconName.Plus, Modifier.size(14.dp))
         Text(label, style = SlockType.ButtonBold, color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
@@ -1434,7 +1441,7 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
 private fun SidebarActivityRow(label: String, count: String?, selected: Boolean = false, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
     if (!selected) {
         SidebarActionRow(
-            icon = "activity",
+            icon = SlockLucideIconName.Activity,
             label = label,
             modifier = modifier,
             badge = count,
@@ -1465,7 +1472,7 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
-                    SlockLucideIcon("activity", Modifier.size(SidebarActionIconSize))
+                    SlockLucideIcon(SlockLucideIconName.Activity, Modifier.size(SidebarActionIconSize))
                 }
                 Text(
                     label,
@@ -1484,7 +1491,7 @@ private fun SidebarActivityRow(label: String, count: String?, selected: Boolean 
 }
 
 @Composable
-private fun SidebarActionRow(icon: String, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
+private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
     Box(modifier = modifier.fillMaxWidth()) {
         if (selected) {
             Box(
@@ -1617,7 +1624,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             }
             Text(name, style = SlockType.Button, color = SlockColor.TextBlack.copy(alpha = if (joined) 1f else 0.46f), modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) Spacer(Modifier.width(SlockSpacing.Sm)) else if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
-            if (hasDraft) SlockLucideIcon("pencil", Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+            if (hasDraft) SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             if (badge != null) {
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
@@ -1755,7 +1762,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             }
             if (hasDraft) {
                 if (isAgent) Spacer(Modifier.width(SlockSpacing.Xs))
-                SlockLucideIcon("pencil", Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
+                SlockLucideIcon(SlockLucideIconName.Pencil, Modifier.size(14.dp), color = SlockColor.TextMutedGrayArgb)
             }
             if (badge != null) {
                 if (isAgent || hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
@@ -1843,7 +1850,7 @@ private fun DefaultUserAvatar(
 
 @Composable
 private fun DefaultUserAvatarIcon(avatarSize: Dp) {
-    SlockLucideIcon("user", modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = SlockColor.TextBlackArgb)
+    SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size((avatarSize.value * 0.56f).dp), color = SlockColor.TextBlackArgb)
 }
 
 private val SlockPresence.homeRowColor: Color

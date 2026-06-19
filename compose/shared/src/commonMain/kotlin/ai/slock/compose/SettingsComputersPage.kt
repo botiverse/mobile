@@ -379,7 +379,7 @@ private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() 
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        IconBox("monitor", SlockColor.BrandYellow)
+        IconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
@@ -523,7 +523,7 @@ private fun SettingsPrimaryButton(text: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun IconBox(iconName: String, color: Color) {
+private fun IconBox(iconName: SlockLucideIconName, color: Color) {
     Box(
         modifier = Modifier.size(42.dp).background(color).border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
@@ -544,7 +544,7 @@ private fun SettingsAgentAvatar(item: KuiklySettingsAgentItem) {
         avatarSize = 42.dp,
         statusSize = 10.dp
     ) {
-        IconBox("bot", SlockColor.AccentCyan)
+        IconBox(SlockLucideIconName.Bot, SlockColor.AccentCyan)
     }
 }
 

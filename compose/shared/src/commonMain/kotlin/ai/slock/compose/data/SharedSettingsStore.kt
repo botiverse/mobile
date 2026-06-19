@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.SlockLucideIconName
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
@@ -66,7 +67,7 @@ data class SharedSettingsNavItem(
     val destination: SharedSettingsDestination,
     val title: String,
     val subtitle: String,
-    val iconName: String,
+    val iconName: SlockLucideIconName,
     val value: String? = null,
     val selected: Boolean = false,
     val productVisible: Boolean = true
@@ -1727,15 +1728,15 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
         subtitle = server?.name ?: "Shared settings",
         items =
             listOf(
-                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", "user", this?.user?.bestDisplayName, selectedDestination),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", "monitor", null, selectedDestination),
-                nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", "users", server?.role?.titleLabel(), selectedDestination),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", "blocks", null, selectedDestination),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", "shield-check", server?.plan?.titleLabel(), selectedDestination),
-                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", "languages", null, selectedDestination),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", "smartphone", null, selectedDestination),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", "archive", null, selectedDestination),
-                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", "bug", null, selectedDestination)
+                nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName, selectedDestination),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
+                nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", SlockLucideIconName.Users, server?.role?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Blocks, null, selectedDestination),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.ShieldCheck, server?.plan?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "Push notifications, language, layout", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
+                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination)
             )
     )
 }
@@ -1744,7 +1745,7 @@ private fun nav(
     destination: SharedSettingsDestination,
     title: String,
     subtitle: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     value: String?,
     selectedDestination: SharedSettingsDestination
 ): SharedSettingsNavItem =

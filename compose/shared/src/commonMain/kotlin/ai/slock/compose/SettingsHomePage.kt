@@ -368,7 +368,7 @@ private fun SharedHomeSearchEntityLeadingAvatar(result: SearchEntityResult) {
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon("hash", color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
             }
 
         else ->
@@ -522,7 +522,7 @@ internal data class KuiklySharedSettingsPayload(
     val instanceId: String = "",
     val title: String = "",
     val detail: String = "",
-    val heroIconName: String = "settings",
+    val heroIconName: SlockLucideIconName = SlockLucideIconName.Settings,
     val heroLabel: String = "",
     val sections: List<KuiklySharedSettingsSection> = emptyList()
 )
@@ -536,7 +536,7 @@ internal data class KuiklySharedSettingsSection(
 @Serializable
 internal data class KuiklySharedSettingsRow(
     val key: String = "",
-    val iconName: String = "settings",
+    val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
     val title: String = "",
     val detail: String = "",
     val value: String = "",
@@ -553,7 +553,7 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             key = "account",
             title = "Account",
             subtitle = "Profile, email, password, connected accounts",
-            iconName = "user",
+            iconName = SlockLucideIconName.User,
             value = "Verified",
             selected = true
         ),
@@ -561,50 +561,50 @@ private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
             key = "computers",
             title = "Computers",
             subtitle = "Connected machines and workspaces",
-            iconName = "monitor"
+            iconName = SlockLucideIconName.Monitor
         ),
         SlockTabItemPayload(
             key = "server",
             title = "Server",
             subtitle = "Workspace name, members, invites, permissions",
-            iconName = "users",
+            iconName = SlockLucideIconName.Users,
             value = "Owner"
         ),
         SlockTabItemPayload(
             key = "billing",
             title = "Billing",
             subtitle = "Plan, usage, invoices",
-            iconName = "shield-check"
+            iconName = SlockLucideIconName.ShieldCheck
         ),
         SlockTabItemPayload(
             key = "language-region",
             title = "Language & Region",
             subtitle = "Language, timezone, translation",
-            iconName = "languages"
+            iconName = SlockLucideIconName.Languages
         ),
         SlockTabItemPayload(
             key = "mobile",
             title = "Mobile",
             subtitle = "Push notifications, language, layout",
-            iconName = "smartphone"
+            iconName = SlockLucideIconName.Smartphone
         ),
         SlockTabItemPayload(
             key = "storage",
             title = "Storage",
             subtitle = "Local cache and diagnostics",
-            iconName = "archive"
+            iconName = SlockLucideIconName.Archive
         ),
         SlockTabItemPayload(
             key = "about",
             title = "About",
             subtitle = "Version, diagnostics, feedback",
-            iconName = "bug"
+            iconName = SlockLucideIconName.Bug
         ),
         SlockTabItemPayload(
             key = "router",
             title = "Smoke previews",
             subtitle = "Open Kuikly router and shared test pages",
-            iconName = "route"
+            iconName = SlockLucideIconName.Route
         )
     )
 )
@@ -614,7 +614,7 @@ private val settingsVisualItems = listOf(
         key = "account",
         title = "Account",
         subtitle = "Profile, email, password, connected accounts",
-        iconName = "user",
+        iconName = SlockLucideIconName.User,
         value = "Verified",
         selected = true
     ),
@@ -622,38 +622,38 @@ private val settingsVisualItems = listOf(
         key = "language-region",
         title = "Language & Region",
         subtitle = "Language, timezone, translation",
-        iconName = "languages"
+        iconName = SlockLucideIconName.Languages
     ),
     SlockTabItemPayload(
         key = "appearance",
         title = "Appearance",
         subtitle = "Message font size and reading density",
-        iconName = "type"
+        iconName = SlockLucideIconName.Type
     ),
     SlockTabItemPayload(
         key = "browser",
         title = "Browser",
         subtitle = "Notifications and local browser state",
-        iconName = "app-window"
+        iconName = SlockLucideIconName.AppWindow
     ),
     SlockTabItemPayload(
         key = "server",
         title = "Server",
         subtitle = "Workspace, members, invites, permissions",
-        iconName = "building-2",
+        iconName = SlockLucideIconName.Building2,
         value = "Owner"
     ),
     SlockTabItemPayload(
         key = "computers",
         title = "Computers",
         subtitle = "Connected machines and workspaces",
-        iconName = "monitor"
+        iconName = SlockLucideIconName.Monitor
     ),
     SlockTabItemPayload(
         key = "release-notes",
         title = "Release Notes",
         subtitle = "Product changes and migration notes",
-        iconName = "file-text"
+        iconName = SlockLucideIconName.FileText
     )
 )
 
@@ -661,40 +661,40 @@ private val settingsPageVisualPayload = KuiklySharedSettingsPayload(
     instanceId = "visual-settings-page",
     title = "Account",
     detail = "Profile, email, password, connected accounts",
-    heroIconName = "user",
+    heroIconName = SlockLucideIconName.User,
     heroLabel = "Artin",
     sections = listOf(
         KuiklySharedSettingsSection(
             title = "Profile",
             rows = listOf(
-                KuiklySharedSettingsRow("displayName", "user", "Display name", "Shown across messages, tasks, and mentions.", status = "Artin"),
-                KuiklySharedSettingsRow("email", "mail", "Email", "artin@slock.test", status = "Verified"),
-                KuiklySharedSettingsRow("avatar", "upload", "Avatar", "Upload a custom human avatar.", status = "Ready")
+                KuiklySharedSettingsRow("displayName", SlockLucideIconName.User, "Display name", "Shown across messages, tasks, and mentions.", status = "Artin"),
+                KuiklySharedSettingsRow("email", SlockLucideIconName.Mail, "Email", "artin@slock.test", status = "Verified"),
+                KuiklySharedSettingsRow("avatar", SlockLucideIconName.Upload, "Avatar", "Upload a custom human avatar.", status = "Ready")
             )
         ),
         KuiklySharedSettingsSection(
             title = "Session",
             rows = listOf(
-                KuiklySharedSettingsRow("password", "shield", "Password", "Change password and connected credentials.", status = "Enabled"),
-                KuiklySharedSettingsRow("logout", "log-out", "Log out", "Sign out of this browser.", status = "Action")
+                KuiklySharedSettingsRow("password", SlockLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
+                KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this browser.", status = "Action")
             )
         )
     )
 )
 
 private val bottomTabBarSmokeItems = listOf(
-    SlockBottomTabItemPayload("home", "HOME", "house"),
-    SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = true),
-    SlockBottomTabItemPayload("members", "MEMBERS", "users"),
-    SlockBottomTabItemPayload("settings", "SETTINGS", "settings")
+    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House),
+    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = true),
+    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users),
+    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings)
 )
 
 private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayload> =
     listOf(
-        SlockBottomTabItemPayload("home", "HOME", "house", selected = selectedKey == "home"),
-        SlockBottomTabItemPayload("tasks", "TASKS", "square-check-big", selected = selectedKey == "tasks"),
-        SlockBottomTabItemPayload("members", "MEMBERS", "users", selected = selectedKey == "members"),
-        SlockBottomTabItemPayload("settings", "SETTINGS", "settings", selected = selectedKey == "settings")
+        SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = selectedKey == "home"),
+        SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = selectedKey == "tasks"),
+        SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users, selected = selectedKey == "members"),
+        SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedKey == "settings")
     )
 
 @Composable
@@ -2668,12 +2668,12 @@ private fun SettingsAppShellContent(
                 )
             SettingsDestinationDiagnosticsFeedbackChannel ->
                 if (diagnosticsFeedbackDraft == null) {
-                    SettingsSharedPlaceholder(
-                        title = "请选择 channel",
-                        detail = "Diagnostics feedback is no longer pending.",
-                        iconName = "hash",
-                        bottomContentPadding = bottomContentPadding
-                    )
+        SettingsSharedPlaceholder(
+            title = "请选择 channel",
+            detail = "Diagnostics feedback is no longer pending.",
+            iconName = SlockLucideIconName.Hash,
+            bottomContentPadding = bottomContentPadding
+        )
                 } else {
                     SharedDiagnosticsFeedbackChannelPage(
                         state = diagnosticsFeedbackHomeState,
@@ -2683,12 +2683,12 @@ private fun SettingsAppShellContent(
                     )
                 }
             else ->
-                SettingsSharedPlaceholder(
-                    title = "Settings",
-                    detail = "This Settings section is not available on mobile yet.",
-                    iconName = "settings",
-                    bottomContentPadding = bottomContentPadding
-                )
+        SettingsSharedPlaceholder(
+            title = "Settings",
+            detail = "This Settings section is not available on mobile yet.",
+            iconName = SlockLucideIconName.Settings,
+            bottomContentPadding = bottomContentPadding
+        )
         }
     }
 }
@@ -2898,7 +2898,7 @@ private fun SettingsConnectedAppsContent(
         KuiklySharedSettingsPayload(
             title = "Connected Apps",
             detail = "Install marketplace apps and manage server-local OAuth clients.",
-            heroIconName = "blocks",
+            heroIconName = SlockLucideIconName.Blocks,
             heroLabel = "Connected Apps"
         )
     LazyColumn(
@@ -2909,37 +2909,37 @@ private fun SettingsConnectedAppsContent(
         when (state) {
             ScreenLoadState.Loading ->
                 item {
-                    SettingsFormSectionCard(iconName = "loader", title = "Loading") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.Loader, title = "Loading") {
                         SettingsFormDetailText("Loading integrations, marketplace apps, and OAuth clients.")
                     }
                 }
             is ScreenLoadState.Empty ->
                 item {
-                    SettingsFormSectionCard(iconName = "blocks", title = "No Connected Apps") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.Blocks, title = "No Connected Apps") {
                         SettingsFormEmptyText("Connected Apps are unavailable for this workspace.")
                         SlockBrutalActionButton(
                             label = "Retry",
                             onClick = onRefresh,
-                            leadingIcon = "refresh-cw",
+                            leadingIcon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.SurfaceWhite
                         )
                     }
                 }
             is ScreenLoadState.Error ->
                 item {
-                    SettingsFormSectionCard(iconName = "triangle-alert", title = "Connected Apps Error") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Connected Apps Error") {
                         SettingsFormErrorText(state.error.code)
                         SlockBrutalActionButton(
                             label = "Retry",
                             onClick = onRefresh,
-                            leadingIcon = "refresh-cw",
+                            leadingIcon = SlockLucideIconName.RefreshCw,
                             backgroundColor = SlockColor.SurfaceWhite
                         )
                     }
                 }
             is ScreenLoadState.NoPermission ->
                 item {
-                    SettingsFormSectionCard(iconName = "lock", title = "Permission Required") {
+                    SettingsFormSectionCard(iconName = SlockLucideIconName.Lock, title = "Permission Required") {
                         SettingsFormErrorText(state.blocker.code)
                     }
                 }
@@ -2949,9 +2949,9 @@ private fun SettingsConnectedAppsContent(
                         selectedValue = selectedTab,
                         options =
                             listOf(
-                                SegmentedControlOption("marketplace", "Marketplace", "store"),
-                                SegmentedControlOption("installed", "Installed", "check-circle"),
-                                SegmentedControlOption("myapps", "My Apps", "key-round")
+                                SegmentedControlOption("marketplace", "Marketplace", SlockLucideIconName.Store),
+                                SegmentedControlOption("installed", "Installed", SlockLucideIconName.CircleCheck),
+                                SegmentedControlOption("myapps", "My Apps", SlockLucideIconName.KeyRound)
                             ),
                         onValueSelected = onSelectedTabChange
                     )
@@ -3029,7 +3029,7 @@ private fun SettingsConnectedAppsContent(
 
 @Composable
 private fun SettingsConnectedAppSecretCard(secret: SettingsConnectedAppSecretSnapshot) {
-    SettingsFormSectionCard(iconName = "key-round", title = "Client Secret") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "Client Secret") {
         SettingsFormDetailText("Copy this secret now. It is shown once and is not persisted in diagnostics.")
         SettingsReadonlyField(label = "Client ID", value = secret.clientId)
         Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
@@ -3051,7 +3051,7 @@ private fun SettingsConnectedAppSecretCard(secret: SettingsConnectedAppSecretSna
 
 @Composable
 private fun SettingsConnectedAppsBuiltInCard(apps: List<SettingsConnectedAppBuiltInSnapshot>) {
-    SettingsFormSectionCard(iconName = "package-check", title = "Built-in Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in Apps") {
         if (apps.isEmpty()) {
             SettingsFormEmptyText("No built-in apps are available.")
         } else {
@@ -3060,7 +3060,7 @@ private fun SettingsConnectedAppsBuiltInCard(apps: List<SettingsConnectedAppBuil
                     title = app.name,
                     detail = listOfNotNull(app.description, app.homepageDomain).joinToString(" · "),
                     status = "Built in",
-                    iconName = "sparkles"
+                    iconName = SlockLucideIconName.Sparkles
                 )
             }
         }
@@ -3074,7 +3074,7 @@ private fun SettingsConnectedAppsMarketplaceCard(
     onInstall: (String) -> Unit,
     onUninstall: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = "store", title = "Marketplace") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Marketplace") {
         if (marketplace.isEmpty()) {
             SettingsFormEmptyText("No marketplace apps are available.")
         } else {
@@ -3084,7 +3084,7 @@ private fun SettingsConnectedAppsMarketplaceCard(
                     title = app.name,
                     detail = listOfNotNull(app.developer, app.description, app.dataAccessSummary).joinToString(" · "),
                     buttonLabel = actionState.connectedAppsStatusFor(action, if (app.installed) "Uninstall" else "Install", app.id),
-                    buttonIcon = if (app.installed) "trash-2" else "download",
+                    buttonIcon = if (app.installed) SlockLucideIconName.Trash2 else SlockLucideIconName.Download,
                     buttonColor = if (app.installed) SlockColor.SurfaceWhite else SlockColor.BrandYellow,
                     enabled = actionState?.inProgress != true,
                     onClick = { if (app.installed) onUninstall(app.id) else onInstall(app.id) }
@@ -3100,7 +3100,7 @@ private fun SettingsConnectedAppsInstalledCard(
     actionState: SharedSettingsActionState?,
     onUninstall: (String) -> Unit
 ) {
-    SettingsFormSectionCard(iconName = "check-circle", title = "Installed Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = "Installed Apps") {
         if (installed.isEmpty()) {
             SettingsFormEmptyText("No marketplace apps are installed for this workspace.")
         } else {
@@ -3109,7 +3109,7 @@ private fun SettingsConnectedAppsInstalledCard(
                     title = app.name,
                     detail = listOfNotNull(app.developer, app.description, app.origin).joinToString(" · "),
                     buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, "Uninstall", app.id),
-                    buttonIcon = "trash-2",
+                    buttonIcon = SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true && app.origin == "marketplace",
                     onClick = { onUninstall(app.id) }
@@ -3151,7 +3151,7 @@ private fun SettingsConnectedAppEditorCard(
     val trimmedName = name.trim()
     val canManage = snapshot?.canManage == true
     val enabled = canManage && !busy
-    SettingsFormSectionCard(iconName = "key-round", title = if (editing) "Edit OAuth Client" else "Register OAuth Client") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = if (editing) "Edit OAuth Client" else "Register OAuth Client") {
         SettingsFormDetailText("Create server-local OAuth clients for trusted integrations. The client secret is shown once after creation.")
         SlockBrutalTextField(
             label = "App Name",
@@ -3267,7 +3267,7 @@ private fun SettingsConnectedAppEditorCard(
                     }
                 },
                 enabled = enabled && trimmedName.isNotBlank(),
-                leadingIcon = if (editing) "save" else "plus",
+                leadingIcon = if (editing) SlockLucideIconName.Save else SlockLucideIconName.Plus,
                 backgroundColor = SlockColor.BrandYellow
             )
             if (editing) {
@@ -3275,7 +3275,7 @@ private fun SettingsConnectedAppEditorCard(
                     label = "Cancel",
                     onClick = onCancelEdit,
                     enabled = !busy,
-                    leadingIcon = "x",
+                    leadingIcon = SlockLucideIconName.X,
                     backgroundColor = SlockColor.SurfaceWhite
                 )
             }
@@ -3293,7 +3293,7 @@ private fun SettingsConnectedAppClientsCard(
     publishCategory: String,
     publishDataAccess: String
 ) {
-    SettingsFormSectionCard(iconName = "key-round", title = "My Apps") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "My Apps") {
         if (clients.isEmpty()) {
             SettingsFormEmptyText("No server-local OAuth clients yet.")
         } else {
@@ -3302,7 +3302,7 @@ private fun SettingsConnectedAppClientsCard(
                     title = app.name,
                     detail = listOfNotNull(app.clientId, app.publishStatus, app.description).joinToString(" · "),
                     buttonLabel = "Edit",
-                    buttonIcon = "pencil",
+                    buttonIcon = SlockLucideIconName.Pencil,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
                     onClick = { onStartEdit(app) }
@@ -3311,7 +3311,7 @@ private fun SettingsConnectedAppClientsCard(
                     title = "Publish ${app.name}",
                     detail = app.publishRejectionReason ?: "Request marketplace review for this OAuth client.",
                     buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_PUBLISH, "Request Publish", app.id),
-                    buttonIcon = "send",
+                    buttonIcon = SlockLucideIconName.Send,
                     buttonColor = SlockColor.AccentCyan,
                     enabled = actionState?.inProgress != true,
                     onClick = {
@@ -3328,7 +3328,7 @@ private fun SettingsConnectedAppClientsCard(
                     title = "Delete ${app.name}",
                     detail = "Remove this server-local OAuth client and its credentials.",
                     buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_DELETE, "Delete", app.id),
-                    buttonIcon = "trash-2",
+                    buttonIcon = SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.AccentRed,
                     enabled = actionState?.inProgress != true,
                     onClick = { onDelete(app.id) }
@@ -3347,7 +3347,7 @@ private fun SettingsConnectedAppActionRow(
     title: String,
     detail: String,
     buttonLabel: String,
-    buttonIcon: String,
+    buttonIcon: SlockLucideIconName,
     buttonColor: Color,
     enabled: Boolean,
     onClick: () -> Unit
@@ -3368,7 +3368,7 @@ private fun SettingsConnectedAppInfoRow(
     title: String,
     detail: String,
     status: String,
-    iconName: String
+    iconName: SlockLucideIconName
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(10.dp),
@@ -3403,7 +3403,7 @@ private fun SettingsServerProfileFormCard(
     val dirty = trimmedName.isNotBlank() && trimmedName != currentName
     val enabled = canSave && dirty && !busy
     val status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (canSave) "Save Profile" else "Read only")
-    SettingsFormSectionCard(iconName = "building-2", title = "Profile") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Building2, title = "Profile") {
         SlockBrutalTextField(
             label = "Name",
             value = if (canSave) draftName else currentName,
@@ -3432,7 +3432,7 @@ private fun SettingsServerProfileFormCard(
                 label = status,
                 onClick = onSubmit,
                 enabled = enabled,
-                leadingIcon = "save",
+                leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.BrandYellow
             )
         }
@@ -3459,7 +3459,7 @@ private fun SettingsReadonlyField(
 
 @Composable
 private fun SettingsServerSectionHeader(
-    iconName: String,
+    iconName: SlockLucideIconName,
     title: String
 ) {
     Row(
@@ -3495,13 +3495,13 @@ private fun SettingsServerDangerZoneCard(
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
     val trimmedSlug = confirmationSlug.trim()
     val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedSlug == expectedServerSlug
-    SettingsFormSectionCard(iconName = "triangle-alert", title = "Danger Zone") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Danger Zone") {
         if (canLeave) {
             SettingsServerActionRow(
                 title = "Leave Server",
                 detail = "You will lose access to ${serverName.ifBlank { "this server" }} and all of its channels. You can be re-invited later.",
                 buttonLabel = actionState.serverStatusFor(SERVER_ACTION_LEAVE, "Leave Server"),
-                buttonIcon = "log-out",
+                buttonIcon = SlockLucideIconName.LogOut,
                 buttonColor = SlockColor.AccentOrange,
                 enabled = !leaveBusy,
                 onClick = onLeave
@@ -3519,7 +3519,7 @@ private fun SettingsServerDangerZoneCard(
                 title = "Delete Server",
                 detail = "Permanently remove ${serverName.ifBlank { "this server" }} and all of its data. This cannot be undone.",
                 buttonLabel = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
-                buttonIcon = "trash-2",
+                buttonIcon = SlockLucideIconName.Trash2,
                 buttonColor = SlockColor.AccentRed,
                 enabled = false,
                 onClick = {}
@@ -3548,7 +3548,7 @@ private fun SettingsServerDangerZoneCard(
                 label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
                 onClick = onDelete,
                 enabled = deleteEnabled,
-                leadingIcon = "trash-2",
+                leadingIcon = SlockLucideIconName.Trash2,
                 backgroundColor = SlockColor.AccentRed
             )
         }
@@ -3557,7 +3557,7 @@ private fun SettingsServerDangerZoneCard(
 
 @Composable
 private fun SettingsFormSectionCard(
-    iconName: String,
+    iconName: SlockLucideIconName,
     title: String,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -3575,7 +3575,7 @@ private fun SettingsServerActionRow(
     title: String,
     detail: String,
     buttonLabel: String,
-    buttonIcon: String,
+    buttonIcon: SlockLucideIconName,
     buttonColor: Color,
     enabled: Boolean,
     onClick: () -> Unit
@@ -3615,7 +3615,7 @@ private fun SettingsServerAdminsCard(
             .sortedWith(compareBy<SettingsServerAdminSnapshot> { if (it.normalizedRole() == "owner") 0 else 1 }.thenBy { it.name })
     val candidates = members.filter { !it.isPrivilegedServerMember() }.sortedBy { it.name }
     val ownerCount = admins.count { it.normalizedRole() == "owner" }
-    SettingsFormSectionCard(iconName = "shield", title = "Owners & Admins") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Shield, title = "Owners & Admins") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         if (candidates.isNotEmpty()) {
             Text(
@@ -3632,7 +3632,7 @@ private fun SettingsServerAdminsCard(
                         title = candidate.name,
                         detail = candidate.detail.orEmpty().ifBlank { "Member" },
                         buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Owner", candidate.id),
-                        buttonIcon = "shield-check",
+                        buttonIcon = SlockLucideIconName.ShieldCheck,
                         buttonColor = SlockColor.AccentPink,
                         enabled = actionState?.inProgress != true,
                         onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:owner") }
@@ -3643,7 +3643,7 @@ private fun SettingsServerAdminsCard(
                         title = candidate.name,
                         detail = candidate.detail.orEmpty().ifBlank { "Member" },
                         buttonLabel = actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, "Make Admin", candidate.id),
-                        buttonIcon = "shield-check",
+                        buttonIcon = SlockLucideIconName.ShieldCheck,
                         buttonColor = SlockColor.BrandYellow,
                         enabled = actionState?.inProgress != true,
                         onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${candidate.id}:admin") }
@@ -3669,7 +3669,7 @@ private fun SettingsServerAdminsCard(
                     title = admin.name,
                     detail = listOfNotNull(admin.detail, admin.role).joinToString(" · ").ifBlank { admin.role ?: "Admin" },
                     buttonLabel = if (canDemote) actionState.serverStatusFor(SERVER_ACTION_MEMBER_ROLE, fallback, admin.id) else disabledLabel,
-                    buttonIcon = "user-minus",
+                    buttonIcon = SlockLucideIconName.UserMinus,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = canDemote && actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_MEMBER_ROLE, "${admin.id}:member") }
@@ -3695,7 +3695,7 @@ private fun SettingsServerInvitesCard(
     val trimmedEmail = email.trim()
     val busy = actionState?.action == SERVER_ACTION_INVITE_CREATE && actionState.inProgress
     val enabled = !busy && trimmedEmail.contains("@") && trimmedEmail.contains(".")
-    SettingsFormSectionCard(iconName = "mail-plus", title = "Pending Invites") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.MailPlus, title = "Pending Invites") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
             label = "Email",
@@ -3709,7 +3709,7 @@ private fun SettingsServerInvitesCard(
             label = actionState.serverStatusFor(SERVER_ACTION_INVITE_CREATE, "Send invite"),
             onClick = onSubmit,
             enabled = enabled,
-            leadingIcon = "mail-plus",
+            leadingIcon = SlockLucideIconName.MailPlus,
             backgroundColor = SlockColor.BrandYellow
         )
         SettingsFormDivider()
@@ -3721,7 +3721,7 @@ private fun SettingsServerInvitesCard(
                     title = invite.email,
                     detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
                     buttonLabel = actionState.serverStatusFor(SERVER_ACTION_INVITE_REVOKE, "Revoke", invite.id),
-                    buttonIcon = "x",
+                    buttonIcon = SlockLucideIconName.X,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_INVITE_REVOKE, invite.id) }
@@ -3751,7 +3751,7 @@ private fun SettingsServerJoinLinksCard(
     val maxUsesInvalid = trimmedMaxUses.isNotBlank() && (parsedMaxUses == null || parsedMaxUses <= 0)
     val createBusy = actionState?.action == SERVER_ACTION_JOIN_LINK_CREATE && actionState.inProgress
     val createEnabled = !createBusy && !maxUsesInvalid
-    SettingsFormSectionCard(iconName = "link-2", title = "Join Links") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Link2, title = "Join Links") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SlockBrutalTextField(
             label = "Max Uses",
@@ -3783,7 +3783,7 @@ private fun SettingsServerJoinLinksCard(
                 )
             },
             enabled = createEnabled,
-            leadingIcon = "plus",
+            leadingIcon = SlockLucideIconName.Plus,
             backgroundColor = SlockColor.AccentPink
         )
         SettingsFormDivider()
@@ -3795,7 +3795,7 @@ private fun SettingsServerJoinLinksCard(
                     title = link.url ?: link.label,
                     detail = listOfNotNull(link.maxUsesLabel, link.usageLabel, link.expiresAtLabel).joinToString(" · "),
                     buttonLabel = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_REVOKE, "Revoke", link.id),
-                    buttonIcon = "unlink",
+                    buttonIcon = SlockLucideIconName.Unlink,
                     buttonColor = SlockColor.SurfaceWhite,
                     enabled = actionState?.inProgress != true,
                     onClick = { onAction(SERVER_ACTION_JOIN_LINK_REVOKE, link.id) }
@@ -3829,13 +3829,13 @@ private fun SettingsServerAgreementCard(
         agreement != null &&
             (enabled != agreement.enabled || title.trim() != agreement.title || bodyMarkdown != agreement.bodyMarkdown)
     val saveEnabled = canSave && dirty && !busy && !bodyTooLong && !titleTooLong
-    SettingsFormSectionCard(iconName = "file-check-2", title = "Pre-join Agreement") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.FileCheck, title = "Pre-join Agreement") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SegmentedControl(
             selectedValue = if (enabled) "enabled" else "disabled",
             options = listOf(
-                SegmentedControlOption("enabled", "Required", "check-circle"),
-                SegmentedControlOption("disabled", "Disabled", "x")
+                SegmentedControlOption("enabled", "Required", SlockLucideIconName.CircleCheck),
+                SegmentedControlOption("disabled", "Disabled", SlockLucideIconName.X)
             ),
             onValueSelected = { onEnabledChange(it == "enabled") },
             enabled = canSave && !busy
@@ -3874,7 +3874,7 @@ private fun SettingsServerAgreementCard(
                 label = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, "Save Agreement"),
                 onClick = onSubmit,
                 enabled = saveEnabled,
-                leadingIcon = "save",
+                leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.BrandYellow
             )
         }
@@ -3920,7 +3920,7 @@ private fun SettingsServerOnboardingCard(
     val currentGreeting = onboarding?.agentAllChannelGreetingEnabled ?: true
     val dirty = onboarding != null && (selectedAgentId != currentAgentId || greetingEnabled != currentGreeting)
     val agents = onboarding?.agents.orEmpty()
-    SettingsFormSectionCard(iconName = "bot", title = "Onboarding") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.Bot, title = "Onboarding") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         Text(
             "Human Onboarding Agent",
@@ -3956,8 +3956,8 @@ private fun SettingsServerOnboardingCard(
         SegmentedControl(
             selectedValue = if (greetingEnabled) "yes" else "no",
             options = listOf(
-                SegmentedControlOption("yes", "Yes", "message-circle"),
-                SegmentedControlOption("no", "No", "message-circle-off")
+                SegmentedControlOption("yes", "Yes", SlockLucideIconName.MessageCircle),
+                SegmentedControlOption("no", "No", SlockLucideIconName.MessageCircleOff)
             ),
             onValueSelected = { onGreetingEnabledChange(it == "yes") },
             enabled = canSave && !busy
@@ -3970,7 +3970,7 @@ private fun SettingsServerOnboardingCard(
                 label = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, "Save Onboarding"),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
-                leadingIcon = "save",
+                leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.BrandYellow
             )
         }
@@ -3989,13 +3989,13 @@ private fun SettingsServerMemberPermissionsCard(
     val canSave = profile?.canSave == true
     val busy = actionState?.action == SERVER_ACTION_MEMBER_PERMISSIONS_SAVE && actionState.inProgress
     val dirty = profile != null && hideHumansFromMembers != profile.hideHumansFromMembers
-    SettingsFormSectionCard(iconName = "users-round", title = "Member Permissions") {
+    SettingsFormSectionCard(iconName = SlockLucideIconName.UsersRound, title = "Member Permissions") {
         section?.detail?.takeIf { it.isNotBlank() }?.let { SettingsFormDetailText(it) }
         SegmentedControl(
             selectedValue = if (hideHumansFromMembers) "hidden" else "visible",
             options = listOf(
-                SegmentedControlOption("hidden", "Hide Humans", "eye-off"),
-                SegmentedControlOption("visible", "Visible", "eye")
+                SegmentedControlOption("hidden", "Hide Humans", SlockLucideIconName.EyeOff),
+                SegmentedControlOption("visible", "Visible", SlockLucideIconName.Eye)
             ),
             onValueSelected = { onHideHumansFromMembersChange(it == "hidden") },
             enabled = canSave && !busy
@@ -4009,7 +4009,7 @@ private fun SettingsServerMemberPermissionsCard(
                 label = actionState.serverStatusFor(SERVER_ACTION_MEMBER_PERMISSIONS_SAVE, "Save Permissions"),
                 onClick = onSubmit,
                 enabled = dirty && !busy,
-                leadingIcon = "save",
+                leadingIcon = SlockLucideIconName.Save,
                 backgroundColor = SlockColor.BrandYellow
             )
         }
@@ -4047,7 +4047,11 @@ private fun SettingsServerSelectRow(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SlockLucideIcon(if (selected) "check-circle" else "circle", modifier = Modifier.size(16.dp), color = "#FF000000")
+            SlockLucideIcon(
+                if (selected) SlockLucideIconName.CircleCheck else SlockLucideIconName.Circle,
+                modifier = Modifier.size(16.dp),
+                color = "#FF000000",
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
                 detail.takeIf { it.isNotBlank() }?.let {
@@ -4092,7 +4096,10 @@ private fun SharedSettingsHero(payload: KuiklySharedSettingsPayload) {
             modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
         ) {
-            SlockLucideIcon(payload.heroIconName, modifier = Modifier.size(26.dp))
+            SlockLucideIcon(
+                payload.heroIconName,
+                modifier = Modifier.size(26.dp)
+            )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(payload.heroLabel.ifBlank { payload.title }, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4145,7 +4152,10 @@ private fun SharedSettingsRow(
                 modifier = Modifier.size(34.dp).background(if (row.enabled) SlockColor.AccentCyan else SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
                 contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
             ) {
-                SlockLucideIcon(row.iconName, modifier = Modifier.size(18.dp))
+                SlockLucideIcon(
+                    row.iconName,
+                    modifier = Modifier.size(18.dp)
+                )
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(row.title, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -4222,7 +4232,7 @@ private fun SharedSettingsDiagnosticsContent(
 private fun SettingsDetailShell(
     title: String,
     subtitle: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     onBack: () -> Unit,
     content: @Composable () -> Unit
 ) {
@@ -4259,7 +4269,7 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
-            SlockLucideIcon("arrow-left", modifier = Modifier.size(16.dp))
+            SlockLucideIcon(SlockLucideIconName.ArrowLeft, modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -4268,7 +4278,7 @@ private fun SettingsDetailBackButton(onBack: () -> Unit) {
 private fun SettingsSharedPlaceholder(
     title: String,
     detail: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     Column(
@@ -4300,7 +4310,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationAccount,
                     title = "Account",
                     subtitle = "Profile, email, password, connected accounts",
-                    iconName = "user",
+                    iconName = SlockLucideIconName.User,
                     value = session?.user?.bestDisplayName,
                     selected = selectedDestination == SettingsDestinationAccount
                 ),
@@ -4308,14 +4318,14 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationComputers,
                     title = "Computers",
                     subtitle = "Connected machines and workspaces",
-                    iconName = "monitor",
+                    iconName = SlockLucideIconName.Monitor,
                     selected = selectedDestination == SettingsDestinationComputers
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationServer,
                     title = "Server",
                     subtitle = "Workspace profile, admins, invites, onboarding",
-                    iconName = "users",
+                    iconName = SlockLucideIconName.Users,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationServer
                 ),
@@ -4323,14 +4333,14 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationConnectedApps,
                     title = "Connected Apps",
                     subtitle = "Marketplace, installed apps, OAuth clients",
-                    iconName = "blocks",
+                    iconName = SlockLucideIconName.Blocks,
                     selected = selectedDestination == SettingsDestinationConnectedApps
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationBilling,
                     title = "Billing",
                     subtitle = "Plan and usage",
-                    iconName = "shield-check",
+                    iconName = SlockLucideIconName.ShieldCheck,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationBilling
                 ),
@@ -4338,35 +4348,35 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationLanguageRegion,
                     title = "Language & Region",
                     subtitle = "Language, timezone, translation",
-                    iconName = "languages",
+                    iconName = SlockLucideIconName.Languages,
                     selected = selectedDestination == SettingsDestinationLanguageRegion
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationMobile,
                     title = "Mobile",
                     subtitle = "Push notifications, language, layout",
-                    iconName = "smartphone",
+                    iconName = SlockLucideIconName.Smartphone,
                     selected = selectedDestination == SettingsDestinationMobile
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationStorage,
                     title = "Storage",
                     subtitle = "Local cache and temporary files",
-                    iconName = "archive",
+                    iconName = SlockLucideIconName.Archive,
                     selected = selectedDestination == SettingsDestinationStorage
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
                     title = "About",
                     subtitle = "Version, diagnostics, feedback",
-                    iconName = "bug",
+                    iconName = SlockLucideIconName.Bug,
                     selected = selectedDestination == SettingsDestinationAbout
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationRouter,
                     title = "Developer Router",
                     subtitle = "Open Kuikly route launcher and icon compare",
-                    iconName = "layout-list",
+                    iconName = SlockLucideIconName.LayoutList,
                     selected = selectedDestination == SettingsDestinationRouter
                 )
             )
@@ -4639,12 +4649,12 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
         clearInProgress = clearInProgress
     )
 
-private fun storageTargetIconName(target: String): String =
+private fun storageTargetIconName(target: String): SlockLucideIconName =
     when (target) {
-        "database" -> "archive"
-        "imageCache" -> "image"
-        "temporaryAndLogs" -> "file-text"
-        else -> "archive"
+        "database" -> SlockLucideIconName.Archive
+        "imageCache" -> SlockLucideIconName.Image
+        "temporaryAndLogs" -> SlockLucideIconName.FileText
+        else -> SlockLucideIconName.Archive
     }
 
 private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(session: StoredAuthSession?): KuiklySettingsBillingPayload {
@@ -4706,7 +4716,7 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
         title = "Server",
-        heroIconName = "users",
+        heroIconName = SlockLucideIconName.Users,
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
@@ -4715,17 +4725,17 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                     title = "Profile",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("serverName", "badge-info", "Workspace name", "Current selected workspace profile.", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
+                            KuiklySharedSettingsRow("serverName", SlockLucideIconName.BadgeInfo, "Workspace name", "Current selected workspace profile.", status = snapshot?.profile?.name ?: server?.name ?: "Unknown"),
                             KuiklySharedSettingsRow(
                                 SERVER_ACTION_PROFILE_SAVE,
-                                "save",
+                                SlockLucideIconName.Save,
                                 "Save workspace profile",
                                 "Save changes to the workspace name and profile.",
                                 status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (snapshot?.profile?.canSave == true) "Ready" else "Read only"),
                                 enabled = snapshot?.profile?.canSave == true && actionState?.inProgress != true
                             ),
-                            KuiklySharedSettingsRow("serverSlug", "link", "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
-                            KuiklySharedSettingsRow("serverRole", "shield-check", "Your role", "Permission scope for workspace settings.", status = role)
+                            KuiklySharedSettingsRow("serverSlug", SlockLucideIconName.Link, "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
+                            KuiklySharedSettingsRow("serverRole", SlockLucideIconName.ShieldCheck, "Your role", "Permission scope for workspace settings.", status = role)
                         )
                 ),
                 KuiklySharedSettingsSection(
@@ -4775,14 +4785,14 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
 ): List<KuiklySharedSettingsRow> {
     val admins = this.orEmpty()
     if (admins.isEmpty()) {
-        return listOf(section.toPlaceholderRow("admins", "shield", "Admins", "No workspace admins are available."))
+        return listOf(section.toPlaceholderRow("admins", SlockLucideIconName.Shield, "Admins", "No workspace admins are available."))
     }
     return admins.flatMap { admin ->
         val nextRole = if (admin.role?.lowercase() == "admin") "member" else "admin"
         listOf(
             KuiklySharedSettingsRow(
                 key = "admin:${admin.id}",
-                iconName = "shield",
+                iconName = SlockLucideIconName.Shield,
                 title = admin.name,
                 detail = admin.detail.orEmpty().ifBlank { "Workspace administrator" },
                 status = admin.role?.replaceFirstChar { it.uppercase() }.orEmpty(),
@@ -4790,7 +4800,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_ROLE,
-                iconName = "shield-check",
+                iconName = SlockLucideIconName.ShieldCheck,
                 title = "Change ${admin.name}'s role",
                 detail = "Switch this member between admin and member access.",
                 value = "${admin.id}:$nextRole",
@@ -4799,7 +4809,7 @@ private fun List<SettingsServerAdminSnapshot>?.toAdminRows(
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_REMOVE,
-                iconName = "user-minus",
+                iconName = SlockLucideIconName.UserMinus,
                 title = "Remove ${admin.name}",
                 detail = "Remove this member from the workspace after confirmation.",
                 value = admin.id,
@@ -4817,14 +4827,14 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
     val invites = this.orEmpty()
     if (invites.isEmpty()) {
         return listOf(
-            section.toPlaceholderRow("pendingInvites", "mail-plus", "Pending invites", "No pending invites are available.")
+            section.toPlaceholderRow("pendingInvites", SlockLucideIconName.MailPlus, "Pending invites", "No pending invites are available.")
         )
     }
     return invites.flatMap { invite ->
         listOf(
             KuiklySharedSettingsRow(
                 key = "invite:${invite.id}",
-                iconName = "mail-plus",
+                iconName = SlockLucideIconName.MailPlus,
                 title = invite.email,
                 detail = listOfNotNull(invite.inviterName?.let { "Invited by $it" }, invite.createdAtLabel).joinToString(" · "),
                 status = "Pending",
@@ -4832,7 +4842,7 @@ private fun List<SettingsServerInviteSnapshot>?.toInviteRows(
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_INVITE_REVOKE,
-                iconName = "trash-2",
+                iconName = SlockLucideIconName.Trash2,
                 title = "Revoke invite",
                 detail = "Cancel ${invite.email}'s pending invite.",
                 value = invite.id,
@@ -4851,20 +4861,20 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
     val createRow =
         KuiklySharedSettingsRow(
             key = SERVER_ACTION_JOIN_LINK_CREATE,
-            iconName = "plus",
+            iconName = SlockLucideIconName.Plus,
             title = "Create join link",
             detail = "Create a reusable invite link for this workspace.",
             status = actionState.serverStatusFor(SERVER_ACTION_JOIN_LINK_CREATE, "Create"),
             enabled = actionState?.inProgress != true
         )
     if (links.isEmpty()) {
-        return listOf(section.toPlaceholderRow("joinLinks", "link-2", "Join links", "No join links are available."), createRow)
+        return listOf(section.toPlaceholderRow("joinLinks", SlockLucideIconName.Link2, "Join links", "No join links are available."), createRow)
     }
     return links.flatMap { link ->
         listOf(
             KuiklySharedSettingsRow(
                 key = "joinLink:${link.id}",
-                iconName = "link-2",
+                iconName = SlockLucideIconName.Link2,
                 title = link.label,
                 detail = listOfNotNull(link.url, link.maxUsesLabel, link.expiresAtLabel).joinToString(" · "),
                 status = link.usageLabel.orEmpty(),
@@ -4872,7 +4882,7 @@ private fun List<SettingsServerJoinLinkSnapshot>?.toJoinLinkRows(
             ),
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_JOIN_LINK_REVOKE,
-                iconName = "unlink",
+                iconName = SlockLucideIconName.Unlink,
                 title = "Revoke join link",
                 detail = link.url ?: "Disable this join link.",
                 value = link.id,
@@ -4891,14 +4901,14 @@ private fun SettingsServerAgreementSnapshot?.toAgreementRows(
         this?.let { agreement ->
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_AGREEMENT_SAVE,
-                iconName = "file-check-2",
+                iconName = SlockLucideIconName.FileCheck,
                 title = "Pre-join Agreement",
                 detail = agreement.detail,
                 value = agreement.enabled.toString(),
                 status = actionState.serverStatusFor(SERVER_ACTION_AGREEMENT_SAVE, agreement.statusLabel),
                 enabled = agreement.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("preJoinAgreement", "file-check-2", "Pre-join Agreement", "No pre-join agreement settings are available.")
+        } ?: section.toPlaceholderRow("preJoinAgreement", SlockLucideIconName.FileCheck, "Pre-join Agreement", "No pre-join agreement settings are available.")
     )
 
 private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
@@ -4909,14 +4919,14 @@ private fun SettingsServerOnboardingSnapshot?.toOnboardingRows(
         this?.let { onboarding ->
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_ONBOARDING_SAVE,
-                iconName = "bot",
+                iconName = SlockLucideIconName.Bot,
                 title = "Onboarding",
                 detail = onboarding.detail,
                 value = onboarding.onboardingAgentId.orEmpty(),
                 status = actionState.serverStatusFor(SERVER_ACTION_ONBOARDING_SAVE, onboarding.statusLabel),
                 enabled = onboarding.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("onboarding", "bot", "Onboarding Agent", "No onboarding settings are available.")
+        } ?: section.toPlaceholderRow("onboarding", SlockLucideIconName.Bot, "Onboarding Agent", "No onboarding settings are available.")
     )
 
 private fun ai.slock.compose.data.SettingsServerProfileSnapshot?.toMemberPermissionsRows(
@@ -4927,7 +4937,7 @@ private fun ai.slock.compose.data.SettingsServerProfileSnapshot?.toMemberPermiss
         this?.let { profile ->
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_MEMBER_PERMISSIONS_SAVE,
-                iconName = "users-round",
+                iconName = SlockLucideIconName.UsersRound,
                 title = "Hide human directory and counts from members",
                 detail = "Member role users cannot see server-wide human lists, graph surfaces, or human counts.",
                 value = profile.hideHumansFromMembers.toString(),
@@ -4937,7 +4947,7 @@ private fun ai.slock.compose.data.SettingsServerProfileSnapshot?.toMemberPermiss
                 ),
                 enabled = profile.canSave && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("memberPermissions", "users-round", "Member Permissions", "No member permission settings are available.")
+        } ?: section.toPlaceholderRow("memberPermissions", SlockLucideIconName.UsersRound, "Member Permissions", "No member permission settings are available.")
     )
 
 private fun SettingsServerTranslationSnapshot?.toTranslationRows(
@@ -4948,14 +4958,14 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
         this?.let { translation ->
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_TRANSLATION_TOGGLE,
-                iconName = "languages",
+                iconName = SlockLucideIconName.Languages,
                 title = "Server translation",
                 detail = translation.detail,
                 value = (!translation.translationEnabled).toString(),
                 status = actionState.serverStatusFor(SERVER_ACTION_TRANSLATION_TOGGLE, translation.statusLabel),
                 enabled = translation.translationAvailable && translation.canManageTranslation && actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("translation", "languages", "Translation", "No translation settings are available.")
+        } ?: section.toPlaceholderRow("translation", SlockLucideIconName.Languages, "Translation", "No translation settings are available.")
     )
 
 private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
@@ -4967,14 +4977,14 @@ private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
             val nextMode = if (order.channelSortMode == "manual") "recent" else "manual"
             KuiklySharedSettingsRow(
                 key = SERVER_ACTION_SIDEBAR_ORDER,
-                iconName = "list-tree",
+                iconName = SlockLucideIconName.ListTree,
                 title = "Channel sidebar sort",
                 detail = "Choose how channels are ordered in the sidebar.",
                 value = nextMode,
                 status = actionState.serverStatusFor(SERVER_ACTION_SIDEBAR_ORDER, order.channelSortMode.ifBlank { "manual" }),
                 enabled = actionState?.inProgress != true
             )
-        } ?: section.toPlaceholderRow("sidebarOrder", "list-tree", "Sidebar Order", "No sidebar order settings are available.")
+        } ?: section.toPlaceholderRow("sidebarOrder", SlockLucideIconName.ListTree, "Sidebar Order", "No sidebar order settings are available.")
     )
 
 private fun SettingsServerSnapshot?.toPlanRows(
@@ -4984,7 +4994,7 @@ private fun SettingsServerSnapshot?.toPlanRows(
     listOf(
         KuiklySharedSettingsRow(
             key = "billingSummary",
-            iconName = "shield-check",
+            iconName = SlockLucideIconName.ShieldCheck,
             title = "Plan",
             detail = billingSection?.detail ?: "Current workspace billing and usage summary.",
             status = this?.usageRows?.firstOrNull()?.value ?: fallbackPlan,
@@ -4994,7 +5004,7 @@ private fun SettingsServerSnapshot?.toPlanRows(
 
 private fun SettingsServerSectionSnapshot?.toPlaceholderRow(
     key: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     title: String,
     fallbackDetail: String
 ): KuiklySharedSettingsRow =
@@ -5027,7 +5037,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
-        heroIconName = "smartphone",
+        heroIconName = SlockLucideIconName.Smartphone,
         heroLabel = "Mobile preferences",
         detail =
             if (refreshing) {
@@ -5043,7 +5053,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                         listOfNotNull(
                             KuiklySharedSettingsRow(
                                 key = MOBILE_ACTION_NOTIFICATION_PREFERENCE,
-                                iconName = "bell-ring",
+                                iconName = SlockLucideIconName.BellRing,
                                 title = "Notification preference",
                                 detail = mobile.pushNotifications.detail,
                                 value = (!mobile.pushNotifications.enabled).toString(),
@@ -5052,7 +5062,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             KuiklySharedSettingsRow(
                                 key = MOBILE_ACTION_PERMISSION,
-                                iconName = "bell",
+                                iconName = SlockLucideIconName.Bell,
                                 title = "Push permission",
                                 detail = mobile.notificationPermission.detail,
                                 status = actionState.statusFor(MOBILE_ACTION_PERMISSION, mobile.notificationPermission.statusLabel),
@@ -5060,7 +5070,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             KuiklySharedSettingsRow(
                                 key = MOBILE_ACTION_SETTINGS,
-                                iconName = "settings",
+                                iconName = SlockLucideIconName.Settings,
                                 title = "System notification settings",
                                 detail = mobile.notificationSettings.detail,
                                 status = actionState.statusFor(MOBILE_ACTION_SETTINGS, mobile.notificationSettings.statusLabel),
@@ -5068,7 +5078,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             ),
                             KuiklySharedSettingsRow(
                                 key = MOBILE_ACTION_TEST_NOTIFICATION,
-                                iconName = "send",
+                                iconName = SlockLucideIconName.Send,
                                 title = "Send test notification",
                                 detail = mobile.testNotification.detail,
                                 status = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, mobile.testNotification.statusLabel),
@@ -5077,7 +5087,7 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                             mobile.muteServer.takeIf { it.available }?.let {
                                 KuiklySharedSettingsRow(
                                     key = MOBILE_ACTION_SERVER_MUTE,
-                                    iconName = "volume-x",
+                                    iconName = SlockLucideIconName.VolumeX,
                                     title = "Mute workspace",
                                     detail = it.detail,
                                     value = (!it.enabled).toString(),
@@ -5093,14 +5103,14 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
                         listOf(
                             mobile.localePreference.toMobileSelectionRow(
                                 key = MOBILE_ACTION_LANGUAGE,
-                                iconName = "languages",
+                                iconName = SlockLucideIconName.Languages,
                                 title = "Language",
                                 fallbackStatus = "Unsupported",
                                 actionState = actionState
                             ),
                             mobile.messageAlignmentPreference.toMobileSelectionRow(
                                 key = MOBILE_ACTION_MESSAGE_ALIGNMENT,
-                                iconName = "align-horizontal-space-around",
+                                iconName = SlockLucideIconName.AlignHorizontalSpaceAround,
                                 title = "My message alignment",
                                 fallbackStatus = "Unsupported",
                                 actionState = actionState
@@ -5121,7 +5131,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region",
         title = "Language & Region",
-        heroIconName = "languages",
+        heroIconName = SlockLucideIconName.Languages,
         heroLabel = "Language & Region",
         detail =
             if (refreshing) {
@@ -5137,7 +5147,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                         listOf(
                             KuiklySharedSettingsRow(
                                 key = LANGUAGE_REGION_ACTION_SERVER_TRANSLATION,
-                                iconName = "languages",
+                                iconName = SlockLucideIconName.Languages,
                                 title = "Enable message translation for this server",
                                 detail = languageRegion.serverTranslation.detail,
                                 value = (!languageRegion.serverTranslation.enabled).toString(),
@@ -5150,7 +5160,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                             ),
                             KuiklySharedSettingsRow(
                                 key = LANGUAGE_REGION_ACTION_AUTO_TRANSLATION,
-                                iconName = "wand",
+                                iconName = SlockLucideIconName.Wand,
                                 title = "Auto-translate messages",
                                 detail = languageRegion.autoTranslation.detail,
                                 value = (!languageRegion.autoTranslation.enabled).toString(),
@@ -5163,7 +5173,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                             ),
                             languageRegion.browserLanguage.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_LANGUAGE,
-                                iconName = "globe",
+                                iconName = SlockLucideIconName.Globe,
                                 title = "Browser language",
                                 fallbackStatus = "Others",
                                 actionState = actionState
@@ -5176,14 +5186,14 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                         listOf(
                             languageRegion.timezone.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_TIMEZONE,
-                                iconName = "clock",
+                                iconName = SlockLucideIconName.Clock,
                                 title = "Timezone",
                                 fallbackStatus = "UTC",
                                 actionState = actionState
                             ),
                             languageRegion.timeFormat.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_TIME_FORMAT,
-                                iconName = "clock-3",
+                                iconName = SlockLucideIconName.Clock3,
                                 title = "Time format",
                                 fallbackStatus = "24-hour",
                                 actionState = actionState
@@ -5216,7 +5226,7 @@ private fun appShellLanguageRegionPlaceholderPayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-language-region-placeholder",
         title = "Language & Region",
-        heroIconName = "languages",
+        heroIconName = SlockLucideIconName.Languages,
         heroLabel = "Language & Region",
         detail = detail,
         sections =
@@ -5227,7 +5237,7 @@ private fun appShellLanguageRegionPlaceholderPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 key = "languageRegionStatus",
-                                iconName = "languages",
+                                iconName = SlockLucideIconName.Languages,
                                 title = "Language & Region",
                                 detail = detail,
                                 status = status,
@@ -5261,7 +5271,7 @@ private fun appShellMobilePlaceholderPayload(
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-mobile-placeholder",
         title = "Mobile",
-        heroIconName = "smartphone",
+        heroIconName = SlockLucideIconName.Smartphone,
         heroLabel = "Mobile preferences",
         detail = detail,
         sections =
@@ -5272,7 +5282,7 @@ private fun appShellMobilePlaceholderPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 key = "mobileStatus",
-                                iconName = "smartphone",
+                                iconName = SlockLucideIconName.Smartphone,
                                 title = "Mobile settings",
                                 detail = detail,
                                 status = status,
@@ -5286,7 +5296,7 @@ private fun appShellMobilePlaceholderPayload(
 
 private fun SettingsMobileSelectionSnapshot.toMobileSelectionRow(
     key: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     title: String,
     fallbackStatus: String,
     actionState: ai.slock.compose.data.SharedSettingsActionState?
@@ -5411,7 +5421,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
     KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = "About",
-        heroIconName = "bug",
+        heroIconName = SlockLucideIconName.Bug,
         heroLabel = appName.ifBlank { "Raft" },
         detail = "Version, diagnostics, feedback",
         sections =
@@ -5420,29 +5430,29 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     title = "Application",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("appName", "sparkles", "Application", appName.ifBlank { "Raft" }, status = "Shared shell"),
-                            KuiklySharedSettingsRow("version", "badge-info", "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
-                            KuiklySharedSettingsRow("package", "package", "Package", packageName.ifBlank { "Unknown" }, status = "Read only"),
-                            KuiklySharedSettingsRow("device", "smartphone", "Device", deviceLabel.ifBlank { "Unknown" }, status = platformLabel.ifBlank { "Platform" })
+                            KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, "Application", appName.ifBlank { "Raft" }, status = "Shared shell"),
+                            KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
+                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Read only"),
+                            KuiklySharedSettingsRow("device", SlockLucideIconName.Smartphone, "Device", deviceLabel.ifBlank { "Unknown" }, status = platformLabel.ifBlank { "Platform" })
                         )
                 ),
                 KuiklySharedSettingsSection(
                     title = "Runtime",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("signedInUser", "user", "Signed in as", signedInUserLabel.ifBlank { "Unknown" }, status = sessionStatusLabel),
-                            KuiklySharedSettingsRow("selectedServer", "server", "Selected server", selectedServerLabel.ifBlank { "None" }, status = socketStatusLabel),
-                            KuiklySharedSettingsRow("notifications", "bell", "Notifications", notificationStatusLabel.ifBlank { "Unknown" }, status = "Host")
+                            KuiklySharedSettingsRow("signedInUser", SlockLucideIconName.User, "Signed in as", signedInUserLabel.ifBlank { "Unknown" }, status = sessionStatusLabel),
+                            KuiklySharedSettingsRow("selectedServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "None" }, status = socketStatusLabel),
+                            KuiklySharedSettingsRow("notifications", SlockLucideIconName.Bell, "Notifications", notificationStatusLabel.ifBlank { "Unknown" }, status = "Host")
                         )
                 ),
                 KuiklySharedSettingsSection(
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", "clipboard-list", "Diagnostics", "Open logs, profiler, and diagnostic feedback tools.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("copyBuild", "copy", "Copy version/build", buildSummary(), status = "Copy", enabled = true),
-                            KuiklySharedSettingsRow("openSlock", "external-link", "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true)
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open logs, profiler, and diagnostic feedback tools.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("copyBuild", SlockLucideIconName.Copy, "Copy version/build", buildSummary(), status = "Copy", enabled = true),
+                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true)
                         )
                 )
             )
@@ -5479,7 +5489,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             takeLast(20).mapIndexed { index, entry ->
                 KuiklySharedSettingsRow(
                     key = "log-$index",
-                    iconName = "terminal",
+                    iconName = SlockLucideIconName.Terminal,
                     title = entry.tag.ifBlank { "Log" },
                     detail = "${entry.timestampLabel} ${entry.message}".trim(),
                     status = ""
@@ -5489,7 +5499,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             listOf(
                 KuiklySharedSettingsRow(
                     key = "emptyLogs",
-                    iconName = "circle-dashed",
+                    iconName = SlockLucideIconName.CircleDashed,
                     title = "No diagnostics yet",
                     detail = "Runtime diagnostics will appear here after app activity.",
                     status = stateLabel
@@ -5514,7 +5524,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             profiler.report.topHotspots.mapIndexed { index, hotspot ->
                 KuiklySharedSettingsRow(
                     key = "profilerHotspot-$index",
-                    iconName = "flame",
+                    iconName = SlockLucideIconName.Flame,
                     title = hotspot.name,
                     detail =
                         listOfNotNull(
@@ -5529,7 +5539,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             listOf(
                 KuiklySharedSettingsRow(
                     key = "profilerHotspotEmpty",
-                    iconName = "circle-dashed",
+                    iconName = SlockLucideIconName.CircleDashed,
                     title = "No hotspots yet",
                     detail = "Start a focused session, reproduce the jank, then refresh or export the report.",
                     status = profiler.statusLabel
@@ -5545,14 +5555,14 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 "profilerStatus",
-                                "activity",
+                                SlockLucideIconName.Activity,
                                 "Shared profiler status",
                                 profiler.detail,
                                 status = profiler.statusLabel
                             ),
                             KuiklySharedSettingsRow(
                                 "startProfiler",
-                                "play",
+                                SlockLucideIconName.Play,
                                 "Start capture",
                                 "Apply the shared default debug profile with overlay enabled and begin collecting recompositions for the current Kuikly session.",
                                 status =
@@ -5565,7 +5575,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             ),
                             KuiklySharedSettingsRow(
                                 "stopProfiler",
-                                "square",
+                                SlockLucideIconName.Square,
                                 "Stop capture",
                                 "Stop collection. Per Kuikly docs, stop() writes profiler_report.json automatically and keeps profiler_frames.jsonl for analyzer input.",
                                 status =
@@ -5578,7 +5588,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             ),
                             KuiklySharedSettingsRow(
                                 "resetProfiler",
-                                "rotate-ccw",
+                                SlockLucideIconName.RotateCcw,
                                 "Reset scene window",
                                 "Clear the current in-memory counters right before opening the target page or replaying the target interaction.",
                                 status =
@@ -5591,7 +5601,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             ),
                             KuiklySharedSettingsRow(
                                 "refreshProfilerReport",
-                                "refresh-cw",
+                                SlockLucideIconName.RefreshCw,
                                 "Refresh report",
                                 "Call getReport(saveToFile=false) to refresh the current summary without rewriting files.",
                                 status =
@@ -5604,7 +5614,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             ),
                             KuiklySharedSettingsRow(
                                 "exportProfilerReport",
-                                "file-json",
+                                SlockLucideIconName.FileCode,
                                 "Export report",
                                 "Call getReport(saveToFile=true) and keep profiler_frames.jsonl beside profiler_report.json for analyzer input.",
                                 status =
@@ -5623,35 +5633,35 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 "profilerDefaults",
-                                "sliders-horizontal",
+                                SlockLucideIconName.SlidersHorizontal,
                                 "Default policy",
                                 "File ${profiler.defaults.enableFile.onOffLabel()}, log ${profiler.defaults.enableLog.onOffLabel()}, overlay ${profiler.defaults.enableOverlay.onOffLabel()}, sample ${profiler.defaults.sampleRateLabel}, hotspot ${profiler.defaults.hotspotThreshold}/s, buffer ${profiler.defaults.maxEventBufferSize}.",
                                 status = profiler.gateLabel
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerOverlayGuide",
-                                "panel-bottom-open",
+                                SlockLucideIconName.PanelBottomOpen,
                                 "Overlay behavior",
                                 profiler.defaults.overlayGuide,
                                 status = "Doc"
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerFilterStrategy",
-                                "funnel",
+                                SlockLucideIconName.Funnel,
                                 "Recommended filtering",
                                 profiler.defaults.filterStrategy,
                                 status = "Hint"
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerResetStrategy",
-                                "route",
+                                SlockLucideIconName.Route,
                                 "Recommended reset timing",
                                 profiler.defaults.resetStrategy,
                                 status = "Hint"
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerExtensionNote",
-                                "waypoints",
+                                SlockLucideIconName.Waypoints,
                                 "Implementation",
                                 profiler.extensionNote,
                                 status = "Shared"
@@ -5664,14 +5674,14 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 "profilerReportSummary",
-                                "bar-chart-3",
+                                SlockLucideIconName.ChartBar,
                                 "Current summary",
                                 reportSummary,
                                 status = profiler.report.generatedLabel.ifBlank { profiler.statusLabel }
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerSession",
-                                "hash",
+                                SlockLucideIconName.Hash,
                                 "Session and file names",
                                 listOfNotNull(
                                     profiler.report.sessionId.takeIf { it.isNotBlank() }?.let { "session $it" },
@@ -5682,7 +5692,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                             ),
                             KuiklySharedSettingsRow(
                                 "profilerLocationHint",
-                                "folder-open",
+                                SlockLucideIconName.FolderOpen,
                                 "Expected location",
                                 profiler.files.locationHint,
                                 status = "Hint"
@@ -5695,7 +5705,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                         listOf(
                             KuiklySharedSettingsRow(
                                 "profilerAnalyzerHint",
-                                "sparkles",
+                                SlockLucideIconName.Sparkles,
                                 "Next step",
                                 profiler.analyzerHint,
                                 status = "AI"
@@ -5716,7 +5726,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 } else {
                     "Sanitized app diagnostics"
                 },
-        heroIconName = "clipboard-list",
+        heroIconName = SlockLucideIconName.ClipboardList,
         heroLabel = "Diagnostics",
         sections =
             profilerSections + listOf(
@@ -5724,10 +5734,10 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("copyLogs", "copy", "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("shareLogs", "share", "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("feedback", "message-square-plus", "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true),
-                            KuiklySharedSettingsRow("clearLogs", "trash-2", "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
+                            KuiklySharedSettingsRow("copyLogs", SlockLucideIconName.Copy, "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true),
+                            KuiklySharedSettingsRow("clearLogs", SlockLucideIconName.Trash2, "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
                         )
                 ),
                 KuiklySharedSettingsSection(title = "Log", rows = logRows)
@@ -5769,21 +5779,21 @@ private fun settingsDestinationSubtitle(destination: String): String =
         else -> ""
     }
 
-private fun settingsDestinationIcon(destination: String): String =
+private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
     when (destination) {
-        SettingsDestinationAccount -> "user"
-        SettingsDestinationComputers -> "monitor"
-        SettingsDestinationComputerDetail -> "monitor"
-        SettingsDestinationServer -> "users"
-        SettingsDestinationConnectedApps -> "blocks"
-        SettingsDestinationBilling -> "shield-check"
-        SettingsDestinationLanguageRegion -> "languages"
-        SettingsDestinationMobile -> "smartphone"
-        SettingsDestinationStorage -> "archive"
-        SettingsDestinationAbout -> "bug"
-        SettingsDestinationDiagnostics -> "clipboard-list"
-        SettingsDestinationDiagnosticsFeedbackChannel -> "hash"
-        else -> "settings"
+        SettingsDestinationAccount -> SlockLucideIconName.User
+        SettingsDestinationComputers -> SlockLucideIconName.Monitor
+        SettingsDestinationComputerDetail -> SlockLucideIconName.Monitor
+        SettingsDestinationServer -> SlockLucideIconName.Users
+        SettingsDestinationConnectedApps -> SlockLucideIconName.Blocks
+        SettingsDestinationBilling -> SlockLucideIconName.ShieldCheck
+        SettingsDestinationLanguageRegion -> SlockLucideIconName.Languages
+        SettingsDestinationMobile -> SlockLucideIconName.Smartphone
+        SettingsDestinationStorage -> SlockLucideIconName.Archive
+        SettingsDestinationAbout -> SlockLucideIconName.Bug
+        SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
+        SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
+        else -> SlockLucideIconName.Settings
     }
 
 private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
@@ -6214,7 +6224,7 @@ private fun SharedMembersScreen(
                 SlockTopPageHeader(
                     title = "Members",
                     subtitle = "Workspace members",
-                    iconName = "users"
+                    iconName = SlockLucideIconName.Users
                 )
                 SlockCenteredLoading()
         }
@@ -6222,7 +6232,7 @@ private fun SharedMembersScreen(
             PageErrorContent(
                 title = "Members",
                 subtitle = "Workspace members",
-                iconName = "users",
+                iconName = SlockLucideIconName.Users,
                 message = "Could not load members",
                 code = current.code
             )
@@ -6652,7 +6662,7 @@ private fun SharedHomeScreen(
             PageErrorContent(
                 title = "Home",
                 subtitle = "Workspace",
-                iconName = "house",
+                iconName = SlockLucideIconName.House,
                 message = "Could not load home",
                 code = current.code
             )
@@ -6870,7 +6880,7 @@ private fun DiagnosticsFeedbackChannelRow(
                         .border(SlockStroke.Thin, SlockColor.BorderBlack),
                 contentAlignment = Alignment.Center
             ) {
-                SlockLucideIcon("hash", color = "#FF000000", modifier = Modifier.size(15.dp))
+                SlockLucideIcon(SlockLucideIconName.Hash, color = "#FF000000", modifier = Modifier.size(15.dp))
             }
             Column(
                 modifier = Modifier.weight(1f),
@@ -6891,7 +6901,7 @@ private fun DiagnosticsFeedbackChannelRow(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockLucideIcon("chevron-right", color = "#FF111111", modifier = Modifier.size(18.dp))
+            SlockLucideIcon(SlockLucideIconName.ChevronRight, color = "#FF111111", modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -7061,10 +7071,10 @@ private fun SharedCreateChannelDialog(
 private enum class SharedCreateChannelVisibility(
     val wireValue: String,
     val label: String,
-    val iconName: String
+    val iconName: SlockLucideIconName
 ) {
-    Public("public", "Public", "hash"),
-    Private("private", "Private", "lock");
+    Public("public", "Public", SlockLucideIconName.Hash),
+    Private("private", "Private", SlockLucideIconName.Lock);
 
     companion object {
         fun fromWireValue(value: String?): SharedCreateChannelVisibility =
@@ -7269,7 +7279,7 @@ private fun SharedCreateChannelMemberRow(
             )
         }
         if (selected) {
-            SlockLucideIcon("check", modifier = Modifier.size(14.dp), color = "#FF000000")
+            SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(14.dp), color = "#FF000000")
         }
     }
 }
@@ -7569,7 +7579,7 @@ private fun SharedHomeSearchToolbar(
     SharedHomeSearchControlsRow(topSafeAreaPadding = topSafeAreaPadding) {
         if (onClose != null) {
             SharedHomeSearchIconButton(
-                iconName = "arrow-left",
+                iconName = SlockLucideIconName.ArrowLeft,
                 size = 36.dp,
                 iconSize = 16.dp,
                 background = SlockColor.SurfaceWhite,
@@ -7577,7 +7587,7 @@ private fun SharedHomeSearchToolbar(
             )
         }
         SharedHomeSearchIconButton(
-            iconName = "search",
+            iconName = SlockLucideIconName.Search,
             size = 38.dp,
             iconSize = 18.dp,
             background = SlockColor.BrandYellow,
@@ -7619,7 +7629,7 @@ private fun SharedHomeSearchControlsRow(
 
 @Composable
 private fun SharedHomeSearchIconButton(
-    iconName: String,
+    iconName: SlockLucideIconName,
     size: Dp,
     iconSize: Dp,
     background: Color,
@@ -7772,7 +7782,7 @@ private fun SharedHomeSavedHeader(
         ) {
             if (onClose != null) {
                 SlockBrutalIconButton(
-                    iconName = "arrow-left",
+                    iconName = SlockLucideIconName.ArrowLeft,
                     onClick = onClose,
                     size = 34.dp,
                     shadowOffset = 3.dp
@@ -7803,7 +7813,7 @@ private fun SharedHomeSavedHeader(
 private fun SharedHomePanelHeader(
     title: String,
     subtitle: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     actionLabel: String,
     actionEnabled: Boolean,
     onAction: () -> Unit,
@@ -8186,7 +8196,7 @@ private fun SharedHomeSavedResultCard(
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        SlockLucideIcon("message-square", color = "#66000000", modifier = Modifier.size(10.dp))
+                        SlockLucideIcon(SlockLucideIconName.MessageSquare, color = "#66000000", modifier = Modifier.size(10.dp))
                         Text(
                             text = "thread",
                             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
@@ -8222,7 +8232,7 @@ private fun SharedHomeSavedResultCard(
             )
         }
         SlockBrutalIconButton(
-            iconName = "bookmark",
+            iconName = SlockLucideIconName.Bookmark,
             onClick = onUnsave,
             size = 31.dp,
             shadowOffset = 3.dp
@@ -8293,7 +8303,7 @@ private fun SharedHomeSearchEmptyState(
     SlockEmptyState(
         title = title,
         detail = detail,
-        iconName = "search",
+        iconName = SlockLucideIconName.Search,
         modifier =
             Modifier
                 .fillMaxWidth()
@@ -8418,7 +8428,7 @@ private fun SharedHomeThreadResultGroup(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                SharedHomeMiniMetaBadge("Thread", "message-square", compact = true)
+                SharedHomeMiniMetaBadge("Thread", SlockLucideIconName.MessageSquare, compact = true)
                 Text(
                     text = sourceLabel,
                     style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.sp),
@@ -8514,7 +8524,7 @@ private fun SharedHomeSearchMessageResultRow(
                 )
             }
             if (item.kind == InboxItemKind.Thread && !nested) {
-                SharedHomeMiniMetaBadge("thread", "message-square")
+                SharedHomeMiniMetaBadge("thread", SlockLucideIconName.MessageSquare)
             }
             if (!sender.isNullOrBlank()) {
                 SharedHomeSearchSenderMeta(
@@ -8546,7 +8556,7 @@ private fun SharedHomeSearchMessageResultRow(
 @Composable
 private fun SharedHomeMiniMetaBadge(
     label: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     compact: Boolean = false
 ) {
     Row(
@@ -8781,11 +8791,11 @@ private fun SharedHomePanelButton(
 private data class SearchChannelFilterItem(
     val id: String,
     val label: String,
-    val icon: String
+    val icon: SlockLucideIconName
 )
 
 private val SearchChannelFilterItem.iconName: SlockLucideIconName
-    get() = SlockLucideIconName.fromWireName(icon) ?: SlockLucideIconName.Hash
+    get() = icon
 
 private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannelFilterItem> {
     val snapshot = (state.content as? SharedHomeContentState.Content)?.snapshot ?: return emptyList()
@@ -8796,7 +8806,7 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
                 SearchChannelFilterItem(
                     id = channelId,
                     label = "#${conversation.name}",
-                    icon = "hash"
+                    icon = SlockLucideIconName.Hash
                 )
             }
     val directMessageFilters =
@@ -8805,7 +8815,7 @@ private fun homeSearchChannelFilters(state: SharedHomeState): List<SearchChannel
                 SearchChannelFilterItem(
                     id = conversation.channelId?.value ?: conversation.threadId.value,
                     label = "@${conversation.name.removePrefix("@")}",
-                    icon = if (conversation.isAgentDirectMessage()) "bot" else "circle-user"
+                    icon = if (conversation.isAgentDirectMessage()) SlockLucideIconName.Bot else SlockLucideIconName.CircleUser
                 )
             }
     return (channelFilters + directMessageFilters)
@@ -8886,7 +8896,7 @@ private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOp
             SlockFilterOption(
                 id = sender.id,
                 label = if (sender.isSelf) "Me" else sender.displayLabel,
-                icon = if (sender.kind == MemberKind.Agent) "bot" else "circle-user"
+                icon = if (sender.kind == MemberKind.Agent) SlockLucideIconName.Bot else SlockLucideIconName.CircleUser
             )
         }
         .distinctBy { it.id }
@@ -9486,7 +9496,7 @@ private fun AppShellRestoreLogoBadge(text: String, modifier: Modifier = Modifier
 private fun PageErrorContent(
     title: String,
     subtitle: String,
-    iconName: String,
+    iconName: SlockLucideIconName,
     message: String,
     code: String
 ) {
@@ -9660,7 +9670,7 @@ private fun SettingsPageVisualContent() {
         SettingsDetailShell(
             title = "Account",
             subtitle = "Profile, email, password, connected accounts",
-            iconName = "user",
+            iconName = SlockLucideIconName.User,
             onBack = {}
         ) {
             SettingsAccountContent(
@@ -10181,7 +10191,7 @@ internal fun SettingsHomeContent(
         SlockTopPageHeader(
             title = payload.title,
             subtitle = payload.subtitle.takeIf { it.isNotBlank() } ?: "Preferences",
-            iconName = "settings"
+            iconName = SlockLucideIconName.Settings
         )
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

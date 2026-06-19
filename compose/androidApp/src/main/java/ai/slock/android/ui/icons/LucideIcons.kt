@@ -41,6 +41,51 @@ object LucideIcons {
                 }.build()
     }
 
+    val AlignHorizontalSpaceAround: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideAlignHorizontalSpaceAround",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 9.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -2.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 22.0f)
+                        verticalLineTo(y = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.0f, y = 22.0f)
+                        verticalLineTo(y = 2.0f)
+                    }
+                }.build()
+    }
+
     val AppWindow: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideAppWindow",
@@ -223,6 +268,41 @@ object LucideIcons {
                 }.build()
     }
 
+    val AtSign: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideAtSign",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -4.0f, dy = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 8.0f, dy1 = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -8.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 8.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 6.0f, dy1 = 0.0f)
+                        verticalLineToRelative(dy = -1.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = -4.0f, dy1 = 8.0f)
+                    }
+                }.build()
+    }
+
     val Ban: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideBan",
@@ -251,6 +331,86 @@ object LucideIcons {
                     ) {
                         moveTo(x = 4.929f, y = 4.929f)
                         lineTo(x = 19.07f, y = 19.071f)
+                    }
+                }.build()
+    }
+
+    val BadgeInfo: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideBadgeInfo",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.85f, y = 8.62f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 4.78f, dy1 = -4.77f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 6.74f, dy1 = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 4.78f, dy1 = 4.78f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = 6.74f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -4.77f, dy1 = 4.78f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -6.75f, dy1 = 0.0f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -4.78f, dy1 = -4.77f)
+                        arcToRelative(a = 4.0f, b = 4.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -6.76f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 16.0f)
+                        lineTo(x = 12.0f, y = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 8.0f)
+                        lineTo(x = 12.01f, y = 8.0f)
+                    }
+                }.build()
+    }
+
+    val Bell: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideBell",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.268f, y = 21.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 3.464f, dy1 = 0.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.262f, y = 15.326f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 4.0f, y1 = 17.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.74f, dy1 = -1.673f)
+                        curveTo(x1 = 19.41f, y1 = 13.956f, x2 = 18.0f, y2 = 12.499f, x3 = 18.0f, y3 = 8.0f)
+                        arcTo(horizontalEllipseRadius = 6.0f, verticalEllipseRadius = 6.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 6.0f, y1 = 8.0f)
+                        curveToRelative(dx1 = 0.0f, dy1 = 4.499f, dx2 = -1.411f, dy2 = 5.956f, dx3 = -2.738f, dy3 = 7.326f)
                     }
                 }.build()
     }
@@ -303,6 +463,52 @@ object LucideIcons {
                     ) {
                         moveTo(x = 4.0f, y = 2.0f)
                         curveTo(x1 = 2.8f, y1 = 3.7f, x2 = 2.0f, y2 = 5.7f, x3 = 2.0f, y3 = 8.0f)
+                    }
+                }.build()
+    }
+
+    val Blocks: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideBlocks",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 22.0f)
+                        verticalLineTo(y = 7.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.0f)
+                        horizontalLineTo(x = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = -2.0f)
+                        verticalLineToRelative(dy = -5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.0f)
+                        horizontalLineTo(x = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = -6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = -1.0f)
+                        close()
                     }
                 }.build()
     }
@@ -526,6 +732,76 @@ object LucideIcons {
                 }.build()
     }
 
+    val Building2: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideBuilding2",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 8.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 21.0f)
+                        verticalLineToRelative(dy = -3.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = 0.0f)
+                        verticalLineToRelative(dy = 3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 10.0f)
+                        horizontalLineTo(x = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 7.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 9.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = -2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 21.0f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 16.0f)
+                    }
+                }.build()
+    }
+
     val Calendar: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideCalendar",
@@ -576,6 +852,55 @@ object LucideIcons {
                     ) {
                         moveTo(x = 3.0f, y = 10.0f)
                         horizontalLineToRelative(dx = 18.0f)
+                    }
+                }.build()
+    }
+
+    val ChartBar: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideChartBar",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.0f, y = 16.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.0f, y = 11.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.0f, y = 6.0f)
+                        horizontalLineToRelative(dx = 3.0f)
                     }
                 }.build()
     }
@@ -664,6 +989,27 @@ object LucideIcons {
                 }.build()
     }
 
+    val ChevronUp: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideChevronUp",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.0f, y = 15.0f)
+                        lineToRelative(dx = -6.0f, dy = -6.0f)
+                        lineToRelative(dx = -6.0f, dy = 6.0f)
+                    }
+                }.build()
+    }
+
     val Circle: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideCircle",
@@ -729,6 +1075,39 @@ object LucideIcons {
                 }.build()
     }
 
+    val CircleCheck: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideCircleCheck",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -10.0f, dy = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 20.0f, dy1 = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -20.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 12.0f)
+                        lineToRelative(dx = 2.0f, dy = 2.0f)
+                        lineToRelative(dx = 4.0f, dy = -4.0f)
+                    }
+                }.build()
+    }
+
     val CircleCheckBig: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideCircleCheckBig",
@@ -755,6 +1134,89 @@ object LucideIcons {
                         moveTo(x = 9.0f, y = 11.0f)
                         lineToRelative(dx = 3.0f, dy = 3.0f)
                         lineTo(x = 22.0f, y = 4.0f)
+                    }
+                }.build()
+    }
+
+    val CircleDashed: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideCircleDashed",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.1f, y = 2.182f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 3.8f, dy1 = 0.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 13.9f, y = 21.818f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.8f, dy1 = 0.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.609f, y = 3.721f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.69f, dy1 = 2.7f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.182f, y = 13.9f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -3.8f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.279f, y = 17.609f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.7f, dy1 = 2.69f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.818f, y = 10.1f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = 3.8f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.721f, y = 6.391f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.7f, dy1 = -2.69f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.391f, y = 20.279f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.69f, dy1 = -2.7f)
                     }
                 }.build()
     }
@@ -803,6 +1265,196 @@ object LucideIcons {
                         horizontalLineToRelative(dx = 6.0f)
                         arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
                         verticalLineToRelative(dy = 1.662f)
+                    }
+                }.build()
+    }
+
+    val Clipboard: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideClipboard",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = -6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = -1.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 4.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                    }
+                }.build()
+    }
+
+    val ClipboardList: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideClipboardList",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = -6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.0f, dy1 = -1.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 4.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 11.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 16.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 11.0f)
+                        horizontalLineToRelative(dx = 0.01f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 16.0f)
+                        horizontalLineToRelative(dx = 0.01f)
+                    }
+                }.build()
+    }
+
+    val Clock: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideClock",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -10.0f, dy = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 20.0f, dy1 = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -20.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 6.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                        lineToRelative(dx = 4.0f, dy = 2.0f)
+                    }
+                }.build()
+    }
+
+    val Clock3: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideClock3",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -10.0f, dy = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 20.0f, dy1 = 0.0f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -20.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 6.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                        horizontalLineToRelative(dx = 4.0f)
                     }
                 }.build()
     }
@@ -892,6 +1544,42 @@ object LucideIcons {
                 }.build()
     }
 
+    val CreditCard: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideCreditCard",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 7.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 10.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 10.0f)
+                        lineTo(x = 22.0f, y = 10.0f)
+                    }
+                }.build()
+    }
+
     val Download: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideDownload",
@@ -931,6 +1619,90 @@ object LucideIcons {
                         moveTo(x = 7.0f, y = 10.0f)
                         lineToRelative(dx = 5.0f, dy = 5.0f)
                         lineToRelative(dx = 5.0f, dy = -5.0f)
+                    }
+                }.build()
+    }
+
+    val Ellipsis: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideEllipsis",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 12.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 19.0f, y = 12.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 5.0f, y = 12.0f)
+                        moveToRelative(dx = -1.0f, dy = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 2.0f, dy1 = 0.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -2.0f, dy1 = 0.0f)
+                        close()
+                    }
+                }.build()
+    }
+
+    val Eraser: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideEraser",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 21.0f)
+                        horizontalLineTo(x = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.42f, dy1 = -0.587f)
+                        lineToRelative(dx = -3.994f, dy = -3.999f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -2.828f)
+                        lineToRelative(dx = 10.0f, dy = -10.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.829f, dy1 = 0.0f)
+                        lineToRelative(dx = 5.999f, dy = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = 2.828f)
+                        lineTo(x = 12.834f, y = 21.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 5.082f, y = 11.09f)
+                        lineToRelative(dx = 8.828f, dy = 8.828f)
                     }
                 }.build()
     }
@@ -1015,6 +1787,57 @@ object LucideIcons {
                 }.build()
     }
 
+    val EyeOff: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideEyeOff",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.733f, y = 5.076f)
+                        arcToRelative(a = 10.744f, b = 10.744f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 11.205f, dy1 = 6.575f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = 0.696f)
+                        arcToRelative(a = 10.747f, b = 10.747f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.444f, dy1 = 2.49f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.084f, y = 14.158f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -4.242f, dy1 = -4.242f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.479f, y = 17.499f)
+                        arcToRelative(a = 10.75f, b = 10.75f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -15.417f, dy1 = -5.151f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -0.696f)
+                        arcToRelative(a = 10.75f, b = 10.75f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 4.446f, dy1 = -5.143f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 2.0f)
+                        lineToRelative(dx = 20.0f, dy = 20.0f)
+                    }
+                }.build()
+    }
+
     val File: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideFile",
@@ -1051,6 +1874,116 @@ object LucideIcons {
                         verticalLineToRelative(dy = 5.0f)
                         arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
                         horizontalLineToRelative(dx = 5.0f)
+                    }
+                }.build()
+    }
+
+    val FileCheck: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFileCheck",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 22.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                        arcToRelative(a = 2.4f, b = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.704f, dy1 = 0.706f)
+                        lineToRelative(dx = 3.588f, dy = 3.588f)
+                        arcTo(horizontalEllipseRadius = 2.4f, verticalEllipseRadius = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.0f, y1 = 8.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 15.0f)
+                        lineToRelative(dx = 2.0f, dy = 2.0f)
+                        lineToRelative(dx = 4.0f, dy = -4.0f)
+                    }
+                }.build()
+    }
+
+    val FileCode: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFileCode",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 22.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                        arcToRelative(a = 2.4f, b = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.704f, dy1 = 0.706f)
+                        lineToRelative(dx = 3.588f, dy = 3.588f)
+                        arcTo(horizontalEllipseRadius = 2.4f, verticalEllipseRadius = 2.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.0f, y1 = 8.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 12.5f)
+                        lineTo(x = 8.0f, y = 15.0f)
+                        lineToRelative(dx = 2.0f, dy = 2.5f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 12.5f)
+                        lineToRelative(dx = 2.0f, dy = 2.5f)
+                        lineToRelative(dx = -2.0f, dy = 2.5f)
                     }
                 }.build()
     }
@@ -1122,6 +2055,62 @@ object LucideIcons {
                 }.build()
     }
 
+    val Flag: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFlag",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 22.0f)
+                        verticalLineTo(y = 4.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.4f, dy1 = -0.8f)
+                        arcTo(horizontalEllipseRadius = 6.0f, verticalEllipseRadius = 6.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 8.0f, y1 = 2.0f)
+                        curveToRelative(dx1 = 3.0f, dy1 = 0.0f, dx2 = 5.0f, dy2 = 2.0f, dx3 = 7.333f, dy3 = 2.0f)
+                        quadToRelative(dx1 = 2.0f, dy1 = 0.0f, dx2 = 3.067f, dy2 = -0.8f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 20.0f, y1 = 4.0f)
+                        verticalLineToRelative(dy = 10.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -0.4f, dy1 = 0.8f)
+                        arcTo(horizontalEllipseRadius = 6.0f, verticalEllipseRadius = 6.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 16.0f, y1 = 16.0f)
+                        curveToRelative(dx1 = -3.0f, dy1 = 0.0f, dx2 = -5.0f, dy2 = -2.0f, dx3 = -8.0f, dy3 = -2.0f)
+                        arcToRelative(a = 6.0f, b = 6.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -4.0f, dy1 = 1.528f)
+                    }
+                }.build()
+    }
+
+    val Flame: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFlame",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 3.0f)
+                        quadToRelative(dx1 = 1.0f, dy1 = 4.0f, dx2 = 4.0f, dy2 = 6.5f)
+                        reflectiveQuadToRelative(dx1 = 3.0f, dy1 = 5.5f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -14.0f, dy1 = 0.0f)
+                        arcToRelative(a = 5.0f, b = 5.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 5.0f, dy1 = 0.0f)
+                        curveToRelative(dx1 = 0.0f, dy1 = -2.0f, dx2 = -1.5f, dy2 = -3.0f, dx3 = -1.5f, dy3 = -5.0f)
+                        quadToRelative(dx1 = 0.0f, dy1 = -2.0f, dx2 = 2.5f, dy2 = -4.0f)
+                    }
+                }.build()
+    }
+
     val FolderOpen: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideFolderOpen",
@@ -1154,6 +2143,37 @@ object LucideIcons {
                         horizontalLineTo(x = 18.0f)
                         arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
                         verticalLineToRelative(dy = 2.0f)
+                    }
+                }.build()
+    }
+
+    val Funnel: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideFunnel",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 20.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.553f, dy1 = 0.895f)
+                        lineToRelative(dx = 2.0f, dy = 1.0f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 14.0f, y1 = 21.0f)
+                        verticalLineToRelative(dy = -7.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.517f, dy1 = -1.341f)
+                        lineTo(x = 21.74f, y = 4.67f)
+                        arcTo(horizontalEllipseRadius = 1.0f, verticalEllipseRadius = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 21.0f, y1 = 3.0f)
+                        horizontalLineTo(x = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.742f, dy1 = 1.67f)
+                        lineToRelative(dx = 7.225f, dy = 7.989f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 10.0f, y1 = 14.0f)
+                        close()
                     }
                 }.build()
     }
@@ -1288,6 +2308,33 @@ object LucideIcons {
                     ) {
                         moveTo(x = 16.0f, y = 3.0f)
                         lineTo(x = 14.0f, y = 21.0f)
+                    }
+                }.build()
+    }
+
+    val Heart: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideHeart",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 9.5f)
+                        arcToRelative(a = 5.5f, b = 5.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 9.591f, dy1 = -3.676f)
+                        arcToRelative(a = 0.56f, b = 0.56f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.818f, dy1 = 0.0f)
+                        arcTo(horizontalEllipseRadius = 5.49f, verticalEllipseRadius = 5.49f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 22.0f, y1 = 9.5f)
+                        curveToRelative(dx1 = 0.0f, dy1 = 2.29f, dx2 = -1.5f, dy2 = 4.0f, dx3 = -3.0f, dy3 = 5.5f)
+                        lineToRelative(dx = -5.492f, dy = 5.313f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.0f, dy1 = 0.019f)
+                        lineTo(x = 5.0f, y = 15.0f)
+                        curveToRelative(dx1 = -1.5f, dy1 = -1.5f, dx2 = -3.0f, dy2 = -3.2f, dx3 = -3.0f, dy3 = -5.5f)
                     }
                 }.build()
     }
@@ -1539,6 +2586,121 @@ object LucideIcons {
                 }.build()
     }
 
+    val KeyRound: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideKeyRound",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.586f, y = 17.414f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 2.0f, y1 = 18.828f)
+                        verticalLineTo(y = 21.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = -1.0f)
+                        verticalLineToRelative(dy = -1.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 1.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = -1.0f)
+                        verticalLineToRelative(dy = -1.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 0.172f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.414f, dy1 = -0.586f)
+                        lineToRelative(dx = 0.814f, dy = -0.814f)
+                        arcToRelative(a = 6.5f, b = 6.5f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = -4.0f, dy1 = -4.0f)
+                        close()
+                    }
+                    path(
+                        fill = SolidColor(Color(0xFF000000)),
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.5f, y = 7.5f)
+                        moveToRelative(dx = -0.5f, dy = 0.0f)
+                        arcToRelative(a = 0.5f, b = 0.5f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 1.0f, dy1 = 0.0f)
+                        arcToRelative(a = 0.5f, b = 0.5f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -1.0f, dy1 = 0.0f)
+                        close()
+                    }
+                }.build()
+    }
+
+    val Languages: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideLanguages",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 5.0f, y = 8.0f)
+                        lineToRelative(dx = 6.0f, dy = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 14.0f)
+                        lineToRelative(dx = 6.0f, dy = -6.0f)
+                        lineToRelative(dx = 2.0f, dy = -3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 5.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.0f, y = 2.0f)
+                        horizontalLineToRelative(dx = 1.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 22.0f)
+                        lineToRelative(dx = -5.0f, dy = -10.0f)
+                        lineToRelative(dx = -5.0f, dy = 10.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 18.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                    }
+                }.build()
+    }
+
     val LayoutList: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideLayoutList",
@@ -1691,6 +2853,65 @@ object LucideIcons {
                     ) {
                         moveTo(x = 8.0f, y = 12.0f)
                         lineTo(x = 16.0f, y = 12.0f)
+                    }
+                }.build()
+    }
+
+    val ListTree: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideListTree",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 5.0f)
+                        horizontalLineToRelative(dx = 13.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 13.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 13.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 10.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 5.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 3.0f)
                     }
                 }.build()
     }
@@ -1883,6 +3104,109 @@ object LucideIcons {
                 }.build()
     }
 
+    val Loader: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideLoader",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.2f, y = 7.8f)
+                        lineToRelative(dx = 2.9f, dy = -2.9f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.2f, y = 16.2f)
+                        lineToRelative(dx = 2.9f, dy = 2.9f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 18.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.9f, y = 19.1f)
+                        lineToRelative(dx = 2.9f, dy = -2.9f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.9f, y = 4.9f)
+                        lineToRelative(dx = 2.9f, dy = 2.9f)
+                    }
+                }.build()
+    }
+
+    val LoaderCircle: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideLoaderCircle",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 12.0f)
+                        arcToRelative(a = 9.0f, b = 9.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -6.219f, dy1 = -8.56f)
+                    }
+                }.build()
+    }
+
     val Mail: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideMail",
@@ -1921,6 +3245,130 @@ object LucideIcons {
                 }.build()
     }
 
+    val MailPlus: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMailPlus",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 13.0f)
+                        verticalLineTo(y = 6.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = -2.0f)
+                        horizontalLineTo(x = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                        curveToRelative(dx1 = 0.0f, dy1 = 1.1f, dx2 = 0.9f, dy2 = 2.0f, dx3 = 2.0f, dy3 = 2.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 7.0f)
+                        lineToRelative(dx = -8.97f, dy = 5.7f)
+                        arcToRelative(a = 1.94f, b = 1.94f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.06f, dy1 = 0.0f)
+                        lineTo(x = 2.0f, y = 7.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 19.0f, y = 16.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                    }
+                }.build()
+    }
+
+    val MessageCircle: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMessageCircle",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.992f, y = 16.342f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.094f, dy1 = 1.167f)
+                        lineToRelative(dx = -1.065f, dy = 3.29f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.236f, dy1 = 1.168f)
+                        lineToRelative(dx = 3.413f, dy = -0.998f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.099f, dy1 = 0.092f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = -4.777f, dy1 = -4.719f)
+                    }
+                }.build()
+    }
+
+    val MessageCircleOff: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMessageCircleOff",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 2.0f)
+                        lineToRelative(dx = 20.0f, dy = 20.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.93f, y = 4.929f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.938f, dy1 = 11.412f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.094f, dy1 = 1.167f)
+                        lineToRelative(dx = -1.065f, dy = 3.29f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.236f, dy1 = 1.168f)
+                        lineToRelative(dx = 3.413f, dy = -0.998f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.099f, dy1 = 0.092f)
+                        arcToRelative(a = 10.0f, b = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 11.302f, dy1 = -1.989f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.35f, y = 2.69f)
+                        arcTo(horizontalEllipseRadius = 10.0f, verticalEllipseRadius = 10.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 21.3f, y1 = 15.65f)
+                    }
+                }.build()
+    }
+
     val MessageSquare: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideMessageSquare",
@@ -1946,6 +3394,53 @@ object LucideIcons {
                         horizontalLineToRelative(dx = 16.0f)
                         arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
                         close()
+                    }
+                }.build()
+    }
+
+    val MessageSquarePlus: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMessageSquarePlus",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 17.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 6.828f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.414f, dy1 = 0.586f)
+                        lineToRelative(dx = -2.202f, dy = 2.202f)
+                        arcTo(horizontalEllipseRadius = 0.71f, verticalEllipseRadius = 0.71f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 2.0f, y1 = 21.286f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 8.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 11.0f)
+                        horizontalLineToRelative(dx = 6.0f)
                     }
                 }.build()
     }
@@ -1995,6 +3490,196 @@ object LucideIcons {
                 }.build()
     }
 
+    val MonitorX: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMonitorX",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.5f, y = 12.5f)
+                        lineToRelative(dx = -5.0f, dy = -5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.5f, y = 12.5f)
+                        lineToRelative(dx = 5.0f, dy = -5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 10.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 17.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 21.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                }.build()
+    }
+
+    val PackageCheck: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucidePackageCheck",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 22.0f)
+                        verticalLineTo(y = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 17.0f)
+                        lineToRelative(dx = 2.0f, dy = 2.0f)
+                        lineToRelative(dx = 4.0f, dy = -4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 11.127f)
+                        verticalLineTo(y = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.73f)
+                        lineToRelative(dx = -7.0f, dy = -4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = 0.0f)
+                        lineToRelative(dx = -7.0f, dy = 4.0f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 3.0f, y1 = 8.0f)
+                        verticalLineToRelative(dy = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.729f)
+                        lineToRelative(dx = 7.0f, dy = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 0.001f)
+                        lineToRelative(dx = 1.32f, dy = -0.753f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.29f, y = 7.0f)
+                        lineTo(x = 12.0f, y = 12.0f)
+                        lineToRelative(dx = 8.71f, dy = -5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.5f, y = 4.27f)
+                        lineToRelative(dx = 8.997f, dy = 5.148f)
+                    }
+                }.build()
+    }
+
+    val Package: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucidePackage",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 11.0f, y = 21.73f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 0.0f)
+                        lineToRelative(dx = 7.0f, dy = -4.0f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 21.0f, y1 = 16.0f)
+                        verticalLineTo(y = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.73f)
+                        lineToRelative(dx = -7.0f, dy = -4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -2.0f, dy1 = 0.0f)
+                        lineToRelative(dx = -7.0f, dy = 4.0f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 3.0f, y1 = 8.0f)
+                        verticalLineToRelative(dy = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.73f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 22.0f)
+                        verticalLineTo(y = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.29f, y = 7.0f)
+                        lineTo(x = 12.0f, y = 12.0f)
+                        lineTo(x = 20.71f, y = 7.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.5f, y = 4.27f)
+                        lineToRelative(dx = 9.0f, dy = 5.15f)
+                    }
+                }.build()
+    }
+
     val Paperclip: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucidePaperclip",
@@ -2017,6 +3702,52 @@ object LucideIcons {
                         lineToRelative(dx = -8.379f, dy = 8.551f)
                         arcToRelative(a = 6.0f, b = 6.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = 8.485f, dy1 = 8.485f)
                         lineToRelative(dx = 8.379f, dy = -8.551f)
+                    }
+                }.build()
+    }
+
+    val PanelBottomOpen: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucidePanelBottomOpen",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 15.0f)
+                        horizontalLineToRelative(dx = 18.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 10.0f)
+                        lineToRelative(dx = 3.0f, dy = -3.0f)
+                        lineToRelative(dx = 3.0f, dy = 3.0f)
                     }
                 }.build()
     }
@@ -2053,6 +3784,108 @@ object LucideIcons {
                     ) {
                         moveTo(x = 15.0f, y = 5.0f)
                         lineToRelative(dx = 4.0f, dy = 4.0f)
+                    }
+                }.build()
+    }
+
+    val Pin: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucidePin",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 17.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 10.76f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.11f, dy1 = 1.79f)
+                        lineToRelative(dx = -1.78f, dy = 0.9f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5.0f, y1 = 15.24f)
+                        verticalLineTo(y = 16.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = -1.0f)
+                        verticalLineToRelative(dy = -0.76f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.11f, dy1 = -1.79f)
+                        lineToRelative(dx = -1.78f, dy = -0.9f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 15.0f, y1 = 10.76f)
+                        verticalLineTo(y = 7.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.0f, dy1 = -4.0f)
+                        horizontalLineTo(x = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.0f, dy1 = 4.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        close()
+                    }
+                }.build()
+    }
+
+    val PinOff: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucidePinOff",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 17.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 9.34f)
+                        verticalLineTo(y = 7.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.0f, dy1 = -4.0f)
+                        horizontalLineTo(x = 7.89f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 2.0f)
+                        lineToRelative(dx = 20.0f, dy = 20.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 9.0f)
+                        verticalLineToRelative(dy = 1.76f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.11f, dy1 = 1.79f)
+                        lineToRelative(dx = -1.78f, dy = 0.9f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 5.0f, y1 = 15.24f)
+                        verticalLineTo(y = 16.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 11.0f)
                     }
                 }.build()
     }
@@ -2160,6 +3993,171 @@ object LucideIcons {
                         moveTo(x = 8.0f, y = 16.0f)
                         horizontalLineTo(x = 3.0f)
                         verticalLineToRelative(dy = 5.0f)
+                    }
+                }.build()
+    }
+
+    val RotateCcw: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideRotateCcw",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 12.0f)
+                        arcToRelative(a = 9.0f, b = 9.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = false, dx1 = 9.0f, dy1 = -9.0f)
+                        arcToRelative(a = 9.75f, b = 9.75f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -6.74f, dy1 = 2.74f)
+                        lineTo(x = 3.0f, y = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        horizontalLineToRelative(dx = 5.0f)
+                    }
+                }.build()
+    }
+
+    val RotateCw: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideRotateCw",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 12.0f)
+                        arcToRelative(a = 9.0f, b = 9.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -9.0f, dy1 = -9.0f)
+                        curveToRelative(dx1 = 2.52f, dy1 = 0.0f, dx2 = 4.93f, dy2 = 1.0f, dx3 = 6.74f, dy3 = 2.74f)
+                        lineTo(x = 21.0f, y = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                        horizontalLineToRelative(dx = -5.0f)
+                    }
+                }.build()
+    }
+
+    val Route: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideRoute",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 19.0f)
+                        moveToRelative(dx = -3.0f, dy = 0.0f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 6.0f, dy1 = 0.0f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -6.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 8.5f)
+                        arcToRelative(a = 3.5f, b = 3.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.0f, dy1 = -7.0f)
+                        horizontalLineToRelative(dx = -11.0f)
+                        arcToRelative(a = 3.5f, b = 3.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -7.0f)
+                        horizontalLineTo(x = 15.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.0f, y = 5.0f)
+                        moveToRelative(dx = -3.0f, dy = 0.0f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 6.0f, dy1 = 0.0f)
+                        arcToRelative(a = 3.0f, b = 3.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -6.0f, dy1 = 0.0f)
+                        close()
+                    }
+                }.build()
+    }
+
+    val Save: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideSave",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.2f, y = 3.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.4f, dy1 = 0.6f)
+                        lineToRelative(dx = 3.8f, dy = 3.8f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.6f, dy1 = 1.4f)
+                        verticalLineTo(y = 19.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.0f, y = 21.0f)
+                        verticalLineToRelative(dy = -7.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.0f)
+                        horizontalLineTo(x = 8.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 7.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 7.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 7.0f)
                     }
                 }.build()
     }
@@ -2275,6 +4273,110 @@ object LucideIcons {
                 }.build()
     }
 
+    val Server: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideServer",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = -16.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 6.0f)
+                        lineTo(x = 6.01f, y = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 18.0f)
+                        lineTo(x = 6.01f, y = 18.0f)
+                    }
+                }.build()
+    }
+
+    val Share: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideShare",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 13.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 6.0f)
+                        lineToRelative(dx = -4.0f, dy = -4.0f)
+                        lineToRelative(dx = -4.0f, dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 12.0f)
+                        verticalLineToRelative(dy = 8.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = -2.0f)
+                        verticalLineToRelative(dy = -8.0f)
+                    }
+                }.build()
+    }
+
     val Share2: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideShare2",
@@ -2340,6 +4442,35 @@ object LucideIcons {
                 }.build()
     }
 
+    val Shield: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideShield",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.0f, y = 13.0f)
+                        curveToRelative(dx1 = 0.0f, dy1 = 5.0f, dx2 = -3.5f, dy2 = 7.5f, dx3 = -7.66f, dy3 = 8.95f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -0.67f, dy1 = -0.01f)
+                        curveTo(x1 = 7.5f, y1 = 20.5f, x2 = 4.0f, y2 = 18.0f, x3 = 4.0f, y3 = 13.0f)
+                        verticalLineTo(y = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        curveToRelative(dx1 = 2.0f, dy1 = 0.0f, dx2 = 4.5f, dy2 = -1.2f, dx3 = 6.24f, dy3 = -2.72f)
+                        arcToRelative(a = 1.17f, b = 1.17f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.52f, dy1 = 0.0f)
+                        curveTo(x1 = 14.51f, y1 = 3.81f, x2 = 17.0f, y2 = 5.0f, x3 = 19.0f, y3 = 5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        close()
+                    }
+                }.build()
+    }
+
     val ShieldCheck: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideShieldCheck",
@@ -2379,6 +4510,98 @@ object LucideIcons {
                 }.build()
     }
 
+    val SlidersHorizontal: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideSlidersHorizontal",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 5.0f)
+                        horizontalLineTo(x = 3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 19.0f)
+                        horizontalLineTo(x = 3.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 17.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = -9.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = -5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 5.0f)
+                        horizontalLineToRelative(dx = -7.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 10.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 12.0f)
+                        horizontalLineTo(x = 3.0f)
+                    }
+                }.build()
+    }
+
     val Smartphone: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideSmartphone",
@@ -2411,6 +4634,71 @@ object LucideIcons {
                     ) {
                         moveTo(x = 12.0f, y = 18.0f)
                         horizontalLineToRelative(dx = 0.01f)
+                    }
+                }.build()
+    }
+
+    val Sparkles: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideSparkles",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 11.017f, y = 2.814f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.966f, dy1 = 0.0f)
+                        lineToRelative(dx = 1.051f, dy = 5.558f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.594f, dy1 = 1.594f)
+                        lineToRelative(dx = 5.558f, dy = 1.051f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = 1.966f)
+                        lineToRelative(dx = -5.558f, dy = 1.051f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.594f, dy1 = 1.594f)
+                        lineToRelative(dx = -1.051f, dy = 5.558f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -1.966f, dy1 = 0.0f)
+                        lineToRelative(dx = -1.051f, dy = -5.558f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.594f, dy1 = -1.594f)
+                        lineToRelative(dx = -5.558f, dy = -1.051f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.0f, dy1 = -1.966f)
+                        lineToRelative(dx = 5.558f, dy = -1.051f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.594f, dy1 = -1.594f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.0f, y = 2.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 4.0f)
+                        horizontalLineToRelative(dx = -4.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 20.0f)
+                        moveToRelative(dx = -2.0f, dy = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 4.0f, dy1 = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -4.0f, dy1 = 0.0f)
+                        close()
                     }
                 }.build()
     }
@@ -2474,6 +4762,93 @@ object LucideIcons {
                         moveTo(x = 9.0f, y = 11.0f)
                         lineToRelative(dx = 3.0f, dy = 3.0f)
                         lineTo(x = 22.0f, y = 4.0f)
+                    }
+                }.build()
+    }
+
+    val Store: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideStore",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 21.0f)
+                        verticalLineToRelative(dy = -5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = -4.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.774f, y = 10.31f)
+                        arcToRelative(a = 1.12f, b = 1.12f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.549f, dy1 = 0.0f)
+                        arcToRelative(a = 2.5f, b = 2.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.451f, dy1 = 0.0f)
+                        arcToRelative(a = 1.12f, b = 1.12f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.548f, dy1 = 0.0f)
+                        arcToRelative(a = 2.5f, b = 2.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.452f, dy1 = 0.0f)
+                        arcToRelative(a = 1.12f, b = 1.12f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.549f, dy1 = 0.0f)
+                        arcToRelative(a = 2.5f, b = 2.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.77f, dy1 = -3.248f)
+                        lineToRelative(dx = 2.889f, dy = -4.184f)
+                        arcTo(horizontalEllipseRadius = 2.0f, verticalEllipseRadius = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 7.0f, y1 = 2.0f)
+                        horizontalLineToRelative(dx = 10.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.653f, dy1 = 0.873f)
+                        lineToRelative(dx = 2.895f, dy = 4.192f)
+                        arcToRelative(a = 2.5f, b = 2.5f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -3.774f, dy1 = 3.244f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 10.95f)
+                        verticalLineTo(y = 19.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = 2.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 2.0f, dy1 = -2.0f)
+                        verticalLineToRelative(dy = -8.05f)
+                    }
+                }.build()
+    }
+
+    val Terminal: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideTerminal",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 17.0f)
+                        lineToRelative(dx = 6.0f, dy = -6.0f)
+                        lineToRelative(dx = -6.0f, dy = -6.0f)
                     }
                 }.build()
     }
@@ -2563,6 +4938,227 @@ object LucideIcons {
                         horizontalLineToRelative(dx = 4.0f)
                         arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
                         verticalLineToRelative(dy = 2.0f)
+                    }
+                }.build()
+    }
+
+    val Trash2: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideTrash2",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 11.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 14.0f, y = 11.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 19.0f, y = 6.0f)
+                        verticalLineToRelative(dy = 14.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 7.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineTo(y = 6.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 6.0f)
+                        horizontalLineToRelative(dx = 18.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 6.0f)
+                        verticalLineTo(y = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = -2.0f)
+                        horizontalLineToRelative(dx = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 2.0f, dy1 = 2.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                    }
+                }.build()
+    }
+
+    val Type: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideType",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 4.0f)
+                        verticalLineToRelative(dy = 16.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 7.0f)
+                        verticalLineTo(y = 5.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = -1.0f)
+                        horizontalLineToRelative(dx = 14.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 9.0f, y = 20.0f)
+                        horizontalLineToRelative(dx = 6.0f)
+                    }
+                }.build()
+    }
+
+    val Unlink: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideUnlink",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.84f, y = 12.25f)
+                        lineToRelative(dx = 1.72f, dy = -1.71f)
+                        horizontalLineToRelative(dx = -0.02f)
+                        arcToRelative(a = 5.004f, b = 5.004f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.12f, dy1 = -7.07f)
+                        arcToRelative(a = 5.006f, b = 5.006f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -6.95f, dy1 = 0.0f)
+                        lineToRelative(dx = -1.72f, dy = 1.71f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 5.17f, y = 11.75f)
+                        lineToRelative(dx = -1.71f, dy = 1.71f)
+                        arcToRelative(a = 5.004f, b = 5.004f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 0.12f, dy1 = 7.07f)
+                        arcToRelative(a = 5.006f, b = 5.006f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 6.95f, dy1 = 0.0f)
+                        lineToRelative(dx = 1.71f, dy = -1.71f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 2.0f)
+                        lineTo(x = 8.0f, y = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 2.0f, y = 8.0f)
+                        lineTo(x = 5.0f, y = 8.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 19.0f)
+                        lineTo(x = 16.0f, y = 22.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 19.0f, y = 16.0f)
+                        lineTo(x = 22.0f, y = 16.0f)
+                    }
+                }.build()
+    }
+
+    val Upload: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideUpload",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 3.0f)
+                        verticalLineToRelative(dy = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.0f, y = 8.0f)
+                        lineToRelative(dx = -5.0f, dy = -5.0f)
+                        lineToRelative(dx = -5.0f, dy = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 21.0f, y = 15.0f)
+                        verticalLineToRelative(dy = 4.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = 2.0f)
+                        horizontalLineTo(x = 5.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = -2.0f, dy1 = -2.0f)
+                        verticalLineToRelative(dy = -4.0f)
                     }
                 }.build()
     }
@@ -2757,6 +5353,275 @@ object LucideIcons {
                 }.build()
     }
 
+    val UsersRound: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideUsersRound",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.0f, y = 21.0f)
+                        arcToRelative(a = 8.0f, b = 8.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -16.0f, dy1 = 0.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.0f, y = 8.0f)
+                        moveToRelative(dx = -5.0f, dy = 0.0f)
+                        arcToRelative(a = 5.0f, b = 5.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 10.0f, dy1 = 0.0f)
+                        arcToRelative(a = 5.0f, b = 5.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -10.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 20.0f)
+                        curveToRelative(dx1 = 0.0f, dy1 = -3.37f, dx2 = -2.0f, dy2 = -6.5f, dx3 = -4.0f, dy3 = -8.0f)
+                        arcToRelative(a = 5.0f, b = 5.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -0.45f, dy1 = -8.3f)
+                    }
+                }.build()
+    }
+
+    val VolumeX: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideVolumeX",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 11.0f, y = 4.702f)
+                        arcToRelative(a = 0.705f, b = 0.705f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.203f, dy1 = -0.498f)
+                        lineTo(x = 6.413f, y = 7.587f)
+                        arcTo(horizontalEllipseRadius = 1.4f, verticalEllipseRadius = 1.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, x1 = 5.416f, y1 = 8.0f)
+                        horizontalLineTo(x = 3.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = -1.0f, dy1 = 1.0f)
+                        verticalLineToRelative(dy = 6.0f)
+                        arcToRelative(a = 1.0f, b = 1.0f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, dx1 = 1.0f, dy1 = 1.0f)
+                        horizontalLineToRelative(dx = 2.416f)
+                        arcToRelative(a = 1.4f, b = 1.4f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = true, dx1 = 0.997f, dy1 = 0.413f)
+                        lineToRelative(dx = 3.383f, dy = 3.384f)
+                        arcTo(horizontalEllipseRadius = 0.705f, verticalEllipseRadius = 0.705f, theta = 0.0f, isMoreThanHalf = false, isPositiveArc = false, x1 = 11.0f, y1 = 19.298f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 22.0f, y = 9.0f)
+                        lineTo(x = 16.0f, y = 15.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 16.0f, y = 9.0f)
+                        lineTo(x = 22.0f, y = 15.0f)
+                    }
+                }.build()
+    }
+
+    val Wand: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideWand",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 4.0f)
+                        verticalLineTo(y = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 16.0f)
+                        verticalLineToRelative(dy = -2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 8.0f, y = 9.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.0f, y = 9.0f)
+                        horizontalLineToRelative(dx = 2.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.8f, y = 11.8f)
+                        lineTo(x = 19.0f, y = 13.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 15.0f, y = 9.0f)
+                        horizontalLineToRelative(dx = 0.01f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 17.8f, y = 6.2f)
+                        lineTo(x = 19.0f, y = 5.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 3.0f, y = 21.0f)
+                        lineToRelative(dx = 9.0f, dy = -9.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.2f, y = 6.2f)
+                        lineTo(x = 11.0f, y = 5.0f)
+                    }
+                }.build()
+    }
+
+    val Waypoints: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideWaypoints",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 10.586f, y = 5.414f)
+                        lineToRelative(dx = -5.172f, dy = 5.172f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 18.586f, y = 13.414f)
+                        lineToRelative(dx = -5.172f, dy = 5.172f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 6.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 12.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 20.0f)
+                        moveToRelative(dx = -2.0f, dy = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 4.0f, dy1 = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -4.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 12.0f, y = 4.0f)
+                        moveToRelative(dx = -2.0f, dy = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 4.0f, dy1 = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -4.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 20.0f, y = 12.0f)
+                        moveToRelative(dx = -2.0f, dy = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 4.0f, dy1 = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -4.0f, dy1 = 0.0f)
+                        close()
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 12.0f)
+                        moveToRelative(dx = -2.0f, dy = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = 4.0f, dy1 = 0.0f)
+                        arcToRelative(a = 2.0f, b = 2.0f, theta = 0.0f, isMoreThanHalf = true, isPositiveArc = true, dx1 = -4.0f, dy1 = 0.0f)
+                        close()
+                    }
+                }.build()
+    }
+
     val X: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideX",
@@ -2786,74 +5651,132 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "app-window", "archive", "arrow-left", "arrow-up-down", "ban", "bell-ring", "bookmark", "bot", "bug", "calendar", "check", "chevron-down", "chevron-left", "chevron-right", "circle", "circle-arrow-up", "circle-check-big", "circle-user", "columns-3", "copy", "download", "external-link", "eye", "file", "file-text", "folder-open", "git-branch", "globe", "hash", "house", "image", "image-plus", "inbox", "key", "layout-list", "link", "link-2", "list-todo", "lock", "log-in", "log-out", "mail", "message-square", "monitor", "paperclip", "pencil", "play", "plus", "refresh-cw", "search", "send", "settings", "share-2", "shield-check", "smartphone", "square", "square-check-big", "triangle-alert", "trash", "user", "user-minus", "user-plus", "users", "x")
+    val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-ring", "blocks", "bookmark", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "eraser", "external-link", "eye", "eye-off", "file", "file-check", "file-code", "file-text", "flag", "flame", "folder-open", "funnel", "git-branch", "globe", "hash", "heart", "house", "image", "image-plus", "inbox", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pencil", "pin", "pin-off", "play", "plus", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
             "activity" -> Activity
+            "align-horizontal-space-around" -> AlignHorizontalSpaceAround
             "app-window" -> AppWindow
             "archive" -> Archive
             "arrow-left" -> ArrowLeft
             "arrow-up-down" -> ArrowUpDown
+            "at-sign" -> AtSign
             "ban" -> Ban
+            "badge-info" -> BadgeInfo
+            "bell" -> Bell
             "bell-ring" -> BellRing
+            "blocks" -> Blocks
             "bookmark" -> Bookmark
             "bot" -> Bot
             "bug" -> Bug
+            "building-2" -> Building2
             "calendar" -> Calendar
+            "chart-bar" -> ChartBar
             "check" -> Check
             "chevron-down" -> ChevronDown
             "chevron-left" -> ChevronLeft
             "chevron-right" -> ChevronRight
+            "chevron-up" -> ChevronUp
             "circle" -> Circle
             "circle-arrow-up" -> CircleArrowUp
+            "circle-check" -> CircleCheck
             "circle-check-big" -> CircleCheckBig
+            "circle-dashed" -> CircleDashed
             "circle-user" -> CircleUser
+            "clipboard" -> Clipboard
+            "clipboard-list" -> ClipboardList
+            "clock" -> Clock
+            "clock-3" -> Clock3
             "columns-3" -> Columns3
             "copy" -> Copy
+            "credit-card" -> CreditCard
             "download" -> Download
+            "ellipsis" -> Ellipsis
+            "eraser" -> Eraser
             "external-link" -> ExternalLink
             "eye" -> Eye
+            "eye-off" -> EyeOff
             "file" -> File
+            "file-check" -> FileCheck
+            "file-code" -> FileCode
             "file-text" -> FileText
+            "flag" -> Flag
+            "flame" -> Flame
             "folder-open" -> FolderOpen
+            "funnel" -> Funnel
             "git-branch" -> GitBranch
             "globe" -> Globe
             "hash" -> Hash
+            "heart" -> Heart
             "house" -> House
             "image" -> Image
             "image-plus" -> ImagePlus
             "inbox" -> Inbox
             "key" -> Key
+            "key-round" -> KeyRound
+            "languages" -> Languages
             "layout-list" -> LayoutList
             "link" -> Link
             "link-2" -> Link2
+            "list-tree" -> ListTree
             "list-todo" -> ListTodo
             "lock" -> Lock
             "log-in" -> LogIn
             "log-out" -> LogOut
+            "loader" -> Loader
+            "loader-circle" -> LoaderCircle
             "mail" -> Mail
+            "mail-plus" -> MailPlus
+            "message-circle" -> MessageCircle
+            "message-circle-off" -> MessageCircleOff
             "message-square" -> MessageSquare
+            "message-square-plus" -> MessageSquarePlus
             "monitor" -> Monitor
+            "monitor-x" -> MonitorX
+            "package-check" -> PackageCheck
+            "package" -> Package
             "paperclip" -> Paperclip
+            "panel-bottom-open" -> PanelBottomOpen
             "pencil" -> Pencil
+            "pin" -> Pin
+            "pin-off" -> PinOff
             "play" -> Play
             "plus" -> Plus
             "refresh-cw" -> RefreshCw
+            "rotate-ccw" -> RotateCcw
+            "rotate-cw" -> RotateCw
+            "route" -> Route
+            "save" -> Save
             "search" -> Search
             "send" -> Send
             "settings" -> Settings
+            "server" -> Server
+            "share" -> Share
             "share-2" -> Share2
+            "shield" -> Shield
             "shield-check" -> ShieldCheck
+            "sliders-horizontal" -> SlidersHorizontal
             "smartphone" -> Smartphone
+            "sparkles" -> Sparkles
             "square" -> Square
             "square-check-big" -> SquareCheckBig
+            "store" -> Store
+            "terminal" -> Terminal
             "triangle-alert" -> TriangleAlert
             "trash" -> Trash
+            "trash-2" -> Trash2
+            "type" -> Type
+            "unlink" -> Unlink
+            "upload" -> Upload
             "user" -> User
             "user-minus" -> UserMinus
             "user-plus" -> UserPlus
             "users" -> Users
+            "users-round" -> UsersRound
+            "volume-x" -> VolumeX
+            "wand" -> Wand
+            "waypoints" -> Waypoints
             "x" -> X
             else -> null
         }
@@ -2870,5 +5793,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, AppWindow, Archive, ArrowLeft, ArrowUpDown, Ban, BellRing, Bookmark, Bot, Bug, Calendar, Check, ChevronDown, ChevronLeft, ChevronRight, Circle, CircleArrowUp, CircleCheckBig, CircleUser, Columns3, Copy, Download, ExternalLink, Eye, File, FileText, FolderOpen, GitBranch, Globe, Hash, House, Image, ImagePlus, Inbox, Key, LayoutList, Link, Link2, ListTodo, Lock, LogIn, LogOut, Mail, MessageSquare, Monitor, Paperclip, Pencil, Play, Plus, RefreshCw, Search, Send, Settings, Share2, ShieldCheck, Smartphone, Square, SquareCheckBig, TriangleAlert, Trash, User, UserMinus, UserPlus, Users, X)
+    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellRing, Blocks, Bookmark, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Eraser, ExternalLink, Eye, EyeOff, File, FileCheck, FileCode, FileText, Flag, Flame, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pencil, Pin, PinOff, Play, Plus, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
 }

@@ -60,27 +60,27 @@ internal data class SlockModalShellModel(
     val subtitle: String = "",
     val overlayAlpha: Float = 0.58f,
     val maxWidth: Dp = 384.dp,
-    val dismissIcon: String = "x"
+    val dismissIcon: SlockLucideIconName = SlockLucideIconName.X
 )
 
 internal data class SlockActionSheetRowModel(
     val title: String,
     val subtitle: String = "",
-    val icon: String,
+    val icon: SlockLucideIconName,
     val destructive: Boolean = false
 )
 
 internal data class SegmentedControlOption(
     val value: String,
     val label: String,
-    val iconName: String? = null,
+    val iconName: SlockLucideIconName? = null,
     val count: Int? = null
 )
 
 @Composable
 internal fun SlockAnchoredMetaChip(
     label: String,
-    iconName: String?,
+    iconName: SlockLucideIconName?,
     color: Color,
     onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
     modifier: Modifier = Modifier,
@@ -101,7 +101,7 @@ internal fun SlockAnchoredMetaChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {
-            iconName?.takeIf { it.isNotBlank() }?.let {
+            iconName?.let {
                 SlockLucideIcon(it, modifier = Modifier.size(iconSize), color = "#FF000000")
             }
             Text(
@@ -318,7 +318,7 @@ internal fun SlockModalTextFieldComponent(
     modifier: Modifier = Modifier,
     required: Boolean = false,
     isError: Boolean = required && value.isBlank(),
-    leadingIcon: String? = null,
+    leadingIcon: SlockLucideIconName? = null,
     enabled: Boolean = true,
     fieldHeight: Dp = 42.dp,
     maxLines: Int = 1,
@@ -495,7 +495,7 @@ internal fun SlockBrutalInputField(
                 )
                 if (showClearWhenNotEmpty && value.isNotEmpty() && enabled) {
                     SlockBrutalIconButton(
-                        iconName = "x",
+                        iconName = SlockLucideIconName.X,
                         onClick = { onClear?.invoke() ?: onValueChange("") },
                         size = 18.dp,
                         shadowOffset = 2.dp
@@ -513,7 +513,7 @@ internal fun SlockBrutalSearchField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
-    leadingIcon: String = "search",
+    leadingIcon: SlockLucideIconName = SlockLucideIconName.Search,
     textStyle: TextStyle = SlockType.Caption.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack)
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -563,7 +563,7 @@ internal fun SlockBrutalSearchField(
 @Composable
 private fun SlockBrutalActionButtonInnerContent(
     label: String,
-    leadingIcon: String?,
+    leadingIcon: SlockLucideIconName?,
     textStyle: TextStyle,
     enabled: Boolean,
     trailingContent: (@Composable () -> Unit)? = null
@@ -596,7 +596,7 @@ internal fun SlockBrutalActionButton(
     disabledBackgroundColor: Color = SlockColor.SurfaceCream,
     minWidth: Dp = 82.dp,
     minHeight: Dp = 40.dp,
-    leadingIcon: String? = null,
+    leadingIcon: SlockLucideIconName? = null,
     shadowOffset: Dp = 3.dp,
     textStyle: TextStyle = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
     trailingContent: (@Composable () -> Unit)? = null
@@ -812,7 +812,7 @@ internal fun SlockAnchoredToolbarChip(
 
 @Composable
 internal fun SlockBrutalIconButton(
-    iconName: String,
+    iconName: SlockLucideIconName,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,

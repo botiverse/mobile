@@ -41,7 +41,7 @@ internal data class SlockTabItemPayload(
     val key: String = "",
     val title: String = "",
     val subtitle: String = "",
-    val iconName: String = "",
+    val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
     val value: String? = null,
     val selected: Boolean = false,
     val enabled: Boolean = true
@@ -51,7 +51,7 @@ internal data class SlockTabItemPayload(
 internal data class SlockBottomTabItemPayload(
     val key: String = "",
     val label: String = "",
-    val iconName: String = "",
+    val iconName: SlockLucideIconName = SlockLucideIconName.Circle,
     val selected: Boolean = false,
     val enabled: Boolean = true
 )
@@ -134,7 +134,7 @@ internal fun SlockBottomTabBar(
                     verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                 ) {
                     SlockLucideIcon(
-                        name = item.iconName.takeIf { it.isNotBlank() } ?: "circle",
+                        name = item.iconName,
                         color = if (item.enabled) "#FF000000" else "#FF737373",
                         modifier = Modifier.size(18.dp)
                     )
@@ -260,7 +260,7 @@ private fun SlockOhosHdsTabBar(
             getViewAttr().run {
                 keys(items.tabJoin { it.key })
                 labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName })
+                icons(items.tabJoin { it.iconName.wireName })
                 enabled(items.tabJoin { if (it.enabled) "1" else "0" })
                 selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
                 bottomSafeArea(bottomSafeArea.value)
@@ -270,7 +270,7 @@ private fun SlockOhosHdsTabBar(
             view.getViewAttr().run {
                 keys(items.tabJoin { it.key })
                 labels(items.tabJoin { it.label })
-                icons(items.tabJoin { it.iconName })
+                icons(items.tabJoin { it.iconName.wireName })
                 enabled(items.tabJoin { if (it.enabled) "1" else "0" })
                 selectedKey(items.firstOrNull { it.selected }?.key.orEmpty())
                 bottomSafeArea(bottomSafeArea.value)
@@ -384,7 +384,7 @@ internal fun SlockNavigationRailTabBar(
                 verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
             ) {
                 SlockLucideIcon(
-                    name = item.iconName.takeIf { it.isNotBlank() } ?: "circle",
+                    name = item.iconName,
                     color = if (item.enabled) "#FF000000" else "#FF737373",
                     modifier = Modifier.size(20.dp)
                 )
@@ -450,12 +450,11 @@ private fun SlockVerticalTabItem(
     }
 }
 
-private fun String.toVerticalTabIconName(): String =
+private fun SlockLucideIconName.toVerticalTabIconName(): SlockLucideIconName =
     when (this) {
-        "building-2" -> "users"
-        "app-window" -> "square"
-        "languages" -> "globe"
-        "type" -> "file-text"
-        "" -> "settings"
+        SlockLucideIconName.Building2 -> SlockLucideIconName.Users
+        SlockLucideIconName.AppWindow -> SlockLucideIconName.Square
+        SlockLucideIconName.Languages -> SlockLucideIconName.Globe
+        SlockLucideIconName.Type -> SlockLucideIconName.FileText
         else -> this
     }

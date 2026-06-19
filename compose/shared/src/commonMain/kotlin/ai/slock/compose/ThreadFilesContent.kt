@@ -279,7 +279,7 @@ private fun ThreadFileDownloadButton(isOpening: Boolean, onClick: () -> Unit) {
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
         ) {
-            SlockLucideIcon(name = if (isOpening) "loader" else "download", modifier = Modifier.size(24.dp))
+            SlockLucideIcon(name = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download, modifier = Modifier.size(24.dp))
         }
     }
 }

@@ -445,7 +445,7 @@ internal data class KuiklyThreadSettingsAction(
     val id: String,
     val title: String,
     val subtitle: String = "",
-    val icon: String = "settings",
+    val icon: SlockLucideIconName = SlockLucideIconName.Settings,
     val destructive: Boolean = false
 )
 
@@ -919,21 +919,21 @@ private fun channelPanelVisualSettingsActions(): List<KuiklyThreadSettingsAction
             id = "visibility",
             title = "Make Private",
             subtitle = "Restrict this channel to selected members",
-            icon = "lock",
+            icon = SlockLucideIconName.Lock,
             destructive = true
         ),
         KuiklyThreadSettingsAction(
             id = "archive",
             title = "Archive Channel",
             subtitle = "Freeze writes and hide from sidebars",
-            icon = "archive",
+            icon = SlockLucideIconName.Archive,
             destructive = true
         ),
         KuiklyThreadSettingsAction(
             id = "delete",
             title = "Delete Channel",
             subtitle = "Permanently remove this channel",
-            icon = "trash",
+            icon = SlockLucideIconName.Trash,
             destructive = true
         )
     )
@@ -2502,7 +2502,7 @@ private fun ThreadImagePreviewOverlay(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ThreadImagePreviewIconButton(icon = "arrow-left", onClick = onDismiss)
+                ThreadImagePreviewIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onDismiss)
                 Text(
                     text = current.name.ifBlank { "Image" },
                     style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
@@ -2512,11 +2512,11 @@ private fun ThreadImagePreviewOverlay(
                     modifier = Modifier.weight(1f)
                 )
                 ThreadImagePreviewIconButton(
-                    icon = "external-link",
+                    icon = SlockLucideIconName.ExternalLink,
                     enabled = displayUrl != null,
                     onClick = { onOpenExternally(current) }
                 )
-                ThreadImagePreviewIconButton(icon = "x", onClick = onDismiss)
+                ThreadImagePreviewIconButton(icon = SlockLucideIconName.X, onClick = onDismiss)
             }
             Box(
                 modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
@@ -2621,7 +2621,7 @@ private fun ThreadImagePreviewOverlay(
 
 @Composable
 private fun ThreadImagePreviewIconButton(
-    icon: String,
+    icon: SlockLucideIconName,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
@@ -2645,7 +2645,7 @@ private fun ThreadImagePreviewEmptyState(title: String, detail: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon("image", modifier = Modifier.size(34.dp), color = "#FF000000")
+        SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(34.dp), color = "#FF000000")
         Text(
             text = title,
             style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
@@ -2699,7 +2699,7 @@ private fun ThreadImagePreviewNavigationPill(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         ThreadImagePreviewInlineNavButton(
-            icon = "chevron-left",
+            icon = SlockLucideIconName.ChevronLeft,
             enabled = canGoPrevious,
             onClick = onPrevious
         )
@@ -2710,7 +2710,7 @@ private fun ThreadImagePreviewNavigationPill(
             maxLines = 1
         )
         ThreadImagePreviewInlineNavButton(
-            icon = "chevron-right",
+            icon = SlockLucideIconName.ChevronRight,
             enabled = canGoNext,
             onClick = onNext
         )
@@ -2719,7 +2719,7 @@ private fun ThreadImagePreviewNavigationPill(
 
 @Composable
 private fun ThreadImagePreviewInlineNavButton(
-    icon: String,
+    icon: SlockLucideIconName,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -2764,7 +2764,7 @@ private fun ThreadImagePreviewThumbnail(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                SlockLucideIcon("image", modifier = Modifier.size(20.dp), color = "#FF000000")
+                SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
             }
         }
     }
@@ -3130,7 +3130,7 @@ private fun ThreadPageHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            ThreadHeaderIconButton(icon = "arrow-left", onClick = onBack)
+            ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
             if (payload.showModeTabs) {
                 ThreadHashTile()
             }
@@ -3153,13 +3153,13 @@ private fun ThreadPageHeader(
                 }
             }
             if (payload.showSettingsAction) {
-                ThreadHeaderIconButton(icon = "settings", onClick = onShowSettings)
+                ThreadHeaderIconButton(icon = SlockLucideIconName.Settings, onClick = onShowSettings)
             }
             if (payload.showMembersAction) {
                 ThreadMembersHeaderButton(count = payload.membersCount, onClick = onShowMembers)
             }
             if (payload.showOpenInChannelAction) {
-                ThreadHeaderIconButton(icon = "external-link", onClick = onOpenInChannel)
+                ThreadHeaderIconButton(icon = SlockLucideIconName.ExternalLink, onClick = onOpenInChannel)
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
@@ -3183,14 +3183,14 @@ private fun ThreadHashTile() {
 }
 
 @Composable
-private fun ThreadHeaderIconButton(icon: String, onClick: () -> Unit) {
-    SlockHeaderIconAction(icon = icon, contentDescription = icon, onClick = onClick)
+private fun ThreadHeaderIconButton(icon: SlockLucideIconName, onClick: () -> Unit) {
+    SlockHeaderIconAction(icon = icon, contentDescription = icon.wireName, onClick = onClick)
 }
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
     SlockHeaderIconAction(
-        icon = "users",
+        icon = SlockLucideIconName.Users,
         contentDescription = "Members",
         onClick = onClick,
         label = count.takeIf { it > 0 }?.toString().orEmpty()
@@ -3538,12 +3538,12 @@ private fun ThreadMessagesList(
                         payload.canLoadMoreBefore ->
                             ThreadHistoryStatusRow(
                                 label = "Loading older messages…",
-                                iconName = "loader-circle"
+                                iconName = SlockLucideIconName.LoaderCircle
                             )
                         else ->
                             ThreadHistoryStatusRow(
                                 label = "Beginning of conversation",
-                                iconName = "flag"
+                                iconName = SlockLucideIconName.Flag
                             )
                     }
                 }
@@ -4062,7 +4062,7 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadHistoryStatusRow(
     label: String,
-    iconName: String
+    iconName: SlockLucideIconName
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
@@ -4366,7 +4366,7 @@ private fun ThreadActionCardDoneBadge() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        SlockLucideIcon("check", modifier = Modifier.size(10.dp), color = "#FF000000")
+        SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
             text = "Done",
             style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp),
@@ -4624,7 +4624,7 @@ private fun ThreadMessageFooterMeta(
             val replyLabel = threadMessageRepliesMetaLabel(message)
             SlockAnchoredMetaChip(
                 label = replyLabel,
-                iconName = "message-square",
+                iconName = SlockLucideIconName.MessageSquare,
                 iconSize = 12.dp,
                 color = SlockColor.AccentCyan.copy(alpha = 0.2f),
                 modifier = Modifier.widthIn(max = 220.dp),
@@ -4699,18 +4699,18 @@ internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): St
 private data class ThreadTaskStatusOption(
     val key: String,
     val label: String,
-    val icon: String,
+    val icon: SlockLucideIconName,
     val color: Color,
     val iconSize: Dp = 10.dp
 )
 
 private val threadTaskStatusOptions =
     listOf(
-        ThreadTaskStatusOption("Todo", "Todo", "circle", SlockColor.AccentOrange),
-        ThreadTaskStatusOption("InProgress", "In progress", "play", SlockColor.AccentCyan),
-        ThreadTaskStatusOption("InReview", "In review", "eye", SlockColor.AccentLavender),
-        ThreadTaskStatusOption("Done", "Done", "circle-check-big", SlockColor.AccentLime),
-        ThreadTaskStatusOption("Closed", "Closed", "ban", SlockColor.AccentStone)
+        ThreadTaskStatusOption("Todo", "Todo", SlockLucideIconName.Circle, SlockColor.AccentOrange),
+        ThreadTaskStatusOption("InProgress", "In progress", SlockLucideIconName.Play, SlockColor.AccentCyan),
+        ThreadTaskStatusOption("InReview", "In review", SlockLucideIconName.Eye, SlockColor.AccentLavender),
+        ThreadTaskStatusOption("Done", "Done", SlockLucideIconName.CircleCheckBig, SlockColor.AccentLime),
+        ThreadTaskStatusOption("Closed", "Closed", SlockLucideIconName.Ban, SlockColor.AccentStone)
     )
 
 private val ThreadTaskStatusMenuItems: List<SlockBaseMenuItem> =
@@ -4815,7 +4815,7 @@ private fun String.decodeBasicHtmlEntities(): String =
 
 private data class ThreadMessageMenuAction(
     val label: String,
-    val icon: String,
+    val icon: SlockLucideIconName,
     val group: String,
     val onClick: () -> Unit
 )
@@ -4844,14 +4844,14 @@ private fun ThreadMessageActionMenu(
     val actions =
         buildList {
             if (showReplyAction) {
-                add(ThreadMessageMenuAction("Reply", "message-square", "message", onReply))
+                add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
             }
-            add(ThreadMessageMenuAction("Copy markdown", "copy", "copy", onCopy))
+            add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
             if (showSaveAction) {
                 add(
                     ThreadMessageMenuAction(
                         label = if (message.isSaved) "Remove from saved" else "Save message",
-                        icon = "bookmark",
+                        icon = SlockLucideIconName.Bookmark,
                         group = "message",
                         onClick = onSave
                     )
@@ -4862,7 +4862,7 @@ private fun ThreadMessageActionMenu(
                 add(
                     ThreadMessageMenuAction(
                         label = if (isDone) "Reopen task" else "Mark done",
-                        icon = if (isDone) "refresh-cw" else "circle-check-big",
+                        icon = if (isDone) SlockLucideIconName.RefreshCw else SlockLucideIconName.CircleCheckBig,
                         group = "task",
                         onClick = { onTaskStatusChange(if (isDone) "reopenTask" else "markTaskDone") }
                     )
@@ -5742,7 +5742,7 @@ private fun ThreadMembersModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
-                                trailingIcon = "x",
+                                trailingIcon = SlockLucideIconName.X,
                                 onTrailingClick = { onManageMember(member.id) },
                                 onClick = { onManageMember(member.id) }
                             )
@@ -5758,7 +5758,7 @@ private fun ThreadMembersModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
-                                trailingIcon = "x",
+                                trailingIcon = SlockLucideIconName.X,
                                 onTrailingClick = { onManageMember(member.id) },
                                 onClick = { onManageMember(member.id) }
                             )
@@ -5768,7 +5768,7 @@ private fun ThreadMembersModal(
             }
             SlockModalFullWidthActionButton(
                 label = "ADD MEMBER",
-                icon = "user-plus",
+                icon = SlockLucideIconName.UserPlus,
                 onClick = { if (canAddMembers) onAddMember() },
                 color = SlockColor.AccentPink,
                 enabled = canAddMembers
@@ -5835,7 +5835,7 @@ private fun ThreadAddMemberModal(
                 label = "SEARCH",
                 value = query,
                 placeholder = "NAME",
-                leadingIcon = "search",
+                leadingIcon = SlockLucideIconName.Search,
                 enabled = !blocked,
                 onValueChange = {
                     if (!blocked) {
@@ -5868,7 +5868,7 @@ private fun ThreadAddMemberModal(
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (member.id == selectedId) "check" else null,
+                                trailingIcon = if (member.id == selectedId) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
@@ -5892,7 +5892,7 @@ private fun ThreadAddMemberModal(
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (member.id == selectedId) "check" else null,
+                                trailingIcon = if (member.id == selectedId) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
@@ -5992,12 +5992,12 @@ private fun ThreadMemberDetailModal(
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SlockModalActionButton(label = "BACK", icon = "arrow-left", onClick = onBack)
-                SlockModalActionButton(label = "OPEN PROFILE", icon = "user", onClick = onOpenProfile)
+                SlockModalActionButton(label = "BACK", icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
+                SlockModalActionButton(label = "OPEN PROFILE", icon = SlockLucideIconName.User, onClick = onOpenProfile)
                 if (member.kind.equals("agent", ignoreCase = true)) {
                     SlockModalActionButton(
                         label = if (isRemoving) "REMOVING" else "REMOVE AGENT",
-                        icon = "user-minus",
+                        icon = SlockLucideIconName.UserMinus,
                         color = SlockColor.AccentRed,
                         onClick = { if (!isRemoving) onRemoveMember() }
                     )
@@ -6022,13 +6022,13 @@ private fun KuiklyThreadMemberItem.modalStatusColor(): Color? =
 private enum class ThreadSettingsDangerAction(
     val id: String,
     val title: String,
-    val icon: String,
+    val icon: SlockLucideIconName,
     val buttonLabel: String,
     val color: Color
 ) {
-    Visibility("visibility", "MAKE CHANNEL PRIVATE", "lock", "Make Private", SlockColor.AccentOrange),
-    Archive("archive", "ARCHIVE CHANNEL", "archive", "Archive Channel", SlockColor.AccentOrange),
-    Delete("delete", "DELETE CHANNEL", "trash", "Delete Channel", SlockColor.AccentRed)
+    Visibility("visibility", "MAKE CHANNEL PRIVATE", SlockLucideIconName.Lock, "Make Private", SlockColor.AccentOrange),
+    Archive("archive", "ARCHIVE CHANNEL", SlockLucideIconName.Archive, "Archive Channel", SlockColor.AccentOrange),
+    Delete("delete", "DELETE CHANNEL", SlockLucideIconName.Trash, "Delete Channel", SlockColor.AccentRed)
 }
 
 internal fun defaultThreadSettingsChannelActions(): List<KuiklyThreadSettingsAction> =
@@ -6037,21 +6037,21 @@ internal fun defaultThreadSettingsChannelActions(): List<KuiklyThreadSettingsAct
             id = "visibility",
             title = "Make Private",
             subtitle = "Restrict this channel to selected members",
-            icon = "lock",
+            icon = SlockLucideIconName.Lock,
             destructive = true
         ),
         KuiklyThreadSettingsAction(
             id = "archive",
             title = "Archive Channel",
             subtitle = "Freeze writes and hide from sidebars",
-            icon = "archive",
+            icon = SlockLucideIconName.Archive,
             destructive = true
         ),
         KuiklyThreadSettingsAction(
             id = "delete",
             title = "Delete Channel",
             subtitle = "Permanently remove this channel",
-            icon = "trash",
+            icon = SlockLucideIconName.Trash,
             destructive = true
         )
     )
@@ -6067,19 +6067,16 @@ internal fun List<KuiklyThreadSettingsAction>.normalizedThreadSettingsChannelAct
                 "make_public" -> action.copy(
                     id = "visibility",
                     title = action.title.ifBlank { defaultById.getValue("visibility").title },
-                    icon = action.icon.ifBlank { defaultById.getValue("visibility").icon },
                     destructive = true
                 )
                 "archive" -> action.copy(
                     id = "archive",
                     title = action.title.ifBlank { defaultById.getValue("archive").title },
-                    icon = action.icon.ifBlank { defaultById.getValue("archive").icon },
                     destructive = true
                 )
                 "delete" -> action.copy(
                     id = "delete",
                     title = action.title.ifBlank { defaultById.getValue("delete").title },
-                    icon = action.icon.ifBlank { defaultById.getValue("delete").icon },
                     destructive = true
                 )
                 else -> null
@@ -6140,10 +6137,10 @@ private fun ThreadSettingsModal(
                 )
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Spacer(modifier = Modifier.weight(1f))
-                    SlockModalActionButton(label = "Cancel", icon = "x", onClick = onDismiss)
+                    SlockModalActionButton(label = "Cancel", icon = SlockLucideIconName.X, onClick = onDismiss)
                     SlockModalActionButton(
                         label = "Save Changes",
-                        icon = "check",
+                        icon = SlockLucideIconName.Check,
                         color = SlockColor.AccentPink,
                         onClick = onDismiss
                     )
@@ -6154,7 +6151,7 @@ private fun ThreadSettingsModal(
                         dangerActions.forEach { (danger, action) ->
                             SlockModalFullWidthActionButton(
                                 label = action.title,
-                                icon = action.icon.ifBlank { danger.icon },
+                                icon = action.icon,
                                 color = danger.color,
                                 onClick = { dangerAction = danger }
                             )
@@ -6214,7 +6211,7 @@ private fun ThreadSettingsModal(
                     val isDelete = activeDanger == ThreadSettingsDangerAction.Delete
                     SlockModalActionButton(
                         label = if (isDelete) "Cancel" else "Back",
-                        icon = if (isDelete) "x" else "arrow-left",
+                        icon = if (isDelete) SlockLucideIconName.X else SlockLucideIconName.ArrowLeft,
                         onClick = { dangerAction = null }
                     )
                     Spacer(modifier = Modifier.weight(1f))
@@ -6252,7 +6249,7 @@ private fun ThreadDeleteChannelWarning(channelName: String) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         SlockLucideIcon(
-            name = "triangle-alert",
+            name = SlockLucideIconName.TriangleAlert,
             modifier = Modifier.size(26.dp),
             color = "#FF000000"
         )
