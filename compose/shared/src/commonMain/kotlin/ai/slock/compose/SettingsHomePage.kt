@@ -2316,6 +2316,11 @@ private fun SettingsAppShellContent(
     var connectedAppManifestUrl by remember { mutableStateOf("") }
     var connectedAppPublishCategory by remember { mutableStateOf("productivity") }
     var connectedAppPublishDataAccess by remember { mutableStateOf("") }
+    var connectedAppsMarketplaceSearch by remember { mutableStateOf("") }
+    var connectedAppsMarketplaceCategory by remember { mutableStateOf(SETTINGS_CONNECTED_APPS_CATEGORY_ALL) }
+    var connectedAppsSelectedMarketplaceId by remember { mutableStateOf<String?>(null) }
+    var connectedAppsSelectedBuiltInId by remember { mutableStateOf<String?>(null) }
+    var connectedAppsConfirmTarget by remember { mutableStateOf<SettingsConnectedAppsConfirmTarget?>(null) }
     var languageRegionLanguageDraft by remember { mutableStateOf("") }
     var languageRegionDisplayDraft by remember { mutableStateOf("translated") }
     var languageRegionTimezoneDraft by remember { mutableStateOf("") }
@@ -2379,6 +2384,35 @@ private fun SettingsAppShellContent(
             connectedAppManifestUrl = ""
             connectedAppPublishCategory = "productivity"
             connectedAppPublishDataAccess = ""
+        }
+    }
+    LaunchedEffect(
+        currentConnectedAppsSnapshot?.marketplace?.map { it.id },
+        currentConnectedAppsSnapshot?.builtIn?.map { it.id },
+        currentConnectedAppsSnapshot?.installed?.map { it.id },
+        currentConnectedAppsSnapshot?.registered?.map { it.id }
+    ) {
+        val snapshot = currentConnectedAppsSnapshot ?: return@LaunchedEffect
+        if (connectedAppsMarketplaceCategory != SETTINGS_CONNECTED_APPS_CATEGORY_ALL &&
+            snapshot.marketplace.none { it.category == connectedAppsMarketplaceCategory }
+        ) {
+            connectedAppsMarketplaceCategory = SETTINGS_CONNECTED_APPS_CATEGORY_ALL
+        }
+        connectedAppsSelectedMarketplaceId?.let { id ->
+            if (snapshot.marketplace.none { it.id == id }) connectedAppsSelectedMarketplaceId = null
+        }
+        connectedAppsSelectedBuiltInId?.let { id ->
+            if (snapshot.builtIn.none { it.id == id }) connectedAppsSelectedBuiltInId = null
+        }
+        connectedAppsConfirmTarget?.let { target ->
+            val exists =
+                when (target.kind) {
+                    SettingsConnectedAppsConfirmKind.DeleteClient -> snapshot.registered.any { it.id == target.id }
+                    SettingsConnectedAppsConfirmKind.UninstallMarketplace ->
+                        snapshot.marketplace.any { it.id == target.id } || snapshot.installed.any { it.id == target.id }
+                    else -> false
+                }
+            if (!exists) connectedAppsConfirmTarget = null
         }
     }
 
@@ -2740,6 +2774,11 @@ private fun SettingsAppShellContent(
                     manifestUrl = connectedAppManifestUrl,
                     publishCategory = connectedAppPublishCategory,
                     publishDataAccess = connectedAppPublishDataAccess,
+                    marketplaceSearch = connectedAppsMarketplaceSearch,
+                    marketplaceCategory = connectedAppsMarketplaceCategory,
+                    selectedMarketplaceId = connectedAppsSelectedMarketplaceId,
+                    selectedBuiltInId = connectedAppsSelectedBuiltInId,
+                    confirmTarget = connectedAppsConfirmTarget,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
                     onNameChange = { connectedAppName = it },
@@ -2750,6 +2789,12 @@ private fun SettingsAppShellContent(
                     onManifestUrlChange = { connectedAppManifestUrl = it },
                     onPublishCategoryChange = { connectedAppPublishCategory = it },
                     onPublishDataAccessChange = { connectedAppPublishDataAccess = it },
+                    onMarketplaceSearchChange = { connectedAppsMarketplaceSearch = it },
+                    onMarketplaceCategoryChange = { connectedAppsMarketplaceCategory = it },
+                    onOpenMarketplaceDetail = { connectedAppsSelectedMarketplaceId = it },
+                    onDismissMarketplaceDetail = { connectedAppsSelectedMarketplaceId = null },
+                    onOpenBuiltInDetail = { connectedAppsSelectedBuiltInId = it },
+                    onDismissBuiltInDetail = { connectedAppsSelectedBuiltInId = null },
                     onStartEdit = { app ->
                         connectedAppEditingId = app.id
                         connectedAppName = app.name
@@ -2784,7 +2829,15 @@ private fun SettingsAppShellContent(
                     onClearLogo = { id ->
                         onSettingsIntent(SharedSettingsIntent.ClearConnectedAppLogo(id))
                     },
-                    onDelete = { id ->
+                    onRequestDelete = { id ->
+                        connectedAppsConfirmTarget =
+                            SettingsConnectedAppsConfirmTarget(
+                                SettingsConnectedAppsConfirmKind.DeleteClient,
+                                id
+                            )
+                    },
+                    onConfirmDelete = { id ->
+                        connectedAppsConfirmTarget = null
                         onSettingsIntent(SharedSettingsIntent.DeleteConnectedApp(id))
                     },
                     onPublish = { request ->
@@ -2793,8 +2846,23 @@ private fun SettingsAppShellContent(
                     onInstall = { id ->
                         onSettingsIntent(SharedSettingsIntent.InstallMarketplaceApp(id))
                     },
-                    onUninstall = { id ->
+                    onRequestUninstall = { id ->
+                        connectedAppsConfirmTarget =
+                            SettingsConnectedAppsConfirmTarget(
+                                SettingsConnectedAppsConfirmKind.UninstallMarketplace,
+                                id
+                            )
+                    },
+                    onConfirmUninstall = { id ->
+                        connectedAppsConfirmTarget = null
                         onSettingsIntent(SharedSettingsIntent.UninstallMarketplaceApp(id))
+                    },
+                    onDismissConfirm = { connectedAppsConfirmTarget = null },
+                    onCopySecret = { secret ->
+                        settingsCapabilities.bridgeCopyToClipboard(secret)
+                    },
+                    onOpenUrl = { url ->
+                        settingsCapabilities.openUrl(url)
                     },
                     onRefresh = {
                         onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
@@ -3083,6 +3151,11 @@ private fun SettingsConnectedAppsContent(
     manifestUrl: String,
     publishCategory: String,
     publishDataAccess: String,
+    marketplaceSearch: String,
+    marketplaceCategory: String,
+    selectedMarketplaceId: String?,
+    selectedBuiltInId: String?,
+    confirmTarget: SettingsConnectedAppsConfirmTarget?,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp,
     onNameChange: (String) -> Unit,
@@ -3093,19 +3166,59 @@ private fun SettingsConnectedAppsContent(
     onManifestUrlChange: (String) -> Unit,
     onPublishCategoryChange: (String) -> Unit,
     onPublishDataAccessChange: (String) -> Unit,
+    onMarketplaceSearchChange: (String) -> Unit,
+    onMarketplaceCategoryChange: (String) -> Unit,
+    onOpenMarketplaceDetail: (String) -> Unit,
+    onDismissMarketplaceDetail: () -> Unit,
+    onOpenBuiltInDetail: (String) -> Unit,
+    onDismissBuiltInDetail: () -> Unit,
     onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
     onCancelEdit: () -> Unit,
     onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
     onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
     onUploadLogo: (String) -> Unit,
     onClearLogo: (String) -> Unit,
-    onDelete: (String) -> Unit,
+    onRequestDelete: (String) -> Unit,
+    onConfirmDelete: (String) -> Unit,
     onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
     onInstall: (String) -> Unit,
-    onUninstall: (String) -> Unit,
+    onRequestUninstall: (String) -> Unit,
+    onConfirmUninstall: (String) -> Unit,
+    onDismissConfirm: () -> Unit,
+    onCopySecret: (String) -> Unit,
+    onOpenUrl: (String) -> Unit,
     onRefresh: () -> Unit
 ) {
     val snapshot = state.currentContent()
+    val selectedMarketplace = snapshot?.marketplace?.firstOrNull { it.id == selectedMarketplaceId }
+    val selectedBuiltIn = snapshot?.builtIn?.firstOrNull { it.id == selectedBuiltInId }
+    selectedMarketplace?.let { app ->
+        SettingsConnectedAppMarketplaceDetailDialog(
+            app = app,
+            actionState = actionState,
+            onDismiss = onDismissMarketplaceDetail,
+            onInstall = onInstall,
+            onRequestUninstall = onRequestUninstall,
+            onOpenUrl = onOpenUrl
+        )
+    }
+    selectedBuiltIn?.let { app ->
+        SettingsConnectedAppBuiltInDetailDialog(
+            app = app,
+            onDismiss = onDismissBuiltInDetail,
+            onOpenUrl = onOpenUrl
+        )
+    }
+    confirmTarget?.let { target ->
+        SettingsConnectedAppsConfirmDialog(
+            target = target,
+            snapshot = snapshot,
+            actionState = actionState,
+            onDismiss = onDismissConfirm,
+            onConfirmDelete = onConfirmDelete,
+            onConfirmUninstall = onConfirmUninstall
+        )
+    }
     val payload =
         KuiklySharedSettingsPayload(
             title = "Connected Apps",
@@ -3152,7 +3265,7 @@ private fun SettingsConnectedAppsContent(
             is ScreenLoadState.NoPermission ->
                 item {
                     SettingsFormSectionCard(iconName = SlockLucideIconName.Lock, title = "Permission Required") {
-                        SettingsFormErrorText(state.blocker.code)
+                        SettingsFormErrorText(settingsConnectedAppsPermissionCopy(state.blocker))
                     }
                 }
             is ScreenLoadState.Content -> {
@@ -3169,15 +3282,22 @@ private fun SettingsConnectedAppsContent(
                     )
                 }
                 snapshot?.oneTimeClientSecret?.let { secret ->
-                    item { SettingsConnectedAppSecretCard(secret) }
+                    item {
+                        SettingsConnectedAppSecretCard(
+                            secret = secret,
+                            onCopySecret = onCopySecret
+                        )
+                    }
                 }
                 when (selectedTab) {
                     "installed" ->
                         item {
                             SettingsConnectedAppsInstalledCard(
                                 installed = snapshot?.installed.orEmpty(),
+                                clients = snapshot?.registered.orEmpty(),
                                 actionState = actionState,
-                                onUninstall = onUninstall
+                                onStartEdit = onStartEdit,
+                                onRequestUninstall = onRequestUninstall
                             )
                         }
                     "myapps" -> {
@@ -3214,7 +3334,7 @@ private fun SettingsConnectedAppsContent(
                                 clients = snapshot?.registered.orEmpty(),
                                 actionState = actionState,
                                 onStartEdit = onStartEdit,
-                                onDelete = onDelete,
+                                onRequestDelete = onRequestDelete,
                                 onPublish = onPublish,
                                 publishCategory = publishCategory,
                                 publishDataAccess = publishDataAccess
@@ -3223,14 +3343,20 @@ private fun SettingsConnectedAppsContent(
                     }
                     else -> {
                         item {
-                            SettingsConnectedAppsBuiltInCard(snapshot?.builtIn.orEmpty())
+                            SettingsConnectedAppsBuiltInCard(
+                                apps = snapshot?.builtIn.orEmpty(),
+                                onOpenDetail = onOpenBuiltInDetail
+                            )
                         }
                         item {
                             SettingsConnectedAppsMarketplaceCard(
                                 marketplace = snapshot?.marketplace.orEmpty(),
+                                search = marketplaceSearch,
+                                category = marketplaceCategory,
                                 actionState = actionState,
-                                onInstall = onInstall,
-                                onUninstall = onUninstall
+                                onSearchChange = onMarketplaceSearchChange,
+                                onCategoryChange = onMarketplaceCategoryChange,
+                                onOpenDetail = onOpenMarketplaceDetail
                             )
                         }
                     }
@@ -3782,8 +3908,23 @@ private fun SettingsMobileSelectionSnapshot.toSelectOptions(): List<SlockBrutalS
 private fun SettingsMobileSelectionSnapshot.labelFor(key: String): String =
     options.firstOrNull { it.key == key }?.label ?: selectedLabel
 
+private const val SETTINGS_CONNECTED_APPS_CATEGORY_ALL = "__all__"
+
+private object SettingsConnectedAppsConfirmKind {
+    const val DeleteClient = "delete_client"
+    const val UninstallMarketplace = "uninstall_marketplace"
+}
+
+private data class SettingsConnectedAppsConfirmTarget(
+    val kind: String,
+    val id: String
+)
+
 @Composable
-private fun SettingsConnectedAppSecretCard(secret: SettingsConnectedAppSecretSnapshot) {
+private fun SettingsConnectedAppSecretCard(
+    secret: SettingsConnectedAppSecretSnapshot,
+    onCopySecret: (String) -> Unit
+) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "Client Secret") {
         SettingsFormDetailText("Copy this secret now. It is shown once and is not persisted in diagnostics.")
         SettingsReadonlyField(label = "Client ID", value = secret.clientId)
@@ -3801,21 +3942,203 @@ private fun SettingsConnectedAppSecretCard(secret: SettingsConnectedAppSecretSna
                         .padding(horizontal = 10.dp, vertical = 10.dp)
             )
         }
+        SlockBrutalActionButton(
+            label = "Copy Secret",
+            onClick = { onCopySecret(secret.clientSecret) },
+            leadingIcon = SlockLucideIconName.Copy,
+            backgroundColor = SlockColor.BrandYellow
+        )
     }
 }
 
 @Composable
-private fun SettingsConnectedAppsBuiltInCard(apps: List<SettingsConnectedAppBuiltInSnapshot>) {
+private fun SettingsConnectedAppMarketplaceDetailDialog(
+    app: SettingsConnectedAppMarketplaceSnapshot,
+    actionState: SharedSettingsActionState?,
+    onDismiss: () -> Unit,
+    onInstall: (String) -> Unit,
+    onRequestUninstall: (String) -> Unit,
+    onOpenUrl: (String) -> Unit
+) {
+    val action = if (app.installed) CONNECTED_APPS_ACTION_UNINSTALL else CONNECTED_APPS_ACTION_INSTALL
+    val busy = actionState.connectedAppsBusyFor(action, app.id)
+    SlockUnifiedDialog(
+        title = app.name,
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        maxWidth = 456.dp
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SettingsConnectedAppLogoBox(
+                name = app.name,
+                logoUrl = app.logoUrl,
+                seed = app.clientId,
+                size = 56.dp
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SettingsFormDetailText(app.description ?: "No description provided.")
+                SettingsFormDetailText(if (app.installed) "Installed from marketplace." else "Available from marketplace.")
+            }
+        }
+        SettingsConnectedAppDetailField("Publisher", app.developer)
+        SettingsConnectedAppDetailField("Category", app.category.settingsConnectedAppCategoryLabel())
+        SettingsConnectedAppDetailField("Homepage", app.homepageDomain)
+        SettingsConnectedAppDetailField("Callback", app.callbackDomain)
+        SettingsConnectedAppDetailField("Data Access", app.dataAccessSummary)
+        actionState.connectedAppsErrorFor(action, app.id)?.let { SettingsFormErrorText(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                SlockBrutalActionButton(
+                    label = "Open",
+                    onClick = { onOpenUrl(url) },
+                    leadingIcon = SlockLucideIconName.ExternalLink,
+                    backgroundColor = SlockColor.SurfaceWhite
+                )
+            }
+            SlockBrutalActionButton(
+                label =
+                    actionState.connectedAppsStatusFor(
+                        action,
+                        if (app.installed) "Uninstall" else "Install",
+                        app.id
+                    ),
+                onClick = {
+                    if (app.installed) {
+                        onRequestUninstall(app.id)
+                    } else {
+                        onInstall(app.id)
+                    }
+                },
+                enabled = !busy,
+                leadingIcon = if (app.installed) SlockLucideIconName.Trash2 else SlockLucideIconName.Download,
+                backgroundColor = if (app.installed) SlockColor.SurfaceWhite else SlockColor.BrandYellow
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppBuiltInDetailDialog(
+    app: SettingsConnectedAppBuiltInSnapshot,
+    onDismiss: () -> Unit,
+    onOpenUrl: (String) -> Unit
+) {
+    SlockUnifiedDialog(
+        title = app.name,
+        onDismiss = onDismiss,
+        maxWidth = 456.dp
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            SettingsConnectedAppLogoBox(
+                name = app.name,
+                logoUrl = null,
+                seed = app.clientId,
+                size = 56.dp
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SettingsFormDetailText(app.description ?: "No description provided.")
+                SettingsFormDetailText("Built in by Raft.")
+            }
+        }
+        SettingsConnectedAppDetailField("Publisher", "Raft")
+        SettingsConnectedAppDetailField("Client ID", app.clientId)
+        SettingsConnectedAppDetailField("Homepage", app.homepageDomain)
+        SettingsConnectedAppDetailField("Agent Manifest", app.agentManifestUrl)
+        app.homepageUrl?.takeIf { it.isNotBlank() }?.let { url ->
+            SlockBrutalActionButton(
+                label = "Open",
+                onClick = { onOpenUrl(url) },
+                leadingIcon = SlockLucideIconName.ExternalLink,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsConfirmDialog(
+    target: SettingsConnectedAppsConfirmTarget,
+    snapshot: SettingsConnectedAppsSnapshot?,
+    actionState: SharedSettingsActionState?,
+    onDismiss: () -> Unit,
+    onConfirmDelete: (String) -> Unit,
+    onConfirmUninstall: (String) -> Unit
+) {
+    val client = snapshot?.registered?.firstOrNull { it.id == target.id }
+    val marketplaceApp = snapshot?.marketplace?.firstOrNull { it.id == target.id }
+    val installedApp = snapshot?.installed?.firstOrNull { it.id == target.id }
+    val appName = client?.name ?: marketplaceApp?.name ?: installedApp?.name ?: "this app"
+    val deleting = target.kind == SettingsConnectedAppsConfirmKind.DeleteClient
+    val action = if (deleting) CONNECTED_APPS_ACTION_DELETE else CONNECTED_APPS_ACTION_UNINSTALL
+    val busy = actionState.connectedAppsBusyFor(action, target.id)
+    SlockUnifiedDialog(
+        title = if (deleting) "Delete OAuth Client" else "Uninstall App",
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        maxWidth = 424.dp
+    ) {
+        SettingsFormDetailText(
+            if (deleting) {
+                "Delete $appName and revoke its client secret, grants, and marketplace linkage. This cannot be undone."
+            } else {
+                "Uninstall $appName from this workspace and revoke its access."
+            }
+        )
+        SettingsConnectedAppDetailField(
+            label = "Client ID",
+            value = client?.clientId ?: marketplaceApp?.clientId ?: installedApp?.clientId
+        )
+        actionState.connectedAppsErrorFor(action, target.id)?.let { SettingsFormErrorText(it) }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SlockBrutalActionButton(
+                label = "Cancel",
+                onClick = onDismiss,
+                enabled = !busy,
+                leadingIcon = SlockLucideIconName.X,
+                backgroundColor = SlockColor.SurfaceWhite
+            )
+            SlockBrutalActionButton(
+                label = actionState.connectedAppsStatusFor(action, if (deleting) "Delete" else "Uninstall", target.id),
+                onClick = {
+                    if (deleting) {
+                        onConfirmDelete(target.id)
+                    } else {
+                        onConfirmUninstall(target.id)
+                    }
+                },
+                enabled = !busy,
+                leadingIcon = SlockLucideIconName.Trash2,
+                backgroundColor = SlockColor.AccentRed
+            )
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppDetailField(label: String, value: String?) {
+    value?.takeIf { it.isNotBlank() }?.let {
+        SettingsReadonlyField(label = label, value = it)
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppsBuiltInCard(
+    apps: List<SettingsConnectedAppBuiltInSnapshot>,
+    onOpenDetail: (String) -> Unit
+) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.PackageCheck, title = "Built-in Apps") {
         if (apps.isEmpty()) {
             SettingsFormEmptyText("No built-in apps are available.")
         } else {
             apps.forEach { app ->
-                SettingsConnectedAppInfoRow(
+                SettingsConnectedAppActionRow(
                     title = app.name,
                     detail = listOfNotNull(app.description, app.homepageDomain).joinToString(" · "),
-                    status = "Built in",
-                    iconName = SlockLucideIconName.Sparkles
+                    buttonLabel = "Details",
+                    buttonIcon = SlockLucideIconName.Eye,
+                    buttonColor = SlockColor.SurfaceWhite,
+                    enabled = true,
+                    onClick = { onOpenDetail(app.id) }
                 )
             }
         }
@@ -3825,25 +4148,52 @@ private fun SettingsConnectedAppsBuiltInCard(apps: List<SettingsConnectedAppBuil
 @Composable
 private fun SettingsConnectedAppsMarketplaceCard(
     marketplace: List<SettingsConnectedAppMarketplaceSnapshot>,
+    search: String,
+    category: String,
     actionState: SharedSettingsActionState?,
-    onInstall: (String) -> Unit,
-    onUninstall: (String) -> Unit
+    onSearchChange: (String) -> Unit,
+    onCategoryChange: (String) -> Unit,
+    onOpenDetail: (String) -> Unit
 ) {
+    val categoryOptions = marketplace.settingsConnectedAppCategoryOptions()
+    val resolvedCategory =
+        category.takeIf { selected -> categoryOptions.any { it.id == selected } } ?: SETTINGS_CONNECTED_APPS_CATEGORY_ALL
+    val filteredMarketplace = marketplace.settingsConnectedAppFilteredMarketplace(search, resolvedCategory)
     SettingsFormSectionCard(iconName = SlockLucideIconName.Store, title = "Marketplace") {
+        SlockBrutalSearchField(
+            value = search,
+            placeholder = "Search apps",
+            onValueChange = onSearchChange
+        )
+        SlockBrutalSelectField(
+            options = categoryOptions,
+            selectedId = resolvedCategory,
+            onSelect = { onCategoryChange(it.id) },
+            placeholder = "All categories"
+        )
         if (marketplace.isEmpty()) {
             SettingsFormEmptyText("No marketplace apps are available.")
+        } else if (filteredMarketplace.isEmpty()) {
+            SettingsFormEmptyText("No marketplace apps match this search.")
         } else {
-            marketplace.forEach { app ->
-                val action = if (app.installed) CONNECTED_APPS_ACTION_UNINSTALL else CONNECTED_APPS_ACTION_INSTALL
+            filteredMarketplace.forEach { app ->
                 SettingsConnectedAppActionRow(
                     title = app.name,
-                    detail = listOfNotNull(app.developer, app.description, app.dataAccessSummary).joinToString(" · "),
-                    buttonLabel = actionState.connectedAppsStatusFor(action, if (app.installed) "Uninstall" else "Install", app.id),
-                    buttonIcon = if (app.installed) SlockLucideIconName.Trash2 else SlockLucideIconName.Download,
-                    buttonColor = if (app.installed) SlockColor.SurfaceWhite else SlockColor.BrandYellow,
-                    enabled = actionState?.inProgress != true,
-                    onClick = { if (app.installed) onUninstall(app.id) else onInstall(app.id) }
+                    detail =
+                        listOfNotNull(
+                            app.category.settingsConnectedAppCategoryLabel(),
+                            app.developer,
+                            app.dataAccessSummary,
+                            if (app.installed) "Installed" else null
+                        ).joinToString(" · "),
+                    buttonLabel = "Details",
+                    buttonIcon = SlockLucideIconName.Eye,
+                    buttonColor = SlockColor.SurfaceWhite,
+                    enabled = true,
+                    onClick = { onOpenDetail(app.id) }
                 )
+                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_INSTALL, app.id)?.let { SettingsFormErrorText(it) }
+                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)?.let { SettingsFormErrorText(it) }
             }
         }
     }
@@ -3852,23 +4202,41 @@ private fun SettingsConnectedAppsMarketplaceCard(
 @Composable
 private fun SettingsConnectedAppsInstalledCard(
     installed: List<SettingsConnectedAppInstalledSnapshot>,
+    clients: List<SettingsConnectedAppClientSnapshot>,
     actionState: SharedSettingsActionState?,
-    onUninstall: (String) -> Unit
+    onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
+    onRequestUninstall: (String) -> Unit
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.CircleCheck, title = "Installed Apps") {
         if (installed.isEmpty()) {
             SettingsFormEmptyText("No marketplace apps are installed for this workspace.")
         } else {
             installed.forEach { app ->
+                val client = clients.firstOrNull { it.id == app.id }
+                val marketplaceApp = app.origin == "marketplace"
+                val editableClient = app.editable && client != null
+                val busy = actionState.connectedAppsBusyFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)
                 SettingsConnectedAppActionRow(
                     title = app.name,
                     detail = listOfNotNull(app.developer, app.description, app.origin).joinToString(" · "),
-                    buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, "Uninstall", app.id),
-                    buttonIcon = SlockLucideIconName.Trash2,
+                    buttonLabel =
+                        if (editableClient) {
+                            "Edit"
+                        } else {
+                            actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_UNINSTALL, "Uninstall", app.id)
+                        },
+                    buttonIcon = if (editableClient) SlockLucideIconName.Pencil else SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.SurfaceWhite,
-                    enabled = actionState?.inProgress != true && app.origin == "marketplace",
-                    onClick = { onUninstall(app.id) }
+                    enabled = editableClient || (marketplaceApp && !busy),
+                    onClick = {
+                        if (editableClient) {
+                            onStartEdit(client)
+                        } else if (marketplaceApp) {
+                            onRequestUninstall(app.id)
+                        }
+                    }
                 )
+                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_UNINSTALL, app.id)?.let { SettingsFormErrorText(it) }
             }
         }
     }
@@ -4173,7 +4541,7 @@ private fun SettingsConnectedAppClientsCard(
     clients: List<SettingsConnectedAppClientSnapshot>,
     actionState: SharedSettingsActionState?,
     onStartEdit: (SettingsConnectedAppClientSnapshot) -> Unit,
-    onDelete: (String) -> Unit,
+    onRequestDelete: (String) -> Unit,
     onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
     publishCategory: String,
     publishDataAccess: String
@@ -4183,13 +4551,15 @@ private fun SettingsConnectedAppClientsCard(
             SettingsFormEmptyText("No server-local OAuth clients yet.")
         } else {
             clients.forEach { app ->
+                val publishBusy = actionState.connectedAppsBusyFor(CONNECTED_APPS_ACTION_PUBLISH, app.id)
+                val deleteBusy = actionState.connectedAppsBusyFor(CONNECTED_APPS_ACTION_DELETE, app.id)
                 SettingsConnectedAppActionRow(
                     title = app.name,
                     detail = listOfNotNull(app.clientId, app.publishStatus, app.description).joinToString(" · "),
                     buttonLabel = "Edit",
                     buttonIcon = SlockLucideIconName.Pencil,
                     buttonColor = SlockColor.SurfaceWhite,
-                    enabled = actionState?.inProgress != true,
+                    enabled = !publishBusy && !deleteBusy,
                     onClick = { onStartEdit(app) }
                 )
                 SettingsConnectedAppActionRow(
@@ -4198,7 +4568,7 @@ private fun SettingsConnectedAppClientsCard(
                     buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_PUBLISH, "Request Publish", app.id),
                     buttonIcon = SlockLucideIconName.Send,
                     buttonColor = SlockColor.AccentCyan,
-                    enabled = actionState?.inProgress != true,
+                    enabled = !publishBusy,
                     onClick = {
                         onPublish(
                             SettingsConnectedAppPublishRequest(
@@ -4209,20 +4579,19 @@ private fun SettingsConnectedAppClientsCard(
                         )
                     }
                 )
+                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_PUBLISH, app.id)?.let { SettingsFormErrorText(it) }
                 SettingsConnectedAppActionRow(
                     title = "Delete ${app.name}",
                     detail = "Remove this server-local OAuth client and its credentials.",
                     buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_DELETE, "Delete", app.id),
                     buttonIcon = SlockLucideIconName.Trash2,
                     buttonColor = SlockColor.AccentRed,
-                    enabled = actionState?.inProgress != true,
-                    onClick = { onDelete(app.id) }
+                    enabled = !deleteBusy,
+                    onClick = { onRequestDelete(app.id) }
                 )
+                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_DELETE, app.id)?.let { SettingsFormErrorText(it) }
                 SettingsFormDivider()
             }
-        }
-        if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_DELETE, CONNECTED_APPS_ACTION_PUBLISH) && it.errorCode != null } == true) {
-            SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
 }
@@ -6377,6 +6746,63 @@ private fun ai.slock.compose.data.SharedSettingsActionState?.connectedAppsStatus
         inProgress -> "Loading"
         errorCode != null -> errorCode
         else -> "Saved"
+    }
+
+private fun ai.slock.compose.data.SharedSettingsActionState?.connectedAppsBusyFor(
+    action: String,
+    itemId: String? = null
+): Boolean =
+    this?.action == action &&
+        (itemId == null || this.itemId == itemId) &&
+        this.inProgress
+
+private fun ai.slock.compose.data.SharedSettingsActionState?.connectedAppsErrorFor(
+    action: String,
+    itemId: String? = null
+): String? =
+    this?.takeIf {
+        it.action == action &&
+            (itemId == null || it.itemId == itemId) &&
+            it.errorCode != null
+    }?.errorCode
+
+private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppCategoryOptions(): List<SlockBrutalSelectOption> =
+    listOf(SlockBrutalSelectOption(SETTINGS_CONNECTED_APPS_CATEGORY_ALL, "All categories")) +
+        map { it.category.trim().ifBlank { "Other" } }
+            .distinct()
+            .sorted()
+            .map { SlockBrutalSelectOption(it, it.settingsConnectedAppCategoryLabel()) }
+
+private fun List<SettingsConnectedAppMarketplaceSnapshot>.settingsConnectedAppFilteredMarketplace(
+    search: String,
+    category: String
+): List<SettingsConnectedAppMarketplaceSnapshot> =
+    filter { app ->
+        val categoryMatches = category == SETTINGS_CONNECTED_APPS_CATEGORY_ALL || app.category == category
+        categoryMatches && app.settingsConnectedAppMatchesSearch(search)
+    }
+
+private fun SettingsConnectedAppMarketplaceSnapshot.settingsConnectedAppMatchesSearch(search: String): Boolean {
+    val query = search.trim().lowercase()
+    if (query.isBlank()) return true
+    return listOfNotNull(name, category, developer, description, homepageDomain, callbackDomain, dataAccessSummary)
+        .any { it.lowercase().contains(query) }
+}
+
+private fun String.settingsConnectedAppCategoryLabel(): String =
+    trim()
+        .ifBlank { "Other" }
+        .replace("-", " ")
+        .replace("_", " ")
+        .split(" ")
+        .filter { it.isNotBlank() }
+        .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+
+private fun settingsConnectedAppsPermissionCopy(blocker: PermissionBlocker): String =
+    if (blocker.code == "server_admin_required" || blocker.requiredCapability == "manage_integrations") {
+        "Only server owners and admins can manage connected apps."
+    } else {
+        blocker.code
     }
 
 private fun ai.slock.compose.data.SharedSettingsActionState?.isServerConfirmation(
@@ -11042,6 +11468,11 @@ private fun SettingsVisualConnectedAppsContent() {
         manifestUrl = "https://example.com/manifest.json",
         publishCategory = "productivity",
         publishDataAccess = "Messages and channel metadata",
+        marketplaceSearch = "",
+        marketplaceCategory = SETTINGS_CONNECTED_APPS_CATEGORY_ALL,
+        selectedMarketplaceId = null,
+        selectedBuiltInId = null,
+        confirmTarget = null,
         actionState = null,
         bottomContentPadding = SlockSpacing.Lg,
         onNameChange = {},
@@ -11052,16 +11483,27 @@ private fun SettingsVisualConnectedAppsContent() {
         onManifestUrlChange = {},
         onPublishCategoryChange = {},
         onPublishDataAccessChange = {},
+        onMarketplaceSearchChange = {},
+        onMarketplaceCategoryChange = {},
+        onOpenMarketplaceDetail = {},
+        onDismissMarketplaceDetail = {},
+        onOpenBuiltInDetail = {},
+        onDismissBuiltInDetail = {},
         onStartEdit = {},
         onCancelEdit = {},
         onRegister = {},
         onUpdate = {},
         onUploadLogo = {},
         onClearLogo = {},
-        onDelete = {},
+        onRequestDelete = {},
+        onConfirmDelete = {},
         onPublish = {},
         onInstall = {},
-        onUninstall = {},
+        onRequestUninstall = {},
+        onConfirmUninstall = {},
+        onDismissConfirm = {},
+        onCopySecret = {},
+        onOpenUrl = {},
         onRefresh = {}
     )
 }
