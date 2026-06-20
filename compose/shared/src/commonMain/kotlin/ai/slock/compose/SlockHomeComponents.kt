@@ -1653,15 +1653,11 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #223: anchor is the row's BOTTOM-LEFT (not top-left).
-                    // Top-left + 8dp vertical offset put the menu INSIDE
-                    // the row's vertical bounds (which is taller than
-                    // the menu), so the menu appeared to be on the same
-                    // line as the row instead of below it (@artin 20:12).
-                    // Anchoring at the bottom-left + 8dp gap lands the
-                    // menu immediately below the row, matching React
-                    // placeSidebarContextMenu.ts semantics where the
-                    // anchor is effectively the bottom of the hit area.
+                    // Pin/Unpin menu anchor = row's bottom-left, so the
+                    // menu lands 8dp below the row's bottom edge
+                    // (SlockBaseMenuVerticalOffset). Top-left would put
+                    // the menu inside the row's vertical bounds because
+                    // the row is taller than the menu.
                     val pos = coordinates.positionInRoot()
                     val size = coordinates.size
                     rowAnchor = Offset(x = pos.x, y = pos.y + size.height)
@@ -1794,15 +1790,11 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #223: anchor is the row's BOTTOM-LEFT (not top-left).
-                    // Top-left + 8dp vertical offset put the menu INSIDE
-                    // the row's vertical bounds (which is taller than
-                    // the menu), so the menu appeared to be on the same
-                    // line as the row instead of below it (@artin 20:12).
-                    // Anchoring at the bottom-left + 8dp gap lands the
-                    // menu immediately below the row, matching React
-                    // placeSidebarContextMenu.ts semantics where the
-                    // anchor is effectively the bottom of the hit area.
+                    // Pin/Unpin menu anchor = row's bottom-left, so the
+                    // menu lands 8dp below the row's bottom edge
+                    // (SlockBaseMenuVerticalOffset). Top-left would put
+                    // the menu inside the row's vertical bounds because
+                    // the row is taller than the menu.
                     val pos = coordinates.positionInRoot()
                     val size = coordinates.size
                     rowAnchor = Offset(x = pos.x, y = pos.y + size.height)

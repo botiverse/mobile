@@ -99,15 +99,15 @@ internal fun SlockFloatingOverlayHost(
     // landed at y=877 dp ≈ 2303 px (screen bottom) instead of near
     // the row. Keep everything in pixels to avoid the unit mismatch.
     var overlayLayout by remember { mutableStateOf(SlockFloatingOverlayLayout()) }
-    // #223 follow-up: defer clickable registration so the long-press
-    // release that opens the menu does not immediately propagate to the
-    // host's onDismiss and close it before the user sees anything. The
-    // ~150ms window covers the standard Android long-press threshold
-    // (~500ms) minus the time to compose + render the menu, which is
-    // usually well under that. The menu's own content Column already
-    // has a no-op clickable (slockFloatingContentClickTarget) so clicks
-    // on the menu do not bubble up; the host only needs to dismiss on
-    // clicks outside the menu.
+    // Defer the host's dismiss-clickable so the long-press release that
+    // opens the menu does not immediately propagate to the host's
+    // onDismiss and close the menu before the user sees anything. The
+    // 150ms window covers the standard Android long-press threshold
+    // (~500ms) minus the time to compose + render the menu. The menu's
+    // own content Column already has a no-op clickable
+    // (slockFloatingContentClickTarget) so clicks on the menu do not
+    // bubble up; the host only needs to dismiss on clicks outside the
+    // menu.
     var dismissClickableActive by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(150)
@@ -146,11 +146,9 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     horizontalAutoFlip: Boolean = false
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
-        android.util.Log.d("SlockPinMenuDebug", "positionContent: skipped (isReady=" + isReady + " anchor=" + anchor + " contentSize=" + contentSize + ")")
         return null
     }
     val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
-    android.util.Log.d("SlockPinMenuDebug", "positionContent: anchor=" + anchor + " origin=" + origin + " localAnchor=" + localAnchor + " size=" + size + " contentSize=" + contentSize + " hOffset=" + horizontalOffset + " vOffset=" + verticalOffset + " vPlacement=" + verticalPlacement + " hAutoFlip=" + horizontalAutoFlip)
     val maxX = (size.width - contentSize.width - viewportGap).coerceAtLeast(viewportGap)
     val x = if (horizontalAutoFlip) {
         val preferredRightX = localAnchor.x + horizontalOffset
@@ -180,7 +178,6 @@ internal fun SlockFloatingOverlayLayout.positionContent(
             }
         }
     }
-    android.util.Log.d("SlockPinMenuDebug", "positionContent: result offset=(" + x + ", " + y + ")")
     return Offset(x, y)
 }
 
