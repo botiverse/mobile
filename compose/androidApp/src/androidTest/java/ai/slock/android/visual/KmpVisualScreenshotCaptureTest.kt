@@ -346,6 +346,31 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureSettingsBillingLoading() {
+        captureKmpSettingsPageCase("settings.billing.loading", "billing-loading")
+    }
+
+    @Test
+    fun captureSettingsBillingNoPermission() {
+        captureKmpSettingsPageCase("settings.billing.no-permission", "billing-no-permission")
+    }
+
+    @Test
+    fun captureSettingsBillingTrial() {
+        captureKmpSettingsPageCase("settings.billing.trial", "billing-trial")
+    }
+
+    @Test
+    fun captureSettingsBillingFounder() {
+        captureKmpSettingsPageCase("settings.billing.founder", "billing-founder")
+    }
+
+    @Test
+    fun captureSettingsBillingDowngrade() {
+        captureKmpSettingsPageCase("settings.billing.downgrade", "billing-downgrade")
+    }
+
+    @Test
     fun captureSettingsLanguageRegionPage() {
         captureKmpSettingsPageCase("settings.language-region.page", "language-region")
     }

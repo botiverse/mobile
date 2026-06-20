@@ -509,14 +509,21 @@ enum class ConnectedAccountStatus {
 
 data class SettingsBillingSnapshot(
     val currentPlan: SettingsBillingCurrentPlanSnapshot,
-    val plans: List<SettingsBillingPlanSnapshot>
+    val plans: List<SettingsBillingPlanSnapshot>,
+    val notices: List<SettingsBillingNoticeSnapshot> = emptyList(),
+    val actions: List<SettingsBillingActionSnapshot> = emptyList(),
+    val comparePlansUrl: String = "https://raft.build/#pricing"
 )
 
 data class SettingsBillingSubscriptionSnapshot(
     val status: String? = null,
     val currentPeriodEnd: String? = null,
     val cancelAtPeriodEnd: Boolean = false,
-    val stripeConfigured: Boolean = false
+    val stripeConfigured: Boolean = false,
+    val billingInterval: String? = null,
+    val canManageBilling: Boolean = false,
+    val displayName: String? = null,
+    val effectivePlan: String? = null
 )
 
 data class SettingsServerUsageSnapshot(
@@ -528,7 +535,10 @@ data class SettingsServerUsageSnapshot(
 data class SettingsBillingCurrentPlanSnapshot(
     val planName: String,
     val usageRows: List<SettingsPlanUsageSnapshot>,
-    val trialActive: Boolean = false
+    val trialActive: Boolean = false,
+    val description: String = "",
+    val includedFeatures: List<String> = emptyList(),
+    val excludedFeatures: List<String> = emptyList()
 )
 
 data class SettingsPlanUsageSnapshot(
@@ -541,7 +551,24 @@ data class SettingsBillingPlanSnapshot(
     val price: String,
     val features: List<String>,
     val current: Boolean = false,
-    val comingSoon: Boolean = false
+    val comingSoon: Boolean = false,
+    val badgeLabel: String? = null
+)
+
+data class SettingsBillingNoticeSnapshot(
+    val key: String,
+    val title: String,
+    val detail: String,
+    val tone: String = "info",
+    val rows: List<SettingsPlanUsageSnapshot> = emptyList()
+)
+
+data class SettingsBillingActionSnapshot(
+    val key: String,
+    val label: String,
+    val detail: String,
+    val enabled: Boolean = false,
+    val style: String = "secondary"
 )
 
 data class SettingsComputersSnapshot(

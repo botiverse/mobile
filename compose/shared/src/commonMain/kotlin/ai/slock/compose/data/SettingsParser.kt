@@ -560,24 +560,38 @@ fun parseSharedSettingsServerUsage(bodyText: String): SettingsServerUsageSnapsho
 
 @Serializable
 private data class WireSettingsBillingSubscription(
+    val plan: String? = null,
+    val displayName: String? = null,
     val subscription: WireSettingsSubscription? = null,
     val stripeConfigured: Boolean,
+    val permissions: WireSettingsBillingPermissions = WireSettingsBillingPermissions()
 )
 
 @Serializable
 private data class WireSettingsSubscription(
     val status: String? = null,
+    val billingInterval: String? = null,
     val currentPeriodEnd: String? = null,
     val cancelAtPeriodEnd: Boolean = false,
+)
+
+@Serializable
+private data class WireSettingsBillingPermissions(
+    val canReadBillingSummary: Boolean = false,
+    val canManageBilling: Boolean = false
 )
 
 fun parseSharedSettingsBillingSubscription(bodyText: String): SettingsBillingSubscriptionSnapshot? = runCatching {
     val billing = settingsJson.decodeFromString(WireSettingsBillingSubscription.serializer(), bodyText)
     SettingsBillingSubscriptionSnapshot(
         status = billing.subscription?.status?.takeIf { it.isNotBlank() },
+        billingInterval = billing.subscription?.billingInterval?.takeIf { it.isNotBlank() },
         currentPeriodEnd = billing.subscription?.currentPeriodEnd?.takeIf { it.isNotBlank() },
         cancelAtPeriodEnd = billing.subscription?.cancelAtPeriodEnd == true,
-        stripeConfigured = billing.stripeConfigured
+        stripeConfigured = billing.stripeConfigured,
+        canManageBilling = billing.permissions.canManageBilling,
+        displayName = billing.displayName?.takeIf { it.isNotBlank() },
+        effectivePlan = billing.plan?.takeIf { it.isNotBlank() }
     )
 }.getOrNull()
 

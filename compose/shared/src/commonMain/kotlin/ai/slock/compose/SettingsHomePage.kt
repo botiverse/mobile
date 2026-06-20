@@ -166,7 +166,9 @@ import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
 import ai.slock.compose.data.SettingsAppearanceSnapshot
 import ai.slock.compose.data.SettingsAppearanceUpdateRequest
+import ai.slock.compose.data.SettingsBillingActionSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
+import ai.slock.compose.data.SettingsBillingNoticeSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
 import ai.slock.compose.data.SettingsConnectedAppBuiltInSnapshot
@@ -189,6 +191,7 @@ import ai.slock.compose.data.SettingsMobileSnapshot
 import ai.slock.compose.data.SettingsPlanUsageSnapshot
 import ai.slock.compose.data.SettingsLanguageRegionPreferenceUpdateRequest
 import ai.slock.compose.data.SettingsLanguageRegionSnapshot
+import ai.slock.compose.data.PermissionBlocker
 import ai.slock.compose.data.SettingsServerAdminSnapshot
 import ai.slock.compose.data.SettingsServerAgreementSnapshot
 import ai.slock.compose.data.SettingsServerAgreementUpdateRequest
@@ -5490,8 +5493,38 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
                             )
                         }
                         .orEmpty(),
-                trialActive = billing?.currentPlan?.trialActive ?: false
+                trialActive = billing?.currentPlan?.trialActive ?: false,
+                description = billing?.currentPlan?.description.orEmpty(),
+                includedFeatures = billing?.currentPlan?.includedFeatures.orEmpty(),
+                excludedFeatures = billing?.currentPlan?.excludedFeatures.orEmpty()
             ),
+        notices =
+            billing?.notices?.map { notice ->
+                KuiklySettingsBillingNotice(
+                    key = notice.key,
+                    title = notice.title,
+                    detail = notice.detail.formatSettingsBillingUsageValue(timeContext),
+                    tone = notice.tone,
+                    rows =
+                        notice.rows.map { row ->
+                            KuiklySettingsPlanUsageRow(
+                                label = row.label,
+                                value = row.value.formatSettingsBillingUsageValue(timeContext)
+                            )
+                        }
+                )
+            }.orEmpty(),
+        actions =
+            billing?.actions?.map { action ->
+                KuiklySettingsBillingAction(
+                    key = action.key,
+                    label = action.label,
+                    detail = action.detail,
+                    enabled = action.enabled,
+                    style = action.style
+                )
+            }.orEmpty(),
+        comparePlansUrl = billing?.comparePlansUrl.orEmpty().ifBlank { "https://raft.build/#pricing" },
         plans =
             billing?.plans?.map { plan ->
                 KuiklySettingsBillingPlan(
@@ -5500,7 +5533,8 @@ private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
                     price = plan.price,
                     features = plan.features,
                     current = plan.current,
-                    comingSoon = plan.comingSoon
+                    comingSoon = plan.comingSoon,
+                    badgeLabel = plan.badgeLabel
                 )
             } ?: listOf(
                 KuiklySettingsBillingPlan(id = fallbackPlan.lowercase(), name = fallbackPlan, price = "Loading billing snapshot", current = true)
@@ -10538,7 +10572,12 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Administration", "Member directory permissions", SlockLucideIconName.UsersRound)
         "administration-translation" ->
             SettingsVisualSpec(variant, "Administration", "Server translation controls", SlockLucideIconName.Languages)
-        "billing" ->
+        "billing",
+        "billing-loading",
+        "billing-no-permission",
+        "billing-trial",
+        "billing-founder",
+        "billing-downgrade" ->
             SettingsVisualSpec(variant, "Plan & Billing", "Plan and workspace usage", SlockLucideIconName.CreditCard)
         "language-region" ->
             SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
@@ -10568,7 +10607,12 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
         "administration-onboarding",
         "administration-member-permissions",
         "administration-translation" -> SettingsVisualServerFocusedContent(spec.variant)
-        "billing" -> SettingsVisualBillingContent()
+        "billing",
+        "billing-loading",
+        "billing-no-permission",
+        "billing-trial",
+        "billing-founder",
+        "billing-downgrade" -> SettingsVisualBillingContent(spec.variant)
         "language-region" -> SettingsVisualLanguageRegionContent()
         "appearance" -> SettingsVisualAppearanceContent()
         "notifications" -> SettingsVisualNotificationsContent()
@@ -10769,11 +10813,18 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
 }
 
 @Composable
-private fun SettingsVisualBillingContent() {
+private fun SettingsVisualBillingContent(variant: String = "billing") {
+    val state: ScreenLoadState<SettingsBillingSnapshot> =
+        when (variant) {
+            "billing-loading" -> ScreenLoadState.Loading
+            "billing-no-permission" ->
+                ScreenLoadState.NoPermission(
+                    PermissionBlocker(code = "billing_owner_required", requiredCapability = "manage_billing")
+                )
+            else -> ScreenLoadState.Content(settingsVisualBillingSnapshot(variant))
+        }
     SettingsBillingContent(
-        payload =
-            ScreenLoadState.Content(settingsVisualBillingSnapshot())
-                .toBillingPayload(homeSearchVisualSession, timeContext = null),
+        payload = state.toBillingPayload(homeSearchVisualSession, timeContext = null),
         bottomContentPadding = SlockSpacing.Lg,
         onEvent = { _, _ -> }
     )
@@ -10950,26 +11001,141 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
             )
     )
 
-private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot =
-    SettingsBillingSnapshot(
+private fun settingsVisualBillingSnapshot(variant: String = "billing"): SettingsBillingSnapshot {
+    val isTrial = variant == "billing-trial"
+    val isFounder = variant == "billing-founder"
+    val isDowngrade = variant == "billing-downgrade"
+    val planName =
+        when {
+            isFounder -> "Founder"
+            isTrial || isDowngrade -> "Hobby"
+            else -> "Pro x 2"
+        }
+    return SettingsBillingSnapshot(
         currentPlan =
             SettingsBillingCurrentPlanSnapshot(
-                planName = "Pro",
+                planName = planName,
                 usageRows =
+                    when {
+                        isFounder ->
+                            listOf(
+                                SettingsPlanUsageSnapshot("Human Seat", "12 / Unlimited"),
+                                SettingsPlanUsageSnapshot("Agent Seat", "41 / Unlimited"),
+                                SettingsPlanUsageSnapshot("Message History", "Unlimited")
+                            )
+                        isTrial || isDowngrade ->
+                            listOf(
+                                SettingsPlanUsageSnapshot("Computers", "4 / 2"),
+                                SettingsPlanUsageSnapshot("Agents", "12 / 5"),
+                                SettingsPlanUsageSnapshot("Channels", "8 / 5"),
+                                SettingsPlanUsageSnapshot("History", "30 days")
+                            )
+                        else ->
+                            listOf(
+                                SettingsPlanUsageSnapshot("Human Seat", "8 / 10"),
+                                SettingsPlanUsageSnapshot("Agent Seat", "18 / 20"),
+                                SettingsPlanUsageSnapshot("Universal seats", "26 / 30"),
+                                SettingsPlanUsageSnapshot("Message History", "Unlimited")
+                            )
+                    },
+                trialActive = isTrial,
+                description =
+                    when {
+                        isFounder -> "Grandfathered unlimited access."
+                        isTrial || isDowngrade -> "Get started in minutes."
+                        else -> "2 Pro Seat Packs purchased."
+                    },
+                includedFeatures =
+                    if (isFounder) {
+                        listOf("Everything without any limitations")
+                    } else if (isTrial || isDowngrade) {
+                        listOf(
+                            "Channels",
+                            "Tasks",
+                            "Unlimited agents on your own computers",
+                            "30 days of message history",
+                            "100 MB file uploads/month"
+                        )
+                    } else {
+                        listOf(
+                            "Unlimited message history",
+                            "Higher file upload limits",
+                            "Joint Channels",
+                            "More professional features coming soon"
+                        )
+                    },
+                excludedFeatures =
+                    if (isTrial || isDowngrade) {
+                        listOf(
+                            "Higher file upload limits",
+                            "Unlimited message history",
+                            "Joint Channels"
+                        )
+                    } else {
+                        emptyList()
+                    }
+            ),
+        notices =
+            when {
+                isTrial ->
                     listOf(
-                        SettingsPlanUsageSnapshot("Agents", "8 / 20"),
-                        SettingsPlanUsageSnapshot("Computers", "4 / 10"),
-                        SettingsPlanUsageSnapshot("Channels", "34")
-                    ),
-                trialActive = false
+                        SettingsBillingNoticeSnapshot(
+                            key = "trial",
+                            title = "Final Trial Period",
+                            detail = "Full-featured free trial is active. Paid plans begin after the trial date.",
+                            tone = "trial"
+                        )
+                    )
+                isFounder ->
+                    listOf(
+                        SettingsBillingNoticeSnapshot(
+                            key = "founder",
+                            title = "Founder Plan",
+                            detail = "This workspace keeps grandfathered unlimited access.",
+                            tone = "success"
+                        )
+                    )
+                isDowngrade ->
+                    listOf(
+                        SettingsBillingNoticeSnapshot(
+                            key = "downgrade",
+                            title = "Plan Downgraded",
+                            detail = "3 days remaining in grace period. Excess agents will be stopped automatically.",
+                            tone = "warning",
+                            rows =
+                                listOf(
+                                    SettingsPlanUsageSnapshot("Agents over limit", "7 (12/5)"),
+                                    SettingsPlanUsageSnapshot("Computers over limit", "2 (4/2)"),
+                                    SettingsPlanUsageSnapshot("Channels over limit", "3 (8/5)")
+                                )
+                        )
+                    )
+                else -> emptyList()
+            },
+        actions =
+            listOf(
+                SettingsBillingActionSnapshot(
+                    key = "portal",
+                    label = "Billing portal",
+                    detail = if (isTrial || isDowngrade) "Paid plans are not available yet." else "Open Stripe billing portal.",
+                    enabled = !(isTrial || isDowngrade || isFounder)
+                ),
+                SettingsBillingActionSnapshot(
+                    key = "cancel",
+                    label = "Cancel subscription",
+                    detail = "Cancel the whole Pro subscription at period end.",
+                    enabled = !(isTrial || isDowngrade || isFounder),
+                    style = "danger"
+                )
             ),
         plans =
             listOf(
-                SettingsBillingPlanSnapshot("Free", "$0/mo", listOf("3 agents", "1 computer")),
-                SettingsBillingPlanSnapshot("Pro", "$20/mo", listOf("20 agents", "10 computers", "Priority support"), current = true),
-                SettingsBillingPlanSnapshot("Enterprise", "Custom", listOf("SAML", "Audit logs"), comingSoon = true)
+                SettingsBillingPlanSnapshot("Hobby", "$0 /mo", listOf("2 computers", "5 agents", "5 channels", "30 days history"), current = isTrial || isDowngrade, badgeLabel = if (isTrial || isDowngrade) "Current" else null),
+                SettingsBillingPlanSnapshot("Team", "$20 /mo", listOf("8 computers", "40 agents", "20 channels", "Unlimited history"), current = !isTrial && !isFounder && !isDowngrade, comingSoon = isTrial || isDowngrade, badgeLabel = if (isTrial || isDowngrade) "Coming soon" else "Current"),
+                SettingsBillingPlanSnapshot("Business", "$200 /mo", listOf("40 computers", "200 agents", "Unlimited channels"), comingSoon = true, badgeLabel = "Coming soon")
             )
     )
+}
 
 private fun settingsVisualLanguageRegionSnapshot(): SettingsLanguageRegionSnapshot =
     SettingsLanguageRegionSnapshot(

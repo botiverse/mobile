@@ -668,7 +668,6 @@ class RealSettingsRepository(
                 PermissionBlocker(code = "billing_owner_required", requiredCapability = "manage_billing")
             )
         }
-        val currentPlan = server.plan.toBillingPlanConfig()
         val usage =
             when (val result = fetchServerUsage(server.id)) {
                 is DataResult.Content -> result.data
@@ -684,15 +683,21 @@ class RealSettingsRepository(
                 is DataResult.Error -> return DataResult.Error(billing.error)
                 is DataResult.NoPermission -> return DataResult.NoPermission(billing.blocker)
             }
+        val currentPlan = (subscription?.effectivePlan ?: server.plan).toBillingPlanConfig()
         val trialActive = currentPlan.id == "free" && isSettingsTrialActive()
         return DataResult.Content(
             SettingsBillingSnapshot(
                 currentPlan = SettingsBillingCurrentPlanSnapshot(
-                    planName = currentPlan.displayName,
+                    planName = subscription?.displayName ?: currentPlan.displayName,
                     usageRows = currentPlanUsageRows(currentPlan, usage, trialActive),
-                    trialActive = trialActive
+                    trialActive = trialActive,
+                    description = currentPlanDescription(currentPlan, subscription),
+                    includedFeatures = currentPlanIncludedFeatures(currentPlan),
+                    excludedFeatures = currentPlanExcludedFeatures(currentPlan)
                 ),
-                plans = settingsDisplayPlanConfigs.map { it.toBillingPlanSnapshot(currentPlan, trialActive, subscription) }
+                plans = settingsDisplayPlanConfigs.map { it.toBillingPlanSnapshot(currentPlan, trialActive, subscription) },
+                notices = billingNotices(server, currentPlan, usage, trialActive, subscription),
+                actions = billingActions(subscription)
             )
         )
     }
@@ -2097,8 +2102,160 @@ private fun SettingsBillingPlanConfig.toBillingPlanSnapshot(
         price = priceLabel,
         features = planFeatureRows(this, trialActive, subscription),
         current = id == currentPlan.id,
-        comingSoon = comingSoon
+        comingSoon = comingSoon,
+        badgeLabel =
+            when {
+                id == currentPlan.id -> "Current"
+                comingSoon -> "Coming soon"
+                else -> null
+            }
     )
+
+private fun currentPlanDescription(
+    plan: SettingsBillingPlanConfig,
+    subscription: SettingsBillingSubscriptionSnapshot?
+): String =
+    when {
+        plan.id == "founder" -> "Grandfathered unlimited access."
+        plan.id == "pro" && subscription?.status == "active" -> "For teams scaling agent collaboration."
+        plan.id == "pro" -> "Pro workspace capacity and collaboration controls."
+        plan.id == "free" -> "Get started in minutes."
+        else -> "Workspace plan details."
+    }
+
+private fun currentPlanIncludedFeatures(plan: SettingsBillingPlanConfig): List<String> =
+    when (plan.id) {
+        "founder" ->
+            listOf("Everything without any limitations")
+        "pro", "max" ->
+            listOf(
+                "Unlimited message history",
+                "Higher file upload limits",
+                "Joint Channels",
+                "More professional features coming soon"
+            )
+        else ->
+            listOf(
+                "Channels",
+                "Tasks",
+                "Unlimited agents on your own computers",
+                "Agent Reminders",
+                "Basic observability",
+                "30 days of message history",
+                "100 MB file uploads/month"
+            )
+    }
+
+private fun currentPlanExcludedFeatures(plan: SettingsBillingPlanConfig): List<String> =
+    if (plan.id == "free") {
+        listOf(
+            "Higher file upload limits",
+            "Unlimited message history",
+            "Joint Channels",
+            "More professional features coming soon"
+        )
+    } else {
+        emptyList()
+    }
+
+private fun billingNotices(
+    server: StoredAuthServer,
+    plan: SettingsBillingPlanConfig,
+    usage: SettingsServerUsageSnapshot,
+    trialActive: Boolean,
+    subscription: SettingsBillingSubscriptionSnapshot?
+): List<SettingsBillingNoticeSnapshot> =
+    buildList {
+        server.planDowngradedAt?.takeIf { it.isNotBlank() }?.let { downgradedAt ->
+            add(
+                SettingsBillingNoticeSnapshot(
+                    key = "downgrade",
+                    title = "Plan Downgraded",
+                    detail = "Free-plan grace period started $downgradedAt. Resources above free limits may be stopped after the grace period.",
+                    tone = "warning",
+                    rows = downgradeUsageRows(usage)
+                )
+            )
+        }
+        if (plan.id == "free" && trialActive) {
+            add(
+                SettingsBillingNoticeSnapshot(
+                    key = "trial",
+                    title = "Final Trial Period",
+                    detail = "All features are currently unlocked during the free trial.",
+                    tone = "trial"
+                )
+            )
+        }
+        if (plan.id == "founder") {
+            add(
+                SettingsBillingNoticeSnapshot(
+                    key = "founder",
+                    title = "Founder Plan",
+                    detail = "This workspace keeps grandfathered unlimited access.",
+                    tone = "success"
+                )
+            )
+        }
+        if (subscription?.cancelAtPeriodEnd == true) {
+            add(
+                SettingsBillingNoticeSnapshot(
+                    key = "cancel-scheduled",
+                    title = "Cancellation Scheduled",
+                    detail = subscription.currentPeriodEnd
+                        ?.let { "Pro capacity stays active until $it, then returns to the free plan." }
+                        ?: "Pro capacity stays active until the current billing period ends.",
+                    tone = "warning"
+                )
+            )
+        }
+    }
+
+private fun downgradeUsageRows(usage: SettingsServerUsageSnapshot): List<SettingsPlanUsageSnapshot> =
+    buildList {
+        val freeLimits = hobbyPlanLimits
+        if (usage.agents > freeLimits.maxAgents) {
+            add(SettingsPlanUsageSnapshot("Agents over limit", "${usage.agents - freeLimits.maxAgents} (${usage.agents}/${freeLimits.maxAgents})"))
+        }
+        if (usage.machines > freeLimits.maxMachines) {
+            add(SettingsPlanUsageSnapshot("Computers over limit", "${usage.machines - freeLimits.maxMachines} (${usage.machines}/${freeLimits.maxMachines})"))
+        }
+        if (freeLimits.maxChannels != -1 && usage.channels > freeLimits.maxChannels) {
+            add(SettingsPlanUsageSnapshot("Channels over limit", "${usage.channels - freeLimits.maxChannels} (${usage.channels}/${freeLimits.maxChannels})"))
+        }
+        if (isEmpty()) {
+            add(SettingsPlanUsageSnapshot("Free limits", "All resources are within free limits."))
+        }
+    }
+
+private fun billingActions(subscription: SettingsBillingSubscriptionSnapshot?): List<SettingsBillingActionSnapshot> {
+    val canManage = subscription?.canManageBilling == true
+    val billingEnabled = subscription?.stripeConfigured == true
+    val status = subscription?.status
+    val cancelAtPeriodEnd = subscription?.cancelAtPeriodEnd == true
+    val disabledReason =
+        when {
+            subscription == null -> "Billing controls are unavailable."
+            !canManage -> "Only server owners can change billing."
+            !billingEnabled -> "Paid plans are not available yet."
+            else -> ""
+        }
+    return listOf(
+        SettingsBillingActionSnapshot(
+            key = "portal",
+            label = "Billing portal",
+            detail = disabledReason.ifBlank { "Open Stripe billing portal." },
+            enabled = canManage && billingEnabled && status != null
+        ),
+        SettingsBillingActionSnapshot(
+            key = "cancel",
+            label = if (cancelAtPeriodEnd) "Cancellation scheduled" else "Cancel subscription",
+            detail = disabledReason.ifBlank { "Cancel the whole Pro subscription at period end." },
+            enabled = canManage && billingEnabled && status == "active" && !cancelAtPeriodEnd,
+            style = "danger"
+        )
+    )
+}
 
 private fun planFeatureRows(
     plan: SettingsBillingPlanConfig,

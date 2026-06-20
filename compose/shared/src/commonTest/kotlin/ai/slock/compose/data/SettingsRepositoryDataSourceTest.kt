@@ -303,7 +303,7 @@ class SettingsRepositoryDataSourceTest {
                 sampleStore(),
                 FakeSettingsNetworkClient(
                     usageJson = """{"machines":1,"agents":10,"channels":12}""",
-                    billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z","cancelAtPeriodEnd":true},"stripeConfigured":true}"""
+                    billingSubscriptionJson = """{"subscription":{"status":"active","currentPeriodEnd":"2026-06-01T00:00:00Z","cancelAtPeriodEnd":true},"stripeConfigured":true,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
                 )
             ).getBilling()
         val denied =
@@ -323,11 +323,62 @@ class SettingsRepositoryDataSourceTest {
         assertEquals("1 / 8", billingSnapshot.currentPlan.usageRows.first { it.label == "Computers" }.value)
         assertEquals("10 / 40", billingSnapshot.currentPlan.usageRows.first { it.label == "Agents" }.value)
         assertEquals("Unlimited", billingSnapshot.currentPlan.usageRows.first { it.label == "History" }.value)
+        assertEquals("For teams scaling agent collaboration.", billingSnapshot.currentPlan.description)
+        assertTrue(billingSnapshot.currentPlan.includedFeatures.contains("Unlimited message history"))
+        assertTrue(billingSnapshot.currentPlan.excludedFeatures.isEmpty())
+        assertEquals(listOf("cancel-scheduled"), billingSnapshot.notices.map { it.key })
+        assertEquals(listOf("portal", "cancel"), billingSnapshot.actions.map { it.key })
+        assertTrue(billingSnapshot.actions.first { it.key == "portal" }.enabled)
+        assertTrue(!billingSnapshot.actions.first { it.key == "cancel" }.enabled)
         assertEquals(listOf("Hobby", "Team", "Business"), billingSnapshot.plans.map { it.name })
         assertTrue(billingSnapshot.plans.single { it.name == "Team" }.current)
         assertTrue(billingSnapshot.plans.any { it.comingSoon })
         assertTrue(denied is DataResult.NoPermission)
         assertEquals("billing_owner_required", denied.blocker.code)
+    }
+
+    @Test
+    fun billingMapsDowngradeAndFounderNoticeStates() = runBlocking {
+        val downgradeSession =
+            sampleSession().copy(
+                servers =
+                    sampleSession().servers.map {
+                        it.copy(plan = "free", planDowngradedAt = "2026-06-18T00:00:00Z")
+                    }
+            )
+        val downgrade =
+            RealSettingsRepository(
+                sampleStore(downgradeSession),
+                FakeSettingsNetworkClient(
+                    usageJson = """{"machines":4,"agents":12,"channels":8}""",
+                    billingSubscriptionJson = """{"subscription":null,"stripeConfigured":false,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+                )
+            ).getBilling()
+        val founderSession =
+            sampleSession().copy(
+                servers = sampleSession().servers.map { it.copy(plan = "founder") }
+            )
+        val founder =
+            RealSettingsRepository(
+                sampleStore(founderSession),
+                FakeSettingsNetworkClient(
+                    usageJson = """{"machines":4,"agents":12,"channels":8}""",
+                    billingSubscriptionJson = """{"subscription":null,"stripeConfigured":false,"permissions":{"canReadBillingSummary":true,"canManageBilling":true}}"""
+                )
+            ).getBilling()
+
+        assertTrue(downgrade is DataResult.Content)
+        assertEquals("Hobby", downgrade.data.currentPlan.planName)
+        assertEquals(listOf("downgrade"), downgrade.data.notices.map { it.key })
+        assertEquals("warning", downgrade.data.notices.single().tone)
+        assertEquals(listOf("Agents over limit", "Computers over limit", "Channels over limit"), downgrade.data.notices.single().rows.map { it.label })
+        assertTrue(downgrade.data.currentPlan.excludedFeatures.contains("Joint Channels"))
+
+        assertTrue(founder is DataResult.Content)
+        assertEquals("Founder", founder.data.currentPlan.planName)
+        assertEquals(listOf("founder"), founder.data.notices.map { it.key })
+        assertEquals(listOf("Everything without any limitations"), founder.data.currentPlan.includedFeatures)
+        assertTrue(founder.data.currentPlan.excludedFeatures.isEmpty())
     }
 
     @Test
