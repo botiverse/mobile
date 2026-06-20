@@ -2,7 +2,6 @@ import AbilityConstant from '@ohos.app.ability.AbilityConstant';
 import { bundleManager } from '@kit.AbilityKit';
 import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
-import font from '@ohos.font';
 import hilog from '@ohos.hilog';
 import util from '@ohos.util';
 import UIAbility from '@ohos.app.ability.UIAbility';
@@ -44,7 +43,6 @@ const SLOCK_FONT_LOG_TAG = 'SlockFont';
 export default class EntryAbility extends UIAbility {
   private static buglyInitialized: boolean = false;
   private static buglyInitializing: boolean = false;
-  private static fontModuleRegistered: boolean = false;
   private static uiFontsRegistered: boolean = false;
   private mainWindow?: window.Window;
 
@@ -74,7 +72,7 @@ export default class EntryAbility extends UIAbility {
 
     KuiklyRenderAdapterManager.krLogAdapter = new LogAdapter();
     KuiklyRenderAdapterManager.krRouterAdapter = new RouterAdapter();
-    this.registerSlockFonts();
+    this.registerSlockFonts(mainWindow);
 
     windowStage.loadContent('pages/Index', (err, data) => {
       if (err.code) {
@@ -86,50 +84,37 @@ export default class EntryAbility extends UIAbility {
     });
   }
 
-  private registerSlockFonts(mainWindow?: window.Window): void {
-    if (!EntryAbility.fontModuleRegistered) {
-      SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
-        this.registerFontResource('module', fontResource.familyName, () => {
-          font.registerFont({
-            familyName: fontResource.familyName,
-            familySrc: fontResource.familySrc,
-          });
-        });
-      });
-      EntryAbility.fontModuleRegistered = true;
-    }
-    if (mainWindow === undefined || EntryAbility.uiFontsRegistered) {
+  private registerSlockFonts(mainWindow: window.Window): void {
+    if (EntryAbility.uiFontsRegistered) {
       return;
     }
     try {
       const uiFont = mainWindow.getUIContext().getFont();
+      let hasRegistrationFailure = false;
       SLOCK_FONTS.forEach((fontResource: SlockFontResource) => {
-        this.registerFontResource('ui', fontResource.familyName, () => {
+        const registered = this.registerFontResource('ui', fontResource.familyName, () => {
           uiFont.registerFont({
             familyName: fontResource.familyName,
             familySrc: fontResource.familySrc,
           });
         });
+        if (!registered) {
+          hasRegistrationFailure = true;
+        }
       });
       this.context.getApplicationContext().setFont('space_grotesk_regular');
-      EntryAbility.uiFontsRegistered = true;
+      EntryAbility.uiFontsRegistered = !hasRegistrationFailure;
     } catch (err) {
       hilog.warn(0x0000, 'testTag', 'Skip UI font registration until UIContext is ready. Cause: %{public}s', JSON.stringify(err) ?? '');
     }
   }
 
-  private registerFontResource(scope: string, familyName: string, register: () => void): void {
+  private registerFontResource(scope: string, familyName: string, register: () => void): boolean {
     try {
       register();
+      return true;
     } catch (err) {
       const message = this.safeErrorMessage(err);
-      if (this.isDuplicateFontRegistration(message)) {
-        SlockOhosDiagnostics.record(
-          SLOCK_FONT_LOG_TAG,
-          `font_registration_already_ready scope=${scope} family=${familyName}`
-        );
-        return;
-      }
       hilog.warn(
         0x0000,
         SLOCK_FONT_LOG_TAG,
@@ -138,15 +123,12 @@ export default class EntryAbility extends UIAbility {
         familyName,
         message
       );
+      SlockOhosDiagnostics.record(
+        SLOCK_FONT_LOG_TAG,
+        `font_registration_failed scope=${scope} family=${familyName} cause=${message}`
+      );
+      return false;
     }
-  }
-
-  private isDuplicateFontRegistration(message: string): boolean {
-    const lower = message.toLowerCase();
-    return lower.includes('already') ||
-      lower.includes('exist') ||
-      lower.includes('duplicate') ||
-      lower.includes('repeat');
   }
 
   private safeErrorMessage(error: Object): string {

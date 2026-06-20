@@ -22,7 +22,7 @@ const kItemHeight = 40;
 const kIconSize = 17;
 const kGradientMaskColor = '#66F1F3F5';
 const kGradientMaskHeight = 92;
-const kBottomBarPosition = 1 as BarPosition;
+const kBottomBarPosition: BarPosition = BarPosition.End;
 
 interface SlockHdsTabItem {
   key: string;
@@ -164,7 +164,11 @@ export struct SlockOhosHdsTabBar {
 
   build() {
     Stack({ alignContent: Alignment.Bottom }) {
-      HdsTabs({ index: this.renderView.selectedIndex(), controller: this.renderView.controller }) {
+      HdsTabs({
+        index: this.renderView.selectedIndex(),
+        controller: this.renderView.controller,
+        barPosition: kBottomBarPosition,
+      }) {
         ForEach(this.renderView.items(), (item: SlockHdsTabItem, index: number) => {
           TabContent() {
             Column() {
@@ -177,7 +181,6 @@ export struct SlockOhosHdsTabBar {
         }, (item: SlockHdsTabItem) => item.key)
       }
       .vertical(false)
-      .barPosition(kBottomBarPosition)
       .barMode(BarMode.Fixed)
       .scrollable(false)
       .animationDuration(kAnimationDuration)
