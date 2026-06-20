@@ -78,7 +78,6 @@ internal class SharedThreadComposerDraftStore {
                         syncNonce = current.syncNonce + 1,
                         sending = true,
                         failureLabel = null,
-                        pendingMentionActions = emptyList(),
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()
                     )

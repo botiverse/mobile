@@ -67,7 +67,7 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
-    fun completeSendReplacesPendingMentionActionsAndNextSendClearsThem() {
+    fun completeSendReplacesPendingMentionActionsAndSuccessfulNextSendClearsThem() {
         val store = SharedThreadComposerDraftStore()
         val pending =
             KuiklyPendingMentionActionItem(
@@ -85,8 +85,39 @@ class SharedThreadComposerDraftStoreTest {
 
         store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
 
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertEquals(null, store.state.value.mentionActionNotice)
+
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+
         assertEquals(emptyList(), store.state.value.pendingMentionActions)
         assertEquals(null, store.state.value.mentionActionNotice)
+    }
+
+    @Test
+    fun failedSendPreservesExistingPendingMentionAction() {
+        val store = SharedThreadComposerDraftStore()
+        val pending =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "outside",
+                availableActions = listOf("notify")
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(
+            SharedThreadComposerDraftIntent.RestoreAfterFailure(
+                seedText = "retry body",
+                seedAsTask = false,
+                failureLabel = "Send failed. Try again."
+            )
+        )
+
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertEquals("retry body", store.state.value.seedText)
+        assertEquals("Send failed. Try again.", store.state.value.failureLabel)
     }
 
     @Test
