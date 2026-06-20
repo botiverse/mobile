@@ -696,7 +696,7 @@ private fun buildSlockMarkdownInlineTextAnnotatedString(
     style: TextStyle,
     annotator: MarkdownAnnotator
 ): AnnotatedString {
-    val parsedTree = traceMarkdownSection(SlockMarkdownTraceNames.PARSE) {
+    val parsedTree = traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PARSE) {
         MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
     }
     val textNode =
@@ -730,12 +730,12 @@ fun SlockMarkdownBody(
 ) {
     val content = remember(body, performanceKey) {
         if (performanceKey == null) {
-            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE, body.length) {
+            traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
                 body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
             }
         } else {
             val startedAt = TimeSource.Monotonic.markNow()
-            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE, body.length) {
+            traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
                 body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
                     .also { normalized ->
                         val durationMs = startedAt.elapsedNow().inWholeMilliseconds

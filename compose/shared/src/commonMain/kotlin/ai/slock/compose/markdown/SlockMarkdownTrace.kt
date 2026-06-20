@@ -30,6 +30,32 @@ internal expect fun traceBegin(name: String)
 internal expect fun traceEnd()
 
 /**
+ * Non-Composable variant of [traceMarkdownSection] for call sites that are NOT
+ * inside a `@Composable` function (e.g., the `MarkdownParser.buildMarkdownTreeFromString`
+ * call inside `buildSlockMarkdownInlineTextAnnotatedString`). Same threshold + log
+ * behavior, but the block lambda is `() -> T` (not `@Composable () -> T`) and the
+ * function is not annotated `@Composable` so it can be invoked from regular code.
+ */
+internal inline fun <T> traceMarkdownSectionNonComposable(
+    name: String,
+    block: () -> T
+): T {
+    traceBegin(name)
+    val t0 = System.nanoTime()
+    val result = block()
+    traceEnd()
+    val durationUs = (System.nanoTime() - t0) / 1_000L
+    if (durationUs >= MarkdownSpikeThresholdUs) {
+        logMarkdownSpike(
+            phase = name,
+            durationUs = durationUs,
+            bodyLength = -1
+        )
+    }
+    return result
+}
+
+/**
  * #192 spike debug log helper. Called from `traceMarkdownSection` when the wrapped
  * phase duration exceeds `MarkdownSpikeThresholdUs`. Single-line log so we can grep
  * logcat by tag (e.g., `adb logcat -d | grep SlockMarkdownSpike`).
@@ -76,19 +102,17 @@ internal fun <T> traceMarkdownSection(
 ): T {
     traceBegin(name)
     val t0 = System.nanoTime()
-    return try {
-        block()
-    } finally {
-        traceEnd()
-        val durationUs = (System.nanoTime() - t0) / 1_000L
-        if (durationUs >= MarkdownSpikeThresholdUs) {
-            logMarkdownSpike(
-                phase = name,
-                durationUs = durationUs,
-                bodyLength = bodyLength
-            )
-        }
+    val result = block()
+    traceEnd()
+    val durationUs = (System.nanoTime() - t0) / 1_000L
+    if (durationUs >= MarkdownSpikeThresholdUs) {
+        logMarkdownSpike(
+            phase = name,
+            durationUs = durationUs,
+            bodyLength = bodyLength
+        )
     }
+    return result
 }
 
 /** Stable phase names used at call sites. Centralized so renames stay in sync. */
