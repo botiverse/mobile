@@ -258,6 +258,12 @@ private val SlockMarkdownHeadingPrefixRegex = Regex("""^#{1,6}\s""")
 private val SlockMarkdownOrderedListPrefixRegex = Regex("""^\d+[.)]\s""")
 private val SlockMarkdownThematicBreakRegex = Regex("""^(?:-{3,}|\*{3,}|_{3,})\s*$""")
 
+internal const val DEBUG_SLOCK_MARKDOWN_PERF_LOG = false
+private const val SlockMarkdownPerformanceSlowThresholdMs = 8L
+
+internal fun shouldLogSlockMarkdownPerformance(durationMs: Long): Boolean =
+    DEBUG_SLOCK_MARKDOWN_PERF_LOG || durationMs >= SlockMarkdownPerformanceSlowThresholdMs
+
 private fun String.escapeMarkdownHtmlTagText(): String =
     replace("<", "\\<").replace(">", "\\>")
 
@@ -727,18 +733,22 @@ fun SlockMarkdownBody(
             val startedAt = TimeSource.Monotonic.markNow()
             body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
                 .also { normalized ->
-                    performanceLogger(
-                        "thread_markdown_prepare stage=normalize key=$performanceKey " +
-                            "bodyLength=${body.length} contentLength=${normalized.length} " +
-                            "durationMs=${startedAt.elapsedNow().inWholeMilliseconds}"
-                    )
+                    val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                    if (shouldLogSlockMarkdownPerformance(durationMs)) {
+                        performanceLogger(
+                            "thread_markdown_prepare stage=normalize key=$performanceKey " +
+                                "bodyLength=${body.length} contentLength=${normalized.length} " +
+                                "durationMs=$durationMs"
+                        )
+                    }
                 }
         }
     }
-    var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
-    val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
     val markdownModifier =
-        performanceKey?.let { key ->
+        if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
+            val key = performanceKey
+            var layoutLogged by remember(content, performanceKey) { mutableStateOf(false) }
+            val layoutStartedAt = remember(content, performanceKey) { TimeSource.Monotonic.markNow() }
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned {
@@ -750,14 +760,11 @@ fun SlockMarkdownBody(
                         )
                     }
                 }
-        } ?: modifier.fillMaxWidth()
+        } else {
+            modifier.fillMaxWidth()
+        }
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
-        performanceKey?.let { key ->
-            performanceLogger(
-                "thread_markdown_render stage=plain_text key=$key contentLength=${content.length} durationMs=0"
-            )
-        }
         KuiklyText(
             text = content,
             modifier = markdownModifier,
@@ -791,11 +798,13 @@ fun SlockMarkdownBody(
             onDiagnostics =
                 performanceKey?.let { key ->
                     { inlineTagCount, inlineCodeCount, durationMs ->
-                        performanceLogger(
-                            "thread_markdown_prepare stage=annotator key=$key " +
-                                "inlineTags=$inlineTagCount inlineCode=$inlineCodeCount " +
-                                "contentLength=${content.length} durationMs=$durationMs"
-                        )
+                        if (shouldLogSlockMarkdownPerformance(durationMs)) {
+                            performanceLogger(
+                                "thread_markdown_prepare stage=annotator key=$key " +
+                                    "inlineTags=$inlineTagCount inlineCode=$inlineCodeCount " +
+                                    "contentLength=${content.length} durationMs=$durationMs"
+                            )
+                        }
                     }
                 }
         )
@@ -808,10 +817,11 @@ fun SlockMarkdownBody(
             SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
                 buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
             }
-        performanceKey?.let { key ->
+        val renderDurationMs = renderStartedAt.elapsedNow().inWholeMilliseconds
+        if (performanceKey != null && shouldLogSlockMarkdownPerformance(renderDurationMs)) {
             performanceLogger(
-                "thread_markdown_render stage=inline_text key=$key contentLength=${content.length} " +
-                    "cacheHit=$cacheHit durationMs=${renderStartedAt.elapsedNow().inWholeMilliseconds}"
+                "thread_markdown_render stage=inline_text key=$performanceKey contentLength=${content.length} " +
+                    "cacheHit=$cacheHit durationMs=$renderDurationMs"
             )
         }
         KuiklyText(
@@ -836,9 +846,9 @@ fun SlockMarkdownBody(
         )
         return
     }
-    performanceKey?.let { key ->
+    if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
         performanceLogger(
-            "thread_markdown_render stage=markdown_renderer key=$key contentLength=${content.length}"
+            "thread_markdown_render stage=markdown_renderer key=$performanceKey contentLength=${content.length}"
         )
     }
     val padding = remember {

@@ -137,6 +137,13 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun markdownPerformanceLogsOnlySlowSamplesByDefault() {
+        assertFalse(shouldLogSlockMarkdownPerformance(0))
+        assertFalse(shouldLogSlockMarkdownPerformance(7))
+        assertTrue(shouldLogSlockMarkdownPerformance(8))
+    }
+
+    @Test
     fun inlineTextFastPathKeepsSingleParagraphMarkdownOutOfBlockRenderer() {
         assertTrue("Ping @artin in #KMP".shouldUseSlockMarkdownInlineTextFastPath())
         assertTrue("Use `code` and **bold** text".shouldUseSlockMarkdownInlineTextFastPath())

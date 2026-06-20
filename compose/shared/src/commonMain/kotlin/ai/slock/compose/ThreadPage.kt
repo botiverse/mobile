@@ -158,6 +158,9 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 
+internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
+    DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
+
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
  * a fresh session id for each Thread entry. Keeping this as a separate
@@ -3950,7 +3953,7 @@ private fun ThreadMessagesList(
                         message.threadActionCard()
                             .also { card ->
                                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                                if (card != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                                if (shouldLogThreadPerformance(durationMs)) {
                                     diagnosticsLogger(
                                         "thread_action_card_parse key=$messagePerformanceKey " +
                                             "hasActionCard=${card != null} durationMs=$durationMs"
@@ -3982,7 +3985,7 @@ private fun ThreadMessagesList(
                         message.withLinkedTask(linkedTask)
                             .also {
                                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                                if (linkedTask != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                                if (shouldLogThreadPerformance(durationMs)) {
                                     diagnosticsLogger(
                                         "thread_row_heavy_work stage=linked_task key=$messagePerformanceKey " +
                                             "hasLinkedTask=${linkedTask != null} durationMs=$durationMs"
@@ -4826,7 +4829,7 @@ private fun ThreadActionCardView(
                 committedLabel = card.actionCardCommittedLabel()
             ).also { copy ->
                 val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                if (performanceKey != null || durationMs >= ThreadPerformanceSlowThresholdMs) {
+                if (performanceKey != null && shouldLogThreadPerformance(durationMs)) {
                     diagnosticsLogger(
                         "thread_action_card_compute key=${performanceKey.orEmpty()} " +
                             "type=${card.type} titleLength=${copy.title.length} " +
