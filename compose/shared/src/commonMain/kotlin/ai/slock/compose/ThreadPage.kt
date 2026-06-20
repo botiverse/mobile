@@ -573,7 +573,13 @@ private fun buildThreadPendingSendMessage(
         gravatarHash = user?.gravatarHash,
         timestampLabel = "Now",
         body = context.body,
-        threadChannelId = context.streamChannelId ?: context.channelId,
+        // Phase 3 #3 #3 (#280): explicit nullable instead of \`context.streamChannelId ?: context.channelId\`
+        // (反例 3, intentionally left during #278 send flow scope). v0.2 ReplyThread contract
+        // requires an explicit threadChannelId; falling back to channelId silently degrades the
+        // pending send bubble's thread identity. Callers of buildThreadPendingSendMessage must
+        // supply a non-blank context.streamChannelId or this leaves threadChannelId null,
+        // which the thread local store will surface as "stream missing" UX (no silent fallback).
+        threadChannelId = context.streamChannelId?.takeIf { it.isNotBlank() },
         attachments =
             context.attachments.map { attachment ->
                 KuiklyThreadAttachmentItem(

@@ -491,8 +491,23 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
                 parentChannelId != null &&
                 it == parentChannelId
         }
-    val resolvedStreamChannelId = composer.streamChannelId ?: streamChannelId ?: sourceStreamCandidate
-    val resolvedParentMessageId = composer.parentMessageId ?: parentMessageId ?: originParentMessageId
+    // Phase 3 #3 #3 (#280): replace composer > screen > origin 3-level ?:` chains with
+    // explicit per-source resolution. Composer-scope value wins; if absent, screen-scope
+    // (from the parent KuiklyThreadScreenPayload) wins; if absent, fall back to the
+    // origin hint only when the surface is not ReplyThread (ReplyThread must use the
+    // parent channel id, not the source thread id).
+    val resolvedStreamChannelId = resolveComposerStreamChannelId(
+        composerValue = composer.streamChannelId,
+        screenValue = streamChannelId,
+        originCandidate = sourceStreamCandidate,
+        surfaceKind = resolvedSurfaceKind
+    )
+    val resolvedParentMessageId = resolveComposerParentMessageId(
+        composerValue = composer.parentMessageId,
+        screenValue = parentMessageId,
+        originValue = originParentMessageId,
+        surfaceKind = resolvedSurfaceKind
+    )
     val resolvedMentionChannelId = composer.mentionChannelId ?: parentChannelId
     val resolvedPlaceholder =
         if (composer.placeholder == "Message") {
@@ -515,6 +530,46 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
     )
 }
 
+/**
+ * Per-surface composer stream channel resolver. Replaces the prior 3-level
+ * \`composer.streamChannelId ?: streamChannelId ?: sourceStreamCandidate\` (反例 8).
+ *
+ * - Composer value always wins (UI composer can override).
+ * - ReplyThread surfaces fall back to screen value only; origin hint is rejected
+ *   (origin is the parent channel id, not the thread stream id).
+ * - Other surfaces fall back to screen value, then to origin candidate.
+ */
+private fun resolveComposerStreamChannelId(
+    composerValue: String?,
+    screenValue: String?,
+    originCandidate: String?,
+    surfaceKind: String
+): String? = when {
+    !composerValue.isNullOrBlank() -> composerValue
+    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread -> screenValue?.takeIf { it.isNotBlank() }
+    !screenValue.isNullOrBlank() -> screenValue
+    else -> originCandidate?.takeIf { it.isNotBlank() }
+}
+
+/**
+ * Per-surface composer parent message resolver. Replaces the prior 3-level
+ * \`composer.parentMessageId ?: parentMessageId ?: originParentMessageId\` (反例 9).
+ *
+ * Composer value always wins; otherwise falls back to screen value, then origin value.
+ * No surface-kind branching needed because parent message id is always the same kind
+ * across all surfaces (the message the thread is anchored to).
+ */
+private fun resolveComposerParentMessageId(
+    composerValue: String?,
+    screenValue: String?,
+    originValue: String?,
+    surfaceKind: String
+): String? = when {
+    !composerValue.isNullOrBlank() -> composerValue
+    !screenValue.isNullOrBlank() -> screenValue
+    else -> originValue?.takeIf { it.isNotBlank() }
+}
+
 @Composable
 internal fun ThreadComposerContent(
     payload: KuiklyThreadComposerPayload,
@@ -526,7 +581,7 @@ internal fun ThreadComposerContent(
     ThreadComposerContent(
         surface =
             payload.toThreadComposerSurface(
-                channelId = payload.streamChannelId ?: payload.instanceId
+                channelId = payload.streamChannelId?.takeIf { it.isNotBlank() } ?: payload.instanceId
             ),
         state = payload.toThreadComposerUiState(),
         onEvent = onEvent,
