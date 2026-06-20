@@ -84,15 +84,22 @@ internal fun SlockFloatingOverlayHost(
     modifier: Modifier = Modifier,
     content: @Composable (SlockFloatingOverlayLayout) -> Unit
 ) {
-    val density = LocalDensity.current
+    // #223 fix: keep `origin` and `size` in PIXELS (the same unit as the
+    // anchor passed in from onGloballyPositioned). The previous
+    // toSlockDpOffset/toSlockDpSize conversion mixed pixels (anchor) with
+    // dp (origin / size) and the resulting localAnchor was wrong — for a
+    // row whose y in pixels was 1442 and overlay size 411x923 dp, the
+    // localAnchor.y came out as 1442 (treated as dp), and the menu
+    // landed at y=877 dp ≈ 2303 px (screen bottom) instead of near
+    // the row. Keep everything in pixels to avoid the unit mismatch.
     var overlayLayout by remember { mutableStateOf(SlockFloatingOverlayLayout()) }
     Box(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
                 overlayLayout = SlockFloatingOverlayLayout(
-                    origin = coordinates.positionInRoot().toSlockDpOffset(density),
-                    size = coordinates.size.toSlockDpSize(density)
+                    origin = coordinates.positionInRoot(),
+                    size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                 )
             }
             .clickable(onClick = onDismiss),
@@ -119,9 +126,11 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     horizontalAutoFlip: Boolean = false
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
+        android.util.Log.d("SlockPinMenuDebug", "positionContent: skipped (isReady=" + isReady + " anchor=" + anchor + " contentSize=" + contentSize + ")")
         return null
     }
     val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
+    android.util.Log.d("SlockPinMenuDebug", "positionContent: anchor=" + anchor + " origin=" + origin + " localAnchor=" + localAnchor + " size=" + size + " contentSize=" + contentSize + " hOffset=" + horizontalOffset + " vOffset=" + verticalOffset + " vPlacement=" + verticalPlacement + " hAutoFlip=" + horizontalAutoFlip)
     val maxX = (size.width - contentSize.width - viewportGap).coerceAtLeast(viewportGap)
     val x = if (horizontalAutoFlip) {
         val preferredRightX = localAnchor.x + horizontalOffset
@@ -151,6 +160,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
             }
         }
     }
+    android.util.Log.d("SlockPinMenuDebug", "positionContent: result offset=(" + x + ", " + y + ")")
     return Offset(x, y)
 }
 
