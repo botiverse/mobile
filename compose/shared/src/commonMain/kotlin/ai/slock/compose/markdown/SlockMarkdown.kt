@@ -716,21 +716,11 @@ private fun buildSlockMarkdownInlineTextAnnotatedString(
     }
 }
 
-// #192 layout hot path: hoist the default `textStyle` parameter to a file-level
-// `val` so the same `TextStyle` instance is reused across every recomposition
-// (and across every `SlockMarkdownBody` invocation that doesn't override the
-// parameter). The previous default `SlockType.Body.copy(fontSize = 14.sp,
-// lineHeight = 20.sp)` allocated a fresh `TextStyle` each call; combined with
-// `remember(textStyle)` that always-recreated-key prevented downstream
-// `Markdown(content, ...)` from skipping recomposition when nothing changed.
-private val SlockMarkdownBodyDefaultTextStyle: TextStyle =
-    SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
-
 @Composable
 fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
-    textStyle: TextStyle = SlockMarkdownBodyDefaultTextStyle,
+    textStyle: TextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
     highlightedMentions: Set<String> = emptySet(),
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
