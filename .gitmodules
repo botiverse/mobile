@@ -24,6 +24,7 @@
 	path = third_party/moko-graphics
 	url = https://github.com/bytemain/moko-graphics.git
 	branch = 0.10.1-ohos
+	ignore = untracked
 [submodule "third_party/moko-resources"]
 	path = third_party/moko-resources
 	url = https://github.com/bytemain/moko-resources.git
