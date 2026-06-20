@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.markdown.traceMarkdownSection
+import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -114,6 +116,9 @@ internal fun SlockBottomTabBar(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // #192 trace scope extension: bottom tab bar (Home / Tasks / etc.) render.
+    // Tab switches are #191 hot path; this marker measures per-tab-item composition.
+    traceMarkdownSection(SlockTabBarTraceNames.BOTTOM_TAB_RENDER, items.size) {
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -170,6 +175,7 @@ internal fun SlockBottomTabBar(
                 .background(SlockColor.BorderBlack)
                 .align(Alignment.BottomCenter)
         )
+    }
     }
 }
 

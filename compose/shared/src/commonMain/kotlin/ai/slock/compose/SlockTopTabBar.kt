@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.markdown.traceMarkdownSection
+import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.clickable
@@ -42,6 +44,10 @@ internal fun SlockTopTabBar(
     modifier: Modifier = Modifier,
     itemKeyPrefix: String = "top-tab"
 ) {
+    // #192 trace scope extension: top tab bar render. Switches between tabs
+    // are a known jank source (`operation=scene_enter` perf log line); this
+    // marker measures the actual LazyRow + Row composition + tab click path.
+    traceMarkdownSection(SlockTabBarTraceNames.TOP_TAB_RENDER, items.size) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -80,5 +86,6 @@ internal fun SlockTopTabBar(
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+    }
     }
 }
