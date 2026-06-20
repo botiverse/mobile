@@ -9,19 +9,46 @@ import kotlin.test.assertTrue
 
 class ThreadComposerPayloadTest {
     @Test
-    fun parsesWrappedPayload() {
+    fun parsesWrappedLaunchPayload() {
         val payload =
             parseThreadComposerPayload(
-                payload = """{"seedText":"hello","placeholder":"Reply","syncNonce":2}""",
+                payload = """{"seedText":"hello","syncNonce":2,"streamChannelId":"thread-1"}""",
                 fallbackPageData = """{"instanceId":"host-1"}""",
                 instanceId = "host-1"
             )
 
         assertEquals("host-1", payload.instanceId)
         assertEquals("hello", payload.seedText)
-        assertEquals("Reply", payload.placeholder)
+        assertEquals("Message", payload.placeholder)
         assertEquals(2, payload.syncNonce)
+        assertEquals("thread-1", payload.streamChannelId)
         assertNull(payload.statusLabel)
+    }
+
+    @Test
+    fun rejectsWrappedFullContentPayload() {
+        val payload =
+            parseThreadComposerPayload(
+                payload =
+                    """
+                    {
+                      "seedText": "hello",
+                      "placeholder": "Reply",
+                      "pendingAttachments": [
+                        {"id":"a1","fileName":"stale.txt"}
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"host-content"}""",
+                instanceId = "host-content"
+            )
+
+        assertEquals("host-content", payload.instanceId)
+        assertEquals("", payload.seedText)
+        assertEquals("Message", payload.placeholder)
+        assertEquals(emptyList(), payload.pendingAttachments)
+        assertEquals("failed", payload.composerMode)
+        assertEquals("Composer payload parse failed", payload.statusLabel)
     }
 
     @Test
@@ -35,20 +62,8 @@ class ThreadComposerPayloadTest {
                       "instanceId": "host-2",
                       "seedText": "launch draft",
                       "seedAsTask": true,
-                      "showAsTaskToggle": false,
-                      "placeholder": "Stale placeholder",
-                      "pendingAttachments": [
-                        {"id":"a1","fileName":"stale.txt"}
-                      ],
-                      "memberSuggestions": [
-                        {"displayName":"Stale","handle":"stale"}
-                      ],
-                      "channelSuggestions": [
-                        {"name":"stale-channel"}
-                      ],
-                      "hookLabels": ["stale hook"],
-                      "composerMode": "sending",
-                      "statusLabel": "Stale status"
+                      "streamChannelId": "thread-2",
+                      "appId": 1
                     }
                     """.trimIndent(),
                 instanceId = "host-2"
@@ -57,6 +72,7 @@ class ThreadComposerPayloadTest {
         assertEquals("host-2", payload.instanceId)
         assertEquals("launch draft", payload.seedText)
         assertTrue(payload.seedAsTask)
+        assertEquals("thread-2", payload.streamChannelId)
         assertEquals(true, payload.showAsTaskToggle)
         assertEquals("Message", payload.placeholder)
         assertEquals(emptyList(), payload.pendingAttachments)
@@ -65,6 +81,35 @@ class ThreadComposerPayloadTest {
         assertEquals(emptyList(), payload.hookLabels)
         assertEquals("idle", payload.composerMode)
         assertNull(payload.statusLabel)
+    }
+
+    @Test
+    fun rejectsTopLevelFullContentPayload() {
+        val payload =
+            parseThreadComposerPayload(
+                payload = "",
+                fallbackPageData =
+                    """
+                    {
+                      "instanceId": "host-top-level-content",
+                      "seedText": "launch draft",
+                      "showAsTaskToggle": false,
+                      "placeholder": "Stale placeholder",
+                      "memberSuggestions": [
+                        {"displayName":"Stale","handle":"stale"}
+                      ],
+                      "composerMode": "sending"
+                    }
+                    """.trimIndent(),
+                instanceId = "host-top-level-content"
+            )
+
+        assertEquals("host-top-level-content", payload.instanceId)
+        assertEquals("", payload.seedText)
+        assertEquals("Message", payload.placeholder)
+        assertEquals(emptyList(), payload.memberSuggestions)
+        assertEquals("failed", payload.composerMode)
+        assertEquals("Composer payload parse failed", payload.statusLabel)
     }
 
     @Test

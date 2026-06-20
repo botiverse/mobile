@@ -46,6 +46,7 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 
 private const val THREAD_COMPOSER_VISUAL_PAGE = "compose_thread_composer_visual"
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
@@ -55,6 +56,19 @@ private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
+private val threadComposerContentPayloadKeys =
+    setOf(
+        "placeholder",
+        "enabled",
+        "attachmentActionsEnabled",
+        "showAsTaskToggle",
+        "composerMode",
+        "statusLabel",
+        "pendingAttachments",
+        "memberSuggestions",
+        "channelSuggestions",
+        "hookLabels"
+    )
 
 // Connected visual-test entry only. Product Thread renders ThreadComposerContent inside ThreadPage.
 @Page(THREAD_COMPOSER_VISUAL_PAGE, supportInLocal = true)
@@ -235,6 +249,7 @@ private fun ThreadComposerScreen() {
     val params = pager.pageData.params
     var payloadText by remember { mutableStateOf(params.optString("payload")) }
     var instanceId by remember { mutableStateOf(params.optString("instanceId")) }
+    var visualFixture by remember { mutableStateOf(params.optString("visualFixture")) }
     androidx.compose.runtime.DisposableEffect(pager) {
         val observer =
             object : IPagerEventObserver {
@@ -246,6 +261,9 @@ private fun ThreadComposerScreen() {
                     eventData.optString("instanceId").takeIf { it.isNotBlank() }?.let {
                         instanceId = it
                     }
+                    eventData.optString("visualFixture").takeIf { it.isNotBlank() }?.let {
+                        visualFixture = it
+                    }
                 }
             }
         pager.addPagerEventObserver(observer)
@@ -255,7 +273,8 @@ private fun ThreadComposerScreen() {
         rememberThreadComposerPayload(
             payload = payloadText,
             fallbackPageData = params.toString(),
-            instanceId = instanceId
+            instanceId = instanceId,
+            visualFixture = visualFixture
         )
     LaunchedEffect(payload.instanceId, payload.syncNonce) {
         bridge.log(
@@ -280,14 +299,17 @@ private fun ThreadComposerScreen() {
 private fun rememberThreadComposerPayload(
     payload: String,
     fallbackPageData: String,
-    instanceId: String
+    instanceId: String,
+    visualFixture: String
 ): KuiklyThreadComposerPayload =
-    remember(payload, fallbackPageData, instanceId) {
-        parseThreadComposerPayload(
-            payload = payload,
-            fallbackPageData = fallbackPageData,
-            instanceId = instanceId
-        )
+    remember(payload, fallbackPageData, instanceId, visualFixture) {
+        visualFixture.takeIf { it.isNotBlank() }?.let { fixture ->
+            threadComposerVisualFixture(fixture, instanceId)
+        } ?: parseThreadComposerPayload(
+                payload = payload,
+                fallbackPageData = fallbackPageData,
+                instanceId = instanceId
+            )
     }
 
 internal fun parseThreadComposerPayload(
@@ -297,32 +319,85 @@ internal fun parseThreadComposerPayload(
 ): KuiklyThreadComposerPayload {
     val primaryPayload = payload.trim()
     if (primaryPayload.isEmpty()) {
-        return parseThreadComposerLaunchPayload(fallbackPageData, instanceId)
+        return parseThreadComposerLaunchPayload(
+            source = fallbackPageData,
+            instanceId = instanceId,
+            rejectAsFailure = true
+        )
+    }
+    return parseThreadComposerLaunchPayload(
+        source = primaryPayload,
+        instanceId = instanceId,
+        rejectAsFailure = true
+    )
+}
+
+private fun failedThreadComposerPayload(instanceId: String): KuiklyThreadComposerPayload =
+    KuiklyThreadComposerPayload(
+        instanceId = instanceId,
+        composerMode = "failed",
+        statusLabel = "Composer payload parse failed"
+    )
+
+private fun String.hasThreadComposerContentKeys(): Boolean =
+    runCatching {
+        val element = threadComposerJson.parseToJsonElement(this)
+        (element as? JsonObject)?.keys.orEmpty().any { key -> key in threadComposerContentPayloadKeys }
+    }.getOrDefault(false)
+
+private fun parseThreadComposerLaunchPayload(
+    source: String,
+    instanceId: String,
+    rejectAsFailure: Boolean
+): KuiklyThreadComposerPayload {
+    val launchSource = source.trim().takeIf { it.isNotEmpty() } ?: "{}"
+    if (launchSource.hasThreadComposerContentKeys()) {
+        return if (rejectAsFailure) {
+            failedThreadComposerPayload(instanceId)
+        } else {
+            KuiklyThreadComposerPayload(instanceId = instanceId)
+        }
     }
     return runCatching {
         threadComposerJson
-            .decodeFromString(KuiklyThreadComposerPayload.serializer(), primaryPayload)
-            .withInstanceIdFallback(instanceId)
+            .decodeFromString(WireThreadComposerLaunchPayload.serializer(), launchSource)
+            .toThreadComposerContentPayload(instanceId)
     }.getOrElse {
-        KuiklyThreadComposerPayload(
-            instanceId = instanceId,
-            composerMode = "failed",
-            statusLabel = "Composer payload parse failed"
-        )
+        if (rejectAsFailure) {
+            failedThreadComposerPayload(instanceId)
+        } else {
+            KuiklyThreadComposerPayload(instanceId = instanceId)
+        }
     }
 }
 
-private fun parseThreadComposerLaunchPayload(
-    fallbackPageData: String,
+private fun threadComposerVisualFixture(
+    fixture: String,
     instanceId: String
 ): KuiklyThreadComposerPayload {
-    val source = fallbackPageData.trim().takeIf { it.isNotEmpty() } ?: "{}"
-    return runCatching {
-        threadComposerJson
-            .decodeFromString(WireThreadComposerLaunchPayload.serializer(), source)
-            .toThreadComposerContentPayload(instanceId)
-    }.getOrElse {
-        KuiklyThreadComposerPayload(instanceId = instanceId)
+    val resolvedInstanceId = instanceId.ifBlank { "visual-thread-composer" }
+    val base =
+        KuiklyThreadComposerPayload(
+            instanceId = resolvedInstanceId,
+            seedText = "Review the Android composer crop before release.",
+            syncNonce = 1,
+            focusRequestNonce = 0,
+            placeholder = "Message design",
+            memberSuggestions =
+                listOf(
+                    KuiklyComposerMemberItem(displayName = "Artin", handle = "artin"),
+                    KuiklyComposerMemberItem(displayName = "Android Developer", handle = "Android-Developer")
+                ),
+            channelSuggestions =
+                listOf(
+                    KuiklyComposerChannelItem(name = "design", subtitle = "Product and UI decisions"),
+                    KuiklyComposerChannelItem(name = "android-artifacts", subtitle = "Builds and screenshots")
+                )
+        )
+    return when (fixture) {
+        "empty" -> base.copy(seedText = "")
+        "as_task_selected" -> base.copy(seedAsTask = true, seedText = "Review the Android composer crop")
+        else -> base
     }
 }
 
@@ -340,13 +415,6 @@ private fun WireThreadComposerLaunchPayload.toThreadComposerContentPayload(
         parentMessageId = parentMessageId,
         streamChannelId = streamChannelId
     )
-
-private fun KuiklyThreadComposerPayload.withInstanceIdFallback(instanceId: String): KuiklyThreadComposerPayload =
-    if (this.instanceId.isBlank() && instanceId.isNotBlank()) {
-        copy(instanceId = instanceId)
-    } else {
-        this
-    }
 
 internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
     this == KuiklyThreadComposerPayload()

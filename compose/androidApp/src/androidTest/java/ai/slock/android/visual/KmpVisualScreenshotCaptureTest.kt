@@ -58,7 +58,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-empty")
-                    .put("payload", threadComposerPayload(seedText = "").toString()),
+                    .put("visualFixture", "empty"),
             crop = THREAD_COMPOSER_COMPONENT_CROP
         )
     }
@@ -71,7 +71,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-composer")
-                    .put("payload", threadComposerPayload().toString()),
+                    .put("visualFixture", "states"),
             crop = THREAD_COMPOSER_COMPONENT_CROP
         )
     }
@@ -84,13 +84,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-composer-as-task")
-                    .put(
-                        "payload",
-                        threadComposerPayload(
-                            asTask = true,
-                            seedText = "Review the Android composer crop"
-                        ).toString()
-                    ),
+                    .put("visualFixture", "as_task_selected"),
             crop = THREAD_COMPOSER_COMPONENT_CROP
         )
     }
@@ -631,33 +625,6 @@ class KmpVisualScreenshotCaptureTest {
             .put("name", name)
             .put("slug", slug)
             .put("unreadCount", unreadCount)
-
-    private fun threadComposerPayload(
-        asTask: Boolean = false,
-        seedText: String = "Review the Android composer crop before release."
-    ): JSONObject =
-        JSONObject()
-            .put("instanceId", "visual-thread-composer")
-            .put("seedText", seedText)
-            .put("seedAsTask", asTask)
-            .put("syncNonce", 1)
-            .put("focusRequestNonce", 0)
-            .put("placeholder", "Message design")
-            .put("enabled", true)
-            .put("showAsTaskToggle", true)
-            .put("composerMode", "idle")
-            .put(
-                "memberSuggestions",
-                JSONArray()
-                    .put(JSONObject().put("displayName", "Artin").put("handle", "artin"))
-                    .put(JSONObject().put("displayName", "Android Developer").put("handle", "Android-Developer"))
-            )
-            .put(
-                "channelSuggestions",
-                JSONArray()
-                    .put(JSONObject().put("name", "design").put("subtitle", "Product and UI decisions"))
-                    .put(JSONObject().put("name", "android-artifacts").put("subtitle", "Builds and screenshots"))
-            )
 
     private fun createAgentDialogPageData(
         runtime: String,
