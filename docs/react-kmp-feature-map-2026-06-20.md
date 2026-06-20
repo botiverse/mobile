@@ -31,6 +31,58 @@
 | Settings Appearance | Settings 已有 Appearance destination，包含 message font size / preview 方向 | 需要验收字体大小持久化、默认值映射、preview 是否用真实 message 组件、与 React copy/布局一致 | 不再说“KMP 未列 Appearance”，改为“入口已有，需细节验收” |
 | Search / Saved / Home | 近期已经多轮按 React 修：DM rows、Search filters/sort/empty/shared input、Saved/Home 入口等 | 剩余以截图和行为回归收口，不再口头猜测 | 保留为 P0 ongoing visual/action pass |
 
+## Connected Apps 逐项复核结论
+
+结论先放前面：KMP `Connected Apps` 不是缺页面，也不是缺主链路。Settings 里已经有 Connected Apps 入口、三段 tab、client CRUD 方向、marketplace/install/uninstall/publish/logo/secret 数据链路。真正缺的是 React 高风险动作的交互闭环和安全确认。
+
+React Connected Apps 的用户可见能力来自 `SettingsPanel.tsx` 的 `IntegrationsSection`：
+
+- 非 owner/admin：显示 `Only server owners and admins can manage connected apps.`，不是只暴露错误 code。
+- Marketplace：包含 built-in app band、search、category filter、listing card、listing detail modal。
+- Listing detail：展示 publisher、homepage domain、callback domain、disclosure，并在详情里 install/uninstall。
+- Built-in app：card 可打开详情，详情里可 `Open` homepage。
+- Installed：marketplace app 可 uninstall；server-local private app 可跳到 edit。
+- My Apps：registered app 可 edit/delete；private/rejected 状态可 request publish。
+- Register/Edit app modal：覆盖 logo、name、homepage、client id、return URL、agent manifest URL、description、publish category、declared data access。
+- Client secret：create 后只显示一次，并提供 Copy 按钮。
+- Logo：编辑状态下通过文件选择器上传，支持 png/jpeg/gif/webp，并可 reset。
+- Delete registered app / uninstall marketplace app：都走 `ConfirmDialog`，文案说明 OAuth client、secret、grants、access revoke 影响。
+
+KMP 当前确认已有：
+
+- `SettingsConnectedAppsContent` 已有 `Marketplace / Installed / My Apps` segmented tabs。
+- `SettingsConnectedAppsBuiltInCard`、`SettingsConnectedAppsMarketplaceCard`、`SettingsConnectedAppsInstalledCard`、`SettingsConnectedAppEditorCard`、`SettingsConnectedAppClientsCard` 已存在。
+- `SettingsRepositoryDataSource` 已接 `/integrations/clients`、`/integrations/built-in`、`/integrations/marketplace`、install/uninstall、client create/update/delete、logo delete/upload、request-publish。
+- `SharedSettingsStore` 已有 register/update/logo clear/delete/publish/install/uninstall action state。
+- Create 后已有 `oneTimeClientSecret` 卡片。
+
+KMP 当前明确缺口：
+
+1. **Marketplace 缺 search/category filter 和详情层**
+   现在 KMP Marketplace 基本是列表 + install/uninstall button。React 有搜索、分类、listing detail、disclosure、domain 信息。移动端可以做成详情页或弹窗，但不能只在列表上直接执行所有动作。
+
+2. **Built-in app 缺详情和 Open homepage**
+   KMP built-in card 现在是 info row，不能进入 React 等价的 built-in detail，也没有 `Open` homepage 动作。
+
+3. **Client secret 缺 Copy 动作**
+   KMP 一次显示 secret 已有，但 `SettingsConnectedAppSecretCard` 只有文本展示，没有 copy affordance。需要增加 Copy，同时明确不写入 diagnostics/log。
+
+4. **Logo upload host picker 未接通**
+   repository 已有 upload API，但 `SharedSettingsPlatformCapabilities.pickConnectedAppLogoFile()` 默认返回 `settings_connected_app_logo_picker_unavailable`。如果 Android/OHOS host 没覆盖该能力，页面上的 Upload/Change 会实际不可用。
+
+5. **Delete / Uninstall 缺安全确认**
+   KMP `SettingsConnectedAppClientsCard` 里的 Delete、marketplace Uninstall 目前是直接 action row。React 这里必须 ConfirmDialog，并说明删除 client secret/grants 或 revoke app access 的后果。这是安全/误触风险，不只是视觉差异。
+
+6. **Permission copy 需要人话化**
+   repository 会返回 `server_admin_required`，页面也有 NoPermission 分支；但需要对齐 React 的 owner/admin 文案，不应只显示错误 code。
+
+7. **Action 状态要按对象收敛**
+   install/uninstall/delete/logo/publish 的 loading/error 必须留在当前 row/对象上，失败不能吞错误，也不能刷新成成功态。
+
+本轮不把 `grants/requests 独立 UI` 列为确定缺口：当前 React Connected Apps UI 里没有看到独立入口，不能凭旧文档继续猜测。
+
+已创建实现任务：#KMP task #189。
+
 ## Activity / Inbox 逐项复核结论
 
 结论先放前面：按 @artin 的理解处理，KMP `Activity` 与 React `/inbox` 视为同一产品能力，只是 React URL 仍叫 `/inbox`。这点不是缺口。
