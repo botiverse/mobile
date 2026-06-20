@@ -29,7 +29,7 @@
 | Members / Agent detail | Members screen、agent detail tabs、agent activity parser/repository/cache、create agent coordinator、agent actions 数据链路都有 | 需要按 React AgentDetailPanel 验收 start/stop/reset/delete、workspace files、skills/scopes、integrations、runtime config、activity 分页/刷新、敏感字段过滤 | 不再说“agent 高级面可能没有”，改为“高级面大部分链路存在，需矩阵验收” |
 | Computers | `SettingsComputersPage` 和 repository/API 已覆盖 list/detail/add/rename/delete/rotate key/workspaces/runtime models 等 | 需要验收 React MachineDetailPanel 的动作可达性、确认弹窗、错误态、workspace 删除、runtime models 展示和权限分支 | 不再说“只是 API 有”，改为“页面和数据已有，动作/状态 parity 待验收” |
 | Settings Appearance | Settings 已有 Appearance destination，包含 message font size / preview 方向 | 需要验收字体大小持久化、默认值映射、preview 是否用真实 message 组件、与 React copy/布局一致 | 不再说“KMP 未列 Appearance”，改为“入口已有，需细节验收” |
-| Search / Saved / Home | 近期已经多轮按 React 修：DM rows、Search filters/sort/empty/shared input、Saved/Home 入口等 | 剩余以截图和行为回归收口，不再口头猜测 | 保留为 P0 ongoing visual/action pass |
+| Search / Saved / Home | 近期已经多轮按 React 修：DM rows、Search filters/sort/empty/shared input、Saved open/unsave/load-more/Home 入口等 | Home/Search/Saved 主链路不是空白；剩余以截图、移动等价动作和行为回归收口，不再口头猜测 | 保留为 P0 ongoing visual/action pass |
 
 ## Connected Apps 逐项复核结论
 
@@ -172,6 +172,40 @@ KMP 当前明确缺口：
 
 已创建实现任务：#对话流专修 task #276。
 
+## Home / Search / Saved 逐项复核结论
+
+结论先放前面：Home/Search/Saved 也不应再被写成“缺入口”或“缺主流程”。KMP Home 已经有 Search / Activity / Saved 顶部入口，Search 和 Saved 都接了真实 shared store/repository；近期也已经围绕 React 差异拆过任务并完成多轮返修。
+
+React Home/Search/Saved 的相关能力来自 `Sidebar.tsx`、`MessageSearchPage.tsx`、`SavedPanel.tsx`、`savedStore.ts`：
+
+- Home sidebar：Search / Activity / Saved 是主入口；DM rows 展示 avatar、name/description、unread/draft/status 等紧凑信息。
+- Search：message search 支持 query、sender/channel/time filter、sort、entity/message/thread results、load more、empty/loading/error、打开原消息/thread。
+- Saved：`/channels/saved` 初始加载和 `loadMore`；列表 item 可打开原消息，thread saved 会先打开 parent message 再 `openThread(parentChannelId, parentMessageId, messageId)`；可 unsave；右键菜单提供 Copy Link、Copy Markdown、Remove from Saved。
+
+KMP 当前确认已有：
+
+- Home 顶部 `Search / Activity / Saved` 可进入对应 shared panel；旧 placeholder 任务已被 #首页专修 task #154 覆盖并关闭。
+- Home DM row React parity 已由 #首页专修 task #210 处理；后续 human/agent avatar/status/border 又有独立任务收口。
+- Search 已由 #首页专修 task #212、task #217 处理到真实服务端搜索；filter/sort、空态、shared input clear、filter chip 可点状态都已经多轮修正。
+- Saved 不是缺页面：`SharedHomeSavedPanel` 有 header、loading/empty/error/noPermission、列表、Load More、Unsave、open item；`SharedHomeSearchSavedStore` 通过 `RealSavedRepository` 调 `/channels/saved`、`DELETE /channels/saved/:messageId`，并做 optimistic unsave + 失败恢复。
+- Saved open 行为已有专项 #首页专修 task #202 和 #首页专修 task #218，方向是复用 Activity/Search/Saved 的 shared open-message logic，而不是每个页面各传一套乱 route payload。
+
+KMP 当前明确缺口/待证明项：
+
+1. **Search 主要剩截图回归，不是新功能任务**
+   需要用同宽 React/KMP screenshots 验证 filter row、result card、empty state、popover selected state、input clear button 和 typography；不要再基于旧 #167 的 ESC 结论开新任务，因为最新 React 仍有 ESC hint，旧判断已经过期。
+
+2. **Saved 主动作已齐，剩余是右键/复制类移动等价**
+   React Saved item 右键菜单有 Copy Link、Copy Markdown、Remove from Saved。KMP 当前已覆盖 Remove/Unsave，但没有看到 Saved item overflow/long-press 里的 Copy Link / Copy Markdown。移动端不一定照搬右键，但如果产品要求 saved 里也能快速复制链接/markdown，应作为 P1 小任务补一个长按或更多菜单。
+
+3. **Saved 视觉需要继续以真实组件截图验收**
+   #首页专修 task #169 / task #173 已做过 Saved visual parity；现在文档只保留“继续截图回归”的结论，不再重复创建 Saved layout 任务。验收重点是 React 的轻边框 card、右侧 bookmark button、metadata row、Load More 文案和空态 copy。
+
+4. **Home/Search/Saved 打开原消息必须继续遵守 #263 thread route contract**
+   Search/Saved/Activity 打开 thread hit 或 saved reply 时，必须使用 parent channel/message pair + focused message id，stream hint 只能作可信 hint，不能用裸 `threadId/channelId/sourceThreadId` 推断 origin。
+
+因此 Home/Search/Saved 本轮不新增 P0 task。已有任务覆盖关系是：DM rows task #210、Search parity task #212 / #217、Saved placeholder/visual/open-message task #154 / #173 / #202 / #218。后续只在新的截图或实机行为证明仍有差异时，再开更小的专项。
+
 ## 功能总图
 
 | 功能域 | React 当前能力 | KMP/Android 当前状态 | 具体缺口判断 | 建议优先级 |
@@ -184,8 +218,8 @@ KMP 当前明确缺口：
 | Tasks | server tasks、channel tasks、create/claim/unclaim/status/delete、task thread | SharedTasksScreen + NetworkSlockTasksApi 已接；thread open 已有 | 需要与 React task board 的过滤、创建、状态动作、空态/权限态做完整核对 | P0/P1 |
 | Members | members root、agent/human detail、create agent、agent status/start/stop/reset/delete/activity/workspace/scopes/integrations | SharedMembersScreen、RealMemberRepository、agent activity、create agent coordinator 已有 | 高级动作/工作区/skills/scopes/integrations/runtime config 需要矩阵验收 | P1 |
 | Computers | computers list/detail、add/rename/delete/rotate key/workspaces/runtime models/computer actions | SettingsComputersPage + API/repository 已有 | 动作完整性、确认/错误/权限状态、runtime models 与 workspace 行为待验收 | P1 |
-| Search | full message search、filters、sort、entity results、desktop master-detail open slot、URL query | SharedHomeSearchPanel + RealSearchRepository 已有；近期已按 React 修 filters/sort/shared input/empty | mobile 核心可用；剩余用同宽截图和打开结果行为验收 | P0 ongoing |
-| Saved | saved messages list/load more/unsave/open original | SharedHomeSavedPanel + RealSavedRepository 已有 | 核对 React SavedPanel 视觉、unsave/open original、load more、空态/错误态 | P0/P1 |
+| Search | full message search、filters、sort、entity results、desktop master-detail open slot、URL query | SharedHomeSearchPanel + RealSearchRepository 已有；近期已按 React 修 filters/sort/shared input/empty/server search | mobile 核心可用；剩余用同宽截图和打开结果行为验收 | P0 ongoing |
+| Saved | saved messages list/load more/unsave/open original/copy link/copy markdown | SharedHomeSavedPanel + RealSavedRepository 已有 list/load more/unsave/open original，视觉/open 已有专项任务处理 | 主流程已齐；剩余是 Copy Link/Copy Markdown 的移动等价和真实截图回归 | P1 |
 | Activity / Inbox / Threads inbox | followed threads inbox、unread/all/mentions filter、mark read/unread、mark all read、done/undone/follow/unfollow | Home 入口为 Activity；SharedHomeActivityScreen/SharedInboxPanel 已有 | 不是缺页面，而是缺动作矩阵证明和 Activity/Inbox 命名语义决策 | P0 |
 | Settings Account | profile/display name/avatar/password/social identities/sign out | Account/Profile/sign out 有 | social identities/link provider/avatar upload 需核对 | P1 |
 | Settings Language/Region | language、translation display、timezone、time format | Language & Region 数据和更新链路已有 | UI 覆盖、保存/错误状态、默认值映射需验收 | P1 |
