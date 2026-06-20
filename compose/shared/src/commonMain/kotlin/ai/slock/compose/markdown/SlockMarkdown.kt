@@ -730,12 +730,12 @@ fun SlockMarkdownBody(
 ) {
     val content = remember(body, performanceKey) {
         if (performanceKey == null) {
-            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE) {
+            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE, body.length) {
                 body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
             }
         } else {
             val startedAt = TimeSource.Monotonic.markNow()
-            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE) {
+            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE, body.length) {
                 body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
                     .also { normalized ->
                         val durationMs = startedAt.elapsedNow().inWholeMilliseconds
@@ -771,7 +771,7 @@ fun SlockMarkdownBody(
         }
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             KuiklyText(
                 text = content,
                 modifier = markdownModifier,
@@ -834,7 +834,7 @@ fun SlockMarkdownBody(
                     "cacheHit=$cacheHit durationMs=$renderDurationMs"
             )
         }
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             KuiklyText(
                 text = annotated.withSlockMarkdownSpanFonts(resolvedStyle),
                 modifier = markdownModifier,
@@ -884,7 +884,7 @@ fun SlockMarkdownBody(
                 }
             }
     ) {
-        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             Markdown(
                 content = content,
                 colors = colors,

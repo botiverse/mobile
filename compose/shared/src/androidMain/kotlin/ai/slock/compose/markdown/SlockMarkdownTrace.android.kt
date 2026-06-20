@@ -17,3 +17,18 @@ internal actual fun traceBegin(name: String) {
 internal actual fun traceEnd() {
     Trace.endSection()
 }
+
+private const val SpikeLogTag = "SlockMarkdownSpike"
+
+internal actual fun logMarkdownSpike(
+    phase: String,
+    durationUs: Long,
+    bodyLength: Int,
+    extra: String
+) {
+    val extras = if (extra.isNotEmpty()) " $extra" else ""
+    android.util.Log.i(
+        SpikeLogTag,
+        "phase=$phase durationUs=$durationUs bodyLength=$bodyLength$extras"
+    )
+}

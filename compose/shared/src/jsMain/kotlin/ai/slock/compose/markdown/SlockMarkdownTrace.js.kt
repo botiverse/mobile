@@ -10,3 +10,12 @@ internal actual fun traceBegin(name: String) {
 internal actual fun traceEnd() {
     // No-op
 }
+
+internal actual fun logMarkdownSpike(
+    phase: String,
+    durationUs: Long,
+    bodyLength: Int,
+    extra: String
+) {
+    // No-op
+}

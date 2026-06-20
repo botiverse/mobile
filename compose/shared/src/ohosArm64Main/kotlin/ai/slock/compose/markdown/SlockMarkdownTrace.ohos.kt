@@ -16,3 +16,12 @@ internal actual fun traceBegin(name: String) {
 internal actual fun traceEnd() {
     // No-op: OHOS tracing is out of scope for #192 phase attribution.
 }
+
+internal actual fun logMarkdownSpike(
+    phase: String,
+    durationUs: Long,
+    bodyLength: Int,
+    extra: String
+) {
+    // No-op: OHOS spike debug log is out of scope for #192 phase attribution.
+}
