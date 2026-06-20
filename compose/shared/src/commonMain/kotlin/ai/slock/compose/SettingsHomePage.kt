@@ -290,10 +290,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
-import com.tencent.kuikly.compose.material3.navigation.NavHost
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.material3.navigation.composable
-import com.tencent.kuikly.compose.material3.navigation.rememberNavController
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -345,6 +342,7 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
 private const val AppShellRouteThread = "thread"
+private const val RetainedThreadRouteEntryLimit = 4
 private const val HomeDestinationSearch = "search"
 private const val HomeDestinationActivity = "activity"
 private const val HomeDestinationSaved = "saved"
@@ -724,34 +722,57 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
         SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedKey == "settings")
     )
 
-internal fun retainedHomeTasksTabOrder(selectedTab: String): List<String> =
-    if (selectedTab == "tasks") {
-        listOf("home", "tasks")
-    } else {
-        listOf("tasks", "home")
-    }
+private val retainedAppShellTabKeys = listOf("home", "tasks", "members", "settings")
 
-private fun isRetainedHomeTasksTab(tab: String): Boolean =
-    tab == "home" || tab == "tasks"
+internal fun retainedAppShellSelectedTab(selectedTab: String): String =
+    selectedTab.takeIf { it in retainedAppShellTabKeys } ?: "home"
+
+internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return retainedAppShellTabKeys.filter { it != activeTab } + activeTab
+}
+
+private fun isRetainedAppShellTab(tab: String): Boolean =
+    tab in retainedAppShellTabKeys
+
+private data class RetainedThreadRouteEntry(
+    val key: String,
+    val payload: KuiklyThreadScreenPayload
+)
+
+internal fun retainedThreadRouteEntryKey(payload: KuiklyThreadScreenPayload): String =
+    listOf(
+        payload.surfaceKind,
+        payload.sourceThreadId.orEmpty(),
+        payload.streamChannelId.orEmpty(),
+        payload.parentChannelId.orEmpty(),
+        payload.parentMessageId.orEmpty(),
+        payload.originParentMessageId.orEmpty(),
+        payload.focusedMessageId.orEmpty(),
+        payload.instanceId
+    ).joinToString("|")
+
+private fun upsertRetainedThreadRouteEntry(
+    entries: List<RetainedThreadRouteEntry>,
+    entry: RetainedThreadRouteEntry,
+    limit: Int = RetainedThreadRouteEntryLimit
+): List<RetainedThreadRouteEntry> =
+    (entries.filterNot { it.key == entry.key } + entry).takeLast(limit)
 
 @Composable
-private fun RetainedHomeTasksTabs(
+private fun RetainedAppShellTabs(
     selectedTab: String,
     mountedTabs: Set<String>,
-    homeContent: @Composable (active: Boolean) -> Unit,
-    tasksContent: @Composable (active: Boolean) -> Unit
+    content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        retainedHomeTasksTabOrder(selectedTab).forEach { tab ->
-            if (tab == selectedTab || tab in mountedTabs) {
+        retainedAppShellTabOrder(activeTab).forEach { tab ->
+            if (tab == activeTab || tab in mountedTabs) {
                 key("retained-$tab") {
-                    val active = selectedTab == tab
+                    val active = activeTab == tab
                     RetainedAppShellTabPane(active = active) {
-                        if (tab == "tasks") {
-                            tasksContent(active)
-                        } else {
-                            homeContent(active)
-                        }
+                        content(tab, active)
                     }
                 }
             }
@@ -775,6 +796,21 @@ private fun RetainedAppShellTabPane(
 }
 
 @Composable
+private fun RetainedAppShellRoutePane(
+    active: Boolean,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .alpha(if (active) 1f else 0f)
+    ) {
+        content()
+    }
+}
+
+@Composable
 private fun SlockAppShellContent() {
     // #85 follow-up: seed the moko KBA `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
@@ -784,7 +820,7 @@ private fun SlockAppShellContent() {
     // the OS default.
     RememberMokoLocaleSeedFromLocalActivity()
     var selectedTab by remember { mutableStateOf("home") }
-    var retainedHomeTasksTabs by remember { mutableStateOf(setOf("home")) }
+    var retainedAppShellTabs by remember { mutableStateOf(setOf("home")) }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     var selectedSettingsComputerId by remember { mutableStateOf<String?>(null) }
     var selectedHomeDestination by remember { mutableStateOf<String?>(null) }
@@ -972,6 +1008,9 @@ private fun SlockAppShellContent() {
     var activeThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var activeThreadResolvedAuxiliaryThreadId by remember { mutableStateOf<String?>(null) }
     var threadBackStack by remember { mutableStateOf<List<KuiklyThreadScreenPayload>>(emptyList()) }
+    var appShellRoute by remember { mutableStateOf(AppShellRouteMain) }
+    var activeThreadRouteKey by remember { mutableStateOf<String?>(null) }
+    var retainedThreadRouteEntries by remember { mutableStateOf<List<RetainedThreadRouteEntry>>(emptyList()) }
     var pendingAuthReturnThreadPayload by remember { mutableStateOf<KuiklyThreadScreenPayload?>(null) }
     var authGateMessage by remember { mutableStateOf<String?>(null) }
     var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
@@ -1053,9 +1092,11 @@ private fun SlockAppShellContent() {
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val latestHomeState by rememberUpdatedState(homeState)
     val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
-    val latestActiveThreadPayload by rememberUpdatedState(activeThreadPayload)
     val latestReadySession by rememberUpdatedState(readySession)
-    val homeSurfaceVisible = selectedTab == "home" && activeThreadPayload == null
+    val activeRouteThreadPayload =
+        activeThreadPayload.takeIf { appShellRoute == AppShellRouteThread }
+    val latestActiveThreadPayload by rememberUpdatedState(activeRouteThreadPayload)
+    val homeSurfaceVisible = selectedTab == "home" && appShellRoute == AppShellRouteMain
     LaunchedEffect(homeSurfaceVisible) {
         homeViewModel.dispatch(SharedHomeIntent.SetSurfaceVisible(homeSurfaceVisible))
     }
@@ -1066,7 +1107,6 @@ private fun SlockAppShellContent() {
         remember(hostThreadTimeContext, loadedSettingsTimeFormat, sessionTimeFormat) {
             hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
-    val navController = rememberNavController()
     val shellScope = rememberSlockAppShellScope()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
@@ -1079,6 +1119,16 @@ private fun SlockAppShellContent() {
     fun setActiveThreadPayload(payload: KuiklyThreadScreenPayload?) {
         activeThreadResolvedAuxiliaryThreadId = null
         activeThreadPayload = payload
+        activeThreadRouteKey =
+            payload?.let { nextPayload ->
+                val key = retainedThreadRouteEntryKey(nextPayload)
+                retainedThreadRouteEntries =
+                    upsertRetainedThreadRouteEntry(
+                        retainedThreadRouteEntries,
+                        RetainedThreadRouteEntry(key, nextPayload)
+                    )
+                key
+            }
     }
 
     fun resetAppShellSessionState(clearReturnThread: Boolean = false) {
@@ -1086,12 +1136,15 @@ private fun SlockAppShellContent() {
         realtimeSessionKey = null
         membersAgentDetailRefreshKey = 0
         selectedTab = "home"
+        retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
         selectedSettingsComputerId = null
         selectedHomeDestination = null
         selectedHomeConversationId = null
         setActiveThreadPayload(null)
         threadBackStack = emptyList()
+        appShellRoute = AppShellRouteMain
+        retainedThreadRouteEntries = emptyList()
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
         if (clearReturnThread) {
@@ -1099,7 +1152,7 @@ private fun SlockAppShellContent() {
         }
     }
 
-    fun requireSessionReauth(returnPayload: KuiklyThreadScreenPayload? = activeThreadPayload) {
+    fun requireSessionReauth(returnPayload: KuiklyThreadScreenPayload? = activeRouteThreadPayload) {
         // Guard: if the auth gate already has a valid session, the 401 that triggered
         // this callback is stale (from before login/re-auth). Don't override the valid state.
         val currentGate = authGateViewModel.state.value
@@ -1227,13 +1280,14 @@ private fun SlockAppShellContent() {
     }
 
     fun popThreadRoute(): Boolean {
-        val routeBefore = navController.currentRoute.orEmpty()
-        val canNavigateBackBefore = navController.canNavigateBack
+        val routeBefore = appShellRoute
+        val canNavigateBackBefore = appShellRoute == AppShellRouteThread
         val threadBackStackSizeBefore = threadBackStack.size
-        val hadActiveThread = activeThreadPayload != null
+        val hadActiveThread = activeRouteThreadPayload != null
         if (threadBackStack.isNotEmpty()) {
             setActiveThreadPayload(threadBackStack.last())
             threadBackStack = threadBackStack.dropLast(1)
+            appShellRoute = AppShellRouteThread
             bridge.log(
                 "app_back_pop_thread result=thread_stack routeBefore=$routeBefore " +
                     "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
@@ -1241,7 +1295,7 @@ private fun SlockAppShellContent() {
             )
             return true
         }
-        if (navController.currentRoute != AppShellRouteThread && !navController.canNavigateBack) {
+        if (appShellRoute != AppShellRouteThread) {
             bridge.log(
                 "app_back_pop_thread result=no_thread_route routeBefore=$routeBefore " +
                     "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
@@ -1249,29 +1303,24 @@ private fun SlockAppShellContent() {
             )
             return false
         }
-        val popped = navController.popBackStack()
-        if (popped) {
-            setActiveThreadPayload(null)
-            threadBackStack = emptyList()
-        }
+        appShellRoute = AppShellRouteMain
+        threadBackStack = emptyList()
         bridge.log(
-            "app_back_pop_thread result=nav_pop popped=$popped routeBefore=$routeBefore " +
+            "app_back_pop_thread result=route_pop popped=true routeBefore=$routeBefore " +
                 "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +
                 "activeThreadBefore=$hadActiveThread"
         )
-        return popped
+        return true
     }
 
     fun openThreadPayload(payload: KuiklyThreadScreenPayload, pushCurrent: Boolean = true) {
-        if (pushCurrent) {
+        if (pushCurrent && appShellRoute == AppShellRouteThread) {
             activeThreadPayload?.let { currentPayload ->
                 threadBackStack = threadBackStack + currentPayload
             }
         }
         setActiveThreadPayload(payload)
-        if (navController.currentRoute != AppShellRouteThread) {
-            navController.navigate(AppShellRouteThread)
-        }
+        appShellRoute = AppShellRouteThread
     }
 
     LaunchedEffect(
@@ -1450,13 +1499,11 @@ private fun SlockAppShellContent() {
                 "originStatus=${payload.originStatus} hasOriginMessage=${payload.originMessage != null} " +
                 "hasOriginPreview=${!payload.originPreview.isNullOrBlank()}"
         )
-        if (pushCurrent) {
+        if (pushCurrent && appShellRoute == AppShellRouteThread) {
             activeThreadPayload?.let { threadBackStack = threadBackStack + it }
         }
         setActiveThreadPayload(payload)
-        if (navController.currentRoute != AppShellRouteThread) {
-            navController.navigate(AppShellRouteThread)
-        }
+        appShellRoute = AppShellRouteThread
     }
 
     fun openHomeMessage(request: HomeMessageOpenRequest, source: String, pushCurrent: Boolean = true) {
@@ -1526,10 +1573,10 @@ private fun SlockAppShellContent() {
     }
 
     val handleAppShellBack by rememberUpdatedState {
-        val routeBefore = navController.currentRoute.orEmpty()
-        val canNavigateBackBefore = navController.canNavigateBack
+        val routeBefore = appShellRoute
+        val canNavigateBackBefore = appShellRoute == AppShellRouteThread
         val threadBackStackSizeBefore = threadBackStack.size
-        val hadActiveThread = activeThreadPayload != null
+        val hadActiveThread = activeRouteThreadPayload != null
         if (popThreadRoute()) {
             bridge.log(
                 "app_back_root result=thread routeBefore=$routeBefore " +
@@ -1555,9 +1602,9 @@ private fun SlockAppShellContent() {
     SlockAppShellRootBackHandler(
         onLifecycleLog = { event ->
             bridge.log(
-                "app_back_root_handler $event route=${navController.currentRoute.orEmpty()} " +
-                    "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
-                    "activeThread=${activeThreadPayload != null}"
+                "app_back_root_handler $event route=$appShellRoute " +
+                    "canNavigateBack=${appShellRoute == AppShellRouteThread} stack=${threadBackStack.size} " +
+                    "activeThread=${activeRouteThreadPayload != null}"
             )
         }
     ) { handleAppShellBack() }
@@ -1676,6 +1723,7 @@ private fun SlockAppShellContent() {
                     is DataResult.Content -> {
                         val channel = result.data.channel
                         selectedTab = "home"
+                        retainedAppShellTabs = retainedAppShellTabs + "home"
                         selectedHomeDestination = null
                         selectedHomeConversationId = channel.threadId.value
                         homeViewModel.dispatch(SharedHomeIntent.ChannelCreated(channel))
@@ -1894,106 +1942,29 @@ private fun SlockAppShellContent() {
         onDispose { pager.removePagerEventObserver(observer) }
     }
 
-    NavHost(
-        navController = navController,
-        startDestination = AppShellRouteMain,
-        modifier = Modifier.fillMaxSize()
-    ) {
-        composable(AppShellRouteThread) {
-            val payload = activeThreadPayload
-            if (payload == null) {
-                SlockCenteredLoading(message = "Opening thread...")
-            } else {
-                SlockBackHandler(
-                    enabled = true,
-                    label = "app_shell_thread",
-                    onLifecycleLog = { event ->
-                        bridge.log(
-                            "app_back_thread_handler $event route=${navController.currentRoute.orEmpty()} " +
-                                "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
-                                "activeThread=${activeThreadPayload != null}"
-                        )
-                    }
-                ) {
-                    val handled = popThreadRoute()
-                    bridge.log(
-                        "app_back_thread_handler result=$handled route=${navController.currentRoute.orEmpty()} " +
-                            "canNavigateBack=${navController.canNavigateBack} stack=${threadBackStack.size} " +
-                            "activeThread=${activeThreadPayload != null}"
-                    )
-                }
-                SharedThreadRouteContent(
-                    initialPayload = payload,
-                    bridge = bridge,
-                    dataSource = threadDataSource,
-                    authStore = authStore,
-                    tasksDataSource = tasksDataSource,
-                    computersStore = threadComputersStore,
-                    membersStore = threadMembersStore,
-                    onBack = { popThreadRoute() },
-                    onOpenThreadPayload = { payload -> openThreadPayload(payload) },
-                    onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
-                    onAuthRequired = { requireSessionReauth(payload) },
-                    onOpenParentThread = {
-                        if (threadBackStack.isNotEmpty()) {
-                            setActiveThreadPayload(threadBackStack.last())
-                            threadBackStack = threadBackStack.dropLast(1)
-                            true
-                        } else {
-                            val messageId = activeThreadPayload?.originParentMessageId?.takeIf { it.isNotBlank() }
-                            if (messageId == null) {
-                                false
-                            } else {
-                                val loadingPayload = appShellParentMessageContextLoadingPayload(messageId)
-                                openThreadPayload(loadingPayload)
-                                appShellCoroutineScope.launch {
-                                    when (val result = threadDataSource.openMessageContext(messageId, loadingPayload)) {
-                                        is DataResult.Content -> openThreadPayload(result.data, pushCurrent = false)
-                                        is DataResult.Empty,
-                                        is DataResult.Error -> {
-                                            openThreadPayload(
-                                                loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
-                                                pushCurrent = false
-                                            )
-                                            bridge.toast("Unable to open channel")
-                                        }
-                                        is DataResult.NoPermission -> {
-                                            if (result.blocker.isAuthSessionBlocker()) {
-                                                requireSessionReauth(payload)
-                                                return@launch
-                                            }
-                                            openThreadPayload(
-                                                loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
-                                                pushCurrent = false
-                                            )
-                                            bridge.toast("Unable to open channel")
-                                        }
-                                    }
-                                }
-                                true
-                            }
-                        }
-                    },
-                    realtimeEventSignal = threadRealtimeEventSignal,
-                    onResolvedAuxiliaryThreadIdChanged = { resolvedThreadId ->
-                        activeThreadResolvedAuxiliaryThreadId = resolvedThreadId
-                    }
-                )
+    val retainedThreadRouteEntriesForRender =
+        activeThreadRouteKey
+            ?.let { activeKey ->
+                retainedThreadRouteEntries.filterNot { it.key == activeKey } +
+                    retainedThreadRouteEntries.filter { it.key == activeKey }
             }
-        }
-        composable(AppShellRouteMain) {
+            ?: retainedThreadRouteEntries
+
+    val mainRouteContent: @Composable () -> Unit = {
+        RetainedAppShellRoutePane(active = appShellRoute == AppShellRouteMain) {
             SlockAppShellSurface(
                 shellScope = shellScope,
                 bottomTabs = appShellBottomTabs(selectedTab),
                 onBottomTabSelected = {
-                    selectedTab = it
-                    if (isRetainedHomeTasksTab(it)) {
-                        retainedHomeTasksTabs = retainedHomeTasksTabs + it
+                    val nextTab = retainedAppShellSelectedTab(it)
+                    selectedTab = nextTab
+                    if (isRetainedAppShellTab(nextTab)) {
+                        retainedAppShellTabs = retainedAppShellTabs + nextTab
                     }
-                    if (it == "home") {
+                    if (nextTab == "home") {
                         selectedHomeDestination = null
                     }
-                    if (it != "settings") {
+                    if (nextTab != "settings") {
                         selectedSettingsDestination = SettingsDestinationHome
                         selectedSettingsComputerId = null
                         pendingDiagnosticsFeedback = null
@@ -2086,9 +2057,8 @@ private fun SlockAppShellContent() {
                                         }
                                     } else {
                                         selectedTab = "members"
+                                        retainedAppShellTabs = retainedAppShellTabs + "members"
                                         selectedHomeConversationId = null
-                                        setActiveThreadPayload(null)
-                                        threadBackStack = emptyList()
                                     }
                                 },
                                 bottomContentPadding = shellScope.bottomTabBarContentInset,
@@ -2111,107 +2081,101 @@ private fun SlockAppShellContent() {
                             SlockCenteredLoading(message = "Opening...")
                         }
                     }
-                    when (selectedTab) {
-                        "settings" -> {
-                            SettingsAppShellContent(
-                                session = (authGateState as? SharedAuthGateState.Ready)?.session,
-                                authDataSource = authDataSource,
-                                settingsCapabilities = settingsCapabilities,
-                                settingsState = settingsState,
-                                notificationPreferenceSnapshot = notificationPreferenceSnapshot,
-                                onToggleNotificationPreference = {
-                                    notificationPreferenceScope.launch {
-                                        notificationPreferenceSnapshot =
-                                            notificationPreferenceRepository.setNotificationEnabled(!notificationPreferenceSnapshot.enabled)
-                                    }
-                                },
-                                onSettingsIntent = settingsViewModel::dispatch,
-                                selectedDestination = selectedSettingsDestination,
-                                selectedComputerId = selectedSettingsComputerId,
-                                onDestinationChange = {
-                                    selectedSettingsDestination = it
-                                    if (it != SettingsDestinationComputerDetail) {
-                                        selectedSettingsComputerId = null
-                                    }
-                                },
-                                onOpenComputer = { computerId ->
-                                    selectedSettingsComputerId = computerId
-                                    selectedSettingsDestination = SettingsDestinationComputerDetail
-                                },
-                                onOpenRouter = { jumpPage(pager, "router") },
-                                onMessageAlignmentSelected = {
-                                    myMessageAlignment = it
-                                },
-                                onSettingsAction = { action, itemId ->
-                                    bridge.settingsEvent("shared-shell-settings", action, itemId)
-                                },
-                                onDiagnosticsFeedbackPrepared = { draft ->
-                                    pendingDiagnosticsFeedbackReturnDestination =
-                                        selectedSettingsDestination
-                                            .takeIf { it != SettingsDestinationDiagnosticsFeedbackChannel }
-                                            ?: SettingsDestinationDiagnostics
-                                    pendingDiagnosticsFeedback = draft
-                                    selectedSettingsDestination = SettingsDestinationDiagnosticsFeedbackChannel
-                                    if (homeState.content !is SharedHomeContentState.Content) {
-                                        homeViewModel.dispatch(SharedHomeIntent.Start)
-                                    }
-                                    bridge.toast("请选择 channel")
-                                },
-                                diagnosticsFeedbackDraft = pendingDiagnosticsFeedback,
-                                diagnosticsFeedbackHomeState = homeState,
-                                onDiagnosticsFeedbackBack = {
-                                    selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
-                                    pendingDiagnosticsFeedback = null
-                                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-                                },
-                                onDiagnosticsFeedbackRefresh = {
-                                    homeViewModel.dispatch(SharedHomeIntent.Refresh)
-                                },
-                                onDiagnosticsFeedbackChannelSelected = { conversation ->
-                                    pendingDiagnosticsFeedback?.let { draft ->
-                                        openDiagnosticsFeedbackChannel(
-                                            draft = draft,
-                                            conversation = conversation,
-                                            source = "diagnostics_channel_page",
-                                            pushCurrent = true
-                                        )
-                                        homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
-                                    }
-                                },
-                                bottomContentPadding = shellScope.bottomTabBarContentInset,
-                                timeContext = threadTimeContext,
-                                onLogout = {
-                                    authGateMessage = null
-                                    authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
-                                    resetAppShellSessionState(clearReturnThread = true)
+                    val membersTabContent: @Composable (active: Boolean) -> Unit = {
+                        SharedMembersScreen(
+                            bridge = bridge,
+                            authStore = authStore,
+                            memberRepository = memberRepository,
+                            createAgentCoordinator = createAgentCoordinator,
+                            settingsCapabilities = settingsCapabilities,
+                            agentDetailRefreshKey = membersAgentDetailRefreshKey,
+                            timeContext = threadTimeContext
+                        )
+                    }
+                    val settingsTabContent: @Composable (active: Boolean) -> Unit = {
+                        SettingsAppShellContent(
+                            session = (authGateState as? SharedAuthGateState.Ready)?.session,
+                            authDataSource = authDataSource,
+                            settingsCapabilities = settingsCapabilities,
+                            settingsState = settingsState,
+                            notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+                            onToggleNotificationPreference = {
+                                notificationPreferenceScope.launch {
+                                    notificationPreferenceSnapshot =
+                                        notificationPreferenceRepository.setNotificationEnabled(!notificationPreferenceSnapshot.enabled)
                                 }
-                            )
-                        }
-                        "tasks" -> {
-                            RetainedHomeTasksTabs(
-                                selectedTab = selectedTab,
-                                mountedTabs = retainedHomeTasksTabs,
-                                homeContent = homeTabContent,
-                                tasksContent = tasksTabContent
-                            )
-                        }
-                        "members" ->
-                            SharedMembersScreen(
-                                bridge = bridge,
-                                authStore = authStore,
-                                memberRepository = memberRepository,
-                                createAgentCoordinator = createAgentCoordinator,
-                                settingsCapabilities = settingsCapabilities,
-                                agentDetailRefreshKey = membersAgentDetailRefreshKey,
-                                timeContext = threadTimeContext
-                            )
-                        else -> {
-                            RetainedHomeTasksTabs(
-                                selectedTab = "home",
-                                mountedTabs = retainedHomeTasksTabs,
-                                homeContent = homeTabContent,
-                                tasksContent = tasksTabContent
-                            )
+                            },
+                            onSettingsIntent = settingsViewModel::dispatch,
+                            selectedDestination = selectedSettingsDestination,
+                            selectedComputerId = selectedSettingsComputerId,
+                            onDestinationChange = {
+                                selectedSettingsDestination = it
+                                if (it != SettingsDestinationComputerDetail) {
+                                    selectedSettingsComputerId = null
+                                }
+                            },
+                            onOpenComputer = { computerId ->
+                                selectedSettingsComputerId = computerId
+                                selectedSettingsDestination = SettingsDestinationComputerDetail
+                            },
+                            onOpenRouter = { jumpPage(pager, "router") },
+                            onMessageAlignmentSelected = {
+                                myMessageAlignment = it
+                            },
+                            onSettingsAction = { action, itemId ->
+                                bridge.settingsEvent("shared-shell-settings", action, itemId)
+                            },
+                            onDiagnosticsFeedbackPrepared = { draft ->
+                                pendingDiagnosticsFeedbackReturnDestination =
+                                    selectedSettingsDestination
+                                        .takeIf { it != SettingsDestinationDiagnosticsFeedbackChannel }
+                                        ?: SettingsDestinationDiagnostics
+                                pendingDiagnosticsFeedback = draft
+                                selectedSettingsDestination = SettingsDestinationDiagnosticsFeedbackChannel
+                                if (homeState.content !is SharedHomeContentState.Content) {
+                                    homeViewModel.dispatch(SharedHomeIntent.Start)
+                                }
+                                bridge.toast("请选择 channel")
+                            },
+                            diagnosticsFeedbackDraft = pendingDiagnosticsFeedback,
+                            diagnosticsFeedbackHomeState = homeState,
+                            onDiagnosticsFeedbackBack = {
+                                selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
+                                pendingDiagnosticsFeedback = null
+                                pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
+                            },
+                            onDiagnosticsFeedbackRefresh = {
+                                homeViewModel.dispatch(SharedHomeIntent.Refresh)
+                            },
+                            onDiagnosticsFeedbackChannelSelected = { conversation ->
+                                pendingDiagnosticsFeedback?.let { draft ->
+                                    openDiagnosticsFeedbackChannel(
+                                        draft = draft,
+                                        conversation = conversation,
+                                        source = "diagnostics_channel_page",
+                                        pushCurrent = true
+                                    )
+                                    homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
+                                }
+                            },
+                            bottomContentPadding = shellScope.bottomTabBarContentInset,
+                            timeContext = threadTimeContext,
+                            onLogout = {
+                                authGateMessage = null
+                                authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
+                                resetAppShellSessionState(clearReturnThread = true)
+                            }
+                        )
+                    }
+                    RetainedAppShellTabs(
+                        selectedTab = selectedTab,
+                        mountedTabs = retainedAppShellTabs
+                    ) { tab, active ->
+                        when (tab) {
+                            "tasks" -> tasksTabContent(active)
+                            "members" -> membersTabContent(active)
+                            "settings" -> settingsTabContent(active)
+                            else -> homeTabContent(active)
                         }
                     }
             }
@@ -2234,6 +2198,112 @@ private fun SlockAppShellContent() {
                     )
                 }
             }
+        }
+    }
+
+    val threadRouteContent: @Composable () -> Unit = {
+        val hasActiveThreadRouteEntry =
+            activeThreadRouteKey?.let { activeKey ->
+                retainedThreadRouteEntriesForRender.any { it.key == activeKey }
+            } == true
+        retainedThreadRouteEntriesForRender.forEach { entry ->
+            key("route-thread-${entry.key}") {
+                val threadActive = appShellRoute == AppShellRouteThread && entry.key == activeThreadRouteKey
+                RetainedAppShellRoutePane(active = threadActive) {
+                    SlockBackHandler(
+                        enabled = threadActive,
+                        label = "app_shell_thread",
+                        onLifecycleLog = { event ->
+                            bridge.log(
+                                "app_back_thread_handler $event route=$appShellRoute " +
+                                    "canNavigateBack=${appShellRoute == AppShellRouteThread} stack=${threadBackStack.size} " +
+                                    "activeThread=${activeRouteThreadPayload != null}"
+                            )
+                        }
+                    ) {
+                        val handled = popThreadRoute()
+                        bridge.log(
+                            "app_back_thread_handler result=$handled route=$appShellRoute " +
+                                "canNavigateBack=${appShellRoute == AppShellRouteThread} stack=${threadBackStack.size} " +
+                                "activeThread=${activeRouteThreadPayload != null}"
+                        )
+                    }
+                    SharedThreadRouteContent(
+                        initialPayload = entry.payload,
+                        bridge = bridge,
+                        dataSource = threadDataSource,
+                        authStore = authStore,
+                        tasksDataSource = tasksDataSource,
+                        computersStore = threadComputersStore,
+                        membersStore = threadMembersStore,
+                        onBack = { popThreadRoute() },
+                        onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                        onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
+                        onAuthRequired = { requireSessionReauth(entry.payload) },
+                        onOpenParentThread = {
+                            if (threadBackStack.isNotEmpty()) {
+                                setActiveThreadPayload(threadBackStack.last())
+                                threadBackStack = threadBackStack.dropLast(1)
+                                appShellRoute = AppShellRouteThread
+                                true
+                            } else {
+                                val messageId = activeThreadPayload?.originParentMessageId?.takeIf { it.isNotBlank() }
+                                if (messageId == null) {
+                                    false
+                                } else {
+                                    val loadingPayload = appShellParentMessageContextLoadingPayload(messageId)
+                                    openThreadPayload(loadingPayload)
+                                    appShellCoroutineScope.launch {
+                                        when (val result = threadDataSource.openMessageContext(messageId, loadingPayload)) {
+                                            is DataResult.Content -> openThreadPayload(result.data, pushCurrent = false)
+                                            is DataResult.Empty,
+                                            is DataResult.Error -> {
+                                                openThreadPayload(
+                                                    loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
+                                                    pushCurrent = false
+                                                )
+                                                bridge.toast("Unable to open channel")
+                                            }
+                                            is DataResult.NoPermission -> {
+                                                if (result.blocker.isAuthSessionBlocker()) {
+                                                    requireSessionReauth(entry.payload)
+                                                    return@launch
+                                                }
+                                                openThreadPayload(
+                                                    loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed"),
+                                                    pushCurrent = false
+                                                )
+                                                bridge.toast("Unable to open channel")
+                                            }
+                                        }
+                                    }
+                                    true
+                                }
+                            }
+                        },
+                        realtimeEventSignal = if (threadActive) threadRealtimeEventSignal else null,
+                        active = threadActive,
+                        onResolvedAuxiliaryThreadIdChanged = { resolvedThreadId ->
+                            if (threadActive) {
+                                activeThreadResolvedAuxiliaryThreadId = resolvedThreadId
+                            }
+                        }
+                    )
+                }
+            }
+        }
+        if (appShellRoute == AppShellRouteThread && !hasActiveThreadRouteEntry) {
+            SlockCenteredLoading(message = "Opening thread...")
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (appShellRoute == AppShellRouteMain) {
+            key("route-threads") { threadRouteContent() }
+            key("route-main") { mainRouteContent() }
+        } else {
+            key("route-main") { mainRouteContent() }
+            key("route-threads") { threadRouteContent() }
         }
     }
 }

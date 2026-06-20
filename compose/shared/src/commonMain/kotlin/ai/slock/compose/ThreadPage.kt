@@ -1422,9 +1422,10 @@ internal fun SharedThreadRouteContent(
     onOpenParentThread: () -> Boolean = { false },
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
+    active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {}
 ) {
-    PerformanceSceneEffect(bridge, "kuikly_thread")
+    PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
             SharedThreadViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
@@ -1433,8 +1434,10 @@ internal fun SharedThreadRouteContent(
     val payload = threadState.payload
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId(initialPayload)
     val auxiliaryRouteKey = resolvedAuxiliaryThreadId ?: "pending-${initialPayload.instanceId}"
-    LaunchedEffect(resolvedAuxiliaryThreadId) {
-        onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
+    LaunchedEffect(resolvedAuxiliaryThreadId, active) {
+        if (active) {
+            onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
+        }
     }
     val taskChannelId = resolvedAuxiliaryThreadId?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =

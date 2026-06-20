@@ -31,8 +31,31 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun retainedHomeTasksTabOrderKeepsActiveTabOnTop() {
-        assertEquals(listOf("tasks", "home"), retainedHomeTasksTabOrder("home"))
-        assertEquals(listOf("home", "tasks"), retainedHomeTasksTabOrder("tasks"))
+    fun retainedAppShellTabOrderKeepsActiveTabOnTop() {
+        assertEquals(listOf("tasks", "members", "settings", "home"), retainedAppShellTabOrder("home"))
+        assertEquals(listOf("home", "members", "settings", "tasks"), retainedAppShellTabOrder("tasks"))
+        assertEquals(listOf("home", "tasks", "settings", "members"), retainedAppShellTabOrder("members"))
+        assertEquals(listOf("home", "tasks", "members", "settings"), retainedAppShellTabOrder("settings"))
+    }
+
+    @Test
+    fun retainedAppShellSelectedTabFallsBackToHome() {
+        assertEquals("home", retainedAppShellSelectedTab("thread"))
+    }
+
+    @Test
+    fun retainedThreadRouteEntryKeyUsesRouteIdentity() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-C123",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "C123",
+                streamChannelId = "C123"
+            )
+
+        assertEquals(
+            retainedThreadRouteEntryKey(base),
+            retainedThreadRouteEntryKey(base.copy(status = "content", title = "general"))
+        )
     }
 }
