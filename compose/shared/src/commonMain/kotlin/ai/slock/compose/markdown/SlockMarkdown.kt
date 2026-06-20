@@ -696,7 +696,9 @@ private fun buildSlockMarkdownInlineTextAnnotatedString(
     style: TextStyle,
     annotator: MarkdownAnnotator
 ): AnnotatedString {
-    val parsedTree = MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+    val parsedTree = traceMarkdownSection(SlockMarkdownTraceNames.PARSE) {
+        MarkdownParser(GFMFlavourDescriptor()).buildMarkdownTreeFromString(content)
+    }
     val textNode =
         parsedTree.children.firstOrNull { node ->
             node.type == MarkdownTokenTypes.TEXT || node.type == MarkdownElementTypes.PARAGRAPH
@@ -769,24 +771,26 @@ fun SlockMarkdownBody(
         }
     if (content.shouldUseSlockMarkdownPlainTextFastPath()) {
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
-        KuiklyText(
-            text = content,
-            modifier = markdownModifier,
-            color = resolvedStyle.color,
-            fontSize = resolvedStyle.fontSize,
-            fontStyle = resolvedStyle.fontStyle,
-            fontWeight = resolvedStyle.fontWeight,
-            fontFamily = resolvedStyle.fontFamily,
-            letterSpacing = resolvedStyle.letterSpacing,
-            textDecoration = resolvedStyle.textDecoration,
-            textAlign = resolvedStyle.textAlign,
-            lineHeight = resolvedStyle.lineHeight,
-            overflow = TextOverflow.Clip,
-            softWrap = true,
-            maxLines = Int.MAX_VALUE,
-            minLines = 1,
-            style = resolvedStyle
-        )
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+            KuiklyText(
+                text = content,
+                modifier = markdownModifier,
+                color = resolvedStyle.color,
+                fontSize = resolvedStyle.fontSize,
+                fontStyle = resolvedStyle.fontStyle,
+                fontWeight = resolvedStyle.fontWeight,
+                fontFamily = resolvedStyle.fontFamily,
+                letterSpacing = resolvedStyle.letterSpacing,
+                textDecoration = resolvedStyle.textDecoration,
+                textAlign = resolvedStyle.textAlign,
+                lineHeight = resolvedStyle.lineHeight,
+                overflow = TextOverflow.Clip,
+                softWrap = true,
+                maxLines = Int.MAX_VALUE,
+                minLines = 1,
+                style = resolvedStyle
+            )
+        }
         return
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
@@ -818,8 +822,10 @@ fun SlockMarkdownBody(
         val renderStartedAt = TimeSource.Monotonic.markNow()
         val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle)
         val (annotated, cacheHit) =
-            SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
-                buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
+            traceMarkdownSection(SlockMarkdownTraceNames.ANNOTATE) {
+                SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
+                    buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
+                }
             }
         val renderDurationMs = renderStartedAt.elapsedNow().inWholeMilliseconds
         if (performanceKey != null && shouldLogSlockMarkdownPerformance(renderDurationMs)) {
@@ -828,26 +834,28 @@ fun SlockMarkdownBody(
                     "cacheHit=$cacheHit durationMs=$renderDurationMs"
             )
         }
-        KuiklyText(
-            text = annotated.withSlockMarkdownSpanFonts(resolvedStyle),
-            modifier = markdownModifier,
-            color = resolvedStyle.color,
-            fontSize = resolvedStyle.fontSize,
-            fontStyle = resolvedStyle.fontStyle,
-            fontWeight = resolvedStyle.fontWeight,
-            fontFamily = resolvedStyle.fontFamily,
-            letterSpacing = resolvedStyle.letterSpacing,
-            textDecoration = resolvedStyle.textDecoration,
-            textAlign = resolvedStyle.textAlign,
-            lineHeight = resolvedStyle.lineHeight,
-            overflow = TextOverflow.Clip,
-            softWrap = true,
-            maxLines = Int.MAX_VALUE,
-            minLines = 1,
-            inlineContent = annotator.inlineContent?.invoke().orEmpty(),
-            onTextLayout = {},
-            style = resolvedStyle
-        )
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+            KuiklyText(
+                text = annotated.withSlockMarkdownSpanFonts(resolvedStyle),
+                modifier = markdownModifier,
+                color = resolvedStyle.color,
+                fontSize = resolvedStyle.fontSize,
+                fontStyle = resolvedStyle.fontStyle,
+                fontWeight = resolvedStyle.fontWeight,
+                fontFamily = resolvedStyle.fontFamily,
+                letterSpacing = resolvedStyle.letterSpacing,
+                textDecoration = resolvedStyle.textDecoration,
+                textAlign = resolvedStyle.textAlign,
+                lineHeight = resolvedStyle.lineHeight,
+                overflow = TextOverflow.Clip,
+                softWrap = true,
+                maxLines = Int.MAX_VALUE,
+                minLines = 1,
+                inlineContent = annotator.inlineContent?.invoke().orEmpty(),
+                onTextLayout = {},
+                style = resolvedStyle
+            )
+        }
         return
     }
     if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -876,15 +884,17 @@ fun SlockMarkdownBody(
                 }
             }
     ) {
-        Markdown(
-            content = content,
-            colors = colors,
-            typography = typography,
-            textProvider = SlockMarkdownTextProvider,
-            annotator = annotator,
-            padding = padding,
-            modifier = markdownModifier
-        )
+        traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT) {
+            Markdown(
+                content = content,
+                colors = colors,
+                typography = typography,
+                textProvider = SlockMarkdownTextProvider,
+                annotator = annotator,
+                padding = padding,
+                modifier = markdownModifier
+            )
+        }
     }
 }
 
