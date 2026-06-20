@@ -132,6 +132,46 @@ KMP 可暂不照搬的 React 桌面/网页细节：
 
 因此 Activity/Inbox 的复核结论是：**核心页面、filter、mark all read、打开 thread 已有；缺的是 row 级 triage 动作和分页。** 这需要新建实现任务。
 
+## Thread 附件 / 引用 / 上下文逐项复核结论
+
+结论先放前面：旧文档里“上传中/失败/重试/移除仍需核对”的说法需要修正。KMP 这部分已经有真实链路，不应再当成未知缺口。当前 P0 风险集中在 React 的高级消息体验：attachment comments、quoted permalink preview、selected text quote。
+
+React Thread/message 的相关能力来自 `MessageInput.tsx`、`MessageItem.tsx`、`AttachmentCommentsPanel.tsx`、`ImageLightbox.tsx`、`QuotedMessagePermalinkPreview.tsx`、`selectedTextQuote.ts`：
+
+- 基础发送：message store 支持 `attachmentIds`，React composer 支持附件选择、上传、失败状态。
+- Attachment comments：预览面板/Lightbox 内有 comments toggle/panel；加载 `/attachments/:id/comments`；POST `/attachments/:id/comments`；支持 all/unresolved filter、resolve reaction、anchor quote/jump。
+- Attachment comment ref：消息模型有 `commentRef`，消息行展示 `re: filename` chip，点击跳回 host message；跨 channel/dm/thread 走 permalink/context 路由。
+- Attachment comment count：attachment chip 可显示 `commentCount`。
+- Quoted permalink preview：消息正文中识别 Slock permalink 后渲染 `QuotedMessagePermalinkPreview`，拉 `/messages/context/:id`，展示 channel/dm/thread、author、timestamp、content、attachment label，并可点击打开原消息。
+- Selected text quote：消息选区 context menu 的 `Quote` 会把选中文本变成 markdown blockquote，append 到正确 composer。
+
+KMP 当前确认已有：
+
+- `ThreadComposerContent` 有 image/file attach buttons、pending attachment tray、failed 状态、Retry、Remove。
+- `ThreadPage` 已通过 `bridge.threadAttachmentUpload(...)` 接 host picker，并调用 `dataSource.uploadAttachments(...)`；send 时将 `attachmentIds` 传给 `sendMessage(...)`。
+- Android host `SlockKuiklyActivity` 已有 `threadAttachmentUpload`、image/file picker、读取 uri metadata/previewUri。
+- `ThreadFilesContent` 已有 Files tab、open/download、load more、loading/empty/error/no_permission。
+- `ThreadImagePreviewOverlay`、`ThreadFileRow`、attachment URL/download/open state 已有移动端文件预览/打开基础。
+- `SharedThreadStore.openMessageContext(...)`、`ConversationRepository.getMessageContext(...)` 已有 message context 链路。
+
+KMP 当前明确缺口：
+
+1. **Attachment comments 未产品化**
+   KMP shared model/parser 没看到 `commentCount` / `commentRef`，UI 没看到 `AttachmentCommentsPanel` 等价能力，也没看到 `/attachments/:id/comments` 的 data source。React 的评论面板、unresolved filter、resolve、anchor jump、comment composer 都缺移动端等价。
+
+2. **`re:` comment ref chip 未产品化**
+   React scoped attachment comment 会在消息行显示 `re: filename`，并能跳回 host message。KMP 没看到 commentRef host source 的解析和行内 chip。这个跳转还必须遵守 #263 的 parent/stream contract，不能用裸 `channelId/threadId` 猜。
+
+3. **Quoted permalink preview 未产品化**
+   KMP 有 message context API，但没看到消息正文 permalink 解析和 `QuotedMessageCard` 等价 UI。React 会展示 loading/unavailable/archived、author/channel/time/content/attachment label，并点击打开原消息。
+
+4. **Selected text quote 未产品化**
+   React 选中文本后可 `Quote`，生成 markdown blockquote 并进入对应 composer。KMP 没看到选择文本、quote action、append 到 composer 的移动端等价。
+
+本轮不把基础附件上传、发送失败恢复、Files tab 下载/图片预览列为缺口；这些已有链路，只需要在高级功能落地时回归。
+
+已创建实现任务：#对话流专修 task #276。
+
 ## 功能总图
 
 | 功能域 | React 当前能力 | KMP/Android 当前状态 | 具体缺口判断 | 建议优先级 |
