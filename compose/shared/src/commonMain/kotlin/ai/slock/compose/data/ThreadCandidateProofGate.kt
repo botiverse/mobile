@@ -14,65 +14,171 @@ import ai.slock.compose.model.parentChannelIdOrNull
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 
-internal data class ThreadCandidateIdentity(
-    val serverId: ServerId? = null,
-    val threadId: ThreadId? = null,
-    val streamChannelId: ChannelId? = null,
-    val parentChannelId: ChannelId? = null,
-    val parentMessageId: MessageId? = null,
-    val replyThread: Boolean = false
-)
+/**
+ * Sealed thread route identity. Each subclass owns the kind-specific required identity
+ * fields so callers cannot silently fall back across kinds.
+ *
+ * Phase 3 #3 #2 of Launch contract refactor (#280). Migrated from a flat
+ * `data class ThreadCandidateIdentity(...)` to a sealed hierarchy so the compiler
+ * enforces per-kind dispatch instead of nullable-field `?:` chains.
+ *
+ * - [ReplyThread]: v0.2 thread route; `(parentChannelId, parentMessageId, threadChannelId)`
+ *   are required and non-null. `focusedMessageId` is optional.
+ * - [FocusedThread]: route carries an explicit `focusedMessageId`; `channelId` is required.
+ * - [ChannelThread]: plain channel route (top-level conversation); `channelId` is required.
+ */
+sealed class ThreadRouteId {
+    abstract val serverId: ServerId?
 
-internal data class ThreadCandidateProof(
-    val accepted: Boolean,
-    val reason: String
-)
+    data class ReplyThread(
+        val parentChannelId: ChannelId,
+        val parentMessageId: MessageId,
+        val threadChannelId: ChannelId,
+        val focusedMessageId: MessageId? = null,
+        override val serverId: ServerId? = null
+    ) : ThreadRouteId()
+
+    data class FocusedThread(
+        val channelId: ChannelId,
+        val focusedMessageId: MessageId,
+        override val serverId: ServerId? = null
+    ) : ThreadRouteId()
+
+    data class ChannelThread(
+        val channelId: ChannelId,
+        override val serverId: ServerId? = null
+    ) : ThreadRouteId()
+}
+
+/**
+ * Sealed proof result. Replaces the prior `(accepted: Boolean, reason: String)` overload
+ * where `reason` carried both acceptance metadata and rejection diagnostics. Now:
+ * - [Accepted] carries the canonical route id (which kind + which fields)
+ * - [Rejected] carries the sealed [ThreadIdentityError] describing why
+ *
+ * Phase 3 #3 #2 of Launch contract refactor (#280).
+ */
+sealed class ThreadIdentityProof {
+    data class Accepted(val routeId: ThreadRouteId) : ThreadIdentityProof()
+    data class Rejected(val error: ThreadIdentityError) : ThreadIdentityProof()
+}
+
+/**
+ * Sealed thread identity error. Maps to the prior `reason: String` rejection values plus
+ * the new `ReplyIdentityMismatch.{ParentMismatch, StreamMismatch}` split (per @Codex review)
+ * and `FocusedMessageMissing` / `FocusedMessageUnproven` (per #268 resolved identity path).
+ *
+ * `reason` field preserves the legacy wire string for any caller / log that still reads it.
+ */
+sealed class ThreadIdentityError(val reason: String) {
+    object ServerMismatch : ThreadIdentityError("server_mismatch")
+    object ThreadStreamMissing : ThreadIdentityError("header_unproven")
+    object ParentPairMissing : ThreadIdentityError("parent_unproven")
+    object AliasUnproven : ThreadIdentityError("alias_unproven")
+    object IdentityUnproven : ThreadIdentityError("identity_unproven")
+    sealed class ReplyIdentityMismatch(reason: String) : ThreadIdentityError(reason) {
+        object ParentMismatch : ReplyIdentityMismatch("reply_identity_mismatch_parent")
+        object StreamMismatch : ReplyIdentityMismatch("reply_identity_mismatch_stream")
+    }
+    object FocusedMessageMissing : ThreadIdentityError("focused_message_missing")
+    object FocusedMessageUnproven : ThreadIdentityError("focused_message_unproven")
+}
 
 internal object ThreadCandidateProofGate {
     fun prove(
-        route: ThreadCandidateIdentity,
-        candidate: ThreadCandidateIdentity
-    ): ThreadCandidateProof {
+        route: ThreadRouteId,
+        candidate: ThreadRouteId
+    ): ThreadIdentityProof {
         if (route.serverId != null && candidate.serverId != null && route.serverId != candidate.serverId) {
-            return ThreadCandidateProof(accepted = false, reason = "server_mismatch")
+            return ThreadIdentityProof.Rejected(ThreadIdentityError.ServerMismatch)
         }
-        val routeParentPair = route.parentPair()
-        val candidateParentPair = candidate.parentPair()
-        val routeStream = route.streamChannelId
-        val candidateStream = candidate.streamChannelId
-        val replyScoped =
-            route.replyThread ||
-                candidate.replyThread ||
-                routeParentPair != null ||
-                candidateParentPair != null
-        if (replyScoped) {
-            if (routeParentPair != null && routeParentPair == candidateParentPair) {
-                return ThreadCandidateProof(accepted = true, reason = "parent_pair")
-            }
-            if (routeParentPair == null && routeStream != null && routeStream == candidateStream) {
-                return ThreadCandidateProof(accepted = true, reason = "stream_channel")
-            }
-            return ThreadCandidateProof(accepted = false, reason = "reply_identity_mismatch")
+        return when {
+            route is ThreadRouteId.ReplyThread || candidate is ThreadRouteId.ReplyThread ->
+                proveReply(route, candidate)
+            route is ThreadRouteId.FocusedThread || candidate is ThreadRouteId.FocusedThread ->
+                proveFocused(route, candidate)
+            else -> proveChannel(route as ThreadRouteId.ChannelThread, candidate as ThreadRouteId.ChannelThread)
         }
-        if (routeStream != null && routeStream == candidateStream) {
-            return ThreadCandidateProof(accepted = true, reason = "stream_channel")
-        }
-        val routeThread = route.threadId
-        val candidateThread = candidate.threadId
-        if (routeThread != null && routeThread == candidateThread) {
-            return ThreadCandidateProof(accepted = true, reason = "thread_id")
-        }
-        return ThreadCandidateProof(accepted = false, reason = "identity_unproven")
     }
 
-    private fun ThreadCandidateIdentity.parentPair(): Pair<ChannelId, MessageId>? {
-        val channel = parentChannelId ?: return null
-        val message = parentMessageId ?: return null
-        return channel to message
+    private fun proveReply(
+        route: ThreadRouteId,
+        candidate: ThreadRouteId
+    ): ThreadIdentityProof {
+        val routeParentPair = route.parentPair()
+        val candidateParentPair = candidate.parentPair()
+        val routeStream = route.streamChannelIdOrNull()
+        val candidateStream = candidate.streamChannelIdOrNull()
+        return when {
+            routeParentPair != null && routeParentPair == candidateParentPair ->
+                ThreadIdentityProof.Accepted(route)
+            routeParentPair == null && candidateParentPair == null &&
+                routeStream != null && routeStream == candidateStream ->
+                ThreadIdentityProof.Accepted(route)
+            routeParentPair != null && candidateParentPair == null ->
+                ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.ParentMismatch)
+            routeStream != null && candidateStream != null && routeStream != candidateStream ->
+                ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.StreamMismatch)
+            else -> ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.ParentMismatch)
+        }
+    }
+
+    private fun proveFocused(
+        route: ThreadRouteId,
+        candidate: ThreadRouteId
+    ): ThreadIdentityProof {
+        val routeFocused = route.focusedMessageIdOrNull() ?: return ThreadIdentityProof.Rejected(
+            ThreadIdentityError.FocusedMessageMissing
+        )
+        val candidateFocused = candidate.focusedMessageIdOrNull() ?: return ThreadIdentityProof.Rejected(
+            ThreadIdentityError.FocusedMessageUnproven
+        )
+        val routeChannel = route.channelIdOrNull()
+        val candidateChannel = candidate.channelIdOrNull()
+        return when {
+            routeFocused == candidateFocused &&
+                routeChannel != null && routeChannel == candidateChannel ->
+                ThreadIdentityProof.Accepted(route)
+            else -> ThreadIdentityProof.Rejected(ThreadIdentityError.FocusedMessageUnproven)
+        }
+    }
+
+    private fun proveChannel(
+        route: ThreadRouteId.ChannelThread,
+        candidate: ThreadRouteId.ChannelThread
+    ): ThreadIdentityProof = when {
+        route.channelId == candidate.channelId -> ThreadIdentityProof.Accepted(route)
+        else -> ThreadIdentityProof.Rejected(ThreadIdentityError.IdentityUnproven)
     }
 }
 
-internal fun ThreadSnapshot.threadCandidateIdentity(serverId: ServerId? = null): ThreadCandidateIdentity {
+private fun ThreadRouteId.parentPair(): Pair<ChannelId, MessageId>? =
+    when (this) {
+        is ThreadRouteId.ReplyThread -> parentChannelId to parentMessageId
+        else -> null
+    }
+
+private fun ThreadRouteId.streamChannelIdOrNull(): ChannelId? =
+    when (this) {
+        is ThreadRouteId.ReplyThread -> threadChannelId
+        else -> null
+    }
+
+private fun ThreadRouteId.channelIdOrNull(): ChannelId? =
+    when (this) {
+        is ThreadRouteId.ReplyThread -> threadChannelId
+        is ThreadRouteId.FocusedThread -> channelId
+        is ThreadRouteId.ChannelThread -> channelId
+    }
+
+private fun ThreadRouteId.focusedMessageIdOrNull(): MessageId? =
+    when (this) {
+        is ThreadRouteId.ReplyThread -> focusedMessageId
+        is ThreadRouteId.FocusedThread -> focusedMessageId
+        is ThreadRouteId.ChannelThread -> null
+    }
+
+internal fun ThreadSnapshot.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {
     val conversationThread = conversation.thread
     val parent = parentMessage
     val parentChannel =
@@ -83,18 +189,32 @@ internal fun ThreadSnapshot.threadCandidateIdentity(serverId: ServerId? = null):
         parent?.id
             ?: conversationThread?.parentMessageId
             ?: conversation.threadId.parentMessageIdOrNull()
-    val replyThread =
+    val isReplyThread =
         conversation.kind == ConversationKind.Thread ||
             conversationThread != null ||
             (parentChannel != null && parentMessageId != null)
-    return ThreadCandidateIdentity(
-        serverId = serverId,
-        threadId = conversation.threadId,
-        streamChannelId = conversation.messageStreamChannelId(),
-        parentChannelId = parentChannel,
-        parentMessageId = parentMessageId,
-        replyThread = replyThread
-    )
+    val streamChannelId = conversation.messageStreamChannelId()
+    return if (isReplyThread && parentChannel != null && parentMessageId != null && streamChannelId != null) {
+        ThreadRouteId.ReplyThread(
+            parentChannelId = parentChannel,
+            parentMessageId = parentMessageId,
+            threadChannelId = streamChannelId,
+            serverId = serverId
+        )
+    } else if (conversation.kind == ConversationKind.Thread && parentChannel != null && parentMessageId != null) {
+        // ReplyThread without explicit stream: still ReplyThread per v0.2 if parent pair proven.
+        ThreadRouteId.ReplyThread(
+            parentChannelId = parentChannel,
+            parentMessageId = parentMessageId,
+            threadChannelId = streamChannelId ?: parentChannel,
+            serverId = serverId
+        )
+    } else {
+        ThreadRouteId.ChannelThread(
+            channelId = conversation.threadId.let { ChannelId(it.value) },
+            serverId = serverId
+        )
+    }
 }
 
 internal data class ThreadFallbackProof(
@@ -135,7 +255,7 @@ internal data class ThreadFallbackProof(
                 fallbackThreadId != null &&
                     (
                         fallbackThreadId == snapshotConversation.threadId ||
-                            fallbackThreadId.value == snapshotStreamChannelId.value
+                            fallbackThreadId.value == snapshotStreamChannelId?.value
                     )
             val safeParentMessage =
                 fallbackParentMessage?.takeIf {

@@ -39,16 +39,17 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.ThreadActionCard
 import ai.slock.compose.data.ThreadAttachmentCommentsPage
-import ai.slock.compose.data.ThreadCandidateIdentity
 import ai.slock.compose.data.ThreadCandidateProofGate
+import ai.slock.compose.data.ThreadIdentityProof
+import ai.slock.compose.data.ThreadRouteId
 import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.authSessionRequiredResult
 import ai.slock.compose.data.map
-import ai.slock.compose.data.threadCandidateIdentity
 import ai.slock.compose.data.toMessageMetadata
+import ai.slock.compose.data.toThreadRouteId
 import ai.slock.compose.data.withExecutedAgent
 import ai.slock.compose.data.withExecutedChannel
 import ai.slock.compose.data.withExecutedChannelMembers
@@ -176,10 +177,10 @@ internal class SharedThreadDataSource(
         val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
         val proof =
             ThreadCandidateProofGate.prove(
-                route = basePayload.threadCandidateIdentity(serverId),
-                candidate = snapshot.threadCandidateIdentity(serverId)
+                route = basePayload.toThreadRouteId(serverId),
+                candidate = snapshot.toThreadRouteId(serverId)
             )
-        if (!proof.accepted) return null
+        if (proof !is ThreadIdentityProof.Accepted) return null
         return snapshot
             .toKuiklyThreadPayload(basePayload, session?.user?.id)
             .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
@@ -2506,26 +2507,49 @@ private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
 
 private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
     ThreadCandidateProofGate
-        .prove(route = route.threadCandidateIdentity(), candidate = threadCandidateIdentity())
-        .accepted
+        .prove(route = route.toThreadRouteId(), candidate = toThreadRouteId())
+        .let { it is ThreadIdentityProof.Accepted }
 
-private fun KuiklyThreadScreenPayload.threadCandidateIdentity(serverId: ServerId? = null): ThreadCandidateIdentity {
+private fun KuiklyThreadScreenPayload.toThreadRouteId(serverId: ServerId? = null): ThreadRouteId {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
-    val parentMessage =
+    val parentMessageStr =
         parentMessageId?.takeIf { it.isNotBlank() }
             ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    val parentMessage = parentMessageStr?.let(::MessageId)
     val stream = streamChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
     val source = sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
-    return ThreadCandidateIdentity(
-        serverId = serverId,
-        threadId = source,
-        streamChannelId = stream ?: source?.let { ChannelId(it.value) },
-        parentChannelId = parentChannel,
-        parentMessageId = parentMessage?.let(::MessageId),
-        replyThread =
-            surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
-                (parentChannel != null && parentMessage != null)
-    )
+    val isReplyThread =
+        surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+            (parentChannel != null && parentMessage != null)
+    return when {
+        isReplyThread && parentChannel != null && parentMessage != null -> {
+            // v0.2 contract: ReplyThread requires explicit threadChannelId. If stream is
+            // missing, we still construct ReplyThread (callers handle missing stream via
+            // #275-style `activity_thread_channel_missing` internal state + refresh).
+            val resolvedStream = stream ?: source?.let { ChannelId(it.value) }
+            if (resolvedStream != null) {
+                ThreadRouteId.ReplyThread(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentMessage,
+                    threadChannelId = resolvedStream,
+                    serverId = serverId
+                )
+            } else {
+                // Fallback: synthesize from source threadId to keep v0.2 proof path alive.
+                val synthesized = source?.let { ChannelId(it.value) } ?: parentChannel
+                ThreadRouteId.ReplyThread(
+                    parentChannelId = parentChannel,
+                    parentMessageId = parentMessage,
+                    threadChannelId = synthesized,
+                    serverId = serverId
+                )
+            }
+        }
+        else -> ThreadRouteId.ChannelThread(
+            channelId = source?.let { ChannelId(it.value) } ?: parentChannel ?: ChannelId(""),
+            serverId = serverId
+        )
+    }
 }
 
 private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {

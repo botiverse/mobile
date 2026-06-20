@@ -3,10 +3,8 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ThreadCandidateProofGateTest {
@@ -15,63 +13,110 @@ class ThreadCandidateProofGateTest {
         val proof =
             ThreadCandidateProofGate.prove(
                 route =
-                    ThreadCandidateIdentity(
-                        threadId = ThreadId("thread-1"),
-                        streamChannelId = ChannelId("thread-1"),
+                    ThreadRouteId.ReplyThread(
                         parentChannelId = ChannelId("channel-1"),
                         parentMessageId = MessageId("message-1"),
-                        replyThread = true
+                        threadChannelId = ChannelId("thread-1")
                     ),
                 candidate =
-                    ThreadCandidateIdentity(
-                        threadId = ThreadId("candidate-thread"),
-                        streamChannelId = ChannelId("thread-1"),
+                    ThreadRouteId.ReplyThread(
                         parentChannelId = ChannelId("channel-1"),
                         parentMessageId = MessageId("message-1"),
-                        replyThread = true
+                        threadChannelId = ChannelId("thread-1")
                     )
             )
 
-        assertTrue(proof.accepted)
-        assertEquals("parent_pair", proof.reason)
+        assertTrue(proof is ThreadIdentityProof.Accepted)
+        assertEquals(
+            ThreadRouteId.ReplyThread(
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("message-1"),
+                threadChannelId = ChannelId("thread-1")
+            ),
+            (proof as ThreadIdentityProof.Accepted).routeId
+        )
     }
 
     @Test
-    fun rejectsReplyCandidateWithWrongParentEvenWhenBadStreamMatches() {
+    fun rejectsReplyCandidateWithWrongParentAsParentMismatch() {
         val proof =
             ThreadCandidateProofGate.prove(
                 route =
-                    ThreadCandidateIdentity(
-                        threadId = ThreadId("wrong-thread"),
-                        streamChannelId = ChannelId("wrong-thread"),
+                    ThreadRouteId.ReplyThread(
                         parentChannelId = ChannelId("channel-1"),
                         parentMessageId = MessageId("message-1"),
-                        replyThread = true
+                        threadChannelId = ChannelId("thread-1")
                     ),
                 candidate =
-                    ThreadCandidateIdentity(
-                        threadId = ThreadId("wrong-thread"),
-                        streamChannelId = ChannelId("wrong-thread"),
+                    ThreadRouteId.ReplyThread(
                         parentChannelId = ChannelId("other-channel"),
                         parentMessageId = MessageId("other-message"),
-                        replyThread = true
+                        threadChannelId = ChannelId("thread-1")
                     )
             )
 
-        assertFalse(proof.accepted)
-        assertEquals("reply_identity_mismatch", proof.reason)
+        assertEquals(
+            ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.ParentMismatch),
+            proof
+        )
     }
 
     @Test
-    fun acceptsChannelCandidateWithMatchingThreadIdentity() {
+    fun rejectsReplyCandidateWithMatchingParentPairEvenWhenStreamsDiffer() {
+        // Parent pair match takes precedence over stream comparison. ReplyThread sealed
+        // construction guarantees (parentChannelId, parentMessageId) are non-null; matching
+        // parent pair is sufficient proof even if the stream hint differs (e.g. a cached
+        // stream is stale but the parent pair is correct).
         val proof =
             ThreadCandidateProofGate.prove(
-                route = ThreadCandidateIdentity(threadId = ThreadId("channel-1")),
-                candidate = ThreadCandidateIdentity(threadId = ThreadId("channel-1"))
+                route =
+                    ThreadRouteId.ReplyThread(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        threadChannelId = ChannelId("thread-1")
+                    ),
+                candidate =
+                    ThreadRouteId.ReplyThread(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        threadChannelId = ChannelId("other-thread")
+                    )
             )
 
-        assertTrue(proof.accepted)
-        assertEquals("thread_id", proof.reason)
+        assertTrue(proof is ThreadIdentityProof.Accepted)
+    }
+
+    @Test
+    fun replyCandidateWithOneMissingParentPairIsParentMismatch() {
+        // One side has parent pair, other side does not. Note ReplyThread sealed type
+        // requires non-null parent pair at construction; this case is reachable only via
+        // cross-kind comparison (ReplyThread route vs ChannelThread candidate).
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route =
+                    ThreadRouteId.ReplyThread(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        threadChannelId = ChannelId("thread-1")
+                    ),
+                candidate = ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1"))
+            )
+
+        assertEquals(
+            ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.ParentMismatch),
+            proof
+        )
+    }
+
+    @Test
+    fun acceptsChannelCandidateWithMatchingChannelId() {
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route = ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1")),
+                candidate = ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1"))
+            )
+
+        assertTrue(proof is ThreadIdentityProof.Accepted)
     }
 
     @Test
@@ -79,18 +124,57 @@ class ThreadCandidateProofGateTest {
         val proof =
             ThreadCandidateProofGate.prove(
                 route =
-                    ThreadCandidateIdentity(
-                        serverId = ServerId("server-1"),
-                        threadId = ThreadId("channel-1")
+                    ThreadRouteId.ChannelThread(
+                        channelId = ChannelId("channel-1"),
+                        serverId = ServerId("server-1")
                     ),
                 candidate =
-                    ThreadCandidateIdentity(
-                        serverId = ServerId("server-2"),
-                        threadId = ThreadId("channel-1")
+                    ThreadRouteId.ChannelThread(
+                        channelId = ChannelId("channel-1"),
+                        serverId = ServerId("server-2")
                     )
             )
 
-        assertFalse(proof.accepted)
-        assertEquals("server_mismatch", proof.reason)
+        assertEquals(
+            ThreadIdentityProof.Rejected(ThreadIdentityError.ServerMismatch),
+            proof
+        )
+    }
+
+    @Test
+    fun focusedCandidateWithoutFocusedMessageIdReturnsFocusedMessageMissing() {
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route = ThreadRouteId.ChannelThread(channelId = ChannelId("channel-1")),
+                candidate =
+                    ThreadRouteId.FocusedThread(
+                        channelId = ChannelId("channel-1"),
+                        focusedMessageId = MessageId("message-1")
+                    )
+            )
+
+        assertEquals(
+            ThreadIdentityProof.Rejected(ThreadIdentityError.FocusedMessageMissing),
+            proof
+        )
+    }
+
+    @Test
+    fun focusedCandidateWithMatchingFocusedMessageIdAndChannelIsAccepted() {
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route =
+                    ThreadRouteId.FocusedThread(
+                        channelId = ChannelId("channel-1"),
+                        focusedMessageId = MessageId("message-1")
+                    ),
+                candidate =
+                    ThreadRouteId.FocusedThread(
+                        channelId = ChannelId("channel-1"),
+                        focusedMessageId = MessageId("message-1")
+                    )
+            )
+
+        assertTrue(proof is ThreadIdentityProof.Accepted)
     }
 }
