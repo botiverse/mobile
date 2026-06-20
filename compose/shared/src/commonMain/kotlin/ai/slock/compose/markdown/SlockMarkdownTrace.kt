@@ -45,9 +45,11 @@ internal expect fun logMarkdownSpike(
     extra: String = ""
 )
 
-internal fun <T> traceMarkdownSection(name: String, block: () -> T): T {
-    return traceMarkdownSection(name = name, bodyLength = -1, block = block)
-}
+@androidx.compose.runtime.Composable
+internal fun <T> traceMarkdownSection(
+    name: String,
+    block: @androidx.compose.runtime.Composable () -> T
+): T = traceMarkdownSection(name = name, bodyLength = -1, block = block)
 
 /**
  * Variant of [traceMarkdownSection] that includes the row body length in the spike
@@ -58,11 +60,19 @@ internal fun <T> traceMarkdownSection(name: String, block: () -> T): T {
  * cross-module visibility issues in KMP (the inline body needs the actual to be
  * visible at every call site). Non-inline defers the call to the actual at
  * runtime via the dispatch table.
+ *
+ * The function is itself `@Composable` so the `block: @Composable () -> T` lambda
+ * can invoke Compose primitives (`KuiklyText(...)`, `Markdown(...)`) from inside
+ * the trace span without breaking the Compose scope. Without `@Composable` on the
+ * function the lambda body would be evaluated in a non-Composable scope, causing
+ * "Composable invocations can only happen from the context of a @Composable
+ * function" at every call site that wraps a Composable lambda.
  */
+@androidx.compose.runtime.Composable
 internal fun <T> traceMarkdownSection(
     name: String,
     bodyLength: Int,
-    block: () -> T
+    block: @androidx.compose.runtime.Composable () -> T
 ): T {
     traceBegin(name)
     val t0 = System.nanoTime()
