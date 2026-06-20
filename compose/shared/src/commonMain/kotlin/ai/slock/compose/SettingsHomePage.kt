@@ -266,6 +266,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -296,6 +297,7 @@ import com.tencent.kuikly.compose.material3.navigation.rememberNavController
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -722,6 +724,56 @@ private fun appShellBottomTabs(selectedKey: String): List<SlockBottomTabItemPayl
         SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedKey == "settings")
     )
 
+internal fun retainedHomeTasksTabOrder(selectedTab: String): List<String> =
+    if (selectedTab == "tasks") {
+        listOf("home", "tasks")
+    } else {
+        listOf("tasks", "home")
+    }
+
+private fun isRetainedHomeTasksTab(tab: String): Boolean =
+    tab == "home" || tab == "tasks"
+
+@Composable
+private fun RetainedHomeTasksTabs(
+    selectedTab: String,
+    mountedTabs: Set<String>,
+    homeContent: @Composable (active: Boolean) -> Unit,
+    tasksContent: @Composable (active: Boolean) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        retainedHomeTasksTabOrder(selectedTab).forEach { tab ->
+            if (tab == selectedTab || tab in mountedTabs) {
+                key("retained-$tab") {
+                    val active = selectedTab == tab
+                    RetainedAppShellTabPane(active = active) {
+                        if (tab == "tasks") {
+                            tasksContent(active)
+                        } else {
+                            homeContent(active)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RetainedAppShellTabPane(
+    active: Boolean,
+    content: @Composable () -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .alpha(if (active) 1f else 0f)
+    ) {
+        content()
+    }
+}
+
 @Composable
 private fun SlockAppShellContent() {
     // #85 follow-up: seed the moko KBA `StringDesc.localeType`
@@ -732,6 +784,7 @@ private fun SlockAppShellContent() {
     // the OS default.
     RememberMokoLocaleSeedFromLocalActivity()
     var selectedTab by remember { mutableStateOf("home") }
+    var retainedHomeTasksTabs by remember { mutableStateOf(setOf("home")) }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     var selectedSettingsComputerId by remember { mutableStateOf<String?>(null) }
     var selectedHomeDestination by remember { mutableStateOf<String?>(null) }
@@ -1934,6 +1987,9 @@ private fun SlockAppShellContent() {
                 bottomTabs = appShellBottomTabs(selectedTab),
                 onBottomTabSelected = {
                     selectedTab = it
+                    if (isRetainedHomeTasksTab(it)) {
+                        retainedHomeTasksTabs = retainedHomeTasksTabs + it
+                    }
                     if (it == "home") {
                         selectedHomeDestination = null
                     }
@@ -1945,6 +2001,116 @@ private fun SlockAppShellContent() {
                     }
                 }
             ) {
+                    val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
+                        SharedTasksScreen(
+                            state = tasksState,
+                            onIntent = tasksViewModel::dispatch,
+                            onOpenTask = { task ->
+                                appShellCoroutineScope.launch {
+                                    openAppShellTaskThread(
+                                        task = task,
+                                        dataSource = threadDataSource,
+                                        timeContext = threadTimeContext,
+                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                                        onOpenThreadPayload = { payload -> openThreadPayload(payload) },
+                                        onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
+                                        onAuthRequired = { payload -> requireSessionReauth(payload) },
+                                        onFailure = { bridge.toast("Unable to open task") }
+                                    )
+                                }
+                            }
+                        )
+                    }
+                    val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
+                        PerformanceSceneEffect(bridge, "kuikly_home", active = active)
+                        if (selectedHomeDestination == null) {
+                            SharedHomeScreen(
+                                bridge = bridge,
+                                state = homeState,
+                                onIntent = homeViewModel::dispatch,
+                                selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
+                                onSelectedConversationCleared = {
+                                    selectedHomeConversationId = null
+                                },
+                                onOpenSearch = {
+                                    selectedHomeConversationId = null
+                                    selectedHomeDestination = HomeDestinationSearch
+                                },
+                                onOpenActivity = {
+                                    selectedHomeConversationId = null
+                                    selectedHomeDestination = HomeDestinationActivity
+                                },
+                                onOpenSaved = {
+                                    selectedHomeConversationId = null
+                                    selectedHomeDestination = HomeDestinationSaved
+                                },
+                                onCreateChannel = { openCreateChannelDialog() },
+                                onOpenConversation = { conversation ->
+                                    openHomeConversation(conversation, "home")
+                                },
+                                bottomContentPadding = shellScope.bottomTabBarContentInset
+                            )
+                        } else if (selectedHomeDestination == HomeDestinationActivity) {
+                            SharedHomeActivityScreen(
+                                bridge = bridge,
+                                authStore = authStore,
+                                onClose = { selectedHomeDestination = null },
+                                onOpenMessage = { request ->
+                                    openHomeMessage(request, "home_activity")
+                                },
+                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                timeContext = threadTimeContext,
+                                shellScope = shellScope
+                            )
+                        } else if (selectedHomeDestination == HomeDestinationSearch) {
+                            SharedHomeSearchPanel(
+                                state = homeSearchSavedState.search,
+                                homeState = homeState,
+                                onIntent = homeSearchSavedViewModel::dispatch,
+                                onClose = {
+                                    selectedHomeDestination = null
+                                },
+                                onOpenItem = { item ->
+                                    openHomeMessage(item.toHomeMessageOpenRequest(), "home_search", pushCurrent = true)
+                                },
+                                onOpenEntity = { entity ->
+                                    selectedHomeDestination = null
+                                    val threadId = entity.threadId
+                                    if (threadId != null) {
+                                        val conversation = entity.conversation
+                                        if (conversation != null) {
+                                            openHomeConversation(conversation, "home_search_entity")
+                                        } else {
+                                            selectedHomeConversationId = threadId
+                                        }
+                                    } else {
+                                        selectedTab = "members"
+                                        selectedHomeConversationId = null
+                                        setActiveThreadPayload(null)
+                                        threadBackStack = emptyList()
+                                    }
+                                },
+                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                timeContext = threadTimeContext,
+                                shellScope = shellScope
+                            )
+                        } else if (selectedHomeDestination == HomeDestinationSaved) {
+                            SharedHomeSavedPanel(
+                                state = homeSearchSavedState.saved,
+                                onIntent = homeSearchSavedViewModel::dispatch,
+                                onClose = { selectedHomeDestination = null },
+                                onOpenItem = { item ->
+                                    openHomeMessage(item.toHomeMessageOpenRequest(), "home_saved", pushCurrent = true)
+                                },
+                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                timeContext = threadTimeContext,
+                                shellScope = shellScope
+                            )
+                        } else {
+                            SlockCenteredLoading(message = "Opening...")
+                        }
+                    }
                     when (selectedTab) {
                         "settings" -> {
                             SettingsAppShellContent(
@@ -2022,24 +2188,11 @@ private fun SlockAppShellContent() {
                             )
                         }
                         "tasks" -> {
-                            PerformanceSceneEffect(bridge, "kuikly_tasks")
-                            SharedTasksScreen(
-                                state = tasksState,
-                                onIntent = tasksViewModel::dispatch,
-                                onOpenTask = { task ->
-                                    appShellCoroutineScope.launch {
-                                        openAppShellTaskThread(
-                                            task = task,
-                                            dataSource = threadDataSource,
-                                            timeContext = threadTimeContext,
-                                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                            onOpenThreadPayload = { payload -> openThreadPayload(payload) },
-                                            onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
-                                            onAuthRequired = { payload -> requireSessionReauth(payload) },
-                                            onFailure = { bridge.toast("Unable to open task") }
-                                        )
-                                    }
-                                }
+                            RetainedHomeTasksTabs(
+                                selectedTab = selectedTab,
+                                mountedTabs = retainedHomeTasksTabs,
+                                homeContent = homeTabContent,
+                                tasksContent = tasksTabContent
                             )
                         }
                         "members" ->
@@ -2053,93 +2206,12 @@ private fun SlockAppShellContent() {
                                 timeContext = threadTimeContext
                             )
                         else -> {
-                            PerformanceSceneEffect(bridge, "kuikly_home")
-                            if (selectedHomeDestination == null) {
-                                SharedHomeScreen(
-                                    bridge = bridge,
-                                    state = homeState,
-                                    onIntent = homeViewModel::dispatch,
-                                    selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
-                                    onSelectedConversationCleared = {
-                                        selectedHomeConversationId = null
-                                    },
-                                    onOpenSearch = {
-                                        selectedHomeConversationId = null
-                                        selectedHomeDestination = HomeDestinationSearch
-                                    },
-                                    onOpenActivity = {
-                                        selectedHomeConversationId = null
-                                        selectedHomeDestination = HomeDestinationActivity
-                                    },
-                                    onOpenSaved = {
-                                        selectedHomeConversationId = null
-                                        selectedHomeDestination = HomeDestinationSaved
-                                    },
-                                    onCreateChannel = { openCreateChannelDialog() },
-                                    onOpenConversation = { conversation ->
-                                        openHomeConversation(conversation, "home")
-                                    },
-                                    bottomContentPadding = shellScope.bottomTabBarContentInset
-                                )
-                            } else if (selectedHomeDestination == HomeDestinationActivity) {
-                                SharedHomeActivityScreen(
-                                    bridge = bridge,
-                                    authStore = authStore,
-                                    onClose = { selectedHomeDestination = null },
-                                    onOpenMessage = { request ->
-                                        openHomeMessage(request, "home_activity")
-                                    },
-                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope
-                                )
-                            } else if (selectedHomeDestination == HomeDestinationSearch) {
-                                SharedHomeSearchPanel(
-                                    state = homeSearchSavedState.search,
-                                    homeState = homeState,
-                                    onIntent = homeSearchSavedViewModel::dispatch,
-                                    onClose = {
-                                        selectedHomeDestination = null
-                                    },
-                                    onOpenItem = { item ->
-                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_search", pushCurrent = true)
-                                    },
-                                    onOpenEntity = { entity ->
-                                        selectedHomeDestination = null
-                                        val threadId = entity.threadId
-                                        if (threadId != null) {
-                                            val conversation = entity.conversation
-                                            if (conversation != null) {
-                                                openHomeConversation(conversation, "home_search_entity")
-                                            } else {
-                                                selectedHomeConversationId = threadId
-                                            }
-                                        } else {
-                                            selectedTab = "members"
-                                            selectedHomeConversationId = null
-                                            setActiveThreadPayload(null)
-                                            threadBackStack = emptyList()
-                                        }
-                                    },
-                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope
-                                )
-                            } else if (selectedHomeDestination == HomeDestinationSaved) {
-                                SharedHomeSavedPanel(
-                                    state = homeSearchSavedState.saved,
-                                    onIntent = homeSearchSavedViewModel::dispatch,
-                                    onClose = { selectedHomeDestination = null },
-                                    onOpenItem = { item ->
-                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_saved", pushCurrent = true)
-                                    },
-                                    bottomContentPadding = shellScope.bottomTabBarContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope
-                                )
-                            } else {
-                                SlockCenteredLoading(message = "Opening...")
-                            }
+                            RetainedHomeTasksTabs(
+                                selectedTab = "home",
+                                mountedTabs = retainedHomeTasksTabs,
+                                homeContent = homeTabContent,
+                                tasksContent = tasksTabContent
+                            )
                         }
                     }
             }

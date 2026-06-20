@@ -7,12 +7,18 @@ import androidx.compose.runtime.DisposableEffect
 @Composable
 internal fun PerformanceSceneEffect(
     bridge: BridgeModule,
-    sceneName: String
+    sceneName: String,
+    active: Boolean = true
 ) {
-    DisposableEffect(bridge, sceneName) {
-        bridge.enterPerformanceScene(sceneName)
-        onDispose {
-            bridge.exitPerformanceScene(sceneName)
+    DisposableEffect(bridge, sceneName, active) {
+        if (active) {
+            bridge.enterPerformanceScene(sceneName)
+            onDispose {
+                bridge.exitPerformanceScene(sceneName)
+            }
+        } else {
+            onDispose {
+            }
         }
     }
 }

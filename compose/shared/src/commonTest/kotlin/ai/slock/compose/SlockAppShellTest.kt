@@ -29,4 +29,10 @@ class SlockAppShellTest {
             slockSharedBottomTabBarContentInset(18.dp)
         )
     }
+
+    @Test
+    fun retainedHomeTasksTabOrderKeepsActiveTabOnTop() {
+        assertEquals(listOf("tasks", "home"), retainedHomeTasksTabOrder("home"))
+        assertEquals(listOf("home", "tasks"), retainedHomeTasksTabOrder("tasks"))
+    }
 }
