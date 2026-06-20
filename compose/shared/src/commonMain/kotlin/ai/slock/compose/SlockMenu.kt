@@ -54,7 +54,12 @@ internal fun SlockBaseMenuOverlay(
     surfaceShadowColor: Color = SlockColor.ShadowBlack,
     selectedRowColor: Color = SlockColor.BrandYellow,
     uppercaseLabels: Boolean = true,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // #223: default to Auto so the menu flips above the trigger when
+    // there's no room below. The trigger (e.g. row top-left) is
+    // passed in as `anchor`, so the menu's natural reading is "drop
+    // below the trigger; if no room, flip above".
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto
 ) {
     if (items.isEmpty()) return
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
@@ -67,6 +72,8 @@ internal fun SlockBaseMenuOverlay(
         contentSize = menuSize,
         horizontalOffset = SlockBaseMenuHorizontalOffset,
         verticalOffset = SlockBaseMenuVerticalOffset,
+        verticalPlacement = verticalPlacement,
+        horizontalAutoFlip = true,
         onDismiss = onDismiss,
         modifier = modifier
     ) { popoverModifier, _ ->

@@ -47,6 +47,10 @@ internal fun SlockAnchoredPopover(
     horizontalOffset: Float = 0f,
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    // #223: when true, the popover flips to the left of the anchor if
+    // there is no room on the right. Used by SlockBaseMenuOverlay so
+    // long-press menus don't run off the screen's right edge.
+    horizontalAutoFlip: Boolean = false,
     content: @Composable (Modifier, SlockAnchoredPopoverPosition) -> Unit
 ) {
     SlockFloatingOverlayHost(
@@ -59,7 +63,8 @@ internal fun SlockAnchoredPopover(
             viewportGap = viewportGap,
             horizontalOffset = horizontalOffset,
             verticalOffset = verticalOffset,
-            verticalPlacement = verticalPlacement
+            verticalPlacement = verticalPlacement,
+            horizontalAutoFlip = horizontalAutoFlip
         ) ?: return@SlockFloatingOverlayHost
         val position = SlockAnchoredPopoverPosition(
             offset = popoverOffset,
@@ -106,14 +111,33 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     viewportGap: Float = SlockFloatingDefaultViewportGap,
     horizontalOffset: Float = 0f,
     verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
-    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below,
+    // #223: when true, place content to the left of the anchor (anchor
+    // is treated as the content's right edge) when there is no room on
+    // the right. Mirrors React placeSidebarContextMenu.ts placeMenuAxis
+    // behavior so the menu does not run off the right edge.
+    horizontalAutoFlip: Boolean = false
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
         return null
     }
     val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
     val maxX = (size.width - contentSize.width - viewportGap).coerceAtLeast(viewportGap)
-    val x = (localAnchor.x + horizontalOffset).coerceIn(viewportGap, maxX)
+    val x = if (horizontalAutoFlip) {
+        val preferredRightX = localAnchor.x + horizontalOffset
+        val preferredLeftX = localAnchor.x - contentSize.width + horizontalOffset
+        if (preferredRightX + contentSize.width > size.width - viewportGap) {
+            if (preferredLeftX >= viewportGap) {
+                preferredLeftX.coerceAtMost(maxX)
+            } else {
+                preferredRightX.coerceIn(viewportGap, maxX)
+            }
+        } else {
+            preferredRightX.coerceIn(viewportGap, maxX)
+        }
+    } else {
+        (localAnchor.x + horizontalOffset).coerceIn(viewportGap, maxX)
+    }
     val preferredBelowY = localAnchor.y + verticalOffset
     val maxY = (size.height - contentSize.height - viewportGap).coerceAtLeast(viewportGap)
     val y = when (verticalPlacement) {

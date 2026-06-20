@@ -1653,19 +1653,15 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #211 review (Cindy): use the row's bounds (center
-                    // point) as the menu anchor, not the top-left, so the
-                    // Pin/Unpin menu lines up with how other rows /
-                    // sections position their anchored overlays. The
-                    // SlockAnchoredPopover still handles viewport /
-                    // safe-area clamp; this just changes what the anchor
-                    // point is.
-                    val pos = coordinates.positionInRoot()
-                    val size = coordinates.size
-                    rowAnchor = Offset(
-                        x = pos.x + size.width / 2f,
-                        y = pos.y + size.height / 2f
-                    )
+                    // #223 follow-up (@artin 18:32, middle channel test):
+                    // revert to row's top-left as the menu anchor so the
+                    // Pin/Unpin menu drops below the row's leading edge
+                    // (matches React placeSidebarContextMenu.ts semantic:
+                    // anchor is the trigger's top-left, menu places below
+                    // by default, flips above if no room). The
+                    // SlockAnchoredPopover with verticalPlacement = Auto
+                    // handles the above-fallback and viewport clamp.
+                    rowAnchor = coordinates.positionInRoot()
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
@@ -1795,19 +1791,15 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #211 review (Cindy): use the row's bounds (center
-                    // point) as the menu anchor, not the top-left, so the
-                    // Pin/Unpin menu lines up with how other rows /
-                    // sections position their anchored overlays. The
-                    // SlockAnchoredPopover still handles viewport /
-                    // safe-area clamp; this just changes what the anchor
-                    // point is.
-                    val pos = coordinates.positionInRoot()
-                    val size = coordinates.size
-                    rowAnchor = Offset(
-                        x = pos.x + size.width / 2f,
-                        y = pos.y + size.height / 2f
-                    )
+                    // #223 follow-up (@artin 18:32, middle channel test):
+                    // revert to row's top-left as the menu anchor so the
+                    // Pin/Unpin menu drops below the row's leading edge
+                    // (matches React placeSidebarContextMenu.ts semantic:
+                    // anchor is the trigger's top-left, menu places below
+                    // by default, flips above if no room). The
+                    // SlockAnchoredPopover with verticalPlacement = Auto
+                    // handles the above-fallback and viewport clamp.
+                    rowAnchor = coordinates.positionInRoot()
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
