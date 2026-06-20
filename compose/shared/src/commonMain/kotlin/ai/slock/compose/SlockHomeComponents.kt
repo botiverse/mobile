@@ -1653,15 +1653,18 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #223 follow-up (@artin 18:32, middle channel test):
-                    // revert to row's top-left as the menu anchor so the
-                    // Pin/Unpin menu drops below the row's leading edge
-                    // (matches React placeSidebarContextMenu.ts semantic:
-                    // anchor is the trigger's top-left, menu places below
-                    // by default, flips above if no room). The
-                    // SlockAnchoredPopover with verticalPlacement = Auto
-                    // handles the above-fallback and viewport clamp.
-                    rowAnchor = coordinates.positionInRoot()
+                    // #223: anchor is the row's BOTTOM-LEFT (not top-left).
+                    // Top-left + 8dp vertical offset put the menu INSIDE
+                    // the row's vertical bounds (which is taller than
+                    // the menu), so the menu appeared to be on the same
+                    // line as the row instead of below it (@artin 20:12).
+                    // Anchoring at the bottom-left + 8dp gap lands the
+                    // menu immediately below the row, matching React
+                    // placeSidebarContextMenu.ts semantics where the
+                    // anchor is effectively the bottom of the hit area.
+                    val pos = coordinates.positionInRoot()
+                    val size = coordinates.size
+                    rowAnchor = Offset(x = pos.x, y = pos.y + size.height)
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
@@ -1791,15 +1794,18 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // #223 follow-up (@artin 18:32, middle channel test):
-                    // revert to row's top-left as the menu anchor so the
-                    // Pin/Unpin menu drops below the row's leading edge
-                    // (matches React placeSidebarContextMenu.ts semantic:
-                    // anchor is the trigger's top-left, menu places below
-                    // by default, flips above if no room). The
-                    // SlockAnchoredPopover with verticalPlacement = Auto
-                    // handles the above-fallback and viewport clamp.
-                    rowAnchor = coordinates.positionInRoot()
+                    // #223: anchor is the row's BOTTOM-LEFT (not top-left).
+                    // Top-left + 8dp vertical offset put the menu INSIDE
+                    // the row's vertical bounds (which is taller than
+                    // the menu), so the menu appeared to be on the same
+                    // line as the row instead of below it (@artin 20:12).
+                    // Anchoring at the bottom-left + 8dp gap lands the
+                    // menu immediately below the row, matching React
+                    // placeSidebarContextMenu.ts semantics where the
+                    // anchor is effectively the bottom of the hit area.
+                    val pos = coordinates.positionInRoot()
+                    val size = coordinates.size
+                    rowAnchor = Offset(x = pos.x, y = pos.y + size.height)
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
