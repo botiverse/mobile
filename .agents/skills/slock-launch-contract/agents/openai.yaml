@@ -1,0 +1,4 @@
+interface:
+  display_name: "Slock Launch Contract"
+  short_description: "Audit route payloads and canonical facts"
+  default_prompt: "Use $slock-launch-contract to audit Slock route/pageData payloads and canonical store boundaries."
