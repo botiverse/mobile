@@ -62,10 +62,6 @@ kotlin {
                 implementation("app.cash.sqldelight:runtime:2.1.0")
                 implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
                 implementation("dev.icerock.moko:resources-compose:0.26.0-KBA-010")
-                // #192 phase attribution: androidx.tracing is a multiplatform-aware wrapper
-                // around android.os.Trace.beginSection/endSection; on non-Android targets
-                // (OHOS / js / native) it is a no-op so commonMain callers stay portable.
-                implementation("androidx.tracing:tracing:1.3.0")
             }
         }
         val commonTest by getting {

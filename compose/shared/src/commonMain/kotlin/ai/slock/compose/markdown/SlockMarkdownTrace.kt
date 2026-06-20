@@ -1,11 +1,9 @@
 package ai.slock.compose.markdown
 
-import androidx.tracing.Trace
-
 /**
  * #192 phase attribution via Perfetto / `android.os.Trace`.
  *
- * Scope per Cindy 2026-06-20 #KMP:07e34453 approval: add three `Trace.beginSection` /
+ * Scope per Cindy 2026-06-20 #KMP:07e34453 approval: add four `Trace.beginSection` /
  * `Trace.endSection` markers around the visible-row Markdown hot path so that
  * `adb shell perfetto` / Android Studio CPU profiler traces can localize jank
  * frames to a specific phase, instead of guessing from gfxinfo aggregate
@@ -17,21 +15,26 @@ import androidx.tracing.Trace
  *   - `markdown.annotate` — inline `AnnotatedString` build / `inlineContent` map.
  *   - `markdown.layout` — `KuiklyText` compose + layout for block / inline mode.
  *
- * Implementation: `androidx.tracing.Trace` is a multiplatform-aware wrapper that
- * delegates to `android.os.Trace.beginSection/endSection` on Android (visible in
- * Perfetto / Studio CPU profiler / `simpleperf`) and is a no-op on OHOS / js /
- * native. No allocations in the hot path — marker names are literal constants.
+ * Implementation: `expect`/`actual` for cross-platform trace. On Android
+ * (visible in Perfetto / Studio CPU profiler / `simpleperf`) the actual
+ * implementation uses `android.os.Trace.beginSection/endSection`. On OHOS /
+ * js / native targets the actual is a no-op — trace markers cost nothing.
+ * (Earlier attempt used `androidx.tracing:tracing:1.3.0` which broke OHOS
+ * compile; switched to expect/actual to keep OHOS green.)
  *
  * These markers are **only** used as phase attribution input. They do NOT
  * participate in PR gate metrics (perf numbers still come from gfxinfo
  * framestats), and they do NOT influence any cache hit/miss counter.
  */
+internal expect fun traceBegin(name: String)
+internal expect fun traceEnd()
+
 internal inline fun <T> traceMarkdownSection(name: String, block: () -> T): T {
-    Trace.beginSection(name)
+    traceBegin(name)
     return try {
         block()
     } finally {
-        Trace.endSection()
+        traceEnd()
     }
 }
 
