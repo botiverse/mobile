@@ -795,7 +795,7 @@ fun SlockMarkdownBody(
     }
     val currentOnOpenTag by rememberUpdatedState(onOpenTag)
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
-    val colors = slockMarkdownColors()
+    val colors = SlockMarkdownColorsDefault
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
     val annotator = remember(content, highlightedMentions, performanceKey) {
         slockMarkdownAnnotator(
@@ -898,8 +898,16 @@ fun SlockMarkdownBody(
     }
 }
 
-@Composable
-private fun slockMarkdownColors() =
+// #192 layout hot path: hoist `slockMarkdownColors()` to a file-level `val` so the
+// same `DefaultMarkdownColors` instance is reused across every recomposition. The
+// original `@Composable fun slockMarkdownColors()` allocated a fresh instance every
+// recomposition, which caused the downstream `Markdown(content, ...)` composable
+// to see fresh `colors` references each time and run full recomposition + initial
+// Text measure even when nothing actually changed.
+private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
+private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
+
+private val SlockMarkdownColorsDefault: DefaultMarkdownColors =
     DefaultMarkdownColors(
         text = SlockColor.TextBlack,
         codeText = SlockColor.SurfaceWhite,
@@ -944,8 +952,6 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
-private val SlockMarkdownLinkBlue = Color(0xFF1D4ED8)
-private val SlockMarkdownCodeBlockBackground = Color(0xFF111827)
 private val SlockMarkdownReferenceChipBackground = SlockColor.SurfaceCream
 
 internal fun slockMarkdownInlineTagWidthSp(
