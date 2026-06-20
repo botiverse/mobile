@@ -3,6 +3,10 @@
 Date: 2026-05-22
 Last refreshed: 2026-06-02
 
+Status: historical snapshot. Do not use this file as the current Thread parity
+source of truth without refreshing it against code, the task board, and
+`docs/react-kmp-feature-map-2026-06-20.md`.
+
 Scope: Thread/conversation flow migration from legacy Android native UI/state to the shared KMP shell. This audit covers data source, cache/warm loading, realtime, send, attachments, read receipts, menu/actions, pagination, and back stack/reply-thread behavior.
 
 This pass is intentionally read-only. It does not change product behavior.

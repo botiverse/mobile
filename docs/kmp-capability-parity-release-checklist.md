@@ -56,13 +56,18 @@ Every KMP migration task that replaces native behavior must answer these items i
 - Visual-testing output is supporting evidence only. It cannot mark cache, realtime, persistence, or mutation behavior as migrated.
 - If a KMP task is blocked by another owner dirtying main, keep the ready commit in its worktree and report it as "implemented, waiting for clean main"; do not stash or overwrite unrelated work.
 
-## Route-Specific Gate References
+## Current Gate References
 
-- Global migration status: `docs/kmp-migration-capability-parity-audit.md`
-- Home cache/warm loading: `docs/kmp-home-capability-parity-audit.md`
-- Thread/conversation flow: `docs/kmp-thread-capability-parity-audit.md`
-- Settings data/action parity: `docs/kmp-settings-capability-parity-audit.md`
-- Android UI/shared migration cleanup: `docs/android-ui-shared-migration-audit.md`
+- Current React/KMP product map:
+  `docs/react-kmp-feature-map-2026-06-20.md`
+- App-wide shared state contract:
+  `docs/slock-app-state-first-principles.md`
+- Android UI/shared migration cleanup:
+  `docs/android-ui-shared-migration-audit.md`
+
+Older route-specific audits may remain in `docs/` as historical snapshots, but
+they are not source of truth for current capability status. Before citing one
+as current, refresh it against code and the task board or delete it.
 
 ## Copy/Paste Release Note Template
 
