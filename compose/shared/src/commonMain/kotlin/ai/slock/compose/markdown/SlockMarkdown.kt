@@ -728,20 +728,24 @@ fun SlockMarkdownBody(
 ) {
     val content = remember(body, performanceKey) {
         if (performanceKey == null) {
-            body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE) {
+                body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+            }
         } else {
             val startedAt = TimeSource.Monotonic.markNow()
-            body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
-                .also { normalized ->
-                    val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                    if (shouldLogSlockMarkdownPerformance(durationMs)) {
-                        performanceLogger(
-                            "thread_markdown_prepare stage=normalize key=$performanceKey " +
-                                "bodyLength=${body.length} contentLength=${normalized.length} " +
-                                "durationMs=$durationMs"
-                        )
+            traceMarkdownSection(SlockMarkdownTraceNames.PREPARE) {
+                body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+                    .also { normalized ->
+                        val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                        if (shouldLogSlockMarkdownPerformance(durationMs)) {
+                            performanceLogger(
+                                "thread_markdown_prepare stage=normalize key=$performanceKey " +
+                                    "bodyLength=${body.length} contentLength=${normalized.length} " +
+                                    "durationMs=$durationMs"
+                            )
+                        }
                     }
-                }
+            }
         }
     }
     val markdownModifier =
