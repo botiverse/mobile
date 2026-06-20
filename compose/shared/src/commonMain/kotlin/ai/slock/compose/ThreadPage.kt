@@ -3159,22 +3159,11 @@ internal fun parseThreadScreenPayload(
             else -> "{}"
         }
     parseThreadLaunchPayload(source, instanceId)?.let { return it }
-    return runCatching {
-        threadPageJson.decodeFromString(KuiklyThreadScreenPayload.serializer(), source)
-            .let { decoded ->
-                if (decoded.instanceId.isBlank() && instanceId.isNotBlank()) {
-                    decoded.copy(instanceId = instanceId)
-                } else {
-                    decoded
-                }
-            }
-    }.getOrElse {
-        KuiklyThreadScreenPayload(
-            instanceId = instanceId,
-            status = "error",
-            errorCode = "payload_parse_failed"
-        )
-    }
+    return KuiklyThreadScreenPayload(
+        instanceId = instanceId,
+        status = "error",
+        errorCode = "payload_parse_failed"
+    )
 }
 
 private fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =

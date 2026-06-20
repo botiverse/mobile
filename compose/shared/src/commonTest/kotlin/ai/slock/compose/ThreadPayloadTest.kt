@@ -150,38 +150,34 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun parsesMembersAndSettingsActions() {
+    fun typedPayloadKeepsMembersAndSettingsActions() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "title": "对话流专修",
-                      "membersCount": 2,
-                      "canAddMembers": false,
-                      "addMemberStatus": "failed",
-                      "addMemberErrorCode": "member_exists",
-                      "removeMemberStatus": "failed",
-                      "removingMemberId": "a1",
-                      "removeMemberErrorCode": "member_remove_failed",
-                      "members": [
-                        {"id": "u1", "displayName": "Artin", "handle": "artin", "roleLabel": "Owner"},
-                        {"id": "a1", "displayName": "Android Bot", "kind": "agent", "avatarLabel": "AB"}
-                      ],
-                      "memberCandidates": [
-                        {"id": "u2", "displayName": "Cindy", "handle": "cindy"},
-                        {"id": "a2", "displayName": "QA Bot", "kind": "agent"}
-                      ],
-                      "settingsActions": [
-                        {"id": "visibility", "title": "Make Private", "icon": "lock", "destructive": true},
-                        {"id": "archive", "title": "Archive Channel", "icon": "archive", "destructive": true},
-                        {"id": "delete", "title": "Delete Channel", "icon": "trash", "destructive": true}
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                title = "对话流专修",
+                membersCount = 2,
+                canAddMembers = false,
+                addMemberStatus = "failed",
+                addMemberErrorCode = "member_exists",
+                removeMemberStatus = "failed",
+                removingMemberId = "a1",
+                removeMemberErrorCode = "member_remove_failed",
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(id = "u1", displayName = "Artin", handle = "artin", roleLabel = "Owner"),
+                        KuiklyThreadMemberItem(id = "a1", displayName = "Android Bot", kind = "agent", avatarLabel = "AB")
+                    ),
+                memberCandidates =
+                    listOf(
+                        KuiklyThreadMemberItem(id = "u2", displayName = "Cindy", handle = "cindy"),
+                        KuiklyThreadMemberItem(id = "a2", displayName = "QA Bot", kind = "agent")
+                    ),
+                settingsActions =
+                    listOf(
+                        KuiklyThreadSettingsAction(id = "visibility"),
+                        KuiklyThreadSettingsAction(id = "archive"),
+                        KuiklyThreadSettingsAction(id = "delete")
+                    )
             )
 
         assertEquals("thread-1", payload.instanceId)
@@ -213,7 +209,35 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun sourceThreadPayloadIsTreatedAsStoreBackedLaunchState() {
+    fun fullPayloadWithoutLaunchIdentityReturnsErrorState() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "thread-legacy",
+                      "title": "Legacy full payload",
+                      "messages": [{"id": "m1", "body": "must not load"}],
+                      "members": [{"id": "u1", "displayName": "Artin"}],
+                      "filesPayload": "{\"status\":\"content\"}",
+                      "composer": {"seedText": "must not load"}
+                    }
+                    """.trimIndent(),
+                fallbackPageData = "{}",
+                instanceId = "fallback"
+            )
+
+        assertEquals("fallback", payload.instanceId)
+        assertEquals("error", payload.status)
+        assertEquals("payload_parse_failed", payload.errorCode)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(emptyList(), payload.members)
+        assertEquals("{}", payload.filesPayload)
+        assertEquals("", payload.resolveThreadComposer().seedText)
+    }
+
+    @Test
+    fun sourceThreadLaunchPayloadStartsStoreBackedLoadingState() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -225,14 +249,8 @@ class ThreadPayloadTest {
                       "sourceThreadId": "channel-1",
                       "streamChannelId": "channel-1",
                       "membersCount": 2,
-                      "messages": [{"id": "m1", "authorId": "u1", "authorName": "Artin", "body": "heavy"}],
-                      "tasks": [{"id": "t1", "title": "Task", "status": "Todo"}],
-                      "members": [{"id": "u1", "displayName": "Artin"}],
-                      "memberCandidates": [{"id": "u2", "displayName": "Cindy"}],
-                      "filesPayload": "{\"status\":\"content\",\"items\":[{\"id\":\"file-1\",\"name\":\"heavy.png\"}]}",
-                      "composer": {"seedText": "should not leak", "seedAsTask": true},
                       "settingsActions": [
-                        {"id": "archive", "title": "Archive Channel", "icon": "archive", "destructive": true}
+                        {"id": "archive", "enabled": true}
                       ]
                     }
                     """.trimIndent(),
@@ -1409,29 +1427,23 @@ class ThreadPayloadTest {
     @Test
     fun parsesMessageFooterTaskMetadata() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "authorId": "u1",
-                          "authorName": "Artin",
-                          "isOwn": true,
-                          "body": "please ship #163",
-                          "replyCount": 2,
-                          "taskId": "task-1",
-                          "taskNumber": 163,
-                          "taskStatus": "InReview",
-                          "taskAssigneeName": "Android-Developer-2"
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            isOwn = true,
+                            body = "please ship #163",
+                            replyCount = 2,
+                            taskId = "task-1",
+                            taskNumber = 163,
+                            taskStatus = "InReview",
+                            taskAssigneeName = "Android-Developer-2"
+                        )
+                    )
             )
 
         val message = payload.messages.first()
@@ -1448,42 +1460,37 @@ class ThreadPayloadTest {
     @Test
     fun resolvesThreadMentionsFromMembersButTaskFooterUsesLinkedTaskAssignee() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "members": [
-                        {
-                          "id": "agent_android",
-                          "displayName": "Android Developer",
-                          "handle": "Android-Developer",
-                          "kind": "agent"
-                        },
-                        {
-                          "id": "user_artin",
-                          "displayName": "Artin",
-                          "handle": "artin",
-                          "kind": "human"
-                        }
-                      ],
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "authorId": "agent_android",
-                          "authorName": "Android Developer",
-                          "body": "Ping @agent_android and @user_artin",
-                          "replyCount": 5,
-                          "taskId": "task-1",
-                          "taskNumber": 10,
-                          "taskStatus": "InReview",
-                          "taskAssigneeName": "agent_android"
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent_android",
+                            displayName = "Android Developer",
+                            handle = "Android-Developer",
+                            kind = "agent"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "user_artin",
+                            displayName = "Artin",
+                            handle = "artin",
+                            kind = "human"
+                        )
+                    ),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent_android",
+                            authorName = "Android Developer",
+                            body = "Ping @agent_android and @user_artin",
+                            replyCount = 5,
+                            taskId = "task-1",
+                            taskNumber = 10,
+                            taskStatus = "InReview",
+                            taskAssigneeName = "agent_android"
+                        )
+                    )
             )
 
         val message = payload.messages.first()
@@ -1728,36 +1735,31 @@ class ThreadPayloadTest {
     fun resolvesUuidTaskAssigneeIdFromThreadMembers() {
         val assigneeId = "9d2a923b-7d46-43c3-bf5f-d12a6df8ef12"
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "members": [
-                        {
-                          "id": "$assigneeId",
-                          "displayName": "Android Developer",
-                          "handle": "Android-Developer",
-                          "kind": "agent"
-                        }
-                      ],
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "authorId": "user_artin",
-                          "authorName": "Artin",
-                          "body": "ship task",
-                          "taskId": "task-236",
-                          "taskNumber": 236,
-                          "taskStatus": "InReview",
-                          "taskAssigneeId": "$assigneeId",
-                          "taskAssigneeName": "$assigneeId"
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = assigneeId,
+                            displayName = "Android Developer",
+                            handle = "Android-Developer",
+                            kind = "agent"
+                        )
+                    ),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "user_artin",
+                            authorName = "Artin",
+                            body = "ship task",
+                            taskId = "task-236",
+                            taskNumber = 236,
+                            taskStatus = "InReview",
+                            taskAssigneeId = assigneeId,
+                            taskAssigneeName = assigneeId
+                        )
+                    )
             )
 
         val message = payload.messages.first()
@@ -1800,30 +1802,25 @@ class ThreadPayloadTest {
     @Test
     fun parsesSystemMessageMetadataAndBuildsCollapsedSummary() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "messages": [
-                        {
-                          "id": "m-system",
-                          "authorId": "system",
-                          "authorName": "System",
-                          "messageType": "System",
-                          "systemEventType": "member_joined",
-                          "timestampLabel": "2026-05-09 21:53:33.024426+00",
-                          "body": "<p>Cindy joined<br>the channel</p>",
-                          "metadata": {
-                            "actor": "Cindy",
-                            "source": "<b>invite</b>"
-                          }
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m-system",
+                            authorId = "system",
+                            authorName = "System",
+                            messageType = "System",
+                            systemEventType = "member_joined",
+                            timestampLabel = "2026-05-09 21:53:33.024426+00",
+                            body = "<p>Cindy joined<br>the channel</p>",
+                            metadata =
+                                mapOf(
+                                    "actor" to "Cindy",
+                                    "source" to "<b>invite</b>"
+                                )
+                        )
+                    )
             )
 
         val message = payload.messages.first()
@@ -1846,26 +1843,20 @@ class ThreadPayloadTest {
     @Test
     fun formatsRawTimestampInSharedThreadPayload() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-1",
-                      "localOffsetMinutes": 480,
-                      "todayEpochDay": 20583,
-                      "messages": [
-                        {
-                          "id": "m1",
-                          "authorId": "u1",
-                          "authorName": "Artin",
-                          "timestampLabel": "2026-05-09 21:53:33.024426+00",
-                          "body": "raw utc timestamp"
-                        }
-                      ]
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20583,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            timestampLabel = "2026-05-09 21:53:33.024426+00",
+                            body = "raw utc timestamp"
+                        )
+                    )
             )
 
         assertEquals("2026-05-09 21:53:33.024426+00", payload.messages.first().timestampLabel)
@@ -1875,29 +1866,23 @@ class ThreadPayloadTest {
     @Test
     fun parsesReplyContextFields() {
         val payload =
-            parseThreadScreenPayload(
-                payload =
-                    """
-                    {
-                      "instanceId": "thread-2",
-                      "title": "Threads",
-                      "subtitle": "Origin: #general · hello",
-                      "navigationLabel": "Close",
-                      "showModeTabs": false,
-                      "showReplyActions": false,
-                      "showOpenInChannelAction": true,
-                      "originStatus": "message",
-                      "originParentMessageId": "m-parent",
-                      "originMessage": {
-                        "id": "m-parent",
-                        "authorId": "u1",
-                        "authorName": "Artin",
-                        "body": "hello from parent"
-                      }
-                    }
-                    """.trimIndent(),
-                fallbackPageData = "{}",
-                instanceId = "fallback"
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-2",
+                title = "Threads",
+                subtitle = "Origin: #general · hello",
+                navigationLabel = "Close",
+                showModeTabs = false,
+                showReplyActions = false,
+                showOpenInChannelAction = true,
+                originStatus = "message",
+                originParentMessageId = "m-parent",
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "m-parent",
+                        authorId = "u1",
+                        authorName = "Artin",
+                        body = "hello from parent"
+                    )
             )
 
         assertEquals("thread-2", payload.instanceId)
