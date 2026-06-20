@@ -220,6 +220,13 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeListBeyondBoundsKeepsSceneEnterPremeasureSmall() {
+        assertEquals(3, homeListBeyondBoundsItemCount(0))
+        assertEquals(6, homeListBeyondBoundsItemCount(40))
+        assertEquals(6, homeListBeyondBoundsItemCount(400))
+    }
+
+    @Test
     fun sidebarSortModesMatchReactOrdering() {
         val manual =
             listOf(

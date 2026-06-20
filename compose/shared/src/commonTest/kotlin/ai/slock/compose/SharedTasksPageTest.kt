@@ -83,4 +83,11 @@ class SharedTasksPageTest {
             )
         )
     }
+
+    @Test
+    fun tasksBeyondBoundsKeepsSceneEnterPremeasureSmall() {
+        assertEquals(1, sharedTasksBeyondBoundsItemCount(0))
+        assertEquals(4, sharedTasksBeyondBoundsItemCount(40))
+        assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
+    }
 }

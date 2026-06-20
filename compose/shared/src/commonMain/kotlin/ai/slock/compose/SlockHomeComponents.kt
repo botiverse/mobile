@@ -97,7 +97,7 @@ private val HomePanelShadowOffset = 4.dp
 private val HomeTiltedBadgeSlant = 3.dp
 private const val SharedListDefaultBeyondBoundsItemCount = 3
 private const val SharedListMaxBeyondBoundsItemCount = 96
-private const val HomeListMaxBeyondBoundsItemCount = 18
+private const val HomeListMaxBeyondBoundsItemCount = 6
 
 @Page(SLOCK_HOME_PAGE, supportInLocal = true)
 internal class ComposeSlockHomePage : ai.slock.compose.base.BasePager() {
@@ -886,7 +886,7 @@ internal fun sharedListBeyondBoundsItemCount(itemCount: Int): Int =
         maximumValue = SharedListMaxBeyondBoundsItemCount
     )
 
-private fun homeListBeyondBoundsItemCount(itemCount: Int): Int =
+internal fun homeListBeyondBoundsItemCount(itemCount: Int): Int =
     itemCount.coerceIn(
         minimumValue = SharedListDefaultBeyondBoundsItemCount,
         maximumValue = HomeListMaxBeyondBoundsItemCount

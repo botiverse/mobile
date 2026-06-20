@@ -76,6 +76,9 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 
+private const val TasksListDefaultBeyondBoundsItemCount = 1
+private const val TasksListMaxBeyondBoundsItemCount = 4
+
 @Composable
 internal fun SharedTasksScreen(
     state: TasksUiState,
@@ -333,18 +336,6 @@ private fun SharedTasksLoadedBodyContent(
     // like a wall of "No X tasks" headers.
     val listColumns = remember(boardColumns) { boardColumns.filter { it.totalCount > 0 } }
     val collapsedStatuses = presentationState.collapsedStatuses
-    val listRows = remember(listColumns, collapsedStatuses) {
-        listColumns.flatMap { column ->
-            buildList {
-                add(SharedTasksListRow.Header(column.status, column.totalCount, column.status in collapsedStatuses))
-                if (column.status !in collapsedStatuses) {
-                    column.tasks.forEach { task ->
-                        add(SharedTasksListRow.Card(column.status, task))
-                    }
-                }
-            }
-        }
-    }
 
     // Per-card status menu coordinates. We open the single-select menu when the user
     // long-presses a card; storing the anchor in screen-root space lets the overlay
@@ -496,36 +487,43 @@ private fun SharedTasksLoadedBodyContent(
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
                                 contentPadding = PaddingValues(SlockSpacing.Md),
-                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+                                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                                beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(visibleContent.filteredTasks.size)
                             ) {
-                                items(listRows.size, key = { i -> listRows[i].key }) { index ->
-                                    when (val row = listRows[index]) {
-                                        is SharedTasksListRow.Header ->
-                                            BoardSectionHeader(
-                                                status = row.status,
-                                                count = row.count,
-                                                collapsed = row.collapsed,
-                                                onClick = {
-                                                    presentationState =
-                                                        presentationState.reduce(
-                                                            TasksPresentationIntent.ToggleStatusCollapsed(row.status)
-                                                        )
-                                                }
-                                            )
-                                        is SharedTasksListRow.Card ->
+                                listColumns.forEach { column ->
+                                    item(key = "list-header-${column.status.name}") {
+                                        BoardSectionHeader(
+                                            status = column.status,
+                                            count = column.totalCount,
+                                            collapsed = column.status in collapsedStatuses,
+                                            onClick = {
+                                                presentationState =
+                                                    presentationState.reduce(
+                                                        TasksPresentationIntent.ToggleStatusCollapsed(column.status)
+                                                    )
+                                            }
+                                        )
+                                    }
+                                    if (column.status !in collapsedStatuses) {
+                                        items(
+                                            column.tasks.size,
+                                            key = { index -> "list-card-${column.status.name}-${column.tasks[index].id.value}" }
+                                        ) { index ->
+                                            val task = column.tasks[index]
                                             SharedTaskCard(
-                                                task = row.task,
-                                                updating = state.statusUpdatingTaskId == row.task.id.value,
-                                                onClick = { onOpenTask?.invoke(row.task) },
+                                                task = task,
+                                                updating = state.statusUpdatingTaskId == task.id.value,
+                                                onClick = { onOpenTask?.invoke(task) },
                                                 onStatusBadgeClick = { anchor ->
-                                                    statusMenuTask = row.task
+                                                    statusMenuTask = task
                                                     statusMenuAnchor = anchor
                                                 },
                                                 onLongPress = { anchor ->
-                                                    statusMenuTask = row.task
+                                                    statusMenuTask = task
                                                     statusMenuAnchor = anchor
                                                 }
                                             )
+                                        }
                                     }
                                 }
                             }
@@ -633,27 +631,14 @@ internal fun sharedTasksLazyItemCount(
     return fixedItems + errorItems + bodyItems
 }
 
+internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
+    itemCount.coerceIn(
+        minimumValue = TasksListDefaultBeyondBoundsItemCount,
+        maximumValue = TasksListMaxBeyondBoundsItemCount
+    )
+
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
-
-private sealed interface SharedTasksListRow {
-    val key: String
-
-    data class Header(
-        val status: TaskStatus,
-        val count: Int,
-        val collapsed: Boolean
-    ) : SharedTasksListRow {
-        override val key: String = "list-header-${status.name}"
-    }
-
-    data class Card(
-        val status: TaskStatus,
-        val task: TaskSummary
-    ) : SharedTasksListRow {
-        override val key: String = "list-card-${status.name}-${task.id.value}"
-    }
-}
 
 @Composable
 private fun SharedTasksToolbar(
@@ -863,7 +848,8 @@ private fun SharedTasksBoardColumn(
                 // own cards independently — mirrors the React board's per-column overflow.
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(tasks.size)
                 ) {
                     items(tasks.size, key = { i -> "board-task-${tasks[i].id.value}" }) { index ->
                         val task = tasks[index]
