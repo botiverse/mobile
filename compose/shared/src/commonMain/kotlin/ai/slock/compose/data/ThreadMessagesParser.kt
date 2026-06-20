@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.KuiklyThreadAttachmentItem
+import ai.slock.compose.KuiklyThreadMessageCommentHostSource
+import ai.slock.compose.KuiklyThreadMessageCommentRef
 import ai.slock.compose.KuiklyThreadMessageItem
 import ai.slock.compose.KuiklyThreadReactionItem
 import ai.slock.compose.KuiklyThreadScreenPayload
@@ -45,6 +47,25 @@ private val threadMessagesJson = Json {
 }
 
 @Serializable
+internal data class WireCommentHostSource(
+    val type: String = "",
+    val routeKind: String = "",
+    val channelId: String = "",
+    val parentMessageId: String? = null,
+    val threadChannelId: String? = null,
+    val rootThreadChannelId: String? = null,
+)
+
+@Serializable
+internal data class WireCommentRef(
+    val attachmentId: String = "",
+    val filename: String = "",
+    val hostMessageId: String? = null,
+    val hostSource: WireCommentHostSource? = null,
+    val anchorLabel: String? = null,
+)
+
+@Serializable
 internal data class WireMessage(
     val id: String,
     val seq: Long? = null,
@@ -73,6 +94,7 @@ internal data class WireMessage(
     val claimedByName: String? = null,
     val taskClaimedByName: String? = null,
     val actionMetadata: WireActionCardMetadata? = null,
+    val commentRef: WireCommentRef? = null,
 )
 
 @Serializable
@@ -93,6 +115,7 @@ internal data class WireAttachment(
     val height: Int? = null,
     val thumbnailUrl: String? = null,
     val rasterPreviewUrl: String? = null,
+    val commentCount: Int = 0,
 )
 
 @Serializable
@@ -238,7 +261,8 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         taskAssigneeId = taskAssigneeId?.trim()?.takeIf { it.isNotBlank() },
         taskAssigneeName = firstNonBlank(taskAssigneeName, claimedByName, taskClaimedByName),
         reactions = reactions.map { it.toReactionItem(currentUserId) }.filter { it.count > 0 },
-        attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) }
+        attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
+        commentRef = commentRef?.toMessageCommentRef()
     )
 }
 
@@ -258,8 +282,35 @@ private fun WireAttachment.toAttachmentItem(index: Int): KuiklyThreadAttachmentI
         name = filename.ifBlank { "Attachment ${index + 1}" },
         mimeType = mimeType,
         sizeLabel = formatThreadAttachmentSize(sizeBytes),
-        thumbnailUrl = thumbnailUrl
+        thumbnailUrl = thumbnailUrl,
+        commentCount = commentCount.coerceAtLeast(0)
     )
+
+private fun WireCommentRef.toMessageCommentRef(): KuiklyThreadMessageCommentRef? {
+    val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return KuiklyThreadMessageCommentRef(
+        attachmentId = cleanAttachmentId,
+        filename = cleanFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() },
+        hostSource = hostSource?.toMessageCommentHostSource(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun WireCommentHostSource.toMessageCommentHostSource(): KuiklyThreadMessageCommentHostSource? {
+    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
+    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return KuiklyThreadMessageCommentHostSource(
+        type = cleanType,
+        routeKind = cleanRouteKind,
+        channelId = cleanChannelId,
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() },
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() },
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }
+    )
+}
 
 private fun formatThreadAttachmentSize(bytes: Long): String {
     if (bytes <= 0) return ""

@@ -37,6 +37,7 @@ import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.ThreadAttachmentCommentsPage
 import ai.slock.compose.data.ThreadCandidateIdentity
 import ai.slock.compose.data.ThreadCandidateProofGate
 import ai.slock.compose.data.ThreadSnapshot
@@ -61,6 +62,8 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageCommentHostSource
+import ai.slock.compose.model.MessageCommentRef
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
@@ -967,6 +970,45 @@ internal class SharedThreadDataSource(
         }
     }
 
+    suspend fun loadAttachmentComments(attachmentId: String): DataResult<ThreadAttachmentCommentsPage> {
+        val cleanAttachmentId = attachmentId.trim()
+        if (cleanAttachmentId.isBlank()) {
+            return DataResult.Error(ScreenError(code = "attachment_id_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.attachmentComments(cleanAttachmentId)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_attachment_comments_network", retryable = true))
+            }
+        return when (response) {
+            is ThreadApiResult.Success -> DataResult.Content(response.data)
+            is ThreadApiResult.Failure -> response.toThreadDataError("thread_attachment_comments_network")
+        }
+    }
+
+    suspend fun sendAttachmentComment(attachmentId: String, body: String): DataResult<Unit> {
+        val cleanAttachmentId = attachmentId.trim()
+        val cleanBody = body.trim()
+        if (cleanAttachmentId.isBlank() || cleanBody.isBlank()) {
+            return DataResult.Error(ScreenError(code = "attachment_comment_missing", retryable = false))
+        }
+        val response =
+            try {
+                api.sendAttachmentComment(cleanAttachmentId, cleanBody)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_attachment_comment_send_network", retryable = true))
+            }
+        return when (response) {
+            is ThreadApiResult.Success -> DataResult.Content(Unit)
+            is ThreadApiResult.Failure -> response.toThreadDataError("thread_attachment_comment_send_network")
+        }
+    }
+
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): DataResult<Unit> {
         if (taskId.isBlank()) {
             return DataResult.Error(ScreenError(code = "task_id_missing", retryable = false))
@@ -1137,6 +1179,51 @@ internal class SharedThreadDataSource(
                     .copy(showOpenInChannelAction = false)
             }
         )
+    }
+
+    suspend fun openCommentHost(
+        hostMessageId: String,
+        basePayload: KuiklyThreadScreenPayload
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val streamThreadId = basePayload.sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
+        if (basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && streamThreadId != null) {
+            return fetchThreadPayload(basePayload, persistResult = false)
+        }
+        return openMessageContext(hostMessageId, basePayload)
+    }
+
+    suspend fun fetchQuotedPermalinkPreview(
+        permalink: SlockQuotedMessagePermalink
+    ): DataResult<ThreadQuotedMessagePreviewUiState> {
+        val repository =
+            conversationRepository
+                ?: return DataResult.Error(ScreenError(code = "thread_permalink_context_unavailable", retryable = false))
+        val session =
+            readSession()
+                ?: return authSessionRequiredResult()
+        if (permalink.serverSlug != session.currentServerSlug()) {
+            return DataResult.Empty(EmptyReason.NoMessages)
+        }
+        val snapshot =
+            try {
+                repository.getMessageContext(MessageId(permalink.messageId))
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                return DataResult.Error(ScreenError(code = "thread_permalink_context_network", retryable = true))
+            }
+        return when (snapshot) {
+            is DataResult.Content -> {
+                val target =
+                    snapshot.data.messages.firstOrNull { it.id.value == permalink.messageId }
+                        ?: snapshot.data.parentMessage?.takeIf { it.id.value == permalink.messageId }
+                        ?: return DataResult.Empty(EmptyReason.NoMessages)
+                DataResult.Content(target.toQuotedMessagePreview(permalink, snapshot.data.conversation))
+            }
+            is DataResult.Empty -> snapshot
+            is DataResult.Error -> snapshot
+            is DataResult.NoPermission -> snapshot
+        }
     }
 
     private suspend fun fetchThreadPage(
@@ -2848,8 +2935,25 @@ private fun KuiklyThreadMessageItem.mergeRealtimeUpdate(
         taskAssigneeId = update.taskAssigneeId ?: taskAssigneeId,
         taskAssigneeName = update.taskAssigneeName ?: taskAssigneeName,
         reactions = reactionUpdate ?: update.reactions.ifEmpty { reactions },
-        attachments = update.attachments.ifEmpty { attachments }
+        attachments = mergeAttachmentCommentMetadata(update.attachments),
+        commentRef = update.commentRef ?: commentRef
     )
+
+private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
+    updates: List<KuiklyThreadAttachmentItem>
+): List<KuiklyThreadAttachmentItem> {
+    if (updates.isEmpty()) return attachments
+    if (attachments.isEmpty()) return updates
+    val previousById = attachments.associateBy { it.id }
+    return updates.map { update ->
+        val previous = previousById[update.id]
+        if (previous != null && update.commentCount == 0 && previous.commentCount > 0) {
+            update.copy(commentCount = previous.commentCount)
+        } else {
+            update
+        }
+    }
+}
 
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
@@ -3152,7 +3256,8 @@ private fun KuiklyThreadMessageItem.toMessage(
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
-        isSaved = isSaved
+        isSaved = isSaved,
+        commentRef = commentRef?.toMessageCommentRef()
     )
 }
 
@@ -3175,8 +3280,80 @@ private fun KuiklyThreadAttachmentItem.toAttachment(): Attachment =
         name = name,
         mimeType = mimeType,
         sizeLabel = sizeLabel,
-        thumbnailUrl = thumbnailUrl
+        thumbnailUrl = thumbnailUrl,
+        commentCount = commentCount
     )
+
+internal fun StoredAuthSession.currentServerSlug(): String? =
+    selectedServerSlug?.takeIf { it.isNotBlank() }
+        ?: currentServerId
+            ?.let { selectedId -> servers.firstOrNull { it.id == selectedId }?.slug }
+            ?.takeIf { it.isNotBlank() }
+        ?: servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
+
+private fun Message.toQuotedMessagePreview(
+    permalink: SlockQuotedMessagePermalink,
+    conversation: ConversationSummary
+): ThreadQuotedMessagePreviewUiState =
+    ThreadQuotedMessagePreviewUiState(
+        status = "loaded",
+        permalink = permalink,
+        channelName = conversation.quotedPreviewChannelName(permalink),
+        channelKind = if (conversation.kind == ConversationKind.DirectMessage || permalink.routeKind == "dm") "dm" else "channel",
+        isThread = permalink.threadParentMessageId != null || conversation.kind == ConversationKind.Thread,
+        isArchived = conversation.archived,
+        timestampLabel = timestampLabel,
+        authorName = author.displayName,
+        authorKind = if (author.kind == MemberKind.Agent) "agent" else "human",
+        authorSubtitle = author.description ?: author.roleDescription,
+        content = body,
+        attachmentLabel = attachments.quotedPreviewAttachmentLabel()
+    )
+
+private fun ConversationSummary.quotedPreviewChannelName(permalink: SlockQuotedMessagePermalink): String =
+    name.takeIf { it.isNotBlank() }
+        ?: if (kind == ConversationKind.DirectMessage || permalink.routeKind == "dm") {
+            "Direct message"
+        } else {
+            "Channel"
+        }
+
+private fun List<Attachment>.quotedPreviewAttachmentLabel(): String? {
+    if (isEmpty()) return null
+    val imageCount = count { it.mimeType.startsWith("image/", ignoreCase = true) }
+    return when {
+        size == 1 && imageCount == 1 -> "1 image"
+        size == 1 -> "1 file"
+        imageCount == size -> "$imageCount images"
+        else -> "$size attachments"
+    }
+}
+
+private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentRef? {
+    val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentRef(
+        attachmentId = AttachmentId(cleanAttachmentId),
+        filename = cleanFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        hostSource = hostSource?.toMessageCommentHostSource(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): MessageCommentHostSource? {
+    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
+    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentHostSource(
+        type = cleanType,
+        routeKind = cleanRouteKind,
+        channelId = ChannelId(cleanChannelId),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    )
+}
 
 private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem =
     KuiklyThreadMessageItem(
@@ -3215,10 +3392,31 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
                 name = attachment.name,
                 mimeType = attachment.mimeType,
                 sizeLabel = attachment.sizeLabel,
-                thumbnailUrl = attachment.thumbnailUrl
+                thumbnailUrl = attachment.thumbnailUrl,
+                commentCount = attachment.commentCount
             )
         },
-        reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty()
+        reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
+        commentRef = commentRef?.toKuiklyThreadCommentRef()
+    )
+
+private fun MessageCommentRef.toKuiklyThreadCommentRef(): KuiklyThreadMessageCommentRef =
+    KuiklyThreadMessageCommentRef(
+        attachmentId = attachmentId.value,
+        filename = filename,
+        hostMessageId = hostMessageId?.value,
+        hostSource = hostSource?.toKuiklyThreadCommentHostSource(),
+        anchorLabel = anchorLabel
+    )
+
+private fun MessageCommentHostSource.toKuiklyThreadCommentHostSource(): KuiklyThreadMessageCommentHostSource =
+    KuiklyThreadMessageCommentHostSource(
+        type = type,
+        routeKind = routeKind,
+        channelId = channelId.value,
+        parentMessageId = parentMessageId?.value,
+        threadChannelId = threadChannelId?.value,
+        rootThreadChannelId = rootThreadChannelId?.value
     )
 
 private fun KuiklyThreadTaskItem.toTaskSummary(

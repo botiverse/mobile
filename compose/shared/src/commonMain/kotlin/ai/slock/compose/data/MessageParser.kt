@@ -7,6 +7,8 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageCommentHostSource
+import ai.slock.compose.model.MessageCommentRef
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
@@ -55,6 +57,26 @@ private data class MessagesWireAttachment(
     val width: Int? = null,
     val height: Int? = null,
     val thumbnailUrl: String? = null,
+    val commentCount: Int = 0,
+)
+
+@Serializable
+private data class MessagesWireCommentHostSource(
+    val type: String = "",
+    val routeKind: String = "",
+    val channelId: String = "",
+    val parentMessageId: String? = null,
+    val threadChannelId: String? = null,
+    val rootThreadChannelId: String? = null,
+)
+
+@Serializable
+private data class MessagesWireCommentRef(
+    val attachmentId: String = "",
+    val filename: String = "",
+    val hostMessageId: String? = null,
+    val hostSource: MessagesWireCommentHostSource? = null,
+    val anchorLabel: String? = null,
 )
 
 @Serializable
@@ -88,6 +110,7 @@ private data class MessagesWireMessage(
     val threadUnreadCount: Int? = null,
     val firstUnreadReplyMessageId: String? = null,
     val actionMetadata: WireActionCardMetadata? = null,
+    val commentRef: MessagesWireCommentRef? = null,
 )
 
 @Serializable
@@ -256,6 +279,7 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         unreadReplyCount = unreadReplyCount ?: threadUnreadCount ?: summary?.unreadCount ?: 0,
         firstUnreadReplyMessageId = resolvedFirstUnreadReplyMessageId?.let(::MessageId),
         updatedAtLabel = updatedAt.ifBlank { null },
+        commentRef = commentRef?.toDomain(),
     )
 }
 
@@ -267,7 +291,34 @@ private fun MessagesWireAttachment.toDomain(): Attachment = Attachment(
     width = width,
     height = height,
     thumbnailUrl = thumbnailUrl,
+    commentCount = commentCount.coerceAtLeast(0),
 )
+
+private fun MessagesWireCommentRef.toDomain(): MessageCommentRef? {
+    val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentRef(
+        attachmentId = AttachmentId(cleanAttachmentId),
+        filename = cleanFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        hostSource = hostSource?.toDomain(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun MessagesWireCommentHostSource.toDomain(): MessageCommentHostSource? {
+    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
+    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentHostSource(
+        type = cleanType,
+        routeKind = cleanRouteKind,
+        channelId = ChannelId(cleanChannelId),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    )
+}
 
 private fun MessagesWireReaction.toDomain(): MessageReaction? {
     val resolvedEmoji = emoji.takeIf { it.isNotBlank() } ?: return null

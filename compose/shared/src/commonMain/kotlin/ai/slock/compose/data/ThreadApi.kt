@@ -11,6 +11,8 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.TimeSource
 
 private val threadApiJson = Json {
@@ -44,6 +46,8 @@ internal interface SlockThreadApi {
         attachmentIds: List<String> = emptyList()
     ): ThreadApiResult<ThreadMessagesPage>
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
+    suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
+    suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
     suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit>
     suspend fun saveMessage(messageId: String): ThreadApiResult<Unit>
     suspend fun unsaveMessage(messageId: String): ThreadApiResult<Unit>
@@ -119,6 +123,23 @@ internal class SlockThreadApiClient(
                 val url = wire.url.takeIf { it.isNotBlank() } ?: return@mapThreadBody null
                 ThreadAttachmentOpenTarget(url = url, expiresAt = wire.expiresAt)
             }
+
+    override suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage> =
+        transport.attachmentComments(attachmentId)
+            .mapThreadBody(
+                contractCode = "thread_attachment_comments_contract_mismatch",
+                serializer = AttachmentCommentsResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
+                ThreadAttachmentCommentsPage(
+                    comments = wire.comments.mapNotNull { it.toThreadAttachmentCommentItem() },
+                    threadChannelId = wire.threadChannelId,
+                    viewer = wire.viewer?.toThreadAttachmentCommentViewer()
+                )
+            }
+
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit> =
+        transport.sendAttachmentComment(attachmentId, body).mapThreadUnit()
 
     override suspend fun markChannelReadAll(channelId: String): ThreadApiResult<Unit> =
         transport.markChannelReadAll(channelId).mapThreadUnit()
@@ -220,6 +241,20 @@ internal class NetworkSlockThreadApi(
             query = listOfNotNull(disposition?.trim()?.takeIf { it.isNotBlank() }?.let { "disposition" to it })
         )
 
+    override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Visible,
+            path = "attachments/${attachmentId.trim()}/comments"
+        )
+
+    override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "attachments/${attachmentId.trim()}/comments",
+            method = "POST",
+            bodyText = threadApiJson.encodeToString(AttachmentCommentRequestBody(body))
+        )
+
     override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
         networkClient.request(DataRequestPriority.Foreground, "channels/${channelId.trim()}/read-all", method = "POST")
 
@@ -294,6 +329,35 @@ internal data class ThreadAttachmentOpenTarget(
     val expiresAt: String?
 )
 
+internal data class ThreadAttachmentCommentsPage(
+    val comments: List<ThreadAttachmentCommentItem>,
+    val threadChannelId: String?,
+    val viewer: ThreadAttachmentCommentViewer?
+)
+
+internal data class ThreadAttachmentCommentItem(
+    val id: String,
+    val channelId: String,
+    val senderType: String,
+    val senderId: String,
+    val senderName: String,
+    val content: String,
+    val createdAt: String,
+    val reactions: List<ThreadAttachmentCommentReaction>,
+    val anchorLabel: String? = null
+)
+
+internal data class ThreadAttachmentCommentReaction(
+    val emoji: String,
+    val reactorType: String,
+    val reactorId: String
+)
+
+internal data class ThreadAttachmentCommentViewer(
+    val canComment: Boolean,
+    val reason: String
+)
+
 private fun HomeNetworkResponse.toThreadApiFailure(): ThreadApiResult.Failure =
     ThreadApiResult.Failure(code = code, errorBodyText = errorBodyText)
 
@@ -366,6 +430,45 @@ private data class ThreadAttachmentUrlResponseDto(
 )
 
 @Serializable
+private data class AttachmentCommentsResponseDto(
+    val comments: List<AttachmentCommentDto> = emptyList(),
+    val threadChannelId: String? = null,
+    val viewer: AttachmentCommentViewerDto? = null,
+)
+
+@Serializable
+private data class AttachmentCommentDto(
+    val id: String = "",
+    val channelId: String = "",
+    val senderType: String = "",
+    val senderId: String = "",
+    val senderName: String = "",
+    val content: String = "",
+    val createdAt: String = "",
+    val reactions: List<AttachmentCommentReactionDto> = emptyList(),
+    val anchor: AttachmentCommentAnchorDto? = null,
+)
+
+@Serializable
+private data class AttachmentCommentReactionDto(
+    val emoji: String = "",
+    val reactorType: String = "",
+    val reactorId: String = "",
+)
+
+@Serializable
+private data class AttachmentCommentAnchorDto(
+    val type: String = "",
+    val data: kotlinx.serialization.json.JsonObject? = null,
+)
+
+@Serializable
+private data class AttachmentCommentViewerDto(
+    val canComment: Boolean = true,
+    val reason: String = "ok",
+)
+
+@Serializable
 private data class CreateOrOpenThreadResponseDto(
     val threadChannelId: String,
     val parentMessageId: String? = null,
@@ -374,6 +477,43 @@ private data class CreateOrOpenThreadResponseDto(
 )
 
 // ── Request bodies ──
+
+@Serializable
+private data class AttachmentCommentRequestBody(val content: String)
+
+private fun AttachmentCommentDto.toThreadAttachmentCommentItem(): ThreadAttachmentCommentItem? {
+    val cleanId = id.takeIf { it.isNotBlank() } ?: return null
+    return ThreadAttachmentCommentItem(
+        id = cleanId,
+        channelId = channelId,
+        senderType = senderType,
+        senderId = senderId,
+        senderName = senderName.ifBlank { "Unknown" },
+        content = content,
+        createdAt = createdAt,
+        reactions = reactions.map { it.toThreadAttachmentCommentReaction() },
+        anchorLabel = anchor?.toAnchorLabel()
+    )
+}
+
+private fun AttachmentCommentReactionDto.toThreadAttachmentCommentReaction(): ThreadAttachmentCommentReaction =
+    ThreadAttachmentCommentReaction(
+        emoji = emoji,
+        reactorType = reactorType,
+        reactorId = reactorId
+    )
+
+private fun AttachmentCommentViewerDto.toThreadAttachmentCommentViewer(): ThreadAttachmentCommentViewer =
+    ThreadAttachmentCommentViewer(canComment = canComment, reason = reason)
+
+private fun AttachmentCommentAnchorDto.toAnchorLabel(): String? {
+    val json = data ?: return null
+    val label =
+        json["label"]?.jsonPrimitive?.contentOrNull
+            ?: json["quote"]?.jsonPrimitive?.contentOrNull
+            ?: json["text"]?.jsonPrimitive?.contentOrNull
+    return label?.takeIf { it.isNotBlank() }?.take(80)
+}
 
 @Serializable
 data class ThreadSendMessageRequestBody(

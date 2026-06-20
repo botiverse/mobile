@@ -66,6 +66,45 @@ class ThreadApiTest {
     }
 
     @Test
+    fun attachmentCommentsParseCanonicalPayload() = runBlocking {
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    attachmentCommentsBody =
+                        """
+                        {
+                          "threadChannelId": "thread-comments",
+                          "viewer": {"canComment": true, "reason": "ok"},
+                          "comments": [
+                            {
+                              "id": "comment-1",
+                              "channelId": "thread-comments",
+                              "senderType": "user",
+                              "senderId": "u1",
+                              "senderName": "Artin",
+                              "content": "Please revise this section",
+                              "createdAt": "2026-06-20T01:00:00Z",
+                              "reactions": [{"emoji": "✅", "reactorType": "user", "reactorId": "u2"}],
+                              "anchor": {"type": "text", "data": {"label": "line 12"}}
+                            }
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = api.attachmentComments("att-1")
+
+        val page = assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(result).data
+        assertEquals("thread-comments", page.threadChannelId)
+        assertEquals(true, page.viewer?.canComment)
+        val comment = page.comments.single()
+        assertEquals("comment-1", comment.id)
+        assertEquals("line 12", comment.anchorLabel)
+        assertEquals("✅", comment.reactions.single().emoji)
+    }
+
+    @Test
     fun syncRequiresCanonicalRootArray() = runBlocking {
         val api = SlockThreadApiClient(FakeThreadNetworkApi(syncBody = """[{"id":"m2","content":"new","seq":2}]"""))
 
@@ -220,6 +259,8 @@ class ThreadApiTest {
             api.sendMessage("channel-1", "hello", asTask = true, attachmentIds = listOf("att-1"))
         )
         assertIs<ThreadApiResult.Success<ThreadAttachmentOpenTarget>>(api.attachmentUrl("att-1", disposition = "inline"))
+        assertIs<ThreadApiResult.Success<ThreadAttachmentCommentsPage>>(api.attachmentComments("att-1"))
+        assertIs<ThreadApiResult.Success<Unit>>(api.sendAttachmentComment("att-1", "looks good"))
         assertIs<ThreadApiResult.Success<Unit>>(api.markChannelReadAll("channel-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.saveMessage("msg-1"))
         assertIs<ThreadApiResult.Success<Unit>>(api.unsaveMessage("msg-1"))
@@ -234,6 +275,8 @@ class ThreadApiTest {
                 "GET messages/sync priority=Visible query=since_seq=10&limit=30&channel_id=channel-1 server= body=",
                 """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true}""",
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
+                "GET attachments/att-1/comments priority=Visible query= server= body=",
+                """POST attachments/att-1/comments priority=Foreground query= server= body={"content":"looks good"}""",
                 "POST channels/channel-1/read-all priority=Foreground query= server= body=",
                 """POST channels/saved priority=Foreground query= server= body={"messageId":"msg-1"}""",
                 "DELETE channels/saved/msg-1 priority=Foreground query= server= body=",
@@ -251,6 +294,7 @@ class ThreadApiTest {
         var syncBody: String = "[]",
         var sendBody: String = """{"id":"m1","content":"sent","seq":1}""",
         var attachmentUrlBody: String = """{"url":"https://cdn.slock.ai/default"}""",
+        var attachmentCommentsBody: String = """{"comments":[],"threadChannelId":"thread-comments"}""",
         var reactionBody: String = """{"id":"m1","reactions":[]}""",
         var createThreadBody: String = """{"threadChannelId":"thread-1"}"""
     ) : SharedThreadNetworkApi {
@@ -271,6 +315,12 @@ class ThreadApiTest {
 
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentUrlBody)
+
+        override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = attachmentCommentsBody)
+
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
 
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
@@ -315,6 +365,7 @@ class ThreadApiTest {
                 normalizedPath.startsWith("messages/channel/") -> ok(channelMessagesBody)
                 normalizedPath == "messages/sync" -> ok(syncBody)
                 normalizedPath == "messages" && method == "POST" -> ok(sendBody)
+                normalizedPath.startsWith("attachments/") && normalizedPath.endsWith("/comments") -> ok("""{"comments":[],"threadChannelId":"thread-comments"}""")
                 normalizedPath.startsWith("attachments/") -> ok(attachmentUrlBody)
                 normalizedPath.endsWith("/read-all") -> ok("""{"ok":true}""")
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")

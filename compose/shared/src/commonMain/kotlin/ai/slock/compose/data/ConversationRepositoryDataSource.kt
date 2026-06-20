@@ -632,7 +632,9 @@ private fun buildSharedThreadSnapshot(
     highlightedMessageId: MessageId? = null
 ): ThreadSnapshot {
     val highlighted = highlightedMessageId?.let { id -> payload.messages.firstOrNull { it.id == id } }
-    val baseConversation = buildDefaultConversation(threadId, threadId.value)
+    val baseConversation =
+        buildDefaultConversation(threadId, threadId.value)
+            .copy(archived = payload.channelArchived)
     val conversation =
         if (highlighted != null) {
             baseConversation.withThreadAnchor(

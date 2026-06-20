@@ -257,7 +257,8 @@ data class Message(
     val parentMessageId: MessageId? = null,
     val updatedAtLabel: String? = null,
     val reactions: List<MessageReaction>? = null,
-    val senderMembershipStatus: String? = null
+    val senderMembershipStatus: String? = null,
+    val commentRef: MessageCommentRef? = null
 )
 
 @Serializable
@@ -289,7 +290,27 @@ data class Attachment(
     val sizeLabel: String,
     val thumbnailUrl: String? = null,
     val width: Int? = null,
-    val height: Int? = null
+    val height: Int? = null,
+    val commentCount: Int = 0
+)
+
+@Serializable
+data class MessageCommentRef(
+    val attachmentId: AttachmentId,
+    val filename: String,
+    val hostMessageId: MessageId? = null,
+    val hostSource: MessageCommentHostSource? = null,
+    val anchorLabel: String? = null
+)
+
+@Serializable
+data class MessageCommentHostSource(
+    val type: String,
+    val routeKind: String,
+    val channelId: ChannelId,
+    val parentMessageId: MessageId? = null,
+    val threadChannelId: ChannelId? = null,
+    val rootThreadChannelId: ChannelId? = null
 )
 
 // Task Models

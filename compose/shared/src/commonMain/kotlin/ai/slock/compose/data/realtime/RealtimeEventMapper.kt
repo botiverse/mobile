@@ -13,6 +13,8 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageCommentHostSource
+import ai.slock.compose.model.MessageCommentRef
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
@@ -284,6 +286,7 @@ private data class MessageWireDto(
     val attachments: List<AttachmentWireDto> = emptyList(),
     val reactions: List<MessageReactionWireDto>? = null,
     val actionMetadata: WireActionCardMetadata? = null,
+    val commentRef: CommentRefWireDto? = null,
 )
 
 @Serializable
@@ -303,6 +306,26 @@ private data class AttachmentWireDto(
     val thumbnailUrl: String? = null,
     val width: Int? = null,
     val height: Int? = null,
+    val commentCount: Int = 0,
+)
+
+@Serializable
+private data class CommentHostSourceWireDto(
+    val type: String = "",
+    val routeKind: String = "",
+    val channelId: String = "",
+    val parentMessageId: String? = null,
+    val threadChannelId: String? = null,
+    val rootThreadChannelId: String? = null,
+)
+
+@Serializable
+private data class CommentRefWireDto(
+    val attachmentId: String = "",
+    val filename: String = "",
+    val hostMessageId: String? = null,
+    val hostSource: CommentHostSourceWireDto? = null,
+    val anchorLabel: String? = null,
 )
 
 @Serializable
@@ -431,6 +454,7 @@ private fun MessageWireDto.toDomain(): Message {
         parentMessageId = null,
         updatedAtLabel = updatedAt,
         reactions = reactions?.mapNotNull { it.toDomain() },
+        commentRef = commentRef?.toDomain(),
     )
 }
 
@@ -453,7 +477,34 @@ private fun AttachmentWireDto.toDomain(): Attachment = Attachment(
     thumbnailUrl = thumbnailUrl,
     width = width,
     height = height,
+    commentCount = commentCount.coerceAtLeast(0),
 )
+
+private fun CommentRefWireDto.toDomain(): MessageCommentRef? {
+    val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
+    val cleanFilename = filename.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentRef(
+        attachmentId = AttachmentId(cleanAttachmentId),
+        filename = cleanFilename,
+        hostMessageId = hostMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        hostSource = hostSource?.toDomain(),
+        anchorLabel = anchorLabel?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun CommentHostSourceWireDto.toDomain(): MessageCommentHostSource? {
+    val cleanType = type.takeIf { it == "channel" || it == "thread" } ?: return null
+    val cleanRouteKind = routeKind.takeIf { it == "channel" || it == "dm" } ?: return null
+    val cleanChannelId = channelId.takeIf { it.isNotBlank() } ?: return null
+    return MessageCommentHostSource(
+        type = cleanType,
+        routeKind = cleanRouteKind,
+        channelId = ChannelId(cleanChannelId),
+        parentMessageId = parentMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        threadChannelId = threadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        rootThreadChannelId = rootThreadChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    )
+}
 
 private fun ThreadUpdatedDto.toDomain(): ThreadUpdated = ThreadUpdated(
     parentMessageId = MessageId(parentMessageId),

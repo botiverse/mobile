@@ -272,6 +272,8 @@ internal interface SharedThreadNetworkApi {
         attachmentIds: List<String> = emptyList()
     ): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse
+    suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse
+    suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse
     suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse
     suspend fun saveMessage(messageId: String): HomeNetworkResponse
     suspend fun unsaveMessage(messageId: String): HomeNetworkResponse

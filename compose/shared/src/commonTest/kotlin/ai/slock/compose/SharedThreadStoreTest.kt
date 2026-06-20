@@ -2325,6 +2325,12 @@ class SharedThreadStoreTest {
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = """{"url":"https://cdn.example/$attachmentId"}""")
 
+        override suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"comments":[],"threadChannelId":"comments-$attachmentId"}""")
+
+        override suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = """{"ok":true}""")
+
         override suspend fun markChannelReadAll(channelId: String): HomeNetworkResponse {
             activeReadAllCalls += 1
             maxConcurrentReadAllCalls = maxOf(maxConcurrentReadAllCalls, activeReadAllCalls)
