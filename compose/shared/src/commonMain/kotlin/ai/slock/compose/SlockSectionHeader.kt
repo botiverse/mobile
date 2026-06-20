@@ -1,6 +1,9 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -18,6 +21,7 @@ import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.widthIn
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -32,6 +36,10 @@ private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
+
+internal object SlockCollapsibleSectionTokens {
+    const val AnimationDurationMillis: Int = 180
+}
 
 @Composable
 internal fun SlockTopPageHeader(
@@ -139,9 +147,16 @@ internal fun SlockCollapsibleSectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
+        val rotation by animateFloatAsState(
+            targetValue = if (expanded) 90f else 0f,
+            animationSpec = tween(durationMillis = SlockCollapsibleSectionTokens.AnimationDurationMillis),
+            label = "slock-collapsible-section-chevron-rotation"
+        )
         SlockLucideIcon(
-            if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
-            Modifier.size(SectionChevronSize)
+            SlockLucideIconName.ChevronRight,
+            Modifier
+                .size(SectionChevronSize)
+                .graphicsLayer(rotationZ = rotation)
         )
         Text(
             label.uppercase(),
