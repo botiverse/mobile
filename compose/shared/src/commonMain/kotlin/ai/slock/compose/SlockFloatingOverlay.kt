@@ -73,8 +73,12 @@ internal fun SlockAnchoredPopover(
             localAnchor = Offset(anchor.x - overlayLayout.origin.x, anchor.y - overlayLayout.origin.y),
             overlayLayout = overlayLayout
         )
+        val density = LocalDensity.current
         content(
-            Modifier.offset(x = popoverOffset.x, y = popoverOffset.y),
+            Modifier.offset(
+                x = with(density) { popoverOffset.x.toDp() },
+                y = with(density) { popoverOffset.y.toDp() }
+            ),
             position
         )
     }
