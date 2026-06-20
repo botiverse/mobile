@@ -203,13 +203,18 @@ class SharedActivityStore(
     private fun markDone(item: InboxItem) {
         val previous = _state.value
         if (previous.snapshot == null) return
+        val targetChannelId = item.activityActionChannelId()
+        if (targetChannelId == null) {
+            refreshAfterFailure(previous, "activity_thread_channel_missing")
+            return
+        }
         removeItemOptimistically(item)
         scope.launch {
             val result =
                 if (item.kind == InboxItemKind.Thread) {
-                    conversationRepository.markThreadDone(item.activityChannelId())
+                    conversationRepository.markThreadDone(targetChannelId)
                 } else {
-                    inboxRepository.markDone(item.channelId)
+                    inboxRepository.markDone(targetChannelId)
                 }
             if (result !is DataResult.Content && result !is DataResult.Empty) {
                 refreshAfterFailure(previous, "activity_mark_done_failed")
@@ -221,6 +226,11 @@ class SharedActivityStore(
         if (item.unreadCount <= 0) return
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
+        val targetChannelId = item.activityActionChannelId()
+        if (targetChannelId == null) {
+            refreshAfterFailure(previous, "activity_thread_channel_missing")
+            return
+        }
         val key = item.key
         val updatedItems =
             if (previous.selectedFilter == InboxFilter.Unread) {
@@ -245,7 +255,7 @@ class SharedActivityStore(
                 errorCode = null
             )
         scope.launch {
-            val result = readReceiptRepository.markChannelReadAll(item.activityChannelId())
+            val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
                 refreshAfterFailure(previous, "activity_mark_read_failed")
             }
@@ -255,6 +265,11 @@ class SharedActivityStore(
     private fun markUnread(item: InboxItem) {
         val previous = _state.value
         val snapshot = previous.snapshot ?: return
+        val targetChannelId = item.activityActionChannelId()
+        if (targetChannelId == null) {
+            refreshAfterFailure(previous, "activity_thread_channel_missing")
+            return
+        }
         val wasUnread = item.unreadCount > 0
         val optimisticUnreadCount = item.unreadCount.takeIf { it > 0 } ?: 1
         val key = item.key
@@ -284,7 +299,7 @@ class SharedActivityStore(
                 errorCode = null
             )
         scope.launch {
-            val result = readReceiptRepository.markChannelUnread(item.activityChannelId())
+            val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
                 load(refresh = true)
             } else {
@@ -405,8 +420,8 @@ private fun List<InboxItem>.withSenderAvatarProfiles(
     }
 }
 
-private fun InboxItem.activityChannelId(): ChannelId =
-    if (kind == InboxItemKind.Thread) threadChannelId ?: channelId else channelId
+private fun InboxItem.activityActionChannelId(): ChannelId? =
+    if (kind == InboxItemKind.Thread) threadChannelId else channelId
 
 private fun InboxItem.activityUnreadAnchor(): MessageId? =
     firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId

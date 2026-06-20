@@ -130,6 +130,44 @@ class SharedActivityStoreTest {
         scope.cancel()
     }
 
+    @Test
+    fun threadActionsRequireExplicitThreadChannelId() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val row = threadItem(channelId = "parent-or-compat", threadChannelId = null, unreadCount = 1)
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(row), totalUnreadCount = 1),
+                        snapshot(listOf(row), totalUnreadCount = 1),
+                        snapshot(listOf(row), totalUnreadCount = 1),
+                        snapshot(listOf(row), totalUnreadCount = 1)
+                    )
+            )
+        val read = FakeReadReceiptRepository()
+        val conversation = FakeConversationRepository()
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                readReceiptRepository = read,
+                conversationRepository = conversation
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
+        store.dispatch(SharedActivityIntent.MarkUnread(store.state.value.items.single()))
+        store.dispatch(SharedActivityIntent.MarkDone(store.state.value.items.single()))
+
+        assertEquals(emptyList(), read.readAllChannelIds)
+        assertEquals(emptyList(), read.unreadChannelIds)
+        assertEquals(emptyList(), inbox.doneChannelIds)
+        assertEquals(emptyList(), conversation.doneThreadChannelIds)
+        assertEquals(listOf("thread:parent-or-compat"), store.state.value.items.map { it.key })
+        assertEquals(4, inbox.initialLoadCount)
+        scope.cancel()
+    }
+
     private fun activityStore(
         scope: CoroutineScope,
         inboxRepository: FakeInboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
@@ -276,15 +314,21 @@ class SharedActivityStoreTest {
             latestActivityMessageId = MessageId("latest-$channelId")
         )
 
-    private fun threadItem(threadChannelId: String): InboxItem =
+    private fun threadItem(
+        channelId: String,
+        threadChannelId: String? = channelId,
+        unreadCount: Int = 0
+    ): InboxItem =
         InboxItem(
-            key = "thread:$threadChannelId",
+            key = "thread:$channelId",
             kind = InboxItemKind.Thread,
-            channelId = ChannelId(threadChannelId),
+            channelId = ChannelId(channelId),
             channelName = "general",
-            threadChannelId = ChannelId(threadChannelId),
+            threadChannelId = threadChannelId?.let(::ChannelId),
             parentChannelId = ChannelId("parent-channel"),
             parentMessageId = MessageId("parent-message"),
+            unreadCount = unreadCount,
+            firstUnreadMessageId = if (unreadCount > 0) MessageId("first-$channelId") else null,
             latestActivityMessageId = MessageId("latest-thread")
         )
 
