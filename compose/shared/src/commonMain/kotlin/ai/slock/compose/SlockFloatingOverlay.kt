@@ -1,10 +1,12 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -93,6 +95,20 @@ internal fun SlockFloatingOverlayHost(
     // landed at y=877 dp ≈ 2303 px (screen bottom) instead of near
     // the row. Keep everything in pixels to avoid the unit mismatch.
     var overlayLayout by remember { mutableStateOf(SlockFloatingOverlayLayout()) }
+    // #223 follow-up: defer clickable registration so the long-press
+    // release that opens the menu does not immediately propagate to the
+    // host's onDismiss and close it before the user sees anything. The
+    // ~150ms window covers the standard Android long-press threshold
+    // (~500ms) minus the time to compose + render the menu, which is
+    // usually well under that. The menu's own content Column already
+    // has a no-op clickable (slockFloatingContentClickTarget) so clicks
+    // on the menu do not bubble up; the host only needs to dismiss on
+    // clicks outside the menu.
+    var dismissClickableActive by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(150)
+        dismissClickableActive = true
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -102,7 +118,7 @@ internal fun SlockFloatingOverlayHost(
                     size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                 )
             }
-            .clickable(onClick = onDismiss),
+            .then(if (dismissClickableActive) Modifier.clickable(onClick = onDismiss) else Modifier),
         contentAlignment = Alignment.TopStart
     ) {
         content(overlayLayout)
