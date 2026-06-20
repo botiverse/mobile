@@ -100,6 +100,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SharedThreadStoreTest {
@@ -363,6 +364,43 @@ class SharedThreadStoreTest {
         val messages = store.state.value.payload.messages
         assertFalse(messages.any { it.id == "local-1" })
         assertEquals(1, messages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
+    fun retryPreservesAttachmentIdsAcrossFailureAndRetryCycle() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val local =
+            localPendingMessage(
+                id = "local-1",
+                body = "with attachments",
+                attachmentIds = listOf("att-1", "att-2")
+            )
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local))
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "network_error"))
+
+        val failed = store.state.value.payload.messages.first { it.id == "local-1" }
+        assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
+        assertEquals(listOf("att-1", "att-2"), failed.pendingSendContext?.attachmentIds)
+        assertEquals(2, failed.attachments.size)
+
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(failed.copy(deliveryState = ThreadMessageDeliverySending)))
+
+        val retried = store.state.value.payload.messages.first { it.id == "local-1" }
+        assertEquals(ThreadMessageDeliverySending, retried.deliveryState)
+        assertNull(retried.pendingSendErrorCode)
+        assertEquals(listOf("att-1", "att-2"), retried.pendingSendContext?.attachmentIds)
+        assertEquals(2, retried.attachments.size)
         scope.cancel()
     }
 
