@@ -17,6 +17,8 @@ import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivityState
 import ai.slock.compose.data.SharedActivityStore
+import ai.slock.compose.markdown.traceMarkdownSection
+import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -170,7 +172,12 @@ internal fun SharedHomeActivityPanel(
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
     modifier: Modifier = Modifier
 ) {
-    SharedActivityPanelContent(
+    // #192 trace scope extension: wrap the Inbox panel render. The Inbox is
+    // recomposed on every state snapshot change; this marker tells us how much
+    // wall-time the panel render itself costs on the UI thread (excluding
+    // inner List measure which we'd add separately if this shows hot).
+    traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
+        SharedActivityPanelContent(
         state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
         onOpenMessage = onOpenMessage,
         onClose = onClose,
@@ -180,6 +187,7 @@ internal fun SharedHomeActivityPanel(
         timeContext = timeContext,
         modifier = modifier
     )
+    }
 }
 
 @Composable
