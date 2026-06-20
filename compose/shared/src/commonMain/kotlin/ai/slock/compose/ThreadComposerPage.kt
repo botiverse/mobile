@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.markdown.traceMarkdownSection
+import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.model.ConversationSummary
@@ -601,6 +603,10 @@ internal fun ThreadComposerContent(
     contentPaddingTop: Dp = ThreadComposerStandaloneTopPadding,
     contentPaddingBottom: Dp = ThreadComposerStandaloneBottomPadding
 ) {
+    // #192 trace scope extension: wrap the full composer render. IME-lift / state
+    // updates / suggestion list filtering are all under this; per-phase breakdown
+    // can come later if this marker shows hot. bodyLength proxy uses seedText length.
+    traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
     var fieldValue by remember(state.instanceId) {
         mutableStateOf(state.seedText)
     }
@@ -859,6 +865,7 @@ internal fun ThreadComposerContent(
                 }
             }
         }
+    }
     }
 }
 
