@@ -4356,6 +4356,16 @@ private fun settingsConnectedAppInitials(name: String): String {
     return parts.take(2).joinToString("") { it.take(1) }.uppercase().ifBlank { "APP" }
 }
 
+private fun SettingsConnectedAppClientSnapshot.canRequestMarketplacePublish(): Boolean =
+    publishStatus.trim().lowercase() in setOf("private", "rejected")
+
+private fun SettingsConnectedAppClientSnapshot.publishStatusCopy(): String =
+    publishStatus.trim()
+        .takeIf { it.isNotBlank() }
+        ?.replace("_", " ")
+        ?.replaceFirstChar { it.uppercase() }
+        ?: "Private"
+
 @Composable
 private fun SettingsConnectedAppEditorCard(
     snapshot: SettingsConnectedAppsSnapshot?,
@@ -4391,6 +4401,7 @@ private fun SettingsConnectedAppEditorCard(
     val canManage = snapshot?.canManage == true
     val enabled = canManage && !busy
     val editingClient = snapshot?.registered?.firstOrNull { it.id == editingId }
+    val canRequestPublish = editingClient?.canRequestMarketplacePublish() == true
     val logoBusy =
         actionState?.inProgress == true &&
             actionState.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) &&
@@ -4457,7 +4468,7 @@ private fun SettingsConnectedAppEditorCard(
             onUploadLogo = { editingClient?.id?.let(onUploadLogo) },
             onClearLogo = { editingClient?.id?.let(onClearLogo) }
         )
-        if (editing) {
+        if (editing && canRequestPublish) {
             SlockBrutalTextField(
                 label = "Publish Category",
                 value = publishCategory,
@@ -4475,6 +4486,13 @@ private fun SettingsConnectedAppEditorCard(
                 enabled = enabled,
                 maxLines = 3,
                 fieldMinHeight = 78.dp
+            )
+        } else if (editingClient != null) {
+            SettingsFormDetailText(
+                listOfNotNull(
+                    "Publish status: ${editingClient.publishStatusCopy()}",
+                    editingClient.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { "Rejection: $it" }
+                ).joinToString(" ")
             )
         }
         if (!canManage) {
@@ -4551,6 +4569,7 @@ private fun SettingsConnectedAppClientsCard(
             SettingsFormEmptyText("No server-local OAuth clients yet.")
         } else {
             clients.forEach { app ->
+                val canRequestPublish = app.canRequestMarketplacePublish()
                 val publishBusy = actionState.connectedAppsBusyFor(CONNECTED_APPS_ACTION_PUBLISH, app.id)
                 val deleteBusy = actionState.connectedAppsBusyFor(CONNECTED_APPS_ACTION_DELETE, app.id)
                 SettingsConnectedAppActionRow(
@@ -4562,24 +4581,33 @@ private fun SettingsConnectedAppClientsCard(
                     enabled = !publishBusy && !deleteBusy,
                     onClick = { onStartEdit(app) }
                 )
-                SettingsConnectedAppActionRow(
-                    title = "Publish ${app.name}",
-                    detail = app.publishRejectionReason ?: "Request marketplace review for this OAuth client.",
-                    buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_PUBLISH, "Request Publish", app.id),
-                    buttonIcon = SlockLucideIconName.Send,
-                    buttonColor = SlockColor.AccentCyan,
-                    enabled = !publishBusy,
-                    onClick = {
-                        onPublish(
-                            SettingsConnectedAppPublishRequest(
-                                id = app.id,
-                                category = publishCategory.trim().ifBlank { app.category.ifBlank { "productivity" } },
-                                dataAccessSummary = publishDataAccess.trim().ifBlank { app.dataAccessSummary }
+                if (canRequestPublish) {
+                    SettingsConnectedAppActionRow(
+                        title = "Publish ${app.name}",
+                        detail = app.publishRejectionReason ?: "Request marketplace review for this OAuth client.",
+                        buttonLabel = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_PUBLISH, "Request Publish", app.id),
+                        buttonIcon = SlockLucideIconName.Send,
+                        buttonColor = SlockColor.AccentCyan,
+                        enabled = !publishBusy,
+                        onClick = {
+                            onPublish(
+                                SettingsConnectedAppPublishRequest(
+                                    id = app.id,
+                                    category = publishCategory.trim().ifBlank { app.category.ifBlank { "productivity" } },
+                                    dataAccessSummary = publishDataAccess.trim().ifBlank { app.dataAccessSummary }
+                                )
                             )
-                        )
-                    }
-                )
-                actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_PUBLISH, app.id)?.let { SettingsFormErrorText(it) }
+                        }
+                    )
+                    actionState.connectedAppsErrorFor(CONNECTED_APPS_ACTION_PUBLISH, app.id)?.let { SettingsFormErrorText(it) }
+                } else {
+                    SettingsFormDetailText(
+                        listOfNotNull(
+                            "Publish status: ${app.publishStatusCopy()}",
+                            app.publishRejectionReason?.takeIf { it.isNotBlank() }?.let { "Rejection: $it" }
+                        ).joinToString(" ")
+                    )
+                }
                 SettingsConnectedAppActionRow(
                     title = "Delete ${app.name}",
                     detail = "Remove this server-local OAuth client and its credentials.",
