@@ -214,6 +214,35 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineTextRenderCacheStoresFontResolvedText() {
+        SlockMarkdownInlineTextRenderCache.clearForTest()
+        val source =
+            AnnotatedString(
+                "normal bold",
+                spanStyles =
+                    listOf(
+                        AnnotatedString.Range(
+                            SpanStyle(fontWeight = FontWeight.Bold),
+                            start = 7,
+                            end = 11
+                        )
+                    )
+            )
+        val key = SlockMarkdownInlineTextCacheKey("normal **bold**", SlockType.Body)
+
+        val (first, firstCacheHit) =
+            SlockMarkdownInlineTextRenderCache.getOrPut(key) { source }
+        val (second, secondCacheHit) =
+            SlockMarkdownInlineTextRenderCache.getOrPut(key) { error("cache miss") }
+        val strongFontSpan = first.fontResolvedText.spanStyles.last { it.start == 7 && it.end == 11 }
+
+        assertFalse(firstCacheHit)
+        assertTrue(secondCacheHit)
+        assertTrue(first === second)
+        assertEquals(SlockType.ButtonBold.fontFamily, strongFontSpan.item.fontFamily)
+    }
+
+    @Test
     fun inlineTagWidthsDoNotReserveLargeTrailingPadding() {
         val mentionWidth =
             slockMarkdownInlineTagWidthSp(

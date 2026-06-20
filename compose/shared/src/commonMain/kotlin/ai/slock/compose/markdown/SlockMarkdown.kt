@@ -614,8 +614,11 @@ private object SlockMarkdownTextProvider : TextProvider {
         style: TextStyle
     ) {
         val resolvedStyle = style.withResolvedSlockFontFamily()
+        val resolvedText = remember(text, resolvedStyle) {
+            text.withSlockMarkdownSpanFonts(resolvedStyle)
+        }
         KuiklyText(
-            text = text.withSlockMarkdownSpanFonts(resolvedStyle),
+            text = resolvedText,
             modifier = modifier,
             color = color,
             fontSize = fontSize,
@@ -663,23 +666,54 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     return builder.toAnnotatedString()
 }
 
-private data class SlockMarkdownInlineTextCacheKey(
+private object SlockMarkdownPreparedBodyCache {
+    private const val MaxEntries = 256
+    private val entries = LinkedHashMap<String, String>()
+
+    fun getOrPut(
+        body: String,
+        value: () -> String
+    ): Pair<String, Boolean> {
+        entries[body]?.let { cached ->
+            return cached to true
+        }
+        val prepared = value()
+        entries[body] = prepared
+        if (entries.size > MaxEntries) {
+            val firstKey = entries.keys.firstOrNull()
+            if (firstKey != null) {
+                entries.remove(firstKey)
+            }
+        }
+        return prepared to false
+    }
+}
+
+internal data class SlockMarkdownInlineTextCacheKey(
     val content: String,
     val textStyle: TextStyle
 )
 
-private object SlockMarkdownInlineTextRenderCache {
+internal data class SlockMarkdownInlineTextRender(
+    val fontResolvedText: AnnotatedString
+)
+
+internal object SlockMarkdownInlineTextRenderCache {
     private const val MaxEntries = 256
-    private val entries = LinkedHashMap<SlockMarkdownInlineTextCacheKey, AnnotatedString>()
+    private val entries = LinkedHashMap<SlockMarkdownInlineTextCacheKey, SlockMarkdownInlineTextRender>()
 
     fun getOrPut(
         key: SlockMarkdownInlineTextCacheKey,
         value: () -> AnnotatedString
-    ): Pair<AnnotatedString, Boolean> {
+    ): Pair<SlockMarkdownInlineTextRender, Boolean> {
         entries[key]?.let { cached ->
             return cached to true
         }
-        val rendered = value()
+        val annotated = value()
+        val rendered =
+            SlockMarkdownInlineTextRender(
+                fontResolvedText = annotated.withSlockMarkdownSpanFonts(key.textStyle)
+            )
         entries[key] = rendered
         if (entries.size > MaxEntries) {
             val firstKey = entries.keys.firstOrNull()
@@ -688,6 +722,10 @@ private object SlockMarkdownInlineTextRenderCache {
             }
         }
         return rendered to false
+    }
+
+    fun clearForTest() {
+        entries.clear()
     }
 }
 
@@ -729,26 +767,24 @@ fun SlockMarkdownBody(
     performanceLogger: (String) -> Unit = {}
 ) {
     val content = remember(body, performanceKey) {
-        if (performanceKey == null) {
+        val startedAt = performanceKey?.let { TimeSource.Monotonic.markNow() }
+        val (prepared, cacheHit) =
             traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
-                body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+                SlockMarkdownPreparedBodyCache.getOrPut(body) {
+                    body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
+                }
             }
-        } else {
-            val startedAt = TimeSource.Monotonic.markNow()
-            traceMarkdownSectionNonComposable(SlockMarkdownTraceNames.PREPARE) {
-                body.normalizeThreadMarkdownBody().escapeThreadMarkdownHtmlTagsForThread()
-                    .also { normalized ->
-                        val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                        if (shouldLogSlockMarkdownPerformance(durationMs)) {
-                            performanceLogger(
-                                "thread_markdown_prepare stage=normalize key=$performanceKey " +
-                                    "bodyLength=${body.length} contentLength=${normalized.length} " +
-                                    "durationMs=$durationMs"
-                            )
-                        }
-                    }
+        if (performanceKey != null) {
+            val durationMs = startedAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
+            if (shouldLogSlockMarkdownPerformance(durationMs)) {
+                performanceLogger(
+                    "thread_markdown_prepare stage=normalize key=$performanceKey " +
+                        "bodyLength=${body.length} contentLength=${prepared.length} " +
+                        "cacheHit=$cacheHit durationMs=$durationMs"
+                )
             }
         }
+        prepared
     }
     val markdownModifier =
         if (DEBUG_SLOCK_MARKDOWN_PERF_LOG && performanceKey != null) {
@@ -821,12 +857,15 @@ fun SlockMarkdownBody(
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
         val renderStartedAt = TimeSource.Monotonic.markNow()
         val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle)
-        val (annotated, cacheHit) =
+        val (renderedText, cacheHit) =
             traceMarkdownSection(SlockMarkdownTraceNames.ANNOTATE) {
                 SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {
                     buildSlockMarkdownInlineTextAnnotatedString(content, resolvedStyle, annotator)
                 }
             }
+        val inlineContent = remember(annotator) {
+            annotator.inlineContent?.invoke().orEmpty()
+        }
         val renderDurationMs = renderStartedAt.elapsedNow().inWholeMilliseconds
         if (performanceKey != null && shouldLogSlockMarkdownPerformance(renderDurationMs)) {
             performanceLogger(
@@ -836,7 +875,7 @@ fun SlockMarkdownBody(
         }
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
             KuiklyText(
-                text = annotated.withSlockMarkdownSpanFonts(resolvedStyle),
+                text = renderedText.fontResolvedText,
                 modifier = markdownModifier,
                 color = resolvedStyle.color,
                 fontSize = resolvedStyle.fontSize,
@@ -851,7 +890,7 @@ fun SlockMarkdownBody(
                 softWrap = true,
                 maxLines = Int.MAX_VALUE,
                 minLines = 1,
-                inlineContent = annotator.inlineContent?.invoke().orEmpty(),
+                inlineContent = inlineContent,
                 onTextLayout = {},
                 style = resolvedStyle
             )
