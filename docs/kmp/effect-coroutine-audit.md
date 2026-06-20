@@ -1,310 +1,110 @@
 # KMP Effect / Coroutine Hot-Path Audit
 
-Date: 2026-06-19
+Date: 2026-06-20
 Task: #185 follow-up for closed #146
-Audited commit: `e4b01c3e`
-Implemented follow-up: task #185 P0 fix on 2026-06-20.
+Audited baseline: current `main` after `374b3d73`
 
-## Scope
+## Current Status
 
-This is a current-main re-audit of the old #146 effect/coroutine report. It
-focuses on loops, repeated side effects, unstable effect keys, and selector
-boundary violations in `compose/shared/src/commonMain/kotlin/ai/slock/compose`.
+No open P0/P1 items remain from the #185 audit after the current follow-up.
 
-Current scan counts:
+Implemented on #185:
 
-- `LaunchedEffect`: 137 occurrences
-- `DisposableEffect`: 15 occurrences
-- `snapshotFlow`: 5 occurrences
-- `rememberCoroutineScope` / `.launch {`: 99 occurrences
-
-The audit intentionally prioritizes hot UI paths over exhaustive low-risk
-logging effects.
-
-## Original Findings From 2026-06-19 Audit
-
-## Implemented P0 Follow-Up
-
-The 2026-06-20 #185 implementation moved both P0 findings below from audit
-items into code:
-
-- Thread bottom-anchor scroll observation now equality-gates hot `snapshotFlow`
-  emissions with `distinctUntilChanged`, guards boolean writes, and removes the
-  self-written `allowBottomAutoAnchor` flag from the anchor effect key.
-- Thread read-all now uses a latest visible message marker and Store-owned
+- Thread bottom-anchor scroll observation uses `distinctUntilChanged`, guards
+  boolean writes, and no longer keys the anchor effect on the self-written
+  `allowBottomAutoAnchor` flag.
+- Thread older-autoload threshold observation uses `distinctUntilChanged` before
+  dispatching `loadOlder`.
+- Thread read-all uses a latest visible message marker and Store-owned
   in-flight / pending / completed guards so repeated visible-read intents for
-  the same marker no-op, while realtime bursts coalesce to the latest marker.
-- `AGENTS.md` now records the first-principles rule: hot Compose effects use
-  stable signatures and equality gates; hot UI-to-IO intents are marker-based
-  and single-flight in the Store.
-
-### Original P0: Thread bottom-anchor feedback loop
-
-Files:
-
-- `ThreadPage.kt:3623` starts a `snapshotFlow` keyed by
-  `payload.instanceId, latestItemIndex`.
-- `ThreadPage.kt:3679` starts the bottom-anchor effect keyed by
-  `payload.instanceId, latestMessageLayoutKey, latestItemIndex,
-  allowBottomAutoAnchor`.
-
-Current shape:
-
-```kotlin
-LaunchedEffect(payload.instanceId, latestItemIndex) {
-    snapshotFlow {
-        listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
-    }.collect { (isScrollInProgress, isAtBottom) ->
-        if (isScrollInProgress && !isAtBottom) {
-            allowBottomAutoAnchor = false
-        } else if (isAtBottom) {
-            allowBottomAutoAnchor = true
-        }
-    }
-}
-
-LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex, allowBottomAutoAnchor) {
-    ...
-    if (listState.isScrollInProgress && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
-        allowBottomAutoAnchor = false
-        return@LaunchedEffect
-    }
-    ...
-}
-```
-
-Why this is still P0:
-
-- `allowBottomAutoAnchor` is written by the collector and is also a key of the
-  anchor effect.
-- The collector does not use `distinctUntilChanged`, so repeated scroll/layout
-  observations can write the same boolean repeatedly.
-- New realtime messages change `latestItemIndex`, restarting the collector and
-  the anchor effect on the thread's hottest path.
-- The anchor effect itself can scroll, which changes list state and feeds the
-  collector.
-
-Minimum fix path:
-
-- Remove `allowBottomAutoAnchor` from the anchor effect key.
-- Add `distinctUntilChanged()` to both Thread `snapshotFlow` collectors.
-- Guard assignments (`if (allowBottomAutoAnchor != next) ...`) or move the
-  decision into a derived/selector state whose output is equality-gated.
-- Keep the effect keyed by stable render-axis fields only:
-  `payload.instanceId, latestMessageLayoutKey, latestItemIndex`.
-
-Acceptance proof:
-
-- Appending realtime messages while already at bottom should not create an
-  alternating `allowBottomAutoAnchor` restart loop.
-- Dragging away from bottom should set auto-anchor false once.
-- Returning to bottom should set auto-anchor true once.
-
-### Original P0: `MarkVisibleReadAll` dispatched per message-count change
-
-Files:
-
-- `ThreadPage.kt:1713`
-- `SharedThreadStore.kt:1659`
-
-Current shape:
+  the same marker no-op and realtime bursts coalesce to the latest marker.
+- Tasks stale-filter pruning keys on stable id sets instead of full option
+  objects.
+- Members activity bottom-anchor observation uses `distinctUntilChanged` and
+  guards repeated boolean writes.
+- `AGENTS.md` records the first-principles rule: hot Compose effects use stable
+  signatures and equality gates; hot UI-to-IO intents are marker-based and
+  single-flight in the Store.
 
-```kotlin
-LaunchedEffect(renderedThread.sourceThreadId, renderedThread.status, renderedThread.messages.size) {
-    if (renderedThread.status == "content" && renderedThread.messages.isNotEmpty()) {
-        threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
-    }
-}
-```
-
-`SharedThreadStore.markVisibleReadAll()` always calls:
-
-```kotlin
-dataSource.markChannelReadAll(channelId)
-```
-
-Why this is P0:
-
-- Realtime appends increase `renderedThread.messages.size`.
-- Each append dispatches `MarkVisibleReadAll`.
-- The store does not have an in-flight guard or a last-marked message/seq guard.
-- A busy active thread can therefore issue one read-all network call per
-  incoming message even when previous read-all work is still active.
-
-Minimum fix path:
-
-- Store a read marker key such as `(channelId, latestVisibleMessageId or
-  latestSeq)`.
-- Skip if the same marker is already marked or in flight.
-- Debounce/coalesce realtime bursts if the API remains "read all".
-- Keep initial "thread becomes visible content" read marking, but avoid
-  all-message-count-triggered full read-all calls.
+## Fixed Items
 
-Acceptance proof:
+### Thread Bottom-Anchor Feedback Loop
 
-- Opening a thread calls read-all once.
-- Appending N messages while active coalesces to one in-flight call or one
-  latest marker, not N parallel calls.
-- Switching channel resets the marker key.
+Status: fixed by `8d6d1c3b`.
 
-### P1: Thread older-autoload `snapshotFlow` lacks equality gating
+The original issue was an effect/collector loop where `allowBottomAutoAnchor`
+was both written by the scroll observer and used as a key of the anchor effect.
+Current code keeps the anchor effect keyed to stable render-axis fields and
+equality-gates scroll observations.
 
-File: `ThreadPage.kt:3634`
+### Thread Read-All Per Message Count
 
-Current shape:
+Status: fixed by `8d6d1c3b`.
 
-```kotlin
-snapshotFlow { listState.isThreadOlderAutoLoadThreshold(boundaryIndex) }
-    .collect { shouldLoad ->
-        if (shouldLoad) {
-            allowBottomAutoAnchor = false
-            onThreadEvent("loadOlder", null, null, null)
-        }
-    }
-```
+The original issue dispatched `MarkVisibleReadAll` from message-count changes
+and let the Store issue parallel read-all requests. Current code dispatches by
+latest visible marker and coalesces repeated markers in `SharedThreadStore`.
 
-Why this is P1:
+### Thread Older Autoload Repeated True Emissions
 
-- The collector emits a Boolean from scroll/layout state.
-- Without `distinctUntilChanged`, repeated `true` emissions can call
-  `loadOlder` repeatedly until the parent payload reflects loading state.
-- There is a parent guard on `olderMessagesStatus`, so this is lower risk than
-  the bottom-anchor loop, but it is still a hot scroll path.
+Status: fixed by `8d6d1c3b`.
 
-Minimum fix path:
+The older-load threshold `snapshotFlow` now applies `distinctUntilChanged`, so
+the `loadOlder` event fires on threshold transitions rather than repeated
+equivalent scroll/layout emissions.
 
-- Add `distinctUntilChanged()`.
-- Optionally call `onThreadEvent("loadOlder", ...)` only on a false -> true
-  threshold transition.
+### Tasks Option-Pruning Effect Keys
 
-### P1: Tasks presentation pruning keys are full option lists
+Status: fixed in the current #185 cleanup.
 
-File: `SharedTasksPage.kt:295`, `302`, `311`
+The stale chip pruning effects now key on stable available id sets:
 
-Current shape:
+- channel names,
+- creator identity ids,
+- assignee member ids.
 
-```kotlin
-LaunchedEffect(visibleContent.channelOptions) { ... }
-LaunchedEffect(visibleContent.creatorOptions) { ... }
-LaunchedEffect(visibleContent.assigneeOptions) { ... }
-```
+The effects no longer key on full option row objects.
 
-Why this is P1:
+### Members Activity Bottom Anchor
 
-- `visibleContent` is recomputed from sorted tasks/filter/presentation state.
-- The effects only need option identity sets, not the full item objects.
-- The body has a no-op state guard, so this is not a loop, but it can restart
-  more often than necessary on Tasks refreshes.
+Status: fixed in the current #185 cleanup.
 
-Minimum fix path:
+The agent activity bottom-anchor observer now applies `distinctUntilChanged`
+and only writes `allowBottomAnchor` when the derived value changes.
 
-- Derive stable signatures:
-  - `channelOptionIds = remember(...) { visibleContent.channelOptions.toSet() }`
-  - `creatorOptionIds = remember(...) { visibleContent.creatorOptions.map { it.tasksIdentityFilterId() }.toSet() }`
-  - `assigneeOptionIds = remember(...) { visibleContent.assigneeOptions.map { it.id.value }.toSet() }`
-- Use those signatures as effect keys and reducer inputs.
+## Downgraded / Previously Fixed Items
 
-### P1: Members activity bottom-anchor collector has same pattern as Thread
+### Thread Render Logging
 
-File: `MembersPage.kt:2590`
+Status: fixed before this cleanup.
 
-Current shape:
+`ThreadPage` builds a `ThreadRenderSignature` and keys render diagnostics on
+that signature rather than the full payload. Non-render metadata is excluded.
 
-```kotlin
-LaunchedEffect(detail?.agentId, rows.size) {
-    snapshotFlow {
-        listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
-    }.collect { (isScrollInProgress, isAtBottom) ->
-        ...
-    }
-}
-```
+### Thread Composer Member Suggestions
 
-Why this is P1:
+Status: fixed before this cleanup.
 
-- Agent activity can append while an agent detail panel is open.
-- The collector is keyed by row count and lacks `distinctUntilChanged`.
-- It writes `allowBottomAnchor`, which is consumed by the scroll-to-bottom
-  effect at `MembersPage.kt:2601`.
+`SharedMembersStore` exposes scoped selector flows for composer suggestions,
+and Thread route consumption no longer observes arbitrary full member state for
+the active composer.
 
-Minimum fix path:
+### Settings/Auth Draft Sync Effects
 
-- Add `distinctUntilChanged()`.
-- Guard boolean assignment.
-- Consider removing `rows.size` from the collector key and reading latest row
-  index through a stable derived value.
+Status: acceptable.
 
-## Downgraded / Fixed Since The Old #146 Report
+These effects use scalar keys and copy prop/state into draft fields. They are
+not on a hot realtime path and do not currently need cleanup without a concrete
+recomposition trace.
 
-### Thread render logging no longer keys on full payload
+## Review Rules
 
-Old issue: `LaunchedEffect(renderedPayload)` emitted render diagnostics on
-metadata-only payload changes.
-
-Current state:
-
-- `ThreadPage.kt:1694` builds a `ThreadRenderSignature`.
-- `ThreadPage.kt:1705` keys the render log on that signature.
-- `ThreadRenderSignature.kt` documents that non-render metadata is excluded.
-
-Status: fixed/downgraded.
-
-### Thread composer members no longer consume full shared members state
-
-Old/new issue from #182: Thread composer suggestion UI could consume arbitrary
-shared member state.
-
-Current state:
-
-- `SharedMembersStore` stores member suggestion slices keyed by
-  `(serverId, mentionChannelId, memberScopedMentions)`.
-- `ThreadPage.kt:1244` consumes `memberSuggestionSliceFlow(...)` and
-  `channelSuggestionSliceFlow()`, both equality-gated.
-- `AGENTS.md` now records the selector-boundary rule.
-
-Status: fixed.
-
-### Bottom-anchor list-object key was partly narrowed
-
-Old issue: bottom anchor keyed on full `payload.messages` list identity.
-
-Current state:
-
-- `ThreadPage.kt:3551` computes `latestItemIndex` from
-  `payload.originStatus, payload.messages.size`.
-- `ThreadPage.kt:3577` computes `latestMessageLayoutKey` from specific last-row
-  fields.
-
-Status: partly fixed. Remaining loop is the `allowBottomAutoAnchor` feedback
-described above.
-
-### Settings/auth draft sync effects are acceptable
-
-Examples:
-
-- `AuthPages.kt:673`, `AuthPages.kt:678`
-- `SettingsHomePage.kt:2288` through `2303`
-
-These use scalar keys and copy prop/state into draft fields. They are not on a
-hot realtime path and mostly have no-op/equality semantics through scalar keys.
-
-Status: keep as P3 unless a concrete recomposition trace shows otherwise.
-
-## Recommended Follow-Up Order
-
-1. Fix Thread bottom-anchor feedback loop (`ThreadPage.kt:3623`, `3679`).
-2. Add read-all coalescing / last-marker guard (`ThreadPage.kt:1713`,
-   `SharedThreadStore.kt:1659`).
-3. Add `distinctUntilChanged()` to remaining Thread/Members `snapshotFlow`
-   collectors.
-4. Narrow `SharedTasksPage` option-effect keys to stable id-set selectors.
-
-## Notes For Future Reviews
-
-- Effects should be keyed by the fields the effect body actually consumes.
-- State written by an effect or its sibling collector should not also be a key
-  of an effect that can write it again.
-- `snapshotFlow` on scroll/layout state should have `distinctUntilChanged()`
-  unless every emission is intentionally meaningful.
+- Key effects by the fields the effect body actually consumes.
+- Do not use state written by an effect or sibling collector as a restart key
+  for another effect that can write the same state again.
+- Apply `distinctUntilChanged` or an equivalent equality gate to `snapshotFlow`
+  used for scrolling, paging, visibility, or read markers.
+- Move hot UI-to-IO work into Store intents with marker-based single-flight and
+  coalescing.
 - Shared stores that serve multiple route/channel/member scopes must expose
   scoped selectors or slice flows with equality/no-op gates.

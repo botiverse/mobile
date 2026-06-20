@@ -290,30 +290,35 @@ private fun SharedTasksLoadedBodyContent(
             showChannelFilter = showChannelFilter
         )
     }
+    val availableChannelIds = remember(visibleContent.channelOptions) {
+        visibleContent.channelOptions.toSet()
+    }
+    val availableCreatorIds = remember(visibleContent.creatorOptions) {
+        visibleContent.creatorOptions.map { it.tasksIdentityFilterId() }.toSet()
+    }
+    val availableAssigneeIds = remember(visibleContent.assigneeOptions) {
+        visibleContent.assigneeOptions.map { it.id.value }.toSet()
+    }
     // Drop stale chip selections when the underlying option pool changes (e.g. a server
     // refresh removed a channel that was checked in the popover).
-    LaunchedEffect(visibleContent.channelOptions) {
+    LaunchedEffect(availableChannelIds) {
         val next =
             presentationState.reduce(
-                TasksPresentationIntent.PruneUnavailableChannels(visibleContent.channelOptions.toSet())
+                TasksPresentationIntent.PruneUnavailableChannels(availableChannelIds)
             )
         if (next != presentationState) presentationState = next
     }
-    LaunchedEffect(visibleContent.creatorOptions) {
+    LaunchedEffect(availableCreatorIds) {
         val next =
             presentationState.reduce(
-                TasksPresentationIntent.PruneUnavailableCreators(
-                    visibleContent.creatorOptions.map { it.tasksIdentityFilterId() }.toSet()
-                )
+                TasksPresentationIntent.PruneUnavailableCreators(availableCreatorIds)
             )
         if (next != presentationState) presentationState = next
     }
-    LaunchedEffect(visibleContent.assigneeOptions) {
+    LaunchedEffect(availableAssigneeIds) {
         val next =
             presentationState.reduce(
-                TasksPresentationIntent.PruneUnavailableAssignees(
-                    visibleContent.assigneeOptions.map { it.id.value }.toSet()
-                )
+                TasksPresentationIntent.PruneUnavailableAssignees(availableAssigneeIds)
             )
         if (next != presentationState) presentationState = next
     }

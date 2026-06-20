@@ -87,6 +87,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -2590,13 +2591,19 @@ private fun MembersAgentActivityTab(
             LaunchedEffect(detail?.agentId, rows.size) {
                 snapshotFlow {
                     listState.isScrollInProgress to listState.isMembersActivityAtBottom(rows.lastIndex)
-                }.collect { (isScrollInProgress, isAtBottom) ->
-                    if (isScrollInProgress && !isAtBottom) {
-                        allowBottomAnchor = false
-                    } else if (isAtBottom) {
-                        allowBottomAnchor = true
-                    }
                 }
+                    .distinctUntilChanged()
+                    .collect { (isScrollInProgress, isAtBottom) ->
+                        val nextAllow =
+                            when {
+                                isScrollInProgress && !isAtBottom -> false
+                                isAtBottom -> true
+                                else -> allowBottomAnchor
+                            }
+                        if (allowBottomAnchor != nextAllow) {
+                            allowBottomAnchor = nextAllow
+                        }
+                    }
             }
             LaunchedEffect(detail?.agentId, rows.size, rows.lastOrNull()?.activityTimelineKey()) {
                 if (rows.isNotEmpty() && allowBottomAnchor && !listState.isScrollInProgress) {
