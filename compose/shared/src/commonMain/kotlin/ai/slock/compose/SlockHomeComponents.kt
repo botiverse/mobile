@@ -43,6 +43,12 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.bouncesEnable
+// #192 trace scope extension: reuse the markdown trace helper for avatar phase
+// attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
+// overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
+// `inbox.*` / `tabbar.*` phase names).
+import ai.slock.compose.markdown.traceMarkdownSection
+import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -1968,9 +1974,19 @@ internal fun SlockAvatar(
     borderWidth: Dp = SlockStroke.Thin,
     gravatarUrl: String? = null
 ) {
-    val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toPixelAvatarSpec() }
+    // #192 trace scope extension: per-phase attribution for avatar rendering. The
+    // avatar is rendered for every channel row in Home + every participant in
+    // Thread — that's a lot of recompositions on scroll, so we want to know whether
+    // it's the identify / http-fetch / render / fallback-default that's hot.
+    val pixelSpec = remember(avatarWireValue) {
+        traceMarkdownSectionNonComposable(SlockAvatarTraceNames.IDENTIFY) {
+            avatarWireValue?.toPixelAvatarSpec()
+        }
+    }
     when {
-        pixelSpec != null -> PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
+        pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, avatarWireValue?.length ?: 0) {
+            PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
+        }
         avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(borderWidth, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
@@ -1979,7 +1995,9 @@ internal fun SlockAvatar(
                 modifier = Modifier.fillMaxSize()
             )
         }
-        else -> DefaultUserAvatar(modifier, avatarSize, borderWidth)
+        else -> traceMarkdownSection(SlockAvatarTraceNames.FALLBACK_DEFAULT, avatarWireValue?.length ?: 0) {
+            DefaultUserAvatar(modifier, avatarSize, borderWidth)
+        }
     }
 }
 
