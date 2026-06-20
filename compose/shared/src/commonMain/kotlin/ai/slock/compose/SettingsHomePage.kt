@@ -39,6 +39,8 @@ import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
 import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_DELETE
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_INSTALL
+import ai.slock.compose.data.CONNECTED_APPS_ACTION_LOGO_CLEAR
+import ai.slock.compose.data.CONNECTED_APPS_ACTION_LOGO_UPLOAD
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_PUBLISH
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_REGISTER
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_UNINSTALL
@@ -297,6 +299,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -2775,6 +2778,12 @@ private fun SettingsAppShellContent(
                     onUpdate = { request ->
                         onSettingsIntent(SharedSettingsIntent.UpdateConnectedApp(request))
                     },
+                    onUploadLogo = { id ->
+                        onSettingsIntent(SharedSettingsIntent.RequestConnectedAppLogoUpload(id))
+                    },
+                    onClearLogo = { id ->
+                        onSettingsIntent(SharedSettingsIntent.ClearConnectedAppLogo(id))
+                    },
                     onDelete = { id ->
                         onSettingsIntent(SharedSettingsIntent.DeleteConnectedApp(id))
                     },
@@ -3088,6 +3097,8 @@ private fun SettingsConnectedAppsContent(
     onCancelEdit: () -> Unit,
     onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
     onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
+    onUploadLogo: (String) -> Unit,
+    onClearLogo: (String) -> Unit,
     onDelete: (String) -> Unit,
     onPublish: (SettingsConnectedAppPublishRequest) -> Unit,
     onInstall: (String) -> Unit,
@@ -3193,7 +3204,9 @@ private fun SettingsConnectedAppsContent(
                                 onPublishDataAccessChange = onPublishDataAccessChange,
                                 onCancelEdit = onCancelEdit,
                                 onRegister = onRegister,
-                                onUpdate = onUpdate
+                                onUpdate = onUpdate,
+                                onUploadLogo = onUploadLogo,
+                                onClearLogo = onClearLogo
                             )
                         }
                         item {
@@ -3862,6 +3875,120 @@ private fun SettingsConnectedAppsInstalledCard(
 }
 
 @Composable
+private fun SettingsConnectedAppLogoEditor(
+    editingClient: SettingsConnectedAppClientSnapshot?,
+    fallbackName: String,
+    fallbackClientId: String,
+    enabled: Boolean,
+    busy: Boolean,
+    actionState: SharedSettingsActionState?,
+    onUploadLogo: () -> Unit,
+    onClearLogo: () -> Unit
+) {
+    val editing = editingClient != null
+    val displayName = fallbackName.ifBlank { editingClient?.name.orEmpty().ifBlank { "App" } }
+    val seed = fallbackClientId.ifBlank { editingClient?.clientId.orEmpty().ifBlank { displayName } }
+    SlockBrutalSectionLabel(label = "Logo")
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        SettingsConnectedAppLogoBox(
+            name = displayName,
+            logoUrl = editingClient?.logoUrl,
+            seed = seed,
+            size = 64.dp
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.weight(1f)) {
+            SettingsFormDetailText(
+                if (editing) {
+                    "Upload a square logo, or reset to the deterministic monogram."
+                } else {
+                    "Register the app first, then upload a logo from Edit."
+                }
+            )
+            if (editingClient != null) {
+                val client = editingClient
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SlockBrutalActionButton(
+                        label = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_LOGO_UPLOAD, if (client.logoUrl.isNullOrBlank()) "Upload" else "Change", client.id),
+                        onClick = onUploadLogo,
+                        enabled = enabled && !busy,
+                        leadingIcon = SlockLucideIconName.Upload,
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        minWidth = 0.dp
+                    )
+                    if (!client.logoUrl.isNullOrBlank()) {
+                        SlockBrutalActionButton(
+                            label = actionState.connectedAppsStatusFor(CONNECTED_APPS_ACTION_LOGO_CLEAR, "Reset", client.id),
+                            onClick = onClearLogo,
+                            enabled = enabled && !busy,
+                            leadingIcon = SlockLucideIconName.RotateCcw,
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            minWidth = 0.dp
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsConnectedAppLogoBox(
+    name: String,
+    logoUrl: String?,
+    seed: String,
+    size: Dp
+) {
+    val hasLogo = !logoUrl.isNullOrBlank()
+    Box(
+        modifier =
+            Modifier
+                .size(size)
+                .background(if (hasLogo) SlockColor.SurfaceWhite else settingsConnectedAppLogoColor(seed))
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        if (hasLogo) {
+            SlockCachedImage(
+                source = logoUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        } else {
+            Text(
+                settingsConnectedAppInitials(name),
+                style =
+                    SlockType.PageTitle.copy(
+                        fontSize = (size.value * 0.26f).sp,
+                        lineHeight = (size.value * 0.30f).sp,
+                        color = SlockColor.TextBlack
+                    ),
+                color = SlockColor.TextBlack,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+private fun settingsConnectedAppLogoColor(seed: String): Color {
+    val colors =
+        listOf(
+            SlockColor.AccentCyan,
+            SlockColor.AccentLime,
+            SlockColor.AccentLavender,
+            SlockColor.BrandYellow,
+            SlockColor.AccentPink
+        )
+    val value = seed.ifBlank { "app" }.sumOf { it.code }
+    return colors[value % colors.size]
+}
+
+private fun settingsConnectedAppInitials(name: String): String {
+    val parts = name.trim().split(" ").filter { it.isNotBlank() }
+    return parts.take(2).joinToString("") { it.take(1) }.uppercase().ifBlank { "APP" }
+}
+
+@Composable
 private fun SettingsConnectedAppEditorCard(
     snapshot: SettingsConnectedAppsSnapshot?,
     editingId: String,
@@ -3884,7 +4011,9 @@ private fun SettingsConnectedAppEditorCard(
     onPublishDataAccessChange: (String) -> Unit,
     onCancelEdit: () -> Unit,
     onRegister: (SettingsConnectedAppRegisterRequest) -> Unit,
-    onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit
+    onUpdate: (SettingsConnectedAppUpdateRequest) -> Unit,
+    onUploadLogo: (String) -> Unit,
+    onClearLogo: (String) -> Unit
 ) {
     val editing = editingId.isNotBlank()
     val busy =
@@ -3893,6 +4022,11 @@ private fun SettingsConnectedAppEditorCard(
     val trimmedName = name.trim()
     val canManage = snapshot?.canManage == true
     val enabled = canManage && !busy
+    val editingClient = snapshot?.registered?.firstOrNull { it.id == editingId }
+    val logoBusy =
+        actionState?.inProgress == true &&
+            actionState.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) &&
+            actionState.itemId == editingId
     SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = if (editing) "Edit OAuth Client" else "Register OAuth Client") {
         SettingsFormDetailText("Create server-local OAuth clients for trusted integrations. The client secret is shown once after creation.")
         SlockBrutalTextField(
@@ -3945,9 +4079,15 @@ private fun SettingsConnectedAppEditorCard(
             optional = true,
             enabled = enabled
         )
-        SettingsReadonlyField(
-            label = "Logo",
-            value = "Native file picker upload is not wired in mobile Settings yet."
+        SettingsConnectedAppLogoEditor(
+            editingClient = editingClient,
+            fallbackName = name,
+            fallbackClientId = clientId,
+            enabled = enabled && !busy,
+            busy = logoBusy,
+            actionState = actionState,
+            onUploadLogo = { editingClient?.id?.let(onUploadLogo) },
+            onClearLogo = { editingClient?.id?.let(onClearLogo) }
         )
         if (editing) {
             SlockBrutalTextField(
@@ -3973,6 +4113,9 @@ private fun SettingsConnectedAppEditorCard(
             SettingsFormErrorText("Only server owners/admins can manage OAuth clients.")
         }
         if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_REGISTER, CONNECTED_APPS_ACTION_UPDATE) && it.errorCode != null } == true) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
+        }
+        if (actionState?.let { it.action in setOf(CONNECTED_APPS_ACTION_LOGO_UPLOAD, CONNECTED_APPS_ACTION_LOGO_CLEAR) && it.itemId == editingId && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -10913,6 +11056,8 @@ private fun SettingsVisualConnectedAppsContent() {
         onCancelEdit = {},
         onRegister = {},
         onUpdate = {},
+        onUploadLogo = {},
+        onClearLogo = {},
         onDelete = {},
         onPublish = {},
         onInstall = {},

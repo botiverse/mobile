@@ -199,6 +199,8 @@ sealed interface SharedSettingsIntent {
     data class ConnectAccountProvider(val request: AccountProviderLinkStartRequest) : SharedSettingsIntent
     data class RegisterConnectedApp(val request: SettingsConnectedAppRegisterRequest) : SharedSettingsIntent
     data class UpdateConnectedApp(val request: SettingsConnectedAppUpdateRequest) : SharedSettingsIntent
+    data class RequestConnectedAppLogoUpload(val clientRecordId: String) : SharedSettingsIntent
+    data class ClearConnectedAppLogo(val clientRecordId: String) : SharedSettingsIntent
     data class DeleteConnectedApp(val clientRecordId: String) : SharedSettingsIntent
     data class RequestConnectedAppPublish(val request: SettingsConnectedAppPublishRequest) : SharedSettingsIntent
     data class InstallMarketplaceApp(val clientRecordId: String) : SharedSettingsIntent
@@ -286,6 +288,9 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> =
         DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable", retryable = false))
 
+    suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<AttachmentUploadFile> =
+        DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable", retryable = false))
+
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -347,6 +352,21 @@ class SharedSettingsDataSource(
 
     suspend fun updateConnectedApp(request: SettingsConnectedAppUpdateRequest): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.updateConnectedApp(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun uploadConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+        val repository = settingsRepository ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val id = clientRecordId.trim()
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (val picked = platformCapabilities.pickConnectedAppLogoFile(id)) {
+            is DataResult.Content -> repository.uploadConnectedAppLogo(SettingsConnectedAppLogoUploadRequest(id, picked.data))
+            is DataResult.Empty -> DataResult.Empty(picked.reason)
+            is DataResult.Error -> DataResult.Error(picked.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+        }
+    }
+
+    suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        settingsRepository?.clearConnectedAppLogo(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.deleteConnectedApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -849,6 +869,18 @@ class SharedSettingsStore(
                 runAction(CONNECTED_APPS_ACTION_UPDATE, intent.request.id) {
                     dataSource.updateConnectedApp(intent.request)
                         .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_UPDATE, intent.request.id)
+                }
+            }
+            is SharedSettingsIntent.RequestConnectedAppLogoUpload -> {
+                runAction(CONNECTED_APPS_ACTION_LOGO_UPLOAD, intent.clientRecordId) {
+                    dataSource.uploadConnectedAppLogo(intent.clientRecordId)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_LOGO_UPLOAD, intent.clientRecordId)
+                }
+            }
+            is SharedSettingsIntent.ClearConnectedAppLogo -> {
+                runAction(CONNECTED_APPS_ACTION_LOGO_CLEAR, intent.clientRecordId) {
+                    dataSource.clearConnectedAppLogo(intent.clientRecordId)
+                        .applyConnectedAppsActionResult(CONNECTED_APPS_ACTION_LOGO_CLEAR, intent.clientRecordId)
                 }
             }
             is SharedSettingsIntent.DeleteConnectedApp -> {
@@ -1577,6 +1609,8 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.ConnectAccountProvider,
             is SharedSettingsIntent.RegisterConnectedApp,
             is SharedSettingsIntent.UpdateConnectedApp,
+            is SharedSettingsIntent.RequestConnectedAppLogoUpload,
+            is SharedSettingsIntent.ClearConnectedAppLogo,
             is SharedSettingsIntent.DeleteConnectedApp,
             is SharedSettingsIntent.RequestConnectedAppPublish,
             is SharedSettingsIntent.InstallMarketplaceApp,
@@ -1691,6 +1725,8 @@ internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeForma
 internal const val APPEARANCE_ACTION_MESSAGE_FONT_SIZE = "appearanceMessageFontSize"
 internal const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
 internal const val CONNECTED_APPS_ACTION_UPDATE = "connectedAppsUpdate"
+internal const val CONNECTED_APPS_ACTION_LOGO_UPLOAD = "connectedAppsLogoUpload"
+internal const val CONNECTED_APPS_ACTION_LOGO_CLEAR = "connectedAppsLogoClear"
 internal const val CONNECTED_APPS_ACTION_DELETE = "connectedAppsDelete"
 internal const val CONNECTED_APPS_ACTION_PUBLISH = "connectedAppsPublish"
 internal const val CONNECTED_APPS_ACTION_INSTALL = "connectedAppsInstall"

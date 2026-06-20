@@ -78,6 +78,7 @@ import ai.slock.compose.data.SettingsConnectedAppPublishRequest
 import ai.slock.compose.data.SettingsConnectedAppRegisterRequest
 import ai.slock.compose.data.SettingsConnectedAppSecretSnapshot
 import ai.slock.compose.data.SettingsConnectedAppUpdateRequest
+import ai.slock.compose.data.SettingsConnectedAppLogoUploadRequest
 import ai.slock.compose.data.SettingsConnectedAppsSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
@@ -223,6 +224,16 @@ class MockSettingsRepository(
         request: SettingsConnectedAppUpdateRequest
     ): DataResult<SettingsConnectedAppsSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps() }
+
+    override suspend fun uploadConnectedAppLogo(
+        request: SettingsConnectedAppLogoUploadRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) {
+            mockConnectedApps(registered = listOf(mockConnectedAppClient().copy(logoUrl = request.file.previewUri ?: "mock://${request.file.fileName}")))
+        }
+
+    override suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
+        resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps(registered = listOf(mockConnectedAppClient())) }
 
     override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
         resultFor(scenario, EmptyReason.NoSettingsAvailable) { mockConnectedApps(registered = emptyList()) }

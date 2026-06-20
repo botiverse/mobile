@@ -200,6 +200,62 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun connectedAppLogoUploadAndClearUsePlatformPickerAndRepository() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeSettingsRepository(
+                connectedAppsResult = DataResult.Content(connectedAppsSnapshot())
+            )
+        val capabilities =
+            FakeSettingsCapabilities(
+                connectedAppLogoFileResult =
+                    DataResult.Content(
+                        AttachmentUploadFile(
+                            id = "logo-1",
+                            fileName = "logo.png",
+                            mimeType = "image/png",
+                            bytes = "logo".encodeToByteArray()
+                        )
+                    )
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.ConnectedApps))
+        store.accept(SharedSettingsIntent.RequestConnectedAppLogoUpload("client-1"))
+
+        val uploaded = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
+        assertEquals("https://cdn.example/logo.png", uploaded.registered.single().logoUrl)
+        assertEquals(listOf("connectedApps", "uploadConnectedAppLogo:client-1:logo.png"), repository.calls)
+        assertEquals(listOf("pickConnectedAppLogoFile:client-1"), capabilities.calls)
+        assertEquals(false, store.state.value.actionState?.inProgress)
+        assertNull(store.state.value.actionState?.errorCode)
+
+        store.accept(SharedSettingsIntent.ClearConnectedAppLogo("client-1"))
+
+        val cleared = assertIs<ScreenLoadState.Content<SettingsConnectedAppsSnapshot>>(store.state.value.connectedApps).data
+        assertNull(cleared.registered.single().logoUrl)
+        assertEquals(
+            listOf(
+                "connectedApps",
+                "uploadConnectedAppLogo:client-1:logo.png",
+                "clearConnectedAppLogo:client-1"
+            ),
+            repository.calls
+        )
+        assertEquals(SharedSettingsActionState(CONNECTED_APPS_ACTION_LOGO_CLEAR, "client-1", inProgress = false), store.state.value.actionState)
+        scope.cancel()
+    }
+
+    @Test
     fun serverAndBillingLoadTypedSnapshotsThroughCommonStore() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository =
@@ -1406,6 +1462,52 @@ class SharedSettingsStoreTest {
             return connectedAppsResult
         }
 
+        override suspend fun uploadConnectedAppLogo(
+            request: SettingsConnectedAppLogoUploadRequest
+        ): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "uploadConnectedAppLogo:${request.id}:${request.file.fileName}"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        registered =
+                            current.registered.map {
+                                if (it.id == request.id) {
+                                    it.copy(logoUrl = "https://cdn.example/${request.file.fileName}")
+                                } else {
+                                    it
+                                }
+                            },
+                        oneTimeClientSecret = null
+                    )
+                )
+            return connectedAppsResult
+        }
+
+        override suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+            calls += "clearConnectedAppLogo:$clientRecordId"
+            val current =
+                (connectedAppsResult as? DataResult.Content)?.data
+                    ?: return connectedAppsResult
+            connectedAppsResult =
+                DataResult.Content(
+                    current.copy(
+                        registered =
+                            current.registered.map {
+                                if (it.id == clientRecordId) {
+                                    it.copy(logoUrl = null)
+                                } else {
+                                    it
+                                }
+                            },
+                        oneTimeClientSecret = null
+                    )
+                )
+            return connectedAppsResult
+        }
+
         override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
             calls += "deleteConnectedApp:$clientRecordId"
             val current =
@@ -1850,7 +1952,9 @@ class SharedSettingsStoreTest {
                 )
             ),
         private val avatarFileResult: DataResult<AttachmentUploadFile> =
-            DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable"))
+            DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
+        private val connectedAppLogoFileResult: DataResult<AttachmentUploadFile> =
+            DataResult.Error(ScreenError("settings_connected_app_logo_picker_unavailable"))
     ) : SharedSettingsPlatformCapabilities {
         val calls = mutableListOf<String>()
 
@@ -1877,6 +1981,11 @@ class SharedSettingsStoreTest {
         override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
             calls += "pickAccountAvatarFile"
             return avatarFileResult
+        }
+
+        override suspend fun pickConnectedAppLogoFile(clientRecordId: String): DataResult<AttachmentUploadFile> {
+            calls += "pickConnectedAppLogoFile:$clientRecordId"
+            return connectedAppLogoFileResult
         }
 
         private fun storageSnapshot(feedback: String? = null): SharedSettingsStorageSnapshot =

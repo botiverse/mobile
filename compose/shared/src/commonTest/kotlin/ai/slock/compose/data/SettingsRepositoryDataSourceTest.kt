@@ -4,6 +4,7 @@ import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SettingsRepositoryDataSourceTest {
@@ -209,6 +210,51 @@ class SettingsRepositoryDataSourceTest {
         assertTrue(created is DataResult.Content)
         assertEquals("secret_once", created.data.oneTimeClientSecret?.clientSecret)
         assertEquals("""{"name":"Mobile App","clientId":"mobile-client","returnUrl":"https://mobile.example/callback"}""", network.connectedAppCreateBodies.single())
+    }
+
+    @Test
+    fun connectedAppsLogoUploadAndClearUseTypedEndpoints() = runBlocking {
+        val network =
+            FakeSettingsNetworkClient(
+                connectedAppClientsJson = """
+                    [
+                      {
+                        "id":"client-1",
+                        "serverId":"server-1",
+                        "clientId":"local-client",
+                        "appType":"server_local",
+                        "publishStatus":"draft",
+                        "category":"productivity",
+                        "name":"Local Client"
+                      }
+                    ]
+                """.trimIndent()
+            )
+        val repository = RealSettingsRepository(sampleStore(), network)
+
+        val uploaded =
+            repository.uploadConnectedAppLogo(
+                SettingsConnectedAppLogoUploadRequest(
+                    id = "client-1",
+                    file =
+                        AttachmentUploadFile(
+                            id = "logo-1",
+                            fileName = "logo.png",
+                            mimeType = "image/png",
+                            bytes = "logo".encodeToByteArray()
+                        )
+                )
+            )
+        val cleared = repository.clearConnectedAppLogo("client-1")
+
+        assertTrue(uploaded is DataResult.Content)
+        assertEquals("https://cdn.example/logo.png", uploaded.data.registered.single().logoUrl)
+        assertTrue(cleared is DataResult.Content)
+        assertNull(cleared.data.registered.single().logoUrl)
+        assertEquals(listOf("client-1"), network.uploadedConnectedAppLogoIds)
+        assertEquals(listOf("logo"), network.connectedAppLogoFieldNames)
+        assertEquals(listOf("logo.png"), network.connectedAppLogoFileNames)
+        assertEquals("client-1", network.clearedConnectedAppLogoId)
     }
 
     @Test
@@ -829,6 +875,10 @@ class SettingsRepositoryDataSourceTest {
         private val connectedAppInstallJson: String =
             """{"id":"market-1","serverId":"server-1","clientId":"market-1","name":"Installed","appType":"marketplace","publishStatus":"approved","category":"productivity"}""",
         private val connectedAppUninstallJson: String = """{"clientId":"market-1","revokedGrantCount":1,"revokedTokenCount":1,"deniedPendingRequestCount":0}""",
+        private val connectedAppLogoUploadJson: String =
+            """{"id":"client-1","serverId":"server-1","clientId":"client-1","name":"Logo Client","appType":"server_local","publishStatus":"draft","category":"productivity","logoUrl":"https://cdn.example/logo.png"}""",
+        private val connectedAppLogoClearJson: String =
+            """{"id":"client-1","serverId":"server-1","clientId":"client-1","name":"Logo Client","appType":"server_local","publishStatus":"draft","category":"productivity","logoUrl":null}""",
         private val membersJson: String = """[]""",
         private val usageJson: String = """{"machines":0,"agents":0,"channels":0}""",
         private val billingSubscriptionJson: String = """{"subscription":null,"stripeConfigured":false}""",
@@ -866,6 +916,7 @@ class SettingsRepositoryDataSourceTest {
         private val agentsResponseCode: Int? = null,
         private val responseCode: Int = 200
     ) : SlockNetworkClient {
+        private var currentConnectedAppClientsJson = connectedAppClientsJson
         private var currentServerPushMuted = notificationSettingsJson.contains("true")
         var machinesServerId: String? = null
             private set
@@ -897,6 +948,11 @@ class SettingsRepositoryDataSourceTest {
         val connectedAppCreateBodies = mutableListOf<String>()
         val connectedAppUpdateBodies = mutableListOf<String>()
         val connectedAppPublishBodies = mutableListOf<String>()
+        val uploadedConnectedAppLogoIds = mutableListOf<String>()
+        val connectedAppLogoFieldNames = mutableListOf<String>()
+        val connectedAppLogoFileNames = mutableListOf<String>()
+        var clearedConnectedAppLogoId: String? = null
+            private set
         var deletedConnectedAppId: String? = null
             private set
         var installedMarketplaceAppId: String? = null
@@ -944,7 +1000,7 @@ class SettingsRepositoryDataSourceTest {
                     response(providerLinkStartJson)
                 }
                 normalized == "integrations/clients" && method == "GET" ->
-                    response(connectedAppClientsJson)
+                    response(currentConnectedAppClientsJson)
                 normalized == "integrations/clients" && method == "POST" -> {
                     connectedAppCreateBodies += bodyText.orEmpty()
                     response(connectedAppCreateJson)
@@ -960,6 +1016,11 @@ class SettingsRepositoryDataSourceTest {
                 normalized.matches(Regex("""integrations/clients/[^/]+/request-publish""")) && method == "POST" -> {
                     connectedAppPublishBodies += bodyText.orEmpty()
                     response(connectedAppPublishJson)
+                }
+                normalized.matches(Regex("""integrations/clients/[^/]+/logo""")) && method == "DELETE" -> {
+                    clearedConnectedAppLogoId = normalized.split("/")[2]
+                    currentConnectedAppClientsJson = "[$connectedAppLogoClearJson]"
+                    response(connectedAppLogoClearJson)
                 }
                 normalized == "integrations/built-in" && method == "GET" ->
                     response(connectedAppBuiltInsJson)
@@ -1106,6 +1167,18 @@ class SettingsRepositoryDataSourceTest {
         ): HomeNetworkResponse {
             avatarFileNames += file.name
             return response(accountJson)
+        }
+
+        override suspend fun uploadConnectedAppLogo(
+            priority: DataRequestPriority,
+            clientRecordId: String,
+            file: MultipartFile
+        ): HomeNetworkResponse {
+            uploadedConnectedAppLogoIds += clientRecordId
+            connectedAppLogoFieldNames += file.name
+            connectedAppLogoFileNames += file.fileName
+            currentConnectedAppClientsJson = "[$connectedAppLogoUploadJson]"
+            return response(connectedAppLogoUploadJson)
         }
     }
 

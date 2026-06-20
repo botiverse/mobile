@@ -43,6 +43,10 @@ interface SettingsRepository {
     suspend fun updateConnectedApp(
         request: SettingsConnectedAppUpdateRequest
     ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun uploadConnectedAppLogo(
+        request: SettingsConnectedAppLogoUploadRequest
+    ): DataResult<SettingsConnectedAppsSnapshot>
+    suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot>
     suspend fun requestConnectedAppPublish(
         request: SettingsConnectedAppPublishRequest
@@ -445,6 +449,11 @@ data class SettingsConnectedAppUpdateRequest(
     val homepageUrl: String? = null,
     val returnUrl: String? = null,
     val agentManifestUrl: String? = null
+)
+
+data class SettingsConnectedAppLogoUploadRequest(
+    val id: String,
+    val file: AttachmentUploadFile
 )
 
 data class SettingsConnectedAppPublishRequest(

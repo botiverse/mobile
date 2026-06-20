@@ -46,6 +46,13 @@ interface SlockNetworkClient {
         file: MultipartFile
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun uploadConnectedAppLogo(
+        priority: DataRequestPriority,
+        clientRecordId: String,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
 }
 
 private suspend fun SlockNetworkClient.serverMembers(priority: DataRequestPriority, serverId: ServerId): HomeNetworkResponse =

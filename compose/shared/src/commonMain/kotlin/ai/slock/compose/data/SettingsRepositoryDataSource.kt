@@ -60,6 +60,12 @@ private suspend fun SlockNetworkClient.updateSettingsConnectedAppClient(
 ): HomeNetworkResponse =
     request(priority, "integrations/clients/$clientRecordId", method = "PATCH", bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.clearSettingsConnectedAppLogo(
+    priority: DataRequestPriority,
+    clientRecordId: String
+): HomeNetworkResponse =
+    request(priority, "integrations/clients/$clientRecordId/logo", method = "DELETE")
+
 private suspend fun SlockNetworkClient.deleteSettingsConnectedAppClient(
     priority: DataRequestPriority,
     clientRecordId: String
@@ -458,6 +464,32 @@ class RealSettingsRepository(
                 )
             )
         return update.reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun uploadConnectedAppLogo(
+        request: SettingsConnectedAppLogoUploadRequest
+    ): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val clientRecordId = request.id.trim()
+        if (clientRecordId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsUploadConnectedAppLogo(request.copy(id = clientRecordId)).reloadConnectedAppsSnapshot(server.canManageServer)
+    }
+
+    override suspend fun clearConnectedAppLogo(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations")
+            )
+        }
+        val id = clientRecordId.trim()
+        if (id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return settingsClearConnectedAppLogo(id).reloadConnectedAppsSnapshot(server.canManageServer)
     }
 
     override suspend fun deleteConnectedApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> {
@@ -1421,6 +1453,38 @@ class RealSettingsRepository(
             mapper = { bodyText ->
                 parseSharedSettingsConnectedAppClient(bodyText)
                     ?: settingsContractMismatch("settings_connected_apps_client_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsUploadConnectedAppLogo(
+        request: SettingsConnectedAppLogoUploadRequest
+    ): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_logo_upload",
+            contractCode = "settings_connected_apps_client_logo_contract_mismatch",
+            block = {
+                networkClient.uploadConnectedAppLogo(
+                    DataRequestPriority.Foreground,
+                    request.id,
+                    request.file.toConnectedAppLogoMultipartFile()
+                )
+            },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_client_logo_contract_mismatch")
+                Unit
+            }
+        )
+
+    private suspend fun settingsClearConnectedAppLogo(clientRecordId: String): DataResult<Unit> =
+        executeTypedSettings(
+            source = "settings_connected_apps_client_logo_clear",
+            contractCode = "settings_connected_apps_client_logo_contract_mismatch",
+            block = { networkClient.clearSettingsConnectedAppLogo(DataRequestPriority.Foreground, clientRecordId) },
+            mapper = { bodyText ->
+                parseSharedSettingsConnectedAppClient(bodyText)
+                    ?: settingsContractMismatch("settings_connected_apps_client_logo_contract_mismatch")
                 Unit
             }
         )
@@ -2645,6 +2709,16 @@ fun buildSharedAccountProviderLinkStartBody(request: AccountProviderLinkStartReq
 private fun AttachmentUploadFile.toAccountAvatarMultipartFile(): MultipartFile =
     MultipartFile(
         name = "avatar",
+        fileName = fileName,
+        mimeType = mimeType ?: "application/octet-stream",
+        bytes = bytes,
+        fileRef = fileRef,
+        sizeBytes = sizeBytes
+    )
+
+private fun AttachmentUploadFile.toConnectedAppLogoMultipartFile(): MultipartFile =
+    MultipartFile(
+        name = "logo",
         fileName = fileName,
         mimeType = mimeType ?: "application/octet-stream",
         bytes = bytes,
