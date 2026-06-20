@@ -170,6 +170,12 @@ interface ConversationRepository {
         attachmentIds: List<AttachmentId> = emptyList(),
         asTask: Boolean = false
     ): DataResult<SendMessageResult>
+
+    suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): DataResult<List<PendingMentionActionExecuteResult>> =
+        DataResult.Error(ScreenError(code = "mention_actions_unavailable", retryable = false))
 }
 
 interface TaskRepository {

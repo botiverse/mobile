@@ -140,6 +140,12 @@ private suspend fun SlockNetworkClient.sendMessage(
 ): HomeNetworkResponse =
     request(priority, "messages", method = "POST", bodyText = bodyText)
 
+private suspend fun SlockNetworkClient.executePendingMentionActions(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "messages/mention-actions/execute", method = "POST", bodyText = bodyText)
+
 class RealConversationRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
@@ -371,8 +377,9 @@ class RealConversationRepository(
             source = "messages_send",
             mapper = { bodyText ->
                 val fallbackThreadId = topLevelThreadId(channelId)
+                val sentPayload = parseSharedSentMessagePayload(bodyText, fallbackThreadId)
                 val message =
-                    parseSharedSentMessage(bodyText, fallbackThreadId)
+                    sentPayload.message
                         ?: Message(
                             id = MessageId("message-sent"),
                             threadId = fallbackThreadId,
@@ -382,8 +389,40 @@ class RealConversationRepository(
                             body = body,
                             deliveryState = MessageDeliveryState.Sent
                         )
-                SendMessageResult(message)
+                SendMessageResult(message, pendingMentionActions = sentPayload.pendingMentionActions)
             }
+        )
+    }
+
+    override suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): DataResult<List<PendingMentionActionExecuteResult>> {
+        currentContext() ?: return authRequired()
+        val normalizedAction =
+            when (action.trim().lowercase()) {
+                "invite", "add" -> "invite"
+                "notify", "notify_only" -> "notify"
+                else -> return DataResult.Error(ScreenError(code = "mention_action_unsupported", retryable = false))
+            }
+        val normalizedResolutionIds = resolutionIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+        if (normalizedResolutionIds.isEmpty()) return DataResult.Empty(EmptyReason.NoMessages)
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.executePendingMentionActions(
+                    DataRequestPriority.Foreground,
+                    buildPendingMentionActionExecuteBody(
+                        action = normalizedAction,
+                        resolutionIds = normalizedResolutionIds
+                    )
+                )
+            },
+            source = "mention_actions_execute",
+            mapper = { bodyText ->
+                parsePendingMentionActionExecuteResults(bodyText)
+            },
+            emptyWhen = { it.isEmpty() }
         )
     }
 

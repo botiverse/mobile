@@ -271,6 +271,7 @@ internal interface SharedThreadNetworkApi {
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList()
     ): HomeNetworkResponse
+    suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): HomeNetworkResponse
     suspend fun attachmentComments(attachmentId: String): HomeNetworkResponse
     suspend fun sendAttachmentComment(attachmentId: String, body: String): HomeNetworkResponse

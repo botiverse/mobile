@@ -866,8 +866,25 @@ enum class SettingsSectionAvailability {
     NoPermission
 }
 
+data class PendingMentionAction(
+    val resolutionId: String,
+    val messageId: MessageId? = null,
+    val targetType: String = "unknown",
+    val targetHandle: String = "",
+    val reason: String = "",
+    val availableActions: List<String> = emptyList(),
+    val expiresAt: String? = null
+)
+
+data class PendingMentionActionExecuteResult(
+    val resolutionId: String,
+    val status: String,
+    val reason: String? = null
+)
+
 data class SendMessageResult(
-    val message: Message
+    val message: Message,
+    val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
 
 data class ThreadActionResult(

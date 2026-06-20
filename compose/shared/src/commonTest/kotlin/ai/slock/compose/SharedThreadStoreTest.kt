@@ -2292,6 +2292,7 @@ class SharedThreadStoreTest {
         val removedReactions: MutableList<Pair<String, String>> = mutableListOf()
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
+        val mentionActionRequests: MutableList<Pair<String, List<String>>> = mutableListOf()
 
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
             channelMessageCalls += 1
@@ -2320,6 +2321,11 @@ class SharedThreadStoreTest {
         ): HomeNetworkResponse {
             lastAttachmentIds = attachmentIds
             return HomeNetworkResponse(code = 200, bodyText = messagesResponse(body))
+        }
+
+        override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {
+            mentionActionRequests += action to resolutionIds
+            return HomeNetworkResponse(code = 200, bodyText = """{"results":[]}""")
         }
 
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =

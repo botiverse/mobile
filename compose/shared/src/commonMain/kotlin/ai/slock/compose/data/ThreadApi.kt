@@ -45,6 +45,10 @@ internal interface SlockThreadApi {
         asTask: Boolean = false,
         attachmentIds: List<String> = emptyList()
     ): ThreadApiResult<ThreadMessagesPage>
+    suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): ThreadApiResult<List<PendingMentionActionExecuteResult>>
     suspend fun attachmentUrl(attachmentId: String, disposition: String? = null): ThreadApiResult<ThreadAttachmentOpenTarget>
     suspend fun attachmentComments(attachmentId: String): ThreadApiResult<ThreadAttachmentCommentsPage>
     suspend fun sendAttachmentComment(attachmentId: String, body: String): ThreadApiResult<Unit>
@@ -100,18 +104,23 @@ internal class SlockThreadApiClient(
             body = body,
             asTask = asTask,
             attachmentIds = attachmentIds
-        ).mapThreadBody(
+        ).mapThreadSendBody(
             contractCode = "thread_send_contract_mismatch",
-            serializer = WireMessage.serializer(),
             diagnosticsLogger = diagnosticsLogger
-        ) { wire ->
-            if (wire.id.isBlank() || wire.content.isBlank()) return@mapThreadBody null
-            ThreadMessagesPage(
-                messages = listOf(wire),
-                canLoadMoreBefore = null,
-                canLoadMoreAfter = null,
-            )
-        }
+        )
+
+    override suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): ThreadApiResult<List<PendingMentionActionExecuteResult>> =
+        transport.executePendingMentionActions(action = action, resolutionIds = resolutionIds)
+            .mapThreadBody(
+                contractCode = "thread_mention_action_contract_mismatch",
+                serializer = MentionActionExecuteResponseDto.serializer(),
+                diagnosticsLogger = diagnosticsLogger
+            ) { wire ->
+                wire.results.map { it.toDomain() }
+            }
 
     override suspend fun attachmentUrl(attachmentId: String, disposition: String?): ThreadApiResult<ThreadAttachmentOpenTarget> =
         transport.attachmentUrl(attachmentId, disposition)
@@ -234,6 +243,14 @@ internal class NetworkSlockThreadApi(
                 )
         )
 
+    override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "messages/mention-actions/execute",
+            method = "POST",
+            bodyText = buildPendingMentionActionExecuteBody(action = action, resolutionIds = resolutionIds)
+        )
+
     override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
@@ -318,7 +335,8 @@ internal sealed interface ThreadApiResult<out T> {
 internal data class ThreadMessagesPage(
     val messages: List<WireMessage>,
     val canLoadMoreBefore: Boolean?,
-    val canLoadMoreAfter: Boolean?
+    val canLoadMoreAfter: Boolean?,
+    val pendingMentionActions: List<PendingMentionAction> = emptyList()
 ) {
     val messageCount: Int
         get() = messages.size
@@ -412,6 +430,68 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapThreadBody(
     return result
 }
 
+private suspend fun HomeNetworkResponse.mapThreadSendBody(
+    contractCode: String,
+    diagnosticsLogger: (String) -> Unit = {},
+): ThreadApiResult<ThreadMessagesPage> {
+    val source = contractCode.removeSuffix("_contract_mismatch")
+    val responseBytes = bodyText?.encodeToByteArray()?.size ?: 0
+    diagnosticsLogger(
+        "thread_network_body_received source=$source code=$code " +
+            "responseBytes=$responseBytes hasBody=${bodyText != null}"
+    )
+    val parseStartedAt = TimeSource.Monotonic.markNow()
+    diagnosticsLogger("thread_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+    val result =
+        withContext(Dispatchers.Default) {
+            mapThreadSendBodySync(contractCode)
+        }
+    val resultLabel =
+        when (result) {
+            is ThreadApiResult.Success -> "success"
+            is ThreadApiResult.Failure -> "failure:${result.contractCode ?: result.code}"
+        }
+    val messageCount = (result as? ThreadApiResult.Success<ThreadMessagesPage>)?.data?.messageCount ?: 0
+    diagnosticsLogger(
+        "thread_parse_result source=$source result=$resultLabel messages=$messageCount " +
+            "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+    )
+    return result
+}
+
+private fun HomeNetworkResponse.mapThreadSendBodySync(contractCode: String): ThreadApiResult<ThreadMessagesPage> {
+    if (!isSuccessful) return toThreadApiFailure()
+    val body = bodyText?.takeIf { it.isNotBlank() }
+        ?: return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+    val rawMessage = runCatching {
+        threadApiJson.decodeFromString(WireMessage.serializer(), body)
+    }.getOrNull()
+    if (rawMessage != null && rawMessage.id.isNotBlank()) {
+        return ThreadApiResult.Success(
+            ThreadMessagesPage(
+                messages = listOf(rawMessage),
+                canLoadMoreBefore = null,
+                canLoadMoreAfter = null,
+            )
+        )
+    }
+    val wrapped = runCatching {
+        threadApiJson.decodeFromString(SendMessageResponseDto.serializer(), body)
+    }.getOrNull()
+    val message = wrapped?.message
+    if (message == null || message.id.isBlank()) {
+        return ThreadApiResult.Failure(code = code, contractCode = contractCode)
+    }
+    return ThreadApiResult.Success(
+        ThreadMessagesPage(
+            messages = listOf(message),
+            canLoadMoreBefore = null,
+            canLoadMoreAfter = null,
+            pendingMentionActions = wrapped.pendingMentionActions.mapNotNull { it.toDomain() }
+        )
+    )
+}
+
 private fun HomeNetworkResponse.mapThreadUnit(): ThreadApiResult<Unit> =
     if (isSuccessful) ThreadApiResult.Success(Unit) else toThreadApiFailure()
 
@@ -476,6 +556,36 @@ private data class CreateOrOpenThreadResponseDto(
     val replyCount: Int? = null,
 )
 
+@Serializable
+private data class SendMessageResponseDto(
+    val message: WireMessage? = null,
+    val pendingMentionActions: List<PendingMentionActionDto> = emptyList()
+)
+
+@Serializable
+private data class PendingMentionActionDto(
+    val resolutionId: String? = null,
+    val id: String? = null,
+    val messageId: String? = null,
+    val targetType: String? = null,
+    val targetHandle: String? = null,
+    val reason: String? = null,
+    val availableActions: List<String> = emptyList(),
+    val expiresAt: String? = null
+)
+
+@Serializable
+private data class MentionActionExecuteResponseDto(
+    val results: List<PendingMentionActionExecuteResultDto> = emptyList()
+)
+
+@Serializable
+private data class PendingMentionActionExecuteResultDto(
+    val resolutionId: String,
+    val status: String,
+    val reason: String? = null
+)
+
 // ── Request bodies ──
 
 @Serializable
@@ -523,6 +633,12 @@ data class ThreadSendMessageRequestBody(
     val asTask: Boolean = false
 )
 
+@Serializable
+private data class PendingMentionActionExecuteRequestBody(
+    val action: String,
+    val resolutionIds: List<String>
+)
+
 internal fun buildSharedThreadSendMessageBody(
     channelId: String,
     body: String,
@@ -543,5 +659,33 @@ fun buildSharedThreadSendMessageBody(request: ThreadSendMessageRequestBody): Str
         request
     )
 
+internal fun buildPendingMentionActionExecuteBody(action: String, resolutionIds: List<String>): String =
+    threadApiJson.encodeToString(
+        PendingMentionActionExecuteRequestBody(
+            action = action,
+            resolutionIds = resolutionIds
+        )
+    )
+
 internal fun buildSharedCreateOrOpenThreadBody(parentMessageId: String): String =
     threadApiJson.encodeToString(ParentMessageThreadRequestBody(parentMessageId))
+
+private fun PendingMentionActionDto.toDomain(): PendingMentionAction? {
+    val resolvedId = resolutionId?.takeIf { it.isNotBlank() } ?: id?.takeIf { it.isNotBlank() } ?: return null
+    return PendingMentionAction(
+        resolutionId = resolvedId,
+        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        targetType = targetType?.takeIf { it.isNotBlank() } ?: "unknown",
+        targetHandle = targetHandle.orEmpty(),
+        reason = reason.orEmpty(),
+        availableActions = availableActions.map { it.trim() }.filter { it.isNotBlank() },
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun PendingMentionActionExecuteResultDto.toDomain(): PendingMentionActionExecuteResult =
+    PendingMentionActionExecuteResult(
+        resolutionId = resolutionId,
+        status = status,
+        reason = reason
+    )

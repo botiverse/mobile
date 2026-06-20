@@ -146,6 +146,36 @@ private data class MessagesWireContextResponse(
     val channelArchived: Boolean = false,
 )
 
+@Serializable
+private data class MessagesWireSendResponse(
+    val message: MessagesWireMessage? = null,
+    val pendingMentionActions: List<MessagesWirePendingMentionAction> = emptyList()
+)
+
+@Serializable
+private data class MessagesWirePendingMentionAction(
+    val resolutionId: String? = null,
+    val id: String? = null,
+    val messageId: String? = null,
+    val targetType: String? = null,
+    val targetHandle: String? = null,
+    val reason: String? = null,
+    val availableActions: List<String> = emptyList(),
+    val expiresAt: String? = null
+)
+
+@Serializable
+private data class MessagesWireMentionActionExecuteResponse(
+    val results: List<MessagesWireMentionActionExecuteResult> = emptyList()
+)
+
+@Serializable
+private data class MessagesWireMentionActionExecuteResult(
+    val resolutionId: String,
+    val status: String,
+    val reason: String? = null
+)
+
 /**
  * Domain payload returned by the shared message parsers. The repository is
  * responsible for assembling the surrounding [ai.slock.compose.data.ThreadSnapshot]
@@ -159,6 +189,11 @@ data class SharedMessagesPayload(
     val hasNewer: Boolean = false,
     val historyLimited: Boolean = false,
     val channelArchived: Boolean = false,
+)
+
+data class SharedSentMessagePayload(
+    val message: Message?,
+    val pendingMentionActions: List<PendingMentionAction> = emptyList()
 )
 
 fun parseSharedChannelMessages(bodyText: String, fallbackThreadId: ThreadId): SharedMessagesPayload {
@@ -204,6 +239,38 @@ fun parseSharedSentMessage(bodyText: String, fallbackThreadId: ThreadId): Messag
     return runCatching {
         messagesJson.decodeFromString(MessagesWireMessage.serializer(), bodyText)
     }.getOrNull()?.toDomain(fallbackThreadId)
+}
+
+fun parseSharedSentMessagePayload(bodyText: String, fallbackThreadId: ThreadId): SharedSentMessagePayload {
+    if (bodyText.isBlank()) return SharedSentMessagePayload(message = null)
+    val rawMessage = runCatching {
+        messagesJson.decodeFromString(MessagesWireMessage.serializer(), bodyText)
+    }.getOrNull()
+    if (rawMessage != null) {
+        return SharedSentMessagePayload(message = rawMessage.toDomain(fallbackThreadId))
+    }
+    val wrapped = runCatching {
+        messagesJson.decodeFromString(MessagesWireSendResponse.serializer(), bodyText)
+    }.getOrNull()
+    return SharedSentMessagePayload(
+        message = wrapped?.message?.toDomain(fallbackThreadId),
+        pendingMentionActions = wrapped?.pendingMentionActions.orEmpty().mapNotNull { it.toDomain() }
+    )
+}
+
+fun parsePendingMentionActionExecuteResults(bodyText: String): List<PendingMentionActionExecuteResult> {
+    if (bodyText.isBlank()) return emptyList()
+    return runCatching {
+        messagesJson.decodeFromString(MessagesWireMentionActionExecuteResponse.serializer(), bodyText)
+            .results
+            .map {
+                PendingMentionActionExecuteResult(
+                    resolutionId = it.resolutionId,
+                    status = it.status,
+                    reason = it.reason
+                )
+            }
+    }.getOrDefault(emptyList())
 }
 
 private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
@@ -280,6 +347,19 @@ private fun MessagesWireMessage.toDomain(fallbackThreadId: ThreadId): Message {
         firstUnreadReplyMessageId = resolvedFirstUnreadReplyMessageId?.let(::MessageId),
         updatedAtLabel = updatedAt.ifBlank { null },
         commentRef = commentRef?.toDomain(),
+    )
+}
+
+private fun MessagesWirePendingMentionAction.toDomain(): PendingMentionAction? {
+    val resolvedId = resolutionId?.takeIf { it.isNotBlank() } ?: id?.takeIf { it.isNotBlank() } ?: return null
+    return PendingMentionAction(
+        resolutionId = resolvedId,
+        messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        targetType = targetType?.takeIf { it.isNotBlank() } ?: "unknown",
+        targetHandle = targetHandle.orEmpty(),
+        reason = reason.orEmpty(),
+        availableActions = availableActions.map { it.trim() }.filter { it.isNotBlank() },
+        expiresAt = expiresAt?.takeIf { it.isNotBlank() }
     )
 }
 

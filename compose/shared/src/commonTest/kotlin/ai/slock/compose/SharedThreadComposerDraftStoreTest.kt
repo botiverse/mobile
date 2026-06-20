@@ -65,4 +65,63 @@ class SharedThreadComposerDraftStoreTest {
         assertEquals(emptySet(), store.state.value.removedAttachmentIds)
         assertEquals(listOf(attachment), store.state.value.uploadedAttachments)
     }
+
+    @Test
+    fun completeSendReplacesPendingMentionActionsAndNextSendClearsThem() {
+        val store = SharedThreadComposerDraftStore()
+        val pending =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "user",
+                targetHandle = "outside",
+                availableActions = listOf("invite")
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
+
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertFalse(store.state.value.sending)
+
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+
+        assertEquals(emptyList(), store.state.value.pendingMentionActions)
+        assertEquals(null, store.state.value.mentionActionNotice)
+    }
+
+    @Test
+    fun deliveredMentionActionRemovesRowAndFailureKeepsRow() {
+        val store = SharedThreadComposerDraftStore()
+        val pending =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "outside",
+                availableActions = listOf("notify")
+            )
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
+
+        store.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction("res-1"))
+        assertEquals(setOf("res-1"), store.state.value.executingMentionActionIds)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionAction(
+                resolutionId = "res-1",
+                notice = "failed",
+                delivered = false
+            )
+        )
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+        assertEquals("failed", store.state.value.mentionActionNotice)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.FinishMentionAction(
+                resolutionId = "res-1",
+                notice = "delivered",
+                delivered = true
+            )
+        )
+        assertEquals(emptyList(), store.state.value.pendingMentionActions)
+        assertEquals("delivered", store.state.value.mentionActionNotice)
+    }
 }

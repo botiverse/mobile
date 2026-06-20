@@ -96,9 +96,34 @@ class SharedMembersStoreTest {
         assertEquals(1, memberRepository.getChannelMembersCalls)
         assertEquals(
             listOf(
-                SharedMembersMemberSuggestion("Cindy", "cindy"),
-                SharedMembersMemberSuggestion("Build Agent", "build"),
-                SharedMembersMemberSuggestion("Remote User", "remote")
+                SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = true),
+                SharedMembersMemberSuggestion("Build Agent", "build", inMentionChannel = false),
+                SharedMembersMemberSuggestion("Remote User", "remote", inMentionChannel = true)
+            ),
+            store.state.value.memberSuggestions
+        )
+    }
+
+    @Test
+    fun channelMentionScopeMarksMembersOutsideChannel() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(MemberId("u1"), "Cindy", "cindy", MemberKind.Human),
+                        MemberProfile(MemberId("u2"), "Outside Agent", "outside", MemberKind.Agent)
+                    )
+            )
+        memberRepository.channelMembersByChannel["channel-1"] =
+            listOf(MemberProfile(MemberId("u1"), "Cindy", "@cindy", MemberKind.Human))
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(serverId = "server-1", mentionChannelId = "channel-1")
+
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = true),
+                SharedMembersMemberSuggestion("Outside Agent", "outside", inMentionChannel = false)
             ),
             store.state.value.memberSuggestions
         )
@@ -151,8 +176,8 @@ class SharedMembersStoreTest {
         val sizeAfterThreadLoad = selectedThreadSlices.size
         assertEquals(
             listOf(
-                SharedMembersMemberSuggestion("Cindy", "cindy"),
-                SharedMembersMemberSuggestion("Remote User", "remote")
+                SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = false),
+                SharedMembersMemberSuggestion("Remote User", "remote", inMentionChannel = true)
             ),
             selectedThreadSlices.last().suggestions
         )
@@ -166,8 +191,8 @@ class SharedMembersStoreTest {
         assertEquals(sizeAfterThreadLoad, selectedThreadSlices.size)
         assertEquals(
             listOf(
-                SharedMembersMemberSuggestion("Cindy", "cindy"),
-                SharedMembersMemberSuggestion("Remote User", "remote")
+                SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = false),
+                SharedMembersMemberSuggestion("Remote User", "remote", inMentionChannel = true)
             ),
             store.state.value.selectMemberSuggestionSlice("thread-channel-1").suggestions
         )

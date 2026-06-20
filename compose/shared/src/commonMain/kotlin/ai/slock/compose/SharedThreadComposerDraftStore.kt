@@ -13,7 +13,10 @@ internal data class SharedThreadComposerDraftState(
     val sending: Boolean = false,
     val failureLabel: String? = null,
     val removedAttachmentIds: Set<String> = emptySet(),
-    val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList()
+    val uploadedAttachments: List<SharedThreadComposerAttachment> = emptyList(),
+    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNotice: String? = null,
+    val executingMentionActionIds: Set<String> = emptySet()
 )
 
 internal sealed interface SharedThreadComposerDraftIntent {
@@ -25,7 +28,16 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val seedAsTask: Boolean,
         val failureLabel: String
     ) : SharedThreadComposerDraftIntent
-    data object CompleteSend : SharedThreadComposerDraftIntent
+    data class CompleteSend(
+        val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
+    ) : SharedThreadComposerDraftIntent
+    data class DismissMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
+    data class BeginMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
+    data class FinishMentionAction(
+        val resolutionId: String,
+        val notice: String,
+        val delivered: Boolean
+    ) : SharedThreadComposerDraftIntent
     data class AddUploadedAttachments(
         val attachments: List<SharedThreadComposerAttachment>
     ) : SharedThreadComposerDraftIntent
@@ -65,7 +77,10 @@ internal class SharedThreadComposerDraftStore {
                         seedAsTask = false,
                         syncNonce = current.syncNonce + 1,
                         sending = true,
-                        failureLabel = null
+                        failureLabel = null,
+                        pendingMentionActions = emptyList(),
+                        mentionActionNotice = null,
+                        executingMentionActionIds = emptySet()
                     )
                 is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
                     current.copy(
@@ -75,7 +90,7 @@ internal class SharedThreadComposerDraftStore {
                         sending = false,
                         failureLabel = intent.failureLabel
                     )
-                SharedThreadComposerDraftIntent.CompleteSend ->
+                is SharedThreadComposerDraftIntent.CompleteSend ->
                     current.copy(
                         seedText = "",
                         seedAsTask = false,
@@ -83,7 +98,35 @@ internal class SharedThreadComposerDraftStore {
                         sending = false,
                         failureLabel = null,
                         removedAttachmentIds = emptySet(),
-                        uploadedAttachments = emptyList()
+                        uploadedAttachments = emptyList(),
+                        pendingMentionActions = intent.pendingMentionActions,
+                        mentionActionNotice = null,
+                        executingMentionActionIds = emptySet()
+                    )
+                is SharedThreadComposerDraftIntent.DismissMentionAction ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
+                        mentionActionNotice = null,
+                        executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
+                    )
+                is SharedThreadComposerDraftIntent.BeginMentionAction ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        mentionActionNotice = null,
+                        executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId
+                    )
+                is SharedThreadComposerDraftIntent.FinishMentionAction ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        pendingMentionActions =
+                            if (intent.delivered) {
+                                current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId }
+                            } else {
+                                current.pendingMentionActions
+                            },
+                        mentionActionNotice = intent.notice,
+                        executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
                     )
                 is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
                     val uploadedIds = intent.attachments.map { attachment -> attachment.id }.toSet()

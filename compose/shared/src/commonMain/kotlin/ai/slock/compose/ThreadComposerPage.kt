@@ -65,6 +65,8 @@ private val threadComposerContentPayloadKeys =
         "composerMode",
         "statusLabel",
         "pendingAttachments",
+        "pendingMentionActions",
+        "mentionActionNotice",
         "memberSuggestions",
         "channelSuggestions",
         "hookLabels"
@@ -93,6 +95,9 @@ internal data class KuiklyThreadComposerPayload(
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNotice: String? = null,
+    val executingMentionActionIds: List<String> = emptyList(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
@@ -147,6 +152,9 @@ internal data class ThreadComposerUiState(
     val composerMode: String = "idle",
     val statusLabel: String? = null,
     val pendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList(),
+    val mentionActionNotice: String? = null,
+    val executingMentionActionIds: List<String> = emptyList(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
     val hookLabels: List<String> = emptyList()
@@ -162,9 +170,21 @@ internal data class KuiklyPendingAttachmentItem(
 )
 
 @Serializable
+internal data class KuiklyPendingMentionActionItem(
+    val resolutionId: String,
+    val messageId: String? = null,
+    val targetType: String = "unknown",
+    val targetHandle: String = "",
+    val reason: String = "",
+    val availableActions: List<String> = emptyList(),
+    val expiresAt: String? = null
+)
+
+@Serializable
 internal data class KuiklyComposerMemberItem(
     val displayName: String,
-    val handle: String
+    val handle: String,
+    val inMentionChannel: Boolean = true
 )
 
 @Serializable
@@ -385,8 +405,12 @@ private fun threadComposerVisualFixture(
             placeholder = "Message design",
             memberSuggestions =
                 listOf(
-                    KuiklyComposerMemberItem(displayName = "Artin", handle = "artin"),
-                    KuiklyComposerMemberItem(displayName = "Android Developer", handle = "Android-Developer")
+                    KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", inMentionChannel = true),
+                    KuiklyComposerMemberItem(
+                        displayName = "Android Developer",
+                        handle = "Android-Developer",
+                        inMentionChannel = false
+                    )
                 ),
             channelSuggestions =
                 listOf(
@@ -446,6 +470,9 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         composerMode = composerMode,
         statusLabel = statusLabel,
         pendingAttachments = pendingAttachments,
+        pendingMentionActions = pendingMentionActions,
+        mentionActionNotice = mentionActionNotice,
+        executingMentionActionIds = executingMentionActionIds,
         memberSuggestions = memberSuggestions,
         channelSuggestions = channelSuggestions,
         hookLabels = hookLabels
@@ -625,28 +652,36 @@ internal fun ThreadComposerContent(
                     onEvent(action, null, null, attachmentId)
                 }
             }
+            state.mentionActionNotice?.takeIf { it.isNotBlank() }?.let { notice ->
+                Text(
+                    text = notice,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .background(SlockColor.SurfaceCream)
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (state.pendingMentionActions.isNotEmpty()) {
+                PendingMentionActionBanner(
+                    actions = state.pendingMentionActions,
+                    channelLabel = surface.mentionScopeChannelLabel(),
+                    executingIds = state.executingMentionActionIds.toSet(),
+                    onInvite = { resolutionId -> onEvent("inviteMention", resolutionId, null, null) },
+                    onNotify = { resolutionId -> onEvent("notifyMention", resolutionId, null, null) },
+                    onDismiss = { resolutionId -> onEvent("dismissMention", resolutionId, null, null) }
+                )
+            }
             if (showMemberSuggestions) {
-                ComposerSuggestionPanel(title = surface.memberSuggestionTitle()) {
-                    filteredMemberSuggestions.forEach { member ->
-                        ComposerSuggestionRow(
-                            leading = {
-                                Box(
-                                    modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = member.displayName.take(1).uppercase(),
-                                        style = SlockType.Button.copy(fontSize = 12.sp),
-                                        color = SlockColor.TextBlack
-                                    )
-                                }
-                            },
-                            title = member.displayName,
-                            subtitle = "@${member.handle}",
-                            onClick = { applyMemberSuggestion(member) }
-                        )
-                    }
-                }
+                ComposerMemberSuggestionPanel(
+                    title = surface.memberSuggestionTitle(),
+                    members = filteredMemberSuggestions,
+                    onClick = { applyMemberSuggestion(it) }
+                )
             } else if (showChannelSuggestions) {
                 ComposerSuggestionPanel(title = "CHANNELS") {
                     filteredChannelSuggestions.forEach { channel ->
@@ -777,6 +812,179 @@ private fun ThreadComposerSurface.memberSuggestionTitle(): String =
         KuiklyThreadSurfaceKind.ReplyThread -> "IN PARENT CHANNEL"
         else -> "IN THIS CHANNEL"
     }
+
+internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
+    channelId
+        .takeIf { it.isNotBlank() }
+        ?.let { "#${it.removePrefix("#")}" }
+        ?: "this channel"
+
+internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
+    availableActions.any { action ->
+        when (verb) {
+            "notify" -> action == "notify" || action == "notify_only"
+            "invite" -> action == "invite" || action == "add"
+            else -> false
+        }
+    }
+
+internal fun KuiklyPendingMentionActionItem.targetLabel(): String {
+    val handle = targetHandle.ifBlank { targetType }
+    return if ((targetType == "user" || targetType == "agent") && handle.isNotBlank() && !handle.startsWith("@")) {
+        "@$handle"
+    } else {
+        handle.ifBlank { "@unknown" }
+    }
+}
+
+private fun KuiklyPendingMentionActionItem.targetInitial(): String =
+    targetLabel().removePrefix("@").trim().take(1).ifBlank { "?" }.uppercase()
+
+@Composable
+private fun ComposerMemberSuggestionPanel(
+    title: String,
+    members: List<KuiklyComposerMemberItem>,
+    onClick: (KuiklyComposerMemberItem) -> Unit
+) {
+    val inChannel = members.filter { it.inMentionChannel }
+    val notInChannel = members.filterNot { it.inMentionChannel }
+    ComposerSuggestionPanel(title = title) {
+        inChannel.forEach { member ->
+            ComposerMemberSuggestionRow(member = member, inChannel = true, onClick = { onClick(member) })
+        }
+        if (notInChannel.isNotEmpty()) {
+            Text(
+                text = "NOT IN THIS CHANNEL",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+            notInChannel.forEach { member ->
+                ComposerMemberSuggestionRow(member = member, inChannel = false, onClick = { onClick(member) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerMemberSuggestionRow(
+    member: KuiklyComposerMemberItem,
+    inChannel: Boolean,
+    onClick: () -> Unit
+) {
+    ComposerSuggestionRow(
+        leading = {
+            Box(
+                modifier =
+                    Modifier
+                        .size(28.dp)
+                        .background(if (inChannel) SlockColor.BrandYellow else SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                if (inChannel) {
+                    Text(
+                        text = member.displayName.take(1).uppercase(),
+                        style = SlockType.Button.copy(fontSize = 12.sp),
+                        color = SlockColor.TextBlack
+                    )
+                } else {
+                    SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
+                }
+            }
+        },
+        title = member.displayName,
+        subtitle = "@${member.handle}",
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun PendingMentionActionBanner(
+    actions: List<KuiklyPendingMentionActionItem>,
+    channelLabel: String,
+    executingIds: Set<String>,
+    onInvite: (String) -> Unit,
+    onNotify: (String) -> Unit,
+    onDismiss: (String) -> Unit
+) {
+    Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
+        Box(modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack))
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 172.dp)
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            actions.forEach { action ->
+                PendingMentionActionRow(
+                    action = action,
+                    channelLabel = channelLabel,
+                    executing = action.resolutionId in executingIds,
+                    onInvite = { onInvite(action.resolutionId) },
+                    onNotify = { onNotify(action.resolutionId) },
+                    onDismiss = { onDismiss(action.resolutionId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingMentionActionRow(
+    action: KuiklyPendingMentionActionItem,
+    channelLabel: String,
+    executing: Boolean,
+    onInvite: () -> Unit,
+    onNotify: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val targetLabel = action.targetLabel()
+    val canInvite = action.supportsMentionAction("invite")
+    val canNotify = action.supportsMentionAction("notify")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
+        Box(
+            modifier = Modifier.size(22.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(action.targetInitial(), style = SlockType.Caption.withSlockFontWeight(FontWeight.Black), color = SlockColor.TextBlack)
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            Text(
+                text = targetLabel,
+                style = SlockType.Button.copy(fontSize = 12.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "$targetLabel isn't in $channelLabel - won't be notified by default",
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (canInvite) {
+                ComposerTextChip(if (executing) "Adding" else "Add", enabled = !executing, onClick = onInvite)
+            }
+            if (canNotify) {
+                ComposerTextChip(if (executing) "Notifying" else "Notify", enabled = !executing, onClick = onNotify)
+            }
+            ComposerTextChip("Dismiss", enabled = !executing, onClick = onDismiss)
+        }
+    }
+}
 
 @Composable
 private fun ComposerAttachmentTray(
@@ -965,10 +1173,10 @@ private fun ComposerSendButton(
 }
 
 @Composable
-private fun ComposerTextChip(text: String, onClick: () -> Unit) {
+private fun ComposerTextChip(text: String, enabled: Boolean = true, onClick: () -> Unit) {
     SlockBrutalActionButton(
         label = text,
-        onClick = onClick,
+        onClick = { if (enabled) onClick() },
         backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 26.dp,

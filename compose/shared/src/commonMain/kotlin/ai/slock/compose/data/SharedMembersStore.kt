@@ -23,7 +23,8 @@ enum class SharedMembersLoadStatus {
 
 data class SharedMembersMemberSuggestion(
     val displayName: String,
-    val handle: String
+    val handle: String,
+    val inMentionChannel: Boolean = true
 )
 
 data class SharedMembersChannelSuggestion(
@@ -344,7 +345,14 @@ class SharedMembersStore(
                     scope = memberScope,
                     slice =
                         SharedMembersMemberSuggestionSlice(
-                            suggestions = (result.data.members + channelMembers).toSharedMembersMemberSuggestions(),
+                            suggestions =
+                                if (mentionChannelId == null) {
+                                    result.data.members.toSharedMembersMemberSuggestions()
+                                } else {
+                                    result.data.members.toSharedMembersMemberSuggestions(
+                                        inMentionChannelIds = channelMembers.map { it.id.value }.toSet()
+                                    ).mergeMentionChannelSuggestions(channelMembers.toSharedMembersMemberSuggestions(inMentionChannel = true))
+                                },
                             status = SharedMembersLoadStatus.Loaded
                         )
                     )
@@ -566,6 +574,18 @@ private fun String?.normalizedId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
 private fun List<MemberProfile>.toSharedMembersMemberSuggestions(): List<SharedMembersMemberSuggestion> {
+    return toSharedMembersMemberSuggestions(inMentionChannel = true)
+}
+
+private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
+    inMentionChannel: Boolean
+): List<SharedMembersMemberSuggestion> =
+    toSharedMembersMemberSuggestions(inMentionChannelIds = null, fallbackInMentionChannel = inMentionChannel)
+
+private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
+    inMentionChannelIds: Set<String>?,
+    fallbackInMentionChannel: Boolean = false
+): List<SharedMembersMemberSuggestion> {
     val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
     for (member in this) {
         val handle = member.handle.trim().removePrefix("@").takeIf { it.isNotBlank() }
@@ -576,9 +596,28 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(): List<SharedM
             deduped[key] =
                 SharedMembersMemberSuggestion(
                     displayName = member.displayName.trim().ifBlank { handle },
-                    handle = handle
+                    handle = handle,
+                    inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel
                 )
         }
+    }
+    return deduped.values.toList()
+}
+
+private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
+    channelSuggestions: List<SharedMembersMemberSuggestion>
+): List<SharedMembersMemberSuggestion> {
+    if (channelSuggestions.isEmpty()) return this
+    val deduped = LinkedHashMap<String, SharedMembersMemberSuggestion>()
+    for (suggestion in this + channelSuggestions) {
+        val key = suggestion.handle.lowercase()
+        val existing = deduped[key]
+        deduped[key] =
+            when {
+                existing == null -> suggestion
+                suggestion.inMentionChannel && !existing.inMentionChannel -> existing.copy(inMentionChannel = true)
+                else -> existing
+            }
     }
     return deduped.values.toList()
 }

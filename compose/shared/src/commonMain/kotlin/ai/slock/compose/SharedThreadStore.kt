@@ -28,6 +28,7 @@ import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.MessageMutationSummary
 import ai.slock.compose.data.MessageReactionSummary
+import ai.slock.compose.data.PendingMentionActionExecuteResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
@@ -849,6 +850,12 @@ internal class SharedThreadDataSource(
         attachmentIds: List<String> = emptyList()
     ): ThreadApiResult<ThreadMessagesPage> =
         api.sendMessage(channelId = channelId, body = body, asTask = asTask, attachmentIds = attachmentIds)
+
+    suspend fun executePendingMentionActions(
+        action: String,
+        resolutionIds: List<String>
+    ): ThreadApiResult<List<PendingMentionActionExecuteResult>> =
+        api.executePendingMentionActions(action = action, resolutionIds = resolutionIds)
 
     suspend fun uploadAttachments(
         channelId: String,

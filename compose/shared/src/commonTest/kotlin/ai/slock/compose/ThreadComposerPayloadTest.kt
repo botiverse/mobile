@@ -291,4 +291,37 @@ class ThreadComposerPayloadTest {
         assertNull(surface.sendChannelId)
         assertEquals("parent-channel-1", surface.mentionScopeChannelId)
     }
+
+    @Test
+    fun pendingMentionActionsExposeActionSupportAndTargetLabel() {
+        val action =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "outside",
+                availableActions = listOf("add", "notify_only")
+            )
+
+        assertTrue(action.supportsMentionAction("invite"))
+        assertTrue(action.supportsMentionAction("notify"))
+        assertEquals("@outside", action.targetLabel())
+    }
+
+    @Test
+    fun mentionActionFailureStatusMapsKnownReasons() {
+        assertEquals(
+            "Only channel admins can add members from this mention action.",
+            formatMentionActionStatusNotice(
+                ai.slock.compose.data.PendingMentionActionExecuteResult(
+                    resolutionId = "res-1",
+                    status = "no_permission",
+                    reason = "invite_requires_member_management_authority"
+                )
+            )
+        )
+        assertEquals(
+            "This mention action could not be applied.",
+            formatMentionActionStatusNotice(null)
+        )
+    }
 }

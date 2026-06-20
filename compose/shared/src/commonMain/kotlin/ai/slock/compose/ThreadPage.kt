@@ -44,6 +44,8 @@ import ai.slock.compose.data.SharedTasksScope
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.PendingMentionAction
+import ai.slock.compose.data.PendingMentionActionExecuteResult
 import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.isAuthSessionBlocker
@@ -1692,7 +1694,8 @@ internal fun SharedThreadRouteContent(
             memberSuggestionSlice.suggestions.map { suggestion ->
                 KuiklyComposerMemberItem(
                     displayName = suggestion.displayName,
-                    handle = suggestion.handle
+                    handle = suggestion.handle,
+                    inMentionChannel = suggestion.inMentionChannel
                 )
             }
         }
@@ -1755,6 +1758,9 @@ internal fun SharedThreadRouteContent(
                         renderedComposerState.composerMode == "failed" -> renderedComposerState.statusLabel
                         else -> renderedComposerState.statusLabel
                     },
+                pendingMentionActions = composerDraftState.pendingMentionActions,
+                mentionActionNotice = composerDraftState.mentionActionNotice,
+                executingMentionActionIds = composerDraftState.executingMentionActionIds.toList(),
                 streamChannelId = resolvedAuxiliaryThreadId,
                 enabled = payload.canSend && resolvedAuxiliaryThreadId != null && !composerDraftState.sending,
                 memberSuggestions =
@@ -2821,7 +2827,54 @@ internal fun SharedThreadRouteContent(
                                     "messages" to sentPage.messages.size.toString()
                                 )
                         )
-                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteSend)
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.CompleteSend(
+                                pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
+                            )
+                        )
+                    }
+                }
+                "dismissMention" -> {
+                    value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
+                        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.DismissMentionAction(resolutionId))
+                    }
+                }
+                "inviteMention", "notifyMention" -> {
+                    val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent
+                    if (resolutionId in composerDraftState.executingMentionActionIds) {
+                        return@ThreadPageContent
+                    }
+                    val pendingAction =
+                        composerDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
+                            ?: return@ThreadPageContent
+                    val verb = if (action == "inviteMention") "invite" else "notify"
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction(resolutionId))
+                    coroutineScope.launch {
+                        val result =
+                            runCatchingPreservingCancellation {
+                                dataSource.executePendingMentionActions(
+                                    action = verb,
+                                    resolutionIds = listOf(resolutionId)
+                                )
+                            }.getOrNull()
+                        val rowResult =
+                            (result as? ThreadApiResult.Success)
+                                ?.data
+                                ?.firstOrNull { it.resolutionId == resolutionId }
+                        val delivered = rowResult?.status == "delivered"
+                        val notice =
+                            if (delivered) {
+                                pendingAction.mentionActionDeliveredNotice(verb, composerSurface.mentionScopeChannelLabel())
+                            } else {
+                                formatMentionActionStatusNotice(rowResult)
+                            }
+                        composerDraftViewModel.dispatch(
+                            SharedThreadComposerDraftIntent.FinishMentionAction(
+                                resolutionId = resolutionId,
+                                notice = notice,
+                                delivered = delivered
+                            )
+                        )
                     }
                 }
                 "retryThreadLoad" -> {
@@ -3776,6 +3829,44 @@ internal fun StoredAuthSession?.threadSelfMentionNames(): Set<String> =
             .filter { it.isNotBlank() }
             .toSet()
     }.orEmpty()
+
+internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPendingMentionActionItem =
+    KuiklyPendingMentionActionItem(
+        resolutionId = resolutionId,
+        messageId = messageId?.value,
+        targetType = targetType,
+        targetHandle = targetHandle,
+        reason = reason,
+        availableActions = availableActions,
+        expiresAt = expiresAt
+    )
+
+internal fun KuiklyPendingMentionActionItem.mentionActionDeliveredNotice(
+    action: String,
+    channelLabel: String
+): String {
+    val label = targetLabel()
+    return if (action == "invite") {
+        "$label was added to $channelLabel"
+    } else {
+        "Notified $label once - still not in $channelLabel"
+    }
+}
+
+internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecuteResult?): String =
+    when (result?.reason) {
+        "sender_lacks_channel_access" -> "You no longer have access to that channel, so this mention action was not applied."
+        "target_lacks_read_access" -> "That person cannot read this conversation, so they were not notified."
+        "invite_not_allowed_for_surface" -> "That person cannot be added from this mention action. Use the channel member controls instead."
+        "invite_requires_human_member_authority" -> "Agents cannot add channel members from mention actions. Ask a human member to add them."
+        "invite_requires_member_management_authority" -> "Only channel admins can add members from this mention action."
+        "target_already_member" -> "That target is already in the channel, so no action is needed."
+        "target_unavailable" -> "That target is no longer available."
+        "expired" -> "This mention action has expired."
+        "not_found" -> "This mention action is no longer available."
+        "ambiguous" -> "This mention action matched more than one target. Refresh and try again."
+        else -> "This mention action could not be applied."
+    }
 
 @Composable
 private fun ThreadPageContent(

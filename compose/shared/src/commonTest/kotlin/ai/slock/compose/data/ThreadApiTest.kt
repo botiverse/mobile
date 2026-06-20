@@ -211,6 +211,70 @@ class ThreadApiTest {
     }
 
     @Test
+    fun sendMessageAcceptsRawMessageResponseWithoutPendingActions() = runBlocking {
+        val api = SlockThreadApiClient(FakeThreadNetworkApi(sendBody = """{"id":"m3","channelId":"channel-1","content":"sent","seq":3}"""))
+
+        val result = api.sendMessage("channel-1", "sent")
+
+        val page = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data
+        assertEquals("m3", page.messages.single().id)
+        assertEquals(emptyList(), page.pendingMentionActions)
+    }
+
+    @Test
+    fun sendMessageAcceptsWrappedMessageResponseWithPendingMentionActions() = runBlocking {
+        val api =
+            SlockThreadApiClient(
+                FakeThreadNetworkApi(
+                    sendBody =
+                        """
+                        {
+                          "message": {"id":"m3","channelId":"channel-1","content":"hi @outside","seq":3},
+                          "pendingMentionActions": [
+                            {
+                              "resolutionId": "res-1",
+                              "messageId": "m3",
+                              "targetType": "agent",
+                              "targetHandle": "outside",
+                              "reason": "not_member",
+                              "availableActions": ["invite", "notify"],
+                              "expiresAt": "2026-06-21T00:00:00Z"
+                            }
+                          ]
+                        }
+                        """.trimIndent()
+                )
+            )
+
+        val result = api.sendMessage("channel-1", "hi @outside")
+
+        val page = assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(result).data
+        assertEquals("m3", page.messages.single().id)
+        val pending = page.pendingMentionActions.single()
+        assertEquals("res-1", pending.resolutionId)
+        assertEquals("m3", pending.messageId?.value)
+        assertEquals("agent", pending.targetType)
+        assertEquals("outside", pending.targetHandle)
+        assertEquals(listOf("invite", "notify"), pending.availableActions)
+    }
+
+    @Test
+    fun executePendingMentionActionsMapsCanonicalResults() = runBlocking {
+        val transport =
+            FakeThreadNetworkApi(
+                mentionActionBody = """{"results":[{"resolutionId":"res-1","status":"delivered","reason":null}]}"""
+            )
+        val api = SlockThreadApiClient(transport)
+
+        val result = api.executePendingMentionActions("invite", listOf("res-1"))
+
+        val row = assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(result).data.single()
+        assertEquals("res-1", row.resolutionId)
+        assertEquals("delivered", row.status)
+        assertEquals("""{"action":"invite","resolutionIds":["res-1"]}""", transport.lastMentionActionBody)
+    }
+
+    @Test
     fun createThreadRequiresCanonicalThreadChannelId() = runBlocking {
         val api =
             SlockThreadApiClient(
@@ -268,6 +332,9 @@ class ThreadApiTest {
         assertIs<ThreadApiResult.Success<MessageMutationSummary>>(api.removeReaction("msg-1", "rocket"))
         assertIs<ThreadApiResult.Success<Unit>>(api.updateTaskStatus("task-1", TaskStatus.InReview))
         assertIs<ThreadApiResult.Success<ThreadActionResult>>(api.createOrOpenThread("channel-1", "parent-1"))
+        assertIs<ThreadApiResult.Success<List<PendingMentionActionExecuteResult>>>(
+            api.executePendingMentionActions("notify", listOf("res-1"))
+        )
 
         assertEquals(
             listOf(
@@ -283,7 +350,8 @@ class ThreadApiTest {
                 """POST messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
                 """DELETE messages/msg-1/reactions priority=Foreground query= server= body={"emoji":"rocket"}""",
                 """PATCH tasks/task-1/status priority=Foreground query= server= body={"status":"in_review"}""",
-                """POST channels/channel-1/threads priority=Foreground query= server= body={"parentMessageId":"parent-1"}"""
+                """POST channels/channel-1/threads priority=Foreground query= server= body={"parentMessageId":"parent-1"}""",
+                """POST messages/mention-actions/execute priority=Foreground query= server= body={"action":"notify","resolutionIds":["res-1"]}"""
             ),
             networkClient.calls
         )
@@ -296,9 +364,11 @@ class ThreadApiTest {
         var attachmentUrlBody: String = """{"url":"https://cdn.slock.ai/default"}""",
         var attachmentCommentsBody: String = """{"comments":[],"threadChannelId":"thread-comments"}""",
         var reactionBody: String = """{"id":"m1","reactions":[]}""",
-        var createThreadBody: String = """{"threadChannelId":"thread-1"}"""
+        var createThreadBody: String = """{"threadChannelId":"thread-1"}""",
+        var mentionActionBody: String = """{"results":[]}"""
     ) : SharedThreadNetworkApi {
         val unsavedMessageIds = mutableListOf<String>()
+        var lastMentionActionBody: String? = null
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
 
@@ -312,6 +382,11 @@ class ThreadApiTest {
             attachmentIds: List<String>
         ): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = sendBody)
+
+        override suspend fun executePendingMentionActions(action: String, resolutionIds: List<String>): HomeNetworkResponse {
+            lastMentionActionBody = buildPendingMentionActionExecuteBody(action, resolutionIds)
+            return HomeNetworkResponse(code = 200, bodyText = mentionActionBody)
+        }
 
         override suspend fun attachmentUrl(attachmentId: String, disposition: String?): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = attachmentUrlBody)
@@ -366,6 +441,7 @@ class ThreadApiTest {
                 normalizedPath == "messages/sync" -> ok(syncBody)
                 normalizedPath == "messages" && method == "POST" -> ok(sendBody)
                 normalizedPath.startsWith("attachments/") && normalizedPath.endsWith("/comments") -> ok("""{"comments":[],"threadChannelId":"thread-comments"}""")
+                normalizedPath == "messages/mention-actions/execute" && method == "POST" -> ok(mentionActionBody)
                 normalizedPath.startsWith("attachments/") -> ok(attachmentUrlBody)
                 normalizedPath.endsWith("/read-all") -> ok("""{"ok":true}""")
                 normalizedPath == "channels/saved" && method == "POST" -> ok("""{"ok":true}""")
@@ -395,6 +471,7 @@ class ThreadApiTest {
             const val attachmentUrlBody = """{"url":"https://cdn.slock.ai/a.png","expiresAt":null}"""
             const val reactionBody = """{"id":"m1","reactions":[]}"""
             const val createThreadBody = """{"threadChannelId":"thread-1","parentMessageId":"parent-1","created":true}"""
+            const val mentionActionBody = """{"results":[{"resolutionId":"res-1","status":"delivered"}]}"""
         }
     }
 }
