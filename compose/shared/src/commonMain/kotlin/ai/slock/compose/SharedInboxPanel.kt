@@ -17,9 +17,11 @@ import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivityState
 import ai.slock.compose.data.SharedActivityStore
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
@@ -779,7 +781,7 @@ private fun LazyListState.isActivityLoadMoreThreshold(lastItemIndex: Int): Boole
 }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
-    val streamChannelId = if (kind == InboxItemKind.Thread) threadChannelId else threadChannelId ?: channelId
+    val streamChannelId = resolveInboxStreamChannelId()
     val parentId = parentMessageId
     val parentChannel = parentChannelId
     val stableThreadIdentity =
@@ -831,17 +833,39 @@ internal data class HomeMessageOpenRequest(
     val anchorMessageId: String?
 )
 
+/**
+ * Per-kind stream channel id resolver. Replaces the prior silent fallback
+ * `if (kind == Thread) threadChannelId else threadChannelId ?: channelId` (反例 1 in #280 audit).
+ *
+ * - Thread items resolve to their explicit `threadChannelId` (v0.2 contract requires the
+ *   thread stream id to be distinct from `channelId`).
+ * - Non-thread items resolve to `null`. The downstream `ThreadConversation` field is only
+ *   populated for Thread items, so this is the safe default.
+ *
+ * Future sealed `InboxItem.Thread` (Phase 3 #3 (B)) will encode this in the type system:
+ * `threadChannelId` becomes a required non-null constructor parameter on the Thread subclass.
+ */
+internal fun InboxItem.resolveInboxStreamChannelId(): ChannelId? =
+    when (kind) {
+        InboxItemKind.Thread -> threadChannelId
+        InboxItemKind.Channel, InboxItemKind.DirectMessage, InboxItemKind.System -> null
+    }
+
+/**
+ * 3-level anchor chain used by [InboxItem.toHomeMessageOpenRequest] and Saved store anchor
+ * resolution. Thread items must NOT fall back to `parentMessageId` — that field is the parent
+ * channel origin, not a thread reply id; mixing it in would silently degrade the reply-stream
+ * anchor (regression covered by `appShellActivityThreadItemShowsLatestReplyAsAnchorWhenUnreadIsEmpty`
+ * and `SharedInboxPanelTest.inboxPanelThreadItemAnchor3LevelChain`).
+ *
+ * Replaces the prior 4-level chain `firstUnreadMessageId ?: latestActivityMessageId
+ * ?: lastMessageId ?: parentMessageId` (反例 11 in #280 audit).
+ */
+internal fun InboxItem.resolveInboxAnchorMessageId(): MessageId? =
+    firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId
+
 internal fun InboxItem.toHomeMessageOpenRequest(): HomeMessageOpenRequest =
     HomeMessageOpenRequest(
         conversation = toConversationSummary(),
-        anchorMessageId =
-            (
-                if (unreadCount > 0) {
-                    firstUnreadMessageId ?: latestActivityMessageId ?: lastMessageId ?: parentMessageId
-                } else {
-                    latestActivityMessageId ?: lastMessageId ?: firstUnreadMessageId ?: parentMessageId
-                }
-            )
-                ?.value
-                ?.takeIf { it.isNotBlank() }
+        anchorMessageId = resolveInboxAnchorMessageId()?.value?.takeIf { it.isNotBlank() }
     )

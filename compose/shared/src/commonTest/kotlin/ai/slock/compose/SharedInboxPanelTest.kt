@@ -94,7 +94,12 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun homeOpenRequestUsesLatestActivityMessageAsAnchor() {
+    fun homeOpenRequestUsesFirstUnreadAsAnchorWhenPresent() {
+        // Phase 3 #3 #1 (A): anchor chain walks firstUnreadMessageId -> latestActivityMessageId
+        // -> lastMessageId regardless of kind or unreadCount. When firstUnreadMessageId is
+        // present (regardless of unreadCount bucket), it wins. This replaces the old
+        // unread-aware chain that picked latestActivityMessageId for unreadCount == 0
+        // (反例 11 / #280 audit). Channel / DirectMessage / System share the same 3-level chain.
         val request =
             InboxItem(
                 key = "channel:general",
@@ -107,7 +112,7 @@ class SharedInboxPanelTest {
         ).toHomeMessageOpenRequest()
 
         assertEquals(MessageId("activity-message"), request.conversation.lastMessageId)
-        assertEquals("activity-message", request.anchorMessageId)
+        assertEquals("first-unread", request.anchorMessageId)
     }
 
     @Test
@@ -130,7 +135,11 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun homeOpenRequestFallsBackToThreadParentAsAnchor() {
+    fun homeOpenRequestDoesNotFallBackToParentForThreadWithoutReplyId() {
+        // Thread item without firstUnreadMessageId / latestActivityMessageId / lastMessageId
+        // must NOT silently fall back to parentMessageId. That field is the parent channel
+        // origin (not a reply id) and mixing it into the anchor chain degrades the reply-stream
+        // anchor (see #275-style contract escapes and the v0.2 thread contract).
         val request =
             InboxItem(
                 key = "thread:thread-channel-1",
@@ -146,7 +155,83 @@ class SharedInboxPanelTest {
 
         assertEquals(ConversationKind.Thread, request.conversation.kind)
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), request.conversation.threadId)
-        assertEquals("message-1", request.anchorMessageId)
+        assertEquals(null, request.anchorMessageId)
+    }
+
+    @Test
+    fun inboxPanelThreadItemResolveStreamChannelIdReplacesChannelFallback() {
+        // 反例 1 regression: Thread item `toConversationSummary()` must use the explicit
+        // `threadChannelId` as `ThreadConversation.streamChannelId`, not fall back to
+        // `threadChannelId ?: channelId` (the prior silent fallback). For non-thread items,
+        // the helper resolves to null and `ThreadConversation` is null.
+        val threadItem =
+            InboxItem(
+                key = "thread:thread-channel-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-explicit"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1")
+            )
+        assertEquals(ChannelId("thread-channel-explicit"), threadItem.resolveInboxStreamChannelId())
+
+        val channelItem =
+            InboxItem(
+                key = "channel:general",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general"
+            )
+        assertEquals(null, channelItem.resolveInboxStreamChannelId())
+    }
+
+    @Test
+    fun inboxPanelThreadItemResolveAnchorMessageId3LevelChain() {
+        // 反例 11 regression: Thread item anchor must walk firstUnreadMessageId ->
+        // latestActivityMessageId -> lastMessageId and never fall back to parentMessageId.
+        // The latter is the parent channel origin, not a thread reply id.
+        val threadItem =
+            InboxItem(
+                key = "thread:thread-channel-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("parent-msg"),
+                firstUnreadMessageId = MessageId("unread-reply"),
+                latestActivityMessageId = MessageId("latest-reply"),
+                lastMessageId = MessageId("last-reply")
+            )
+        assertEquals(MessageId("unread-reply"), threadItem.resolveInboxAnchorMessageId())
+
+        val onlyLatest =
+            threadItem.copy(
+                key = "thread-only-latest",
+                firstUnreadMessageId = null
+            )
+        assertEquals(MessageId("latest-reply"), onlyLatest.resolveInboxAnchorMessageId())
+
+        val onlyLast =
+            threadItem.copy(
+                key = "thread-only-last",
+                firstUnreadMessageId = null,
+                latestActivityMessageId = null
+            )
+        assertEquals(MessageId("last-reply"), onlyLast.resolveInboxAnchorMessageId())
+
+        val noneButParent =
+            threadItem.copy(
+                key = "thread-none-but-parent",
+                firstUnreadMessageId = null,
+                latestActivityMessageId = null,
+                lastMessageId = null
+            )
+        // Critical: parentMessageId must NOT appear in the anchor chain.
+        assertEquals(null, noneButParent.resolveInboxAnchorMessageId())
     }
 
     private fun activityItem(

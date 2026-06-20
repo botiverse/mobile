@@ -7,6 +7,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
+import ai.slock.compose.resolveInboxAnchorMessageId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -651,8 +652,7 @@ sealed interface SharedHomeSearchSavedIntent {
     data object ClearSearchFilters : SharedHomeSearchSavedIntent
 }
 
-fun InboxItem.savedMessageIdOrNull(): MessageId? =
-    latestActivityMessageId ?: lastMessageId ?: parentMessageId ?: firstUnreadMessageId
+fun InboxItem.savedMessageIdOrNull(): MessageId? = resolveInboxAnchorMessageId()
 
 enum class SearchTimeRange(val key: String, val label: String) {
     Any("any", "ANY TIME"),

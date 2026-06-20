@@ -336,6 +336,44 @@ class SharedHomeSearchSavedStoreTest {
             latestActivitySenderName = "User One",
             participantIds = listOf(MemberId("user-1"))
         )
+
+    @Test
+    fun savedSearchThreadItemResolveAnchorMessageId3LevelChain() {
+        // 反例 11 regression: saved store's `savedMessageIdOrNull` must use the shared
+        // 3-level anchor chain (`resolveInboxAnchorMessageId`) and never fall back to
+        // `parentMessageId` for Thread items. Mirrors SharedInboxPanel regression so the
+        // saved inbox surface and the main inbox surface share the same anchor contract.
+        val threadOnlyLatest =
+            InboxItem(
+                key = "thread-saved-latest",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("parent-msg"),
+                latestActivityMessageId = MessageId("latest-reply")
+            )
+        assertEquals(MessageId("latest-reply"), threadOnlyLatest.savedMessageIdOrNull())
+
+        val threadOnlyLast =
+            threadOnlyLatest.copy(
+                key = "thread-saved-last",
+                latestActivityMessageId = null,
+                lastMessageId = MessageId("last-reply")
+            )
+        assertEquals(MessageId("last-reply"), threadOnlyLast.savedMessageIdOrNull())
+
+        val threadNoneButParent =
+            threadOnlyLatest.copy(
+                key = "thread-saved-none-but-parent",
+                latestActivityMessageId = null,
+                lastMessageId = null
+            )
+        // Critical: parentMessageId must NOT appear in the saved anchor chain.
+        assertEquals(null, threadNoneButParent.savedMessageIdOrNull())
+    }
 }
 
 private fun testServer(id: ServerId): ServerSummary =
