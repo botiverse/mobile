@@ -67,8 +67,8 @@ KMP 当前明确缺口：
 3. **Client secret 缺 Copy 动作**
    KMP 一次显示 secret 已有，但 `SettingsConnectedAppSecretCard` 只有文本展示，没有 copy affordance。需要增加 Copy，同时明确不写入 diagnostics/log。
 
-4. **Logo upload host picker 未接通**
-   repository 已有 upload API，但 `SharedSettingsPlatformCapabilities.pickConnectedAppLogoFile()` 默认返回 `settings_connected_app_logo_picker_unavailable`。如果 Android/OHOS host 没覆盖该能力，页面上的 Upload/Change 会实际不可用。
+4. **Logo upload 源码链路已合入，剩实机验证**
+   @artin 复核指出 `0d4af5dd fix: wire connected app logo upload` 已在当前 main。源码链路是 UI 发 `RequestConnectedAppLogoUpload`，`SharedSettingsStore.uploadConnectedAppLogo(...)` 调 `platformCapabilities.pickConnectedAppLogoFile(...)`，Android 通过 `BridgeAuth.pickConnectedAppLogoFile(...)` 复用 `threadAttachmentUpload(channelId = "settings-connected-app-logo-$clientRecordId", imageOnly = true)`，host 用 `ActivityResultContracts.GetMultipleContents()` 选择 `image/*`，再以 multipart field `logo` 上传到 `POST /integrations/clients/:id/logo`。所以这里不再列为“没有 picker 能力”；剩余风险是最新包里对 Upload/Change/Reset 的 runtime 验证，以及复用 thread attachment picker 时的错误文案/取消态是否像 Settings 专属动作。
 
 5. **Delete / Uninstall 缺安全确认**
    KMP `SettingsConnectedAppClientsCard` 里的 Delete、marketplace Uninstall 目前是直接 action row。React 这里必须 ConfirmDialog，并说明删除 client secret/grants 或 revoke app access 的后果。这是安全/误触风险，不只是视觉差异。
