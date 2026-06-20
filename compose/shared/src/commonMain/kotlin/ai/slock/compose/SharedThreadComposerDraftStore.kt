@@ -28,7 +28,11 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val seedAsTask: Boolean,
         val failureLabel: String
     ) : SharedThreadComposerDraftIntent
+    data object CompleteInlineSendFailure : SharedThreadComposerDraftIntent
     data class CompleteSend(
+        val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
+    ) : SharedThreadComposerDraftIntent
+    data class ApplyPendingMentionActions(
         val pendingMentionActions: List<KuiklyPendingMentionActionItem> = emptyList()
     ) : SharedThreadComposerDraftIntent
     data class DismissMentionAction(val resolutionId: String) : SharedThreadComposerDraftIntent
@@ -89,6 +93,18 @@ internal class SharedThreadComposerDraftStore {
                         sending = false,
                         failureLabel = intent.failureLabel
                     )
+                SharedThreadComposerDraftIntent.CompleteInlineSendFailure ->
+                    current.copy(
+                        seedText = "",
+                        seedAsTask = false,
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        failureLabel = null,
+                        removedAttachmentIds = emptySet(),
+                        uploadedAttachments = emptyList(),
+                        mentionActionNotice = null,
+                        executingMentionActionIds = emptySet()
+                    )
                 is SharedThreadComposerDraftIntent.CompleteSend ->
                     current.copy(
                         seedText = "",
@@ -98,6 +114,13 @@ internal class SharedThreadComposerDraftStore {
                         failureLabel = null,
                         removedAttachmentIds = emptySet(),
                         uploadedAttachments = emptyList(),
+                        pendingMentionActions = intent.pendingMentionActions,
+                        mentionActionNotice = null,
+                        executingMentionActionIds = emptySet()
+                    )
+                is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
                         pendingMentionActions = intent.pendingMentionActions,
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()

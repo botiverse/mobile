@@ -179,6 +179,15 @@ private object ThreadRowProbeNextSessionId {
     }
 }
 
+private object ThreadLocalSendNextId {
+    private var counter: Int = 0
+    fun value(instanceId: String): String {
+        counter += 1
+        val scope = instanceId.takeIf { it.isNotBlank() } ?: "thread"
+        return "local-send-$scope-$counter"
+    }
+}
+
 /**
  * Phase 1 instrumentation flag for #172 (Thread virtual rendering v1).
  *
@@ -515,8 +524,70 @@ internal data class KuiklyThreadMessageItem(
     val taskAssigneeName: String? = null,
     val reactions: List<KuiklyThreadReactionItem> = emptyList(),
     val attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
-    val commentRef: KuiklyThreadMessageCommentRef? = null
+    val commentRef: KuiklyThreadMessageCommentRef? = null,
+    val deliveryState: String = ThreadMessageDeliverySent,
+    val pendingSendContext: KuiklyThreadPendingSendContext? = null,
+    val pendingSendErrorCode: String? = null
 )
+
+internal const val ThreadMessageDeliverySending = "sending"
+internal const val ThreadMessageDeliverySent = "sent"
+internal const val ThreadMessageDeliveryFailed = "failed"
+
+@Serializable
+internal data class KuiklyThreadPendingSendContext(
+    val channelId: String,
+    val body: String,
+    val asTask: Boolean = false,
+    val attachmentIds: List<String> = emptyList(),
+    val attachments: List<KuiklyPendingAttachmentItem> = emptyList(),
+    val mentionChannelId: String? = null,
+    val parentMessageId: String? = null,
+    val streamChannelId: String? = null,
+    val memberScopedMentions: Boolean = false
+)
+
+internal fun KuiklyThreadMessageItem.hasLocalSendState(): Boolean =
+    deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
+        deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) ||
+        pendingSendContext != null
+
+private fun KuiklyThreadMessageItem.canRetryLocalSend(): Boolean =
+    deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
+
+private fun buildThreadPendingSendMessage(
+    localMessageId: String,
+    context: KuiklyThreadPendingSendContext,
+    session: StoredAuthSession?
+): KuiklyThreadMessageItem {
+    val user = session?.user
+    val authorName = user?.bestDisplayName ?: "You"
+    return KuiklyThreadMessageItem(
+        id = localMessageId,
+        authorId = user?.id ?: "local-user",
+        authorName = authorName,
+        authorKind = "human",
+        isOwn = true,
+        avatarLabel = authorName.take(1).uppercase(),
+        avatarWireValue = user?.avatarUrl,
+        gravatarHash = user?.gravatarHash,
+        timestampLabel = "Now",
+        body = context.body,
+        threadChannelId = context.streamChannelId ?: context.channelId,
+        attachments =
+            context.attachments.map { attachment ->
+                KuiklyThreadAttachmentItem(
+                    id = attachment.id,
+                    name = attachment.fileName,
+                    mimeType = attachment.mimeType.orEmpty(),
+                    sizeLabel = attachment.sizeLabel
+                )
+            },
+        deliveryState = ThreadMessageDeliverySending,
+        pendingSendContext = context,
+        pendingSendErrorCode = null
+    )
+}
 
 @Serializable
 internal data class KuiklyThreadMessageCommentRef(
@@ -1439,6 +1510,9 @@ internal fun SharedThreadRouteContent(
     var quotedPreviewStates by remember(initialPayload.instanceId) {
         mutableStateOf<Map<String, ThreadQuotedMessagePreviewUiState>>(emptyMap())
     }
+    var currentSession by remember(initialPayload.instanceId) {
+        mutableStateOf<StoredAuthSession?>(null)
+    }
     var currentServerSlug by remember(initialPayload.instanceId) {
         mutableStateOf<String?>(null)
     }
@@ -1466,6 +1540,7 @@ internal fun SharedThreadRouteContent(
 
     LaunchedEffect(authStore, initialPayload.instanceId) {
         val session = authStore.readSession()
+        currentSession = session
         currentServerSlug = session?.currentServerSlug()
         createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
         createAgentComputerServerResolved = true
@@ -2141,6 +2216,117 @@ internal fun SharedThreadRouteContent(
             threadViewModel.dispatch(SharedThreadIntent.MarkVisibleReadAll)
         }
     }
+    fun sendPendingLocalMessage(
+        localMessageId: String,
+        context: KuiklyThreadPendingSendContext,
+        startedFromComposer: Boolean
+    ) {
+        val sendStartedAt = TimeSource.Monotonic.markNow()
+        bridge.performanceMarker(
+            phase = "composer_send",
+            routeName = "kuikly_thread",
+            event = "start",
+            threadId = context.channelId,
+            metadata =
+                mapOf(
+                    "asTask" to context.asTask.toString(),
+                    "attachments" to context.attachmentIds.size.toString(),
+                    "hasText" to context.body.isNotBlank().toString(),
+                    "localMessageId" to localMessageId
+                )
+        )
+        coroutineScope.launch {
+            fun markFailed(errorCode: String?) {
+                threadViewModel.dispatch(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, errorCode))
+                if (startedFromComposer) {
+                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+                }
+            }
+
+            val sendResponse =
+                runCatchingPreservingCancellation {
+                    dataSource.sendMessage(
+                        channelId = context.channelId,
+                        body = context.body,
+                        asTask = context.asTask,
+                        attachmentIds = context.attachmentIds
+                    )
+                }.getOrElse {
+                    bridge.performanceMarker(
+                        phase = "composer_send",
+                        routeName = "kuikly_thread",
+                        event = "end",
+                        threadId = context.channelId,
+                        durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                        metadata = mapOf("result" to "exception", "localMessageId" to localMessageId)
+                    )
+                    markFailed("exception")
+                    return@launch
+                }
+            val sentPage =
+                when (sendResponse) {
+                    is ThreadApiResult.Success -> sendResponse.data
+                    is ThreadApiResult.Failure -> {
+                        val errorCode =
+                            sendResponse.contractCode
+                                ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                                ?: "send_failed"
+                        bridge.performanceMarker(
+                            phase = "composer_send",
+                            routeName = "kuikly_thread",
+                            event = "end",
+                            threadId = context.channelId,
+                            durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                            metadata =
+                                mapOf(
+                                    "result" to "failure",
+                                    "code" to errorCode,
+                                    "localMessageId" to localMessageId
+                                )
+                        )
+                        markFailed(errorCode)
+                        return@launch
+                    }
+                }
+            if (sentPage.messages.isEmpty()) {
+                bridge.performanceMarker(
+                    phase = "composer_send",
+                    routeName = "kuikly_thread",
+                    event = "end",
+                    threadId = context.channelId,
+                    durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                    metadata = mapOf("result" to "empty", "localMessageId" to localMessageId)
+                )
+                markFailed("empty_response")
+                return@launch
+            }
+            threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
+            threadViewModel.dispatch(SharedThreadIntent.Refresh)
+            bridge.performanceMarker(
+                phase = "composer_send",
+                routeName = "kuikly_thread",
+                event = "end",
+                threadId = context.channelId,
+                durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
+                metadata =
+                    mapOf(
+                        "result" to "success",
+                        "messages" to sentPage.messages.size.toString(),
+                        "localMessageId" to localMessageId
+                    )
+            )
+            val pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
+            if (startedFromComposer) {
+                composerDraftViewModel.dispatch(
+                    SharedThreadComposerDraftIntent.CompleteSend(pendingMentionActions = pendingMentionActions)
+                )
+            } else {
+                composerDraftViewModel.dispatch(
+                    SharedThreadComposerDraftIntent.ApplyPendingMentionActions(pendingMentionActions)
+                )
+            }
+        }
+    }
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
             payload = renderedThread,
@@ -2686,6 +2872,22 @@ internal fun SharedThreadRouteContent(
                 action == "loadNewer" || action == "retryLoadNewer" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadNewer)
                 }
+                action == "retryLocalSend" && !itemId.isNullOrBlank() -> {
+                    val message = renderedThread.messages.firstOrNull { it.id == itemId } ?: return@ThreadPageContent
+                    val pendingContext = message.pendingSendContext ?: return@ThreadPageContent
+                    if (!message.canRetryLocalSend()) {
+                        return@ThreadPageContent
+                    }
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyLocalSendStarted(
+                            message.copy(
+                                deliveryState = ThreadMessageDeliverySending,
+                                pendingSendErrorCode = null
+                            )
+                        )
+                    )
+                    sendPendingLocalMessage(message.id, pendingContext, startedFromComposer = false)
+                }
                 else -> {
                     bridge.log(
                         "thread_event_unsupported instanceId=${payload.instanceId} action=$action itemId=${itemId.orEmpty()} attachmentId=${attachmentId.orEmpty()} tab=${tab.orEmpty()}"
@@ -2725,114 +2927,30 @@ internal fun SharedThreadRouteContent(
                         return@ThreadPageContent
                     }
                     val draftAsTask = composerDraftState.seedAsTask
-                    val sendStartedAt = TimeSource.Monotonic.markNow()
-                    bridge.performanceMarker(
-                        phase = "composer_send",
-                        routeName = "kuikly_thread",
-                        event = "start",
-                        threadId = threadId,
-                        metadata =
-                            mapOf(
-                                "asTask" to draftAsTask.toString(),
-                                "attachments" to attachmentIds.size.toString(),
-                                "hasText" to draftText.isNotBlank().toString()
+                    val pendingContext =
+                        KuiklyThreadPendingSendContext(
+                            channelId = threadId,
+                            body = draftText,
+                            asTask = draftAsTask,
+                            attachmentIds = attachmentIds,
+                            attachments = renderedComposer.pendingAttachments,
+                            mentionChannelId = composerSurface.mentionScopeChannelId,
+                            parentMessageId = composerSurface.parentMessageId,
+                            streamChannelId = composerSurface.streamChannelId,
+                            memberScopedMentions = payload.memberScopedMentions
+                        )
+                    val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyLocalSendStarted(
+                            buildThreadPendingSendMessage(
+                                localMessageId = localMessageId,
+                                context = pendingContext,
+                                session = currentSession
                             )
+                        )
                     )
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-                    coroutineScope.launch {
-                        val sendResponse =
-                            runCatchingPreservingCancellation {
-                                dataSource.sendMessage(
-                                    channelId = threadId,
-                                    body = draftText,
-                                    asTask = draftAsTask,
-                                    attachmentIds = attachmentIds
-                                )
-                            }.getOrElse {
-                                bridge.performanceMarker(
-                                    phase = "composer_send",
-                                    routeName = "kuikly_thread",
-                                    event = "end",
-                                    threadId = threadId,
-                                    durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                                    metadata = mapOf("result" to "exception")
-                                )
-                                composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.RestoreAfterFailure(
-                                        seedText = draftText,
-                                        seedAsTask = draftAsTask,
-                                        failureLabel = "Send failed. Try again."
-                                    )
-                                )
-                                return@launch
-                            }
-                        val sentPage =
-                            when (sendResponse) {
-                                is ThreadApiResult.Success -> sendResponse.data
-                                is ThreadApiResult.Failure -> {
-                                    bridge.performanceMarker(
-                                        phase = "composer_send",
-                                        routeName = "kuikly_thread",
-                                        event = "end",
-                                        threadId = threadId,
-                                        durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                                        metadata =
-                                            mapOf(
-                                                "result" to "failure",
-                                                "code" to (sendResponse.contractCode ?: "unknown")
-                                            )
-                                    )
-                                    composerDraftViewModel.dispatch(
-                                        SharedThreadComposerDraftIntent.RestoreAfterFailure(
-                                            seedText = draftText,
-                                            seedAsTask = draftAsTask,
-                                            failureLabel =
-                                                sendResponse.contractCode
-                                                    ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
-                                                    ?: "Send failed. Try again."
-                                        )
-                                    )
-                                    return@launch
-                                }
-                            }
-                        if (sentPage.messages.isEmpty()) {
-                            bridge.performanceMarker(
-                                phase = "composer_send",
-                                routeName = "kuikly_thread",
-                                event = "end",
-                                threadId = threadId,
-                                durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                                metadata = mapOf("result" to "empty")
-                            )
-                            composerDraftViewModel.dispatch(
-                                SharedThreadComposerDraftIntent.RestoreAfterFailure(
-                                    seedText = draftText,
-                                    seedAsTask = draftAsTask,
-                                    failureLabel = "Send failed. Try again."
-                                )
-                            )
-                            return@launch
-                        }
-                        threadViewModel.dispatch(SharedThreadIntent.AppendSentPage(sentPage))
-                        threadViewModel.dispatch(SharedThreadIntent.Refresh)
-                        bridge.performanceMarker(
-                            phase = "composer_send",
-                            routeName = "kuikly_thread",
-                            event = "end",
-                            threadId = threadId,
-                            durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                            metadata =
-                                mapOf(
-                                    "result" to "success",
-                                    "messages" to sentPage.messages.size.toString()
-                                )
-                        )
-                        composerDraftViewModel.dispatch(
-                            SharedThreadComposerDraftIntent.CompleteSend(
-                                pendingMentionActions = sentPage.pendingMentionActions.map { it.toKuiklyPendingMentionActionItem() }
-                            )
-                        )
-                    }
+                    sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
                 }
                 "dismissMention" -> {
                     value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
@@ -4712,11 +4830,13 @@ private fun ThreadMessagesList(
                         taskOpenEnabled = payload.showTaskOpenActions,
                         taskStatusActionsEnabled = payload.showTaskStatusActions,
                         onShowActions = { anchor ->
-                            actionMenuAnchor = anchor
-                            actionMessageId = message.id
-                            diagnosticsLogger(
-                                "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                            )
+                            if (!message.hasLocalSendState()) {
+                                actionMenuAnchor = anchor
+                                actionMessageId = message.id
+                                diagnosticsLogger(
+                                    "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                                )
+                            }
                         },
                         onOpenMember = { onThreadEvent("openMember", it, null, null) },
                         onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
@@ -4732,6 +4852,7 @@ private fun ThreadMessagesList(
                         onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
+                        onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
                         attachmentOpenStates = attachmentOpenStates,
                         pendingActionCardIds = pendingActionCardIds,
                         onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
@@ -4792,7 +4913,7 @@ private fun ThreadMessagesList(
                     message = message,
                     anchor = actionMenuAnchor,
                     showReplyAction = payload.showReplyActions,
-                    showSaveAction = payload.showMessageSaveAction,
+                    showSaveAction = payload.showMessageSaveAction && !message.hasLocalSendState(),
                     showTaskStatusAction = payload.showTaskStatusActions,
                     onDismiss = { actionMessageId = null },
                     onReply = {
@@ -5349,6 +5470,7 @@ private fun ThreadMessageCard(
     onOpenAttachment: (String) -> Unit,
     attachmentCommentsEnabled: Boolean = false,
     onOpenAttachmentComments: (String) -> Unit = {},
+    onRetryLocalSend: () -> Unit = {},
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     pendingActionCardIds: Set<String> = emptySet(),
     onCommitActionCard: (String) -> Unit = {},
@@ -5493,23 +5615,34 @@ private fun ThreadMessageCard(
                                 onOpenAttachment = onOpenAttachment
                             )
                         }
+                        if (message.hasLocalSendState()) {
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                ThreadMessageLocalSendStatus(
+                                    message = message,
+                                    alignEnd = alignOwnMessageRight,
+                                    onRetry = onRetryLocalSend
+                                )
+                            }
+                        }
                         Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                            ThreadMessageFooterMeta(
-                                message = message,
-                                showReplyAction = showReplyAction,
-                                taskOpenEnabled = taskOpenEnabled,
-                                taskStatusActionsEnabled = taskStatusActionsEnabled,
-                                resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                                alignEnd = alignOwnMessageRight,
-                                onOpenThread = { onOpenThread(message.id) },
-                                onOpenTask = onOpenTask,
-                                onShowActions = onShowActions,
-                                onOpenTaskStatusMenu = onOpenTaskStatusMenu,
-                                onToggleReaction = onToggleReaction
-                            )
+                            if (!message.hasLocalSendState()) {
+                                ThreadMessageFooterMeta(
+                                    message = message,
+                                    showReplyAction = showReplyAction,
+                                    taskOpenEnabled = taskOpenEnabled,
+                                    taskStatusActionsEnabled = taskStatusActionsEnabled,
+                                    resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                    alignEnd = alignOwnMessageRight,
+                                    onOpenThread = { onOpenThread(message.id) },
+                                    onOpenTask = onOpenTask,
+                                    onShowActions = onShowActions,
+                                    onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                    onToggleReaction = onToggleReaction
+                                )
+                            }
                         }
                     }
-                    if (showSaveAction) {
+                    if (showSaveAction && !message.hasLocalSendState()) {
                         ThreadMessageBookmarkButton(
                             saved = message.isSaved,
                             onClick = onToggleSaved,
@@ -5525,6 +5658,56 @@ private fun ThreadMessageCard(
                         onClick = { onOpenMember(message.authorId) }
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadMessageLocalSendStatus(
+    message: KuiklyThreadMessageItem,
+    alignEnd: Boolean,
+    onRetry: () -> Unit
+) {
+    val isFailed = message.deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
+    val label =
+        if (isFailed) {
+            "Send failed · Retry"
+        } else if (message.pendingSendContext?.asTask == true) {
+            "Sending as task..."
+        } else {
+            "Sending..."
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(
+            onClick = { if (message.canRetryLocalSend()) onRetry() },
+            enabled = isFailed,
+            pressFeedback = isFailed,
+            modifier = Modifier.heightIn(min = 28.dp).background(Color.Transparent)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SlockLucideIcon(
+                    if (isFailed) SlockLucideIconName.RefreshCw else SlockLucideIconName.LoaderCircle,
+                    modifier = Modifier.size(13.dp),
+                    color = if (isFailed) "#FFF97264" else SlockColor.TextMutedGrayArgb
+                )
+                Text(
+                    text = label,
+                    style =
+                        SlockType.Caption.copy(
+                            color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray
+                        ),
+                    color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

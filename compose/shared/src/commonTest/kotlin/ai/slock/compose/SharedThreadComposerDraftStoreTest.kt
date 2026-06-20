@@ -121,6 +121,39 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun inlineSendFailureClearsComposerWithoutRestoringDraft() {
+        val store = SharedThreadComposerDraftStore()
+        val pending =
+            KuiklyPendingMentionActionItem(
+                resolutionId = "res-1",
+                targetType = "agent",
+                targetHandle = "outside",
+                availableActions = listOf("notify")
+            )
+        val attachment =
+            SharedThreadComposerAttachment(
+                id = "file-1",
+                fileName = "image.png",
+                sizeLabel = "24 KB",
+                mimeType = "image/png",
+                status = "ready"
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend(listOf(pending)))
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "failed body", seedAsTask = true))
+        store.dispatch(SharedThreadComposerDraftIntent.AddUploadedAttachments(listOf(attachment)))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+
+        assertFalse(store.state.value.sending)
+        assertEquals("", store.state.value.seedText)
+        assertEquals(false, store.state.value.seedAsTask)
+        assertEquals(null, store.state.value.failureLabel)
+        assertEquals(emptyList(), store.state.value.uploadedAttachments)
+        assertEquals(listOf(pending), store.state.value.pendingMentionActions)
+    }
+
+    @Test
     fun deliveredMentionActionRemovesRowAndFailureKeepsRow() {
         val store = SharedThreadComposerDraftStore()
         val pending =

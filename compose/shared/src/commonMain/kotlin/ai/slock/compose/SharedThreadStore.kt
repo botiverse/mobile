@@ -1492,6 +1492,9 @@ internal sealed interface SharedThreadIntent {
     data class Start(val payload: KuiklyThreadScreenPayload) : SharedThreadIntent
     data object Refresh : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
+    data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
+    data class ApplyLocalSendFailure(val messageId: String, val errorCode: String? = null) : SharedThreadIntent
+    data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyMessageReactionSelection(
         val messageId: String,
         val emoji: String,
@@ -1559,6 +1562,9 @@ internal class SharedThreadStore(
                     }
             }
             is SharedThreadIntent.AppendSentPage,
+            is SharedThreadIntent.ApplyLocalSendStarted,
+            is SharedThreadIntent.ApplyLocalSendFailure,
+            is SharedThreadIntent.ReplaceLocalSendWithSentPage,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyMessageMutation,
@@ -1598,6 +1604,9 @@ internal class SharedThreadStore(
             is SharedThreadIntent.Start -> start(intent.payload)
             SharedThreadIntent.Refresh -> refresh(_state.value.payload)
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
+            is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
+            is SharedThreadIntent.ApplyLocalSendFailure -> applyLocalSendFailure(intent.messageId, intent.errorCode)
+            is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
             is SharedThreadIntent.ApplyMessageReactionSelection ->
                 applyMessageReactionSelection(intent.messageId, intent.emoji, intent.selected)
             is SharedThreadIntent.ApplyMessageReactions ->
@@ -2030,6 +2039,37 @@ internal class SharedThreadStore(
             cachePayload = true,
             writeCachedPayload = true
         ) { payload -> payload.withContentPatchFrom(appended) }
+    }
+
+    private fun applyLocalSendStarted(message: KuiklyThreadMessageItem) {
+        reducePayloadPatch { payload ->
+            payload.withLocalSendStarted(message)
+        }
+    }
+
+    private fun applyLocalSendFailure(messageId: String, errorCode: String?) {
+        reducePayloadPatch { payload ->
+            payload.withLocalSendFailure(messageId, errorCode)
+        }
+    }
+
+    private suspend fun replaceLocalSendWithSentPage(messageId: String, page: ThreadMessagesPage) {
+        if (page.messages.isEmpty()) return
+        val currentPayload = _state.value.payload
+        val appended =
+            appendSharedThreadSentMessageFromPage(
+                basePayload = currentPayload,
+                page = page,
+                session = dataSource.readSession()
+            )
+        val replaced =
+            appended
+                .withoutLocalSendMessage(messageId)
+                .preserveStableTimelineFrom(currentPayload)
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload -> payload.withContentPatchFrom(replaced) }
     }
 
     private fun applyMessageReactionSelection(messageId: String, emoji: String, selected: Boolean) {
@@ -2565,6 +2605,48 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
     )
 }
 
+private fun KuiklyThreadScreenPayload.withLocalSendStarted(
+    message: KuiklyThreadMessageItem
+): KuiklyThreadScreenPayload {
+    val sendingMessage =
+        message.copy(
+            deliveryState = ThreadMessageDeliverySending,
+            pendingSendErrorCode = null
+        )
+    val nextMessages =
+        if (messages.any { it.id == sendingMessage.id }) {
+            messages.map { existing -> if (existing.id == sendingMessage.id) sendingMessage else existing }
+        } else {
+            messages + sendingMessage
+        }
+    return copy(
+        status = "content",
+        errorCode = null,
+        messages = nextMessages.sortedByThreadTimeline()
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withLocalSendFailure(
+    messageId: String,
+    errorCode: String?
+): KuiklyThreadScreenPayload =
+    copy(
+        messages =
+            messages.map { message ->
+                if (message.id == messageId && message.pendingSendContext != null) {
+                    message.copy(
+                        deliveryState = ThreadMessageDeliveryFailed,
+                        pendingSendErrorCode = errorCode
+                    )
+                } else {
+                    message
+                }
+            }
+    )
+
+private fun KuiklyThreadScreenPayload.withoutLocalSendMessage(messageId: String): KuiklyThreadScreenPayload =
+    copy(messages = messages.filterNot { it.id == messageId && it.pendingSendContext != null })
+
 private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
     if (limit <= 0 || messages.isEmpty()) return this
     val sortedMessages = messages.sortedByThreadTimeline()
@@ -2583,6 +2665,11 @@ private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): Kuik
 private fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
     sortedWith(
         Comparator { left, right ->
+            val leftLocal = left.hasLocalSendState()
+            val rightLocal = right.hasLocalSendState()
+            if (leftLocal != rightLocal) {
+                return@Comparator if (leftLocal) 1 else -1
+            }
             if (left.seq != null && right.seq != null) {
                 compareValues(left.seq, right.seq).takeIf { it != 0 }?.let { return@Comparator it }
             }
@@ -3258,7 +3345,7 @@ private fun KuiklyThreadMessageItem.toMessage(
         systemEventType = systemEventType,
         metadata = metadata,
         attachments = attachments.map { attachment -> attachment.toAttachment() },
-        deliveryState = MessageDeliveryState.Sent,
+        deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
         replyCount = replyCount,
         unreadReplyCount = unreadReplyCount,
@@ -3393,6 +3480,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         taskStatus = task?.status?.name,
         taskAssigneeId = task?.assignee?.id?.value,
         taskAssigneeName = task?.assignee?.displayName,
+        deliveryState = deliveryState.toKuiklyThreadDeliveryState(),
         attachments = attachments.map { attachment ->
             KuiklyThreadAttachmentItem(
                 id = attachment.id.value,
@@ -3406,6 +3494,20 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
         commentRef = commentRef?.toKuiklyThreadCommentRef()
     )
+
+private fun String.toMessageDeliveryState(): MessageDeliveryState =
+    when (trim().lowercase()) {
+        ThreadMessageDeliverySending -> MessageDeliveryState.Sending
+        ThreadMessageDeliveryFailed -> MessageDeliveryState.Failed
+        else -> MessageDeliveryState.Sent
+    }
+
+private fun MessageDeliveryState.toKuiklyThreadDeliveryState(): String =
+    when (this) {
+        MessageDeliveryState.Sending -> ThreadMessageDeliverySending
+        MessageDeliveryState.Failed -> ThreadMessageDeliveryFailed
+        MessageDeliveryState.Sent -> ThreadMessageDeliverySent
+    }
 
 private fun MessageCommentRef.toKuiklyThreadCommentRef(): KuiklyThreadMessageCommentRef =
     KuiklyThreadMessageCommentRef(

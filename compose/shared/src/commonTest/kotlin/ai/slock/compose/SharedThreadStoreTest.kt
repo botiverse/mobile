@@ -253,6 +253,120 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun localSendSuccessReplacesTempBubbleWithCanonicalMessage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
+        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+
+        val messages = store.state.value.payload.messages
+        assertFalse(messages.any { it.id == "local-1" })
+        assertEquals(1, messages.count { it.id == "server-1" })
+        assertEquals(ThreadMessageDeliverySent, messages.first { it.id == "server-1" }.deliveryState)
+        scope.cancel()
+    }
+
+    @Test
+    fun localSendFailureKeepsFailedBubbleWithRetryContext() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage(
+                    id = "local-1",
+                    body = "retry body",
+                    asTask = true,
+                    attachmentIds = listOf("att-1")
+                )
+            )
+        )
+
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "network_error"))
+
+        val failed = store.state.value.payload.messages.first { it.id == "local-1" }
+        assertEquals(ThreadMessageDeliveryFailed, failed.deliveryState)
+        assertEquals("retry body", failed.body)
+        assertEquals("network_error", failed.pendingSendErrorCode)
+        assertEquals(true, failed.pendingSendContext?.asTask)
+        assertEquals(listOf("att-1"), failed.pendingSendContext?.attachmentIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun retryFailureReusesSameTempBubbleAndRetrySuccessReplacesIt() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        val local = localPendingMessage("local-1", "retry body")
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local))
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "offline"))
+
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(local.copy(deliveryState = ThreadMessageDeliverySending)))
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure("local-1", "still_offline"))
+
+        val failedMessages = store.state.value.payload.messages.filter { it.id == "local-1" }
+        assertEquals(1, failedMessages.size)
+        assertEquals(ThreadMessageDeliveryFailed, failedMessages.single().deliveryState)
+        assertEquals("still_offline", failedMessages.single().pendingSendErrorCode)
+
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(failedMessages.single().copy(deliveryState = ThreadMessageDeliverySending)))
+        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "retry body")))
+
+        val messages = store.state.value.payload.messages
+        assertFalse(messages.any { it.id == "local-1" })
+        assertEquals(1, messages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
+    fun localSendReplacementDoesNotDuplicateServerMessageAlreadyInFlow() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store =
+            SharedThreadStore(
+                dataSource =
+                    SharedThreadDataSource(
+                        networkApi = FakeThreadApi(),
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+                    ),
+                scope = scope
+            )
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
+        store.accept(SharedThreadIntent.AppendSentPage(sentPage("server-1", "sent body")))
+
+        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+
+        val messages = store.state.value.payload.messages
+        assertFalse(messages.any { it.id == "local-1" })
+        assertEquals(1, messages.count { it.id == "server-1" })
+        scope.cancel()
+    }
+
+    @Test
     fun loadMembersEnrichesThreadMembersFromRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -2809,6 +2923,70 @@ class SharedThreadStoreTest {
                     canLoadMoreAfter = null
                 ),
             session = sampleSession()
+        )
+
+    private fun sentPage(id: String, body: String): ThreadMessagesPage =
+        ThreadMessagesPage(
+            messages =
+                listOf(
+                    WireMessage(
+                        id = id,
+                        channelId = "channel-1",
+                        senderType = "user",
+                        senderId = "u1",
+                        senderName = "Artin",
+                        content = body,
+                        createdAt = "2026-05-19T16:01:00Z",
+                        seq = 11
+                    )
+                ),
+            canLoadMoreBefore = null,
+            canLoadMoreAfter = null
+        )
+
+    private fun localPendingMessage(
+        id: String,
+        body: String,
+        asTask: Boolean = false,
+        attachmentIds: List<String> = emptyList()
+    ): KuiklyThreadMessageItem =
+        KuiklyThreadMessageItem(
+            id = id,
+            authorId = "u1",
+            authorName = "Artin",
+            isOwn = true,
+            body = body,
+            threadChannelId = "channel-1",
+            attachments =
+                attachmentIds.map { attachmentId ->
+                    KuiklyThreadAttachmentItem(
+                        id = attachmentId,
+                        name = "$attachmentId.txt",
+                        mimeType = "text/plain",
+                        sizeLabel = "1 KB"
+                    )
+                },
+            deliveryState = ThreadMessageDeliverySending,
+            pendingSendContext =
+                KuiklyThreadPendingSendContext(
+                    channelId = "channel-1",
+                    body = body,
+                    asTask = asTask,
+                    attachmentIds = attachmentIds,
+                    attachments =
+                        attachmentIds.map { attachmentId ->
+                            KuiklyPendingAttachmentItem(
+                                id = attachmentId,
+                                fileName = "$attachmentId.txt",
+                                sizeLabel = "1 KB",
+                                mimeType = "text/plain",
+                                status = "ready"
+                            )
+                        },
+                    mentionChannelId = "channel-1",
+                    streamChannelId = "channel-1",
+                    memberScopedMentions = false
+                )
         )
 
     private fun wrongReplyCachedPayload(): KuiklyThreadScreenPayload =
