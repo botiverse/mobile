@@ -45,7 +45,7 @@ internal expect fun logMarkdownSpike(
     extra: String = ""
 )
 
-internal inline fun <T> traceMarkdownSection(name: String, block: () -> T): T {
+internal fun <T> traceMarkdownSection(name: String, block: () -> T): T {
     return traceMarkdownSection(name = name, bodyLength = -1, block = block)
 }
 
@@ -53,8 +53,13 @@ internal inline fun <T> traceMarkdownSection(name: String, block: () -> T): T {
  * Variant of [traceMarkdownSection] that includes the row body length in the spike
  * report. Use this at the row-level call site (SlockMarkdownBody) where `body.length`
  * is available; the threshold check + log line otherwise are identical.
+ *
+ * Non-inline because inline functions calling `expect` declarations can have
+ * cross-module visibility issues in KMP (the inline body needs the actual to be
+ * visible at every call site). Non-inline defers the call to the actual at
+ * runtime via the dispatch table.
  */
-internal inline fun <T> traceMarkdownSection(
+internal fun <T> traceMarkdownSection(
     name: String,
     bodyLength: Int,
     block: () -> T
