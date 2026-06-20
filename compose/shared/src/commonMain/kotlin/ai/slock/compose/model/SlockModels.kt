@@ -60,6 +60,7 @@ data class ConversationSummary(
     val directMessagePeerType: String? = null,
     val avatarUrl: String? = null,
     val avatar: AvatarReference? = null,
+    val gravatarUrl: String? = null,
     val unreadCount: Int = 0,
     val unreadCountKnown: Boolean = false,
     val mentionCount: Int = 0,

@@ -246,6 +246,11 @@ private fun HomeDirectMessageWireDto.toConversation(warningLogger: (String) -> U
         directMessagePeerType = peerType.takeIf { it.isNotBlank() },
         avatarUrl = effectiveAvatarUrl,
         avatar = effectiveAvatarUrl?.let { AvatarReference.fromWireValue(it) },
+        // #225 fix: surface the Gravatar URL alongside the primary avatar so
+        // the renderer can fall back when the primary HTTP avatar fails
+        // (mirrors React AvatarSlot hash fallback). Only kept when the
+        // primary is not itself a Gravatar URL (avoids duplicate).
+        gravatarUrl = if (effectiveAvatarUrl != gravatarUrl && peerType.equals("user", ignoreCase = true)) gravatarUrl else null,
         presenceMemberId = MemberId(peerId),
         lastMessageAt = lastMessageAt
     )

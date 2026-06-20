@@ -143,6 +143,7 @@ data class SlockHomeConversationItem(
     val avatarLabel: String = name.take(2).uppercase(),
     val avatarUrl: String? = null,
     val avatarWireValue: String? = avatarUrl,
+    val gravatarUrl: String? = null,
     val peerType: String? = null,
     val presence: SlockPresence? = null,
     val hasDraft: Boolean = false,
@@ -636,6 +637,7 @@ fun SlockStructuralHomeShell(
                                             description = pinned.description,
                                             avatarLabel = pinned.avatarLabel,
                                             avatarWireValue = pinned.avatarWireValue,
+                                            gravatarUrl = pinned.gravatarUrl,
                                             peerType = pinned.peerType,
                                             presence = pinned.presence,
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -782,6 +784,7 @@ fun SlockStructuralHomeShell(
                                     description = dm.description,
                                     avatarLabel = dm.avatarLabel,
                                     avatarWireValue = dm.avatarWireValue,
+                                    gravatarUrl = dm.gravatarUrl,
                                     peerType = dm.peerType,
                                     presence = dm.presence,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
@@ -1730,7 +1733,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -1824,7 +1827,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
-                SlockAvatar(avatarWireValue, avatarLabel)
+                SlockAvatar(avatarWireValue, avatarLabel, gravatarUrl = gravatarUrl)
             }
             com.tencent.kuikly.compose.foundation.layout.Row(
                 modifier =
@@ -1905,7 +1908,8 @@ internal fun SlockAvatar(
     label: String,
     modifier: Modifier = Modifier,
     avatarSize: Dp = ChannelAvatarSize,
-    borderWidth: Dp = SlockStroke.Thin
+    borderWidth: Dp = SlockStroke.Thin,
+    gravatarUrl: String? = null
 ) {
     val pixelSpec = remember(avatarWireValue) { avatarWireValue?.toPixelAvatarSpec() }
     when {
@@ -1914,6 +1918,7 @@ internal fun SlockAvatar(
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = avatarWireValue,
+                fallbackSource = gravatarUrl,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -1922,16 +1927,28 @@ internal fun SlockAvatar(
 }
 
 @Composable
-private fun SlockAvatarHttpImage(source: String, modifier: Modifier = Modifier) {
-    var loaded by remember(source) { mutableStateOf(false) }
+private fun SlockAvatarHttpImage(
+    source: String,
+    modifier: Modifier = Modifier,
+    fallbackSource: String? = null
+) {
+    // #225 fix: HTTP avatar (e.g. peerAvatarUrl) may fail to load; if a
+    // Gravatar URL is provided, retry with it before showing the user icon
+    // underneath. Mirrors React AvatarSlot / GravatarAvatar chain.
+    var primaryLoaded by remember(source) { mutableStateOf(false) }
+    var primaryFailed by remember(source) { mutableStateOf(false) }
+    val showFallback = primaryFailed && !fallbackSource.isNullOrBlank()
+    val effectiveSource = if (showFallback) fallbackSource else source
     val painter =
         rememberAsyncImagePainter(
-            model = source,
-            onLoading = { loaded = false },
-            onSuccess = { loaded = true },
-            onError = { loaded = false }
+            model = effectiveSource,
+            onLoading = { primaryLoaded = false },
+            onSuccess = { primaryLoaded = true },
+            onError = {
+                if (!showFallback) primaryFailed = true
+            }
         )
-    if (loaded) {
+    if (primaryLoaded) {
         Image(
             painter = painter,
             contentDescription = null,
