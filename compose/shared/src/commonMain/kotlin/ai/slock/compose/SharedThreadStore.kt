@@ -37,12 +37,15 @@ import ai.slock.compose.data.SlockThreadApiClient
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.SharedThreadNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.ThreadCandidateIdentity
+import ai.slock.compose.data.ThreadCandidateProofGate
 import ai.slock.compose.data.ThreadSnapshot
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.ThreadAttachmentOpenTarget
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.authSessionRequiredResult
 import ai.slock.compose.data.map
+import ai.slock.compose.data.threadCandidateIdentity
 import ai.slock.compose.data.toMessageMetadata
 import ai.slock.compose.data.withExecutedAgent
 import ai.slock.compose.data.withExecutedChannel
@@ -165,10 +168,14 @@ internal class SharedThreadDataSource(
     suspend fun readCachedPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload? {
         val threadId = basePayload.cacheThreadId() ?: return null
         val snapshot = localWriteThrough?.readThreadSnapshot(ThreadId(threadId)) ?: return null
-        if (basePayload.hasUntrustedReplyThreadStreamHint() && !snapshot.matchesReplyThreadParent(basePayload)) {
-            return null
-        }
         val session = readSession()
+        val serverId = session?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route = basePayload.threadCandidateIdentity(serverId),
+                candidate = snapshot.threadCandidateIdentity(serverId)
+            )
+        if (!proof.accepted) return null
         return snapshot
             .toKuiklyThreadPayload(basePayload, session?.user?.id)
             .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
@@ -2364,33 +2371,27 @@ private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
 
 private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
-    matchesRouteIdentity(route) && cachedReplyParentMatchesRoute(route)
+    ThreadCandidateProofGate
+        .prove(route = route.threadCandidateIdentity(), candidate = threadCandidateIdentity())
+        .accepted
 
-private fun KuiklyThreadScreenPayload.cachedReplyParentMatchesRoute(route: KuiklyThreadScreenPayload): Boolean {
-    if (!route.hasUntrustedReplyThreadStreamHint()) return true
-    val expectedParentChannelId = route.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
-    val expectedParentMessageId =
-        route.parentMessageId?.takeIf { it.isNotBlank() }
-            ?: route.originParentMessageId?.takeIf { it.isNotBlank() }
-            ?: return true
-    return parentChannelId == expectedParentChannelId &&
-        (parentMessageId == expectedParentMessageId || originParentMessageId == expectedParentMessageId)
-}
-
-private fun KuiklyThreadScreenPayload.matchesRouteIdentity(other: KuiklyThreadScreenPayload): Boolean {
-    val source = sourceThreadId?.takeIf { it.isNotBlank() }
-    val otherSource = other.sourceThreadId?.takeIf { it.isNotBlank() }
-    if (source != null || otherSource != null) {
-        return source != null && source == otherSource
-    }
-    val parent = parentChannelId?.takeIf { it.isNotBlank() } to parentMessageId?.takeIf { it.isNotBlank() }
-    val otherParent = other.parentChannelId?.takeIf { it.isNotBlank() } to other.parentMessageId?.takeIf { it.isNotBlank() }
-    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || other.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
-        return parent.first != null &&
-            parent.second != null &&
-            parent == otherParent
-    }
-    return instanceId.isNotBlank() && instanceId == other.instanceId
+private fun KuiklyThreadScreenPayload.threadCandidateIdentity(serverId: ServerId? = null): ThreadCandidateIdentity {
+    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    val parentMessage =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+    val stream = streamChannelId?.takeIf { it.isNotBlank() }?.let(::ChannelId)
+    val source = sourceThreadId?.takeIf { it.isNotBlank() }?.let(::ThreadId)
+    return ThreadCandidateIdentity(
+        serverId = serverId,
+        threadId = source,
+        streamChannelId = stream ?: source?.let { ChannelId(it.value) },
+        parentChannelId = parentChannel,
+        parentMessageId = parentMessage?.let(::MessageId),
+        replyThread =
+            surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                (parentChannel != null && parentMessage != null)
+    )
 }
 
 private fun KuiklyThreadScreenPayload.readAllMarker(): ThreadReadAllMarker? {

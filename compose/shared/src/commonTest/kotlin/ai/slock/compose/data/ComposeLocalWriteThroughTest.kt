@@ -201,7 +201,7 @@ class ComposeLocalWriteThroughTest {
         assertEquals("parent-1", cached.parentMessage?.id?.value)
         assertEquals("parent-1", cached.messages.first().id.value)
         assertNull(store.readThread(ThreadId("wrong-thread")))
-        assertTrue(logs.any { it.startsWith("write_thread_fallback_skip source=test_wrong_fallback reason=unproven") })
+        assertTrue(logs.any { it.startsWith("write_thread_fallback_skip source=test_wrong_fallback reason=header_unproven") })
     }
 
     @Test
