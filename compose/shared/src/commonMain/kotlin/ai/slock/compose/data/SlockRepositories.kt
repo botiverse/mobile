@@ -316,6 +316,8 @@ interface InboxRepository {
         filter: InboxFilter = InboxFilter.All,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<InboxSnapshot> = loadInitial(serverId, filter, limit)
+
+    suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult>
 }
 
 interface SavedRepository {

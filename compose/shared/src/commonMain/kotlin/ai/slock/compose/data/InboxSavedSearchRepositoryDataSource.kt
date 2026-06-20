@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -28,6 +29,12 @@ private suspend fun SlockNetworkClient.inbox(
             "offset" to offset.toString()
         )
     )
+
+private suspend fun SlockNetworkClient.markInboxDone(
+    priority: DataRequestPriority,
+    bodyText: String
+): HomeNetworkResponse =
+    request(priority, "channels/inbox/done", method = "POST", bodyText = bodyText)
 
 private suspend fun SlockNetworkClient.saved(
     priority: DataRequestPriority,
@@ -99,6 +106,22 @@ class RealInboxRepository(
         offset: Int,
         limit: Int
     ): DataResult<InboxSnapshot> = load(serverId, filter, limit, offset)
+
+    override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> {
+        sessionStore.readSession() ?: return authRequired()
+        return executeInboxLike(
+            emptyReason = EmptyReason.NoInboxItems,
+            block = {
+                networkClient.markInboxDone(
+                    DataRequestPriority.Foreground,
+                    buildSharedInboxDoneBody(channelId)
+                )
+            },
+            source = "inbox_mark_done",
+            warningLogger = warningLogger,
+            mapper = { InboxDoneResult(channelId) }
+        )
+    }
 
     private suspend fun load(
         serverId: ServerId,
@@ -288,6 +311,14 @@ class RealSearchRepository(
 private data class SavedMessageCheckRequestBody(
     val messageIds: List<String>
 )
+
+@Serializable
+private data class InboxDoneRequestBody(
+    val channelId: String
+)
+
+private fun buildSharedInboxDoneBody(channelId: ChannelId): String =
+    inboxSavedSearchRepositoryJson.encodeToString(InboxDoneRequestBody(channelId = channelId.value))
 
 private fun buildSharedSavedMessageCheckBody(messageIds: List<String>): String =
     inboxSavedSearchRepositoryJson.encodeToString(SavedMessageCheckRequestBody(messageIds = messageIds))

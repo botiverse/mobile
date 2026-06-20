@@ -259,6 +259,17 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun inboxDoneUsesSharedDtoBody() = runBlocking {
+        val network = FakeInboxNetworkClient()
+        val repository = RealInboxRepository(sampleStore(), network)
+
+        val result = repository.markDone(ChannelId("channel-1"))
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(listOf("""{"channelId":"channel-1"}"""), network.inboxDoneBodies)
+    }
+
+    @Test
     fun savedCheckUsesBatchStatusContract() = runBlocking {
         val network = FakeInboxNetworkClient(savedCheckJson = """{"savedIds":["message-1","message-3"]}""")
         val repository = RealSavedRepository(sampleStore(), network)
@@ -307,6 +318,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val searchCalls = mutableListOf<SearchCall>()
         val saveBodies = mutableListOf<String>()
         val savedCheckBodies = mutableListOf<String>()
+        val inboxDoneBodies = mutableListOf<String>()
         val unsavedMessageIds = mutableListOf<String>()
 
         override suspend fun request(
@@ -337,6 +349,10 @@ class InboxSavedSearchRepositoryDataSourceTest {
                 normalized == "channels/saved/check" && method == "POST" -> {
                     savedCheckBodies += bodyText.orEmpty()
                     ok(savedCheckJson)
+                }
+                normalized == "channels/inbox/done" && method == "POST" -> {
+                    inboxDoneBodies += bodyText.orEmpty()
+                    ok("""{"ok":true}""")
                 }
                 normalized.startsWith("channels/saved/") && method == "DELETE" -> {
                     unsavedMessageIds += normalized.removePrefix("channels/saved/")

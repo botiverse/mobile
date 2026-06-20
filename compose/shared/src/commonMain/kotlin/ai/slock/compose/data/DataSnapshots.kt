@@ -315,6 +315,10 @@ data class InboxSnapshot(
     val nextOffset: Int? = null
 )
 
+data class InboxDoneResult(
+    val channelId: ChannelId
+)
+
 data class ChannelSnapshot(
     val server: ServerSummary,
     val channels: List<ConversationSummary>
