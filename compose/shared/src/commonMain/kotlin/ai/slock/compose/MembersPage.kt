@@ -2069,27 +2069,10 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
             }
         }
-        MembersDetailSection(title = "AVATAR") {
-            MembersDetailField("Current", member.avatarUrl ?: member.avatar?.wireValue ?: "Default")
-            if (canManage && !deleted) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton("Robot", SlockLucideIconName.Bot, enabled = !saving, modifier = Modifier.weight(1f)) {
-                        saveProfile(avatarUrl = "pixel:robot", includeAvatarUrl = true)
-                    }
-                    MembersSmallActionButton("Heart", SlockLucideIconName.Heart, enabled = !saving, modifier = Modifier.weight(1f)) {
-                        saveProfile(avatarUrl = "pixel:heart", includeAvatarUrl = true)
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton("Upload", SlockLucideIconName.Upload, enabled = !saving, modifier = Modifier.weight(1f)) {
-                        onUnavailableAction("Avatar upload is not available yet.")
-                    }
-                    MembersSmallActionButton("Clear", SlockLucideIconName.X, enabled = !saving, modifier = Modifier.weight(1f)) {
-                        saveProfile(avatarUrl = null, includeAvatarUrl = true)
-                    }
-                }
-            }
-        }
+        // AVATAR section removed in #49 — KMP-only inline 4 button picker (Robot/Heart/Upload/Clear)
+        // doesn't exist in React. Re-implement when React has an avatar picker modal that we
+        // can mirror via SlockBrutalModalLayer; the @artin's spec v1 (`artifacts/product/
+        // members-agent-detail-avatar-picker-spec-2026-06-21.md`) describes the full picker.
         MembersDetailSection(title = "RUNTIME") {
             MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
             MembersDetailField("Runtime", summary?.runtime.orBadgeFallback(member.roleDescription))
