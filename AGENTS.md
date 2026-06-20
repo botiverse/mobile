@@ -53,6 +53,27 @@ git submodule update --init --recursive third_party/slock-source
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
+## Route / PageData MVI Contract Rule
+
+- Iron rule: do not pass product content/state through route, launch, or
+  Kuikly `pageData` payloads. Pass only identity and intent, then let the
+  destination MVI store/repository load canonical state.
+- Visual, smoke, and test data must enter through fixtures/providers or direct
+  typed construction, not through production route parsers.
+- In-memory cache, durable local cache, realtime payloads, sparse responses,
+  and legacy fallback/context are candidate snapshots, not automatically
+  canonical state. Before using them in UI/MVI/cache/subscription/send scope,
+  match them to the current route identity (for example server id, channel id,
+  thread stream id, or parent channel id + parent message id). If they do not
+  match, discard them and reload through MVI. If they match, they may only fill
+  missing data and must never override canonical store state.
+- This candidate-snapshot validation is a migration and contamination guard,
+  not a long-term fallback payload architecture. The end state is no production
+  full content/state payload or fallback display metadata in route/pageData.
+- Guard this rule with structure-based tests: launch DTO descriptors,
+  production parser rejection/ignore behavior, and narrow static checks on
+  known route/pageData entry points. Do not use broad word-grep as a hard gate.
+
 ## Task / Commit / Thread Discipline
 
 Workflow rules for how every agent (human-supervised or autonomous) should move
