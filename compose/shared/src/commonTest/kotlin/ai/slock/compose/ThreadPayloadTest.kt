@@ -201,7 +201,7 @@ class ThreadPayloadTest {
 
     @Test
     fun invalidPayloadReturnsErrorState() {
-        val payload = parseThreadScreenPayload("{not-json", "{}", "bad-1")
+        val payload = parseThreadScreenPayload("{not-json", "bad-1")
 
         assertEquals("bad-1", payload.instanceId)
         assertEquals("error", payload.status)
@@ -223,7 +223,6 @@ class ThreadPayloadTest {
                       "composer": {"seedText": "must not load"}
                     }
                     """.trimIndent(),
-                fallbackPageData = "{}",
                 instanceId = "fallback"
             )
 
@@ -254,7 +253,6 @@ class ThreadPayloadTest {
                       ]
                     }
                     """.trimIndent(),
-                fallbackPageData = "{}",
                 instanceId = "fallback"
             )
 
@@ -305,11 +303,10 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun launchPayloadCanUseThreadIdAliasFromPageData() {
+    fun launchPayloadCanUseThreadIdAliasFromLaunchSource() {
         val payload =
             parseThreadScreenPayload(
-                payload = "",
-                fallbackPageData =
+                payload =
                     """
                     {
                       "instanceId": "page-1",
@@ -473,7 +470,6 @@ class ThreadPayloadTest {
                       ]
                     }
                     """.trimIndent(),
-                fallbackPageData = "{}",
                 instanceId = "fallback"
             )
 

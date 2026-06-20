@@ -1039,7 +1039,6 @@ private fun ThreadPageScreen() {
     val payload = remember(payloadText, instanceId) {
         parseThreadScreenPayload(
             payload = payloadText,
-            fallbackPageData = params.toString(),
             instanceId = instanceId
         )
     }
@@ -1171,15 +1170,11 @@ private fun ThreadPageScreen() {
 private fun ThreadMessageVisualScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
-    val payloadText = params.optString("payload")
+    val visualFixture = params.optString("visualFixture")
     val instanceId = params.optString("instanceId")
     val payload =
-        remember(payloadText, instanceId) {
-        parseThreadScreenPayload(
-            payload = payloadText,
-            fallbackPageData = params.toString(),
-            instanceId = instanceId
-        )
+        remember(visualFixture, instanceId) {
+            threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
     }
     val message = payload.messages.firstOrNull()
     Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
@@ -3879,16 +3874,9 @@ private fun String.toSharedThreadTaskStatus(): TaskStatus? =
 
 internal fun parseThreadScreenPayload(
     payload: String,
-    fallbackPageData: String,
     instanceId: String
 ): KuiklyThreadScreenPayload {
-    val primaryPayload = payload.trim()
-    val source =
-        when {
-            primaryPayload.isNotEmpty() -> primaryPayload
-            fallbackPageData.trim().isNotEmpty() -> fallbackPageData.trim()
-            else -> "{}"
-        }
+    val source = payload.trim().takeIf { it.isNotEmpty() } ?: "{}"
     parseThreadLaunchPayload(source, instanceId)?.let { return it }
     return KuiklyThreadScreenPayload(
         instanceId = instanceId,
@@ -3897,13 +3885,98 @@ internal fun parseThreadScreenPayload(
     )
 }
 
-private fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =
+internal fun parseThreadLaunchPayload(source: String, instanceId: String): KuiklyThreadScreenPayload? =
     runCatching {
         threadPageJson
             .decodeFromString(WireThreadLaunchPayload.serializer(), source)
             .takeIf { it.hasRouteIdentity() }
             ?.toInitialPayload(instanceId)
     }.getOrNull()
+
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+
+private fun threadVisualFixture(
+    fixture: String,
+    instanceId: String
+): KuiklyThreadScreenPayload {
+    val resolvedInstanceId = instanceId.ifBlank { "visual-thread-$fixture" }
+    return when (fixture) {
+        THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Thread visual fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-1",
+                sourceThreadId = "channel-1",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = true,
+                showMessageSaveAction = false,
+                showTaskOpenActions = true,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_user_reply",
+                            authorId = "user_artin",
+                            authorName = "Artin",
+                            authorKind = "human",
+                            isOwn = true,
+                            avatarLabel = "AR",
+                            timestampLabel = "05/20 12:48",
+                            messageType = "Chat",
+                            body = "我这边确认一下 right-side self message：自己的短消息应该靠右，头像也在右侧。关联 #design 和 @agent_android。",
+                            replyCount = 5,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply_2",
+                            taskId = "task_msg_10",
+                            taskNumber = 10,
+                            taskStatus = "in_review",
+                            taskAssigneeId = "user_artin",
+                            taskAssigneeName = "user_artin",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
+                                )
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent_android",
+                            displayName = "Android Developer",
+                            handle = "Android-Developer",
+                            kind = "agent",
+                            avatarLabel = "AD"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "user_artin",
+                            displayName = "Artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                filesPayload = "{}",
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        else ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                status = "error",
+                errorCode = "visual_fixture_unknown"
+            )
+    }
+}
 
 private fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }
 

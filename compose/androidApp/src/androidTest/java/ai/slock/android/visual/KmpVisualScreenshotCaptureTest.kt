@@ -97,7 +97,7 @@ class KmpVisualScreenshotCaptureTest {
             pageData =
                 JSONObject()
                     .put("instanceId", "visual-thread-message-row")
-                    .put("payload", threadMessageRowPayload().toString()),
+                    .put("visualFixture", "default"),
             crop = FULL_VIEWPORT_CROP
         )
     }
@@ -641,69 +641,6 @@ class KmpVisualScreenshotCaptureTest {
             .put("providerApiKey", providerApiKey)
             .put("advancedOpen", advancedOpen)
             .put("command", command)
-
-    private fun threadMessageRowPayload(): JSONObject =
-        JSONObject()
-            .put("instanceId", "visual-thread-message-row")
-            .put("title", "#design")
-            .put("subtitle", "Thread visual fixture")
-            .put("status", "content")
-            .put("selectedTab", "chat")
-            .put("showModeTabs", false)
-            .put("showComposer", false)
-            .put("joined", true)
-            .put("showReplyActions", true)
-            .put("alignOwnMessagesRight", true)
-            .put("showMessageSaveAction", false)
-            .put("showTaskOpenActions", true)
-            .put("showTaskStatusActions", false)
-            .put(
-                "members",
-                JSONArray()
-                    .put(
-                        JSONObject()
-                            .put("id", "agent_android")
-                            .put("displayName", "Android Developer")
-                            .put("handle", "Android-Developer")
-                            .put("kind", "agent")
-                            .put("avatarLabel", "AD")
-                    )
-                    .put(
-                        JSONObject()
-                            .put("id", "user_artin")
-                            .put("displayName", "Artin")
-                            .put("handle", "artin")
-                            .put("kind", "human")
-                            .put("avatarLabel", "AR")
-                    )
-            )
-            .put("messages", JSONArray().put(threadMessageRow()))
-
-    private fun threadMessageRow(): JSONObject =
-        JSONObject()
-            .put("id", "msg_user_reply")
-            .put("authorId", "user_artin")
-            .put("authorName", "Artin")
-            .put("isOwn", true)
-            .put("avatarLabel", "AR")
-            .put("timestampLabel", "05/20 12:48")
-            .put("messageType", "Chat")
-            .put(
-                "body",
-                "我这边确认一下 right-side self message：自己的短消息应该靠右，头像也在右侧。关联 #design 和 @agent_android。"
-            )
-            .put("replyCount", 5)
-            .put("unreadReplyCount", 2)
-            .put("firstUnreadReplyMessageId", "reply_2")
-            .put("taskId", "task_msg_10")
-            .put("taskNumber", 10)
-            .put("taskStatus", "in_review")
-            .put("taskAssigneeName", "user_artin")
-            .put(
-                "reactions",
-                JSONArray()
-                    .put(JSONObject().put("emoji", "👍").put("count", 1).put("selected", true))
-            )
 
     private fun conversation(
         id: String,
