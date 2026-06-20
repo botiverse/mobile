@@ -2069,10 +2069,16 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
             }
         }
-        // AVATAR section removed in #49 — KMP-only inline 4 button picker (Robot/Heart/Upload/Clear)
-        // doesn't exist in React. Re-implement when React has an avatar picker modal that we
-        // can mirror via SlockBrutalModalLayer; the @artin's spec v1 (`artifacts/product/
-        // members-agent-detail-avatar-picker-spec-2026-06-21.md`) describes the full picker.
+        // AVATAR section: display the agent's current avatar only. The KMP-only inline 4 button
+        // picker (Robot/Heart/Upload/Clear) was removed in `ff806c04` because it doesn't exist
+        // in React. Phase 2 of #49 will add a clickable avatar tile that opens a modal picker
+        // mirroring React `AgentDetailPanel.tsx` (modal with 17 quick-pick grid + system file
+        // picker upload + clear). Until then users cannot change agent avatar from this UI.
+        MembersDetailSection(title = "AVATAR") {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                MembersAvatar(member = member, avatarSize = 96.dp)
+            }
+        }
         MembersDetailSection(title = "RUNTIME") {
             MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
             MembersDetailField("Runtime", summary?.runtime.orBadgeFallback(member.roleDescription))
