@@ -2,15 +2,11 @@ package ai.slock.compose
 
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 
 class SettingsStandaloneLaunchPayloadTest {
-    private val json = Json { encodeDefaults = true }
-
     @Test
     @OptIn(ExperimentalSerializationApi::class)
     fun settingsLaunchWireSchemasExcludeContentFields() {
@@ -83,17 +79,169 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     @Test
-    fun explicitAccountContentPayloadStillRendersSmokeData() {
+    fun explicitSettingsHomeContentPayloadIsTreatedAsLaunchOnly() {
+        val payload =
+            parseSettingsHomePayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-home-explicit",
+                      "title": "Stale Settings",
+                      "subtitle": "Should not render",
+                      "items": [
+                        {"key":"billing","title":"Stale Billing","subtitle":"content"}
+                      ],
+                      "showSelection": true
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"fallback"}""",
+                instanceId = "fallback"
+            )
+
+        assertEquals("settings-home-explicit", payload.instanceId)
+        assertEquals("Settings", payload.title)
+        assertEquals("", payload.subtitle)
+        assertEquals(emptyList(), payload.items)
+    }
+
+    @Test
+    fun explicitAccountContentPayloadIsTreatedAsLaunchOnly() {
         val payload =
             parseSettingsAccountPayload(
-                payload = json.encodeToString(settingsAccountSmokePayload),
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-account-explicit",
+                      "profile": {
+                        "displayName": "Stale User",
+                        "handle": "@stale",
+                        "email": "stale@example.com"
+                      },
+                      "connectedAccounts": [
+                        {"providerId":"github","provider":"GitHub","identifier":"stale","status":"connected"}
+                      ],
+                      "canEditProfile": true,
+                      "canUploadAvatar": true,
+                      "canChangePassword": true
+                    }
+                    """.trimIndent(),
                 fallbackPageData = """{"instanceId":"launch-only"}""",
                 instanceId = "fallback"
             )
 
-        assertEquals("settings-account-smoke", payload.instanceId)
-        assertEquals("Artin", payload.profile.displayName)
-        assertEquals(3, payload.connectedAccounts.size)
+        assertEquals("settings-account-explicit", payload.instanceId)
+        assertEquals("", payload.profile.displayName)
+        assertEquals("", payload.profile.email)
+        assertEquals(emptyList(), payload.connectedAccounts)
+        assertEquals(false, payload.canEditProfile)
+        assertEquals(false, payload.canUploadAvatar)
+        assertEquals(false, payload.canChangePassword)
+    }
+
+    @Test
+    fun explicitBillingContentPayloadIsTreatedAsLaunchOnly() {
+        val payload =
+            parseSettingsBillingPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-billing-explicit",
+                      "status": "content",
+                      "currentPlan": {"planName":"Enterprise","trialActive":true},
+                      "plans": [
+                        {"id":"enterprise","name":"Enterprise","price":"$999","features":["stale"]}
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"fallback"}""",
+                instanceId = "fallback"
+            )
+
+        assertEquals("settings-billing-explicit", payload.instanceId)
+        assertEquals("loading", payload.status)
+        assertEquals(emptyList(), payload.plans)
+        assertEquals(false, payload.currentPlan.trialActive)
+    }
+
+    @Test
+    fun explicitStorageContentPayloadIsTreatedAsLaunchOnly() {
+        val payload =
+            parseSettingsStoragePayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-storage-explicit",
+                      "totalSize": "99 GB",
+                      "rows": [
+                        {"target":"database","title":"Stale DB","size":"99 GB"}
+                      ]
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"fallback"}""",
+                instanceId = "fallback"
+            )
+
+        assertEquals("settings-storage-explicit", payload.instanceId)
+        assertEquals("0 B", payload.totalSize)
+        assertEquals(emptyList(), payload.rows)
+    }
+
+    @Test
+    fun explicitComputersContentPayloadIsTreatedAsLaunchOnly() {
+        val payload =
+            parseSettingsComputersPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-computers-explicit",
+                      "computers": [
+                        {"id":"machine-1","name":"Stale Machine","online":true}
+                      ],
+                      "latestDaemonVersion": "9.9.9",
+                      "canAddComputer": true
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"fallback"}""",
+                instanceId = "fallback"
+            )
+
+        assertEquals("settings-computers-explicit", payload.instanceId)
+        assertEquals("loading", payload.status)
+        assertEquals(emptyList(), payload.computers)
+        assertEquals(null, payload.latestDaemonVersion)
+        assertEquals(false, payload.canAddComputer)
+    }
+
+    @Test
+    fun explicitComputerDetailContentPayloadKeepsOnlyLaunchIdentity() {
+        val payload =
+            parseSettingsComputerDetailPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "settings-computer-detail-explicit",
+                      "computerId": "machine-1",
+                      "computerName": "Build Host",
+                      "computer": {"id":"other","name":"Wrong Host"},
+                      "workspaces": [
+                        {"id":"workspace-1","name":"Stale Workspace"}
+                      ],
+                      "agents": [
+                        {"id":"agent-1","name":"Stale Agent"}
+                      ],
+                      "canManageMachines": true
+                    }
+                    """.trimIndent(),
+                fallbackPageData = """{"instanceId":"fallback"}""",
+                instanceId = "fallback"
+            )
+
+        assertEquals("settings-computer-detail-explicit", payload.instanceId)
+        assertEquals("machine-1", payload.computer.id)
+        assertEquals("Build Host", payload.computer.name)
+        assertEquals(emptyList(), payload.workspaces)
+        assertEquals(emptyList(), payload.agents)
+        assertEquals(false, payload.canManageMachines)
     }
 
     @Test

@@ -44,15 +44,8 @@ internal fun parseSettingsHomePayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsHomePayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsHomePayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsHomePayload(instanceId = instanceId) }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsHomeLaunchPayload.serializer(),
         default = WireSettingsHomeLaunchPayload(instanceId = instanceId)
@@ -65,15 +58,8 @@ internal fun parseSettingsAccountPayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsAccountPayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsAccountPayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { safeSettingsAccountLaunchPayload(instanceId) }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsAccountLaunchPayload.serializer(),
         default = WireSettingsAccountLaunchPayload(instanceId = instanceId)
@@ -86,15 +72,8 @@ internal fun parseSettingsBillingPayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsBillingPayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsBillingPayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsBillingPayload(instanceId = instanceId, status = "error") }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsBillingLaunchPayload.serializer(),
         default = WireSettingsBillingLaunchPayload(instanceId = instanceId)
@@ -110,15 +89,8 @@ internal fun parseSettingsStoragePayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsStoragePayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsStoragePayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsStoragePayload(instanceId = instanceId) }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsStorageLaunchPayload.serializer(),
         default = WireSettingsStorageLaunchPayload(instanceId = instanceId)
@@ -131,15 +103,8 @@ internal fun parseSettingsComputersPayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsComputersPayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsComputersPayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsComputersPayload(instanceId = instanceId, status = "error") }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsComputersLaunchPayload.serializer(),
         default = WireSettingsComputersLaunchPayload(instanceId = instanceId)
@@ -155,15 +120,8 @@ internal fun parseSettingsComputerDetailPayload(
     fallbackPageData: String,
     instanceId: String
 ): KuiklySettingsComputerDetailPayload {
-    val primaryPayload = payload.trim()
-    if (primaryPayload.isNotEmpty()) {
-        return runCatching {
-            settingsStandaloneJson
-                .decodeFromString(KuiklySettingsComputerDetailPayload.serializer(), primaryPayload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsComputerDetailPayload(instanceId = instanceId) }
-    }
     val launch = parseSettingsLaunchPayload(
+        payload = payload,
         fallbackPageData = fallbackPageData,
         serializer = WireSettingsComputerDetailLaunchPayload.serializer(),
         default = WireSettingsComputerDetailLaunchPayload(instanceId = instanceId)
@@ -188,11 +146,15 @@ private fun safeSettingsAccountLaunchPayload(instanceId: String): KuiklySettings
     )
 
 private fun <T> parseSettingsLaunchPayload(
+    payload: String,
     fallbackPageData: String,
     serializer: kotlinx.serialization.KSerializer<T>,
     default: T
 ): T =
     runCatching {
-        val source = fallbackPageData.trim().takeIf { it.isNotEmpty() } ?: "{}"
+        val source = payload.trim()
+            .takeIf { it.isNotEmpty() }
+            ?: fallbackPageData.trim().takeIf { it.isNotEmpty() }
+            ?: "{}"
         settingsStandaloneJson.decodeFromString(serializer, source)
     }.getOrElse { default }

@@ -11939,6 +11939,7 @@ private fun SettingsHomeScreen() {
     val bridge = Utils.bridgeModule(pager.pagerId)
     val payload = rememberSettingsHomePayload(
         pager.pageData.params.optString("payload"),
+        pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
     LaunchedEffect(payload.instanceId, payload.items.size) {
@@ -11950,13 +11951,17 @@ private fun SettingsHomeScreen() {
 }
 
 @Composable
-private fun rememberSettingsHomePayload(payload: String, instanceId: String): KuiklySettingsHomePayload =
-    androidx.compose.runtime.remember(payload, instanceId) {
-        runCatching {
-            Json { ignoreUnknownKeys = true }
-                .decodeFromString(KuiklySettingsHomePayload.serializer(), payload)
-                .let { if (it.instanceId.isBlank()) it.copy(instanceId = instanceId) else it }
-        }.getOrElse { KuiklySettingsHomePayload(instanceId = instanceId) }
+private fun rememberSettingsHomePayload(
+    payload: String,
+    fallbackPageData: String,
+    instanceId: String
+): KuiklySettingsHomePayload =
+    androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
+        parseSettingsHomePayload(
+            payload = payload,
+            fallbackPageData = fallbackPageData,
+            instanceId = instanceId
+        )
     }
 
 @Composable
