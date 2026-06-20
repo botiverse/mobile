@@ -4,6 +4,8 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
+import com.tencent.kuikly.core.manager.BridgeManager
+import com.tencent.kuikly.core.module.RouterModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -67,6 +69,7 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 const val SLOCK_HOME_PAGE = "compose_home"
@@ -315,7 +318,7 @@ private fun SlockHomePageContent() {
         onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
         onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
-        onChannelClick = { bridge.settingsEvent(payload.instanceId, "openChannel", it) },
+        onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
         onChannelLongPress = { conversationId, _ ->
             bridge.settingsEvent(payload.instanceId, "openPinMenu", conversationId)
         },
@@ -324,6 +327,53 @@ private fun SlockHomePageContent() {
         }
     )
 }
+
+/**
+ * #228: open the thread page for a conversation that the sidebar / pinned list
+ * references by id. Replaces the prior `bridge.settingsEvent("openChannel", id)` path
+ * which went through the host bridge and silently failed to preserve surfaceKind.
+ * Direct `pager.openPage("compose_thread", payload)` route keeps surfaceKind intact
+ * so the thread page's `#226` showMembers/showSettings guards and `#227` header label
+ * both see the correct kind (Channel / DirectMessage / ReplyThread).
+ */
+private fun openThreadPageFromConversationId(
+    pager: Pager,
+    payload: SlockHomePayload,
+    conversationId: String
+) {
+    val conversation =
+        payload.channels.firstOrNull { it.id == conversationId }
+            ?: payload.directMessages.firstOrNull { it.id == conversationId }
+            ?: return
+    val surfaceKind =
+        when (conversation.kind) {
+            "dm", "direct_message", "direct-message", "private" ->
+                KuiklyThreadSurfaceKind.DirectMessage
+            "thread" -> KuiklyThreadSurfaceKind.ReplyThread
+            else -> KuiklyThreadSurfaceKind.Channel
+        }
+    val threadChannelId = conversationId.takeIf { surfaceKind != KuiklyThreadSurfaceKind.Channel }
+    val launchPayload =
+        WireThreadLaunchPayload(
+            instanceId = "${payload.instanceId}:$conversationId",
+            title = "#${conversation.name}",
+            subtitle = null,
+            surfaceKind = surfaceKind,
+            threadId = threadChannelId,
+            sourceThreadId = if (surfaceKind == KuiklyThreadSurfaceKind.Channel) conversationId else null,
+            streamChannelId = threadChannelId,
+            parentChannelId = if (surfaceKind != KuiklyThreadSurfaceKind.Channel) conversationId else null,
+            parentMessageId = null
+        )
+    val pageData =
+        JSONObject().apply {
+            put("payload", threadPageJson.encodeToString(launchPayload))
+            put("instanceId", launchPayload.instanceId)
+        }
+    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
+}
+
+private val threadPageJson = Json { ignoreUnknownKeys = true }
 
 @Composable
 private fun HomeTitlebarVisualScreen() {
