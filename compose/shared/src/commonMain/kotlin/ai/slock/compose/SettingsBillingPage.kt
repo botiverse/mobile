@@ -422,24 +422,15 @@ private fun BillingActions(
 
 @Composable
 private fun BillingActionButton(action: KuiklySettingsBillingAction, onClick: () -> Unit) {
-    val background =
-        when {
-            action.style == "danger" -> SlockColor.AccentRed
-            action.enabled -> SlockColor.SurfaceWhite
-            else -> SlockColor.EmptyStateGray
-        }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockBrutalActionButton(
             label = action.label,
             onClick = onClick,
             enabled = action.enabled,
             modifier = Modifier.fillMaxWidth(),
-            backgroundColor = background,
-            disabledBackgroundColor = background,
             minWidth = 0.dp,
             minHeight = 38.dp,
-            shadowOffset = 2.dp,
-            textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
+            shadowOffset = 2.dp
         )
         action.detail.takeIf { it.isNotBlank() }?.let { detail ->
             Text(detail, style = SlockType.TabLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
