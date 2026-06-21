@@ -1696,7 +1696,24 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                         onPressEnd?.invoke()
                     },
                     onTap = { onClick?.invoke() },
-                    onLongPress = { onLongPress.invoke(rowAnchor) }
+                    // #223 (@artin 21 15:11): anchor menu at the user's actual
+                    // long-press position rather than the row's top-left.
+                    // The offset comes in row-local coordinates; add it to the
+                    // row's screen position so the caller sees root-space px.
+                    onLongPress = { pressOffset ->
+                        // #223 (@artin 21 15:11): anchor the menu at the user's
+                        // actual long-press position rather than the row's
+                        // top-left. X follows the finger (root px); Y stays at
+                        // row.bottom + 8dp gap so the menu still drops below
+                        // the row. Screen-edge clamping (flip left / clamp) is
+                        // handled by horizontalAutoFlip in positionContent.
+                        val rowHeightPx = this.size.height
+                        val longPressAnchor = Offset(
+                            x = rowAnchor.x + pressOffset.x,
+                            y = rowAnchor.y + rowHeightPx
+                        )
+                        onLongPress.invoke(longPressAnchor)
+                    }
                 )
             }
         } else if (onClick != null) {
@@ -1833,7 +1850,24 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         onPressEnd?.invoke()
                     },
                     onTap = { onClick?.invoke() },
-                    onLongPress = { onLongPress.invoke(rowAnchor) }
+                    // #223 (@artin 21 15:11): anchor menu at the user's actual
+                    // long-press position rather than the row's top-left.
+                    // The offset comes in row-local coordinates; add it to the
+                    // row's screen position so the caller sees root-space px.
+                    onLongPress = { pressOffset ->
+                        // #223 (@artin 21 15:11): anchor the menu at the user's
+                        // actual long-press position rather than the row's
+                        // top-left. X follows the finger (root px); Y stays at
+                        // row.bottom + 8dp gap so the menu still drops below
+                        // the row. Screen-edge clamping (flip left / clamp) is
+                        // handled by horizontalAutoFlip in positionContent.
+                        val rowHeightPx = this.size.height
+                        val longPressAnchor = Offset(
+                            x = rowAnchor.x + pressOffset.x,
+                            y = rowAnchor.y + rowHeightPx
+                        )
+                        onLongPress.invoke(longPressAnchor)
+                    }
                 )
             }
         } else if (onClick != null) {
