@@ -89,11 +89,12 @@ fun Markdown(
     val state = rememberMarkdownState()
     LaunchedEffect(content) {
         val parseStartMark = TimeSource.Monotonic.markNow()
-        state.parse(content, false)
+        val cacheHit = state.parse(content, false)
         val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
         if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
             slockMarkdownLogSubTrace(
-                "phase=markdown.layout.parse_tree durationUs=$parseDurationUs bodyLength=${content.length}"
+                "phase=markdown.layout.parse_tree durationUs=$parseDurationUs " +
+                    "bodyLength=${content.length} cacheHit=$cacheHit"
             )
         }
     }
