@@ -33,6 +33,12 @@ val restoreTmmCommonPluginSources by tasks.registering(Sync::class) {
     from(generatedTmmCommonSourceDir.map { it.dir("src") })
     into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
 }
+val finalizeTmmCommonPluginSources by tasks.registering(Sync::class) {
+    dependsOn(stageTmmCommonSources)
+    outputs.upToDateWhen { false }
+    from(generatedTmmCommonSourceDir.map { it.dir("src") })
+    into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
+}
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
@@ -160,18 +166,22 @@ ksp {
 
 tasks.matching { it.name == "compileDebugKotlinAndroid" || it.name == "compileReleaseKotlinAndroid" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
+    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
+    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
+    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
+    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
@@ -180,6 +190,7 @@ tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
 
 tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
     mustRunAfter(stageTmmCommonSources)
+    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { task ->
