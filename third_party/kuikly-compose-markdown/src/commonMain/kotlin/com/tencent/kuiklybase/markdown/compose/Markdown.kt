@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -86,7 +88,14 @@ fun Markdown(
 ) {
     val state = rememberMarkdownState()
     LaunchedEffect(content) {
+        val parseStartMark = TimeSource.Monotonic.markNow()
         state.parse(content, false)
+        val parseDurationUs = slockMarkdownMonotonicNanosSince(parseStartMark) / 1_000L
+        if (parseDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+            slockMarkdownLogSubTrace(
+                "phase=markdown.layout.parse_tree durationUs=$parseDurationUs bodyLength=${content.length}"
+            )
+        }
     }
 
     Markdown(
@@ -187,6 +196,7 @@ fun MarkdownSuccess(
     val content = { state.getContent() }
     val skipLinkDefinition = state.skipLinkDefinition()
     val rememberedComponents = remember { components }
+    val renderStartMark = TimeSource.Monotonic.markNow()
     Column(modifier = modifier) {
         state.nodeListState.forEachIndexed { index, result ->
             handleElement(
@@ -198,4 +208,19 @@ fun MarkdownSuccess(
             )
         }
     }
+    val renderDurationUs = slockMarkdownMonotonicNanosSince(renderStartMark) / 1_000L
+    if (renderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace(
+            "phase=markdown.layout.render_nodes durationUs=$renderDurationUs nodeCount=${state.nodeListState.size}"
+        )
+    }
+}
+
+private const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
+
+internal fun slockMarkdownMonotonicNanosSince(mark: TimeMark): Long =
+    mark.elapsedNow().inWholeNanoseconds
+
+internal fun slockMarkdownLogSubTrace(message: String) {
+    println("SlockMarkdownSpike $message")
 }
