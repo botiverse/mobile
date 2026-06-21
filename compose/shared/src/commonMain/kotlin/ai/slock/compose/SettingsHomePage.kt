@@ -2037,6 +2037,7 @@ private fun SlockAppShellContent() {
                         SharedTasksScreen(
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
+                            bottomContentPadding = appShellBottomContentInset,
                             onOpenTask = { task ->
                                 appShellCoroutineScope.launch {
                                     openAppShellTaskThread(
@@ -2149,7 +2150,8 @@ private fun SlockAppShellContent() {
                             createAgentCoordinator = createAgentCoordinator,
                             settingsCapabilities = settingsCapabilities,
                             agentDetailRefreshKey = membersAgentDetailRefreshKey,
-                            timeContext = threadTimeContext
+                            timeContext = threadTimeContext,
+                            bottomContentPadding = appShellBottomContentInset
                         )
                     }
                     val settingsTabContent: @Composable (active: Boolean) -> Unit = {
@@ -7884,7 +7886,8 @@ private fun SharedMembersScreen(
     createAgentCoordinator: SharedCreateAgentCoordinator,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     agentDetailRefreshKey: Int,
-    timeContext: AppShellTimeContext?
+    timeContext: AppShellTimeContext?,
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
@@ -8112,7 +8115,8 @@ private fun SharedMembersScreen(
                 createAgentMachines = createAgentMachines,
                 createAgentMachinesLoading = createAgentMachinesLoading,
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
-                createAgentLoadMachines = loadMachines
+                createAgentLoadMachines = loadMachines,
+                bottomContentPadding = bottomContentPadding
             )
         }
     }

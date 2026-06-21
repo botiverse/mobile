@@ -84,7 +84,8 @@ internal fun SharedTasksScreen(
     state: TasksUiState,
     onIntent: (SharedTasksRouteIntent) -> Unit,
     modifier: Modifier = Modifier,
-    onOpenTask: ((TaskSummary) -> Unit)? = null
+    onOpenTask: ((TaskSummary) -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     SharedTasksPanel(
         state = state,
@@ -92,7 +93,8 @@ internal fun SharedTasksScreen(
         modifier = modifier,
         showHeader = true,
         showChannelFilter = true,
-        onOpenTask = onOpenTask
+        onOpenTask = onOpenTask,
+        bottomContentPadding = bottomContentPadding
     )
 }
 
@@ -106,7 +108,8 @@ internal fun SharedTasksPanel(
     /** When non-null, render the New Task button and dispatch [SharedTasksRouteIntent.CreateTasks] against this channel.
      *  Server-mode (no implicit channel) leaves this null and the button is hidden. */
     createTasksChannelId: ChannelId? = null,
-    onOpenTask: ((TaskSummary) -> Unit)? = null
+    onOpenTask: ((TaskSummary) -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -149,7 +152,8 @@ internal fun SharedTasksPanel(
                     showChannelFilter = showChannelFilter,
                     createTasksChannelId = createTasksChannelId,
                     onOpenTask = onOpenTask,
-                    onIntent = onIntent
+                    onIntent = onIntent,
+                    bottomContentPadding = bottomContentPadding
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
@@ -281,7 +285,8 @@ private fun SharedTasksLoadedBody(
     showChannelFilter: Boolean,
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
-    onIntent: (SharedTasksRouteIntent) -> Unit
+    onIntent: (SharedTasksRouteIntent) -> Unit,
+    bottomContentPadding: Dp
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
@@ -292,7 +297,8 @@ private fun SharedTasksLoadedBody(
             createTasksChannelId = createTasksChannelId,
             onOpenTask = onOpenTask,
             onIntent = onIntent,
-            defaultViewMode = defaultTasksViewMode(maxWidth)
+            defaultViewMode = defaultTasksViewMode(maxWidth),
+            bottomContentPadding = bottomContentPadding
         )
     }
 }
@@ -306,7 +312,8 @@ private fun SharedTasksLoadedBodyContent(
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
-    defaultViewMode: TasksViewMode
+    defaultViewMode: TasksViewMode,
+    bottomContentPadding: Dp
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -503,7 +510,8 @@ private fun SharedTasksLoadedBodyContent(
                                     onLongPressTask = { task, anchor ->
                                         statusMenuTask = task
                                         statusMenuAnchor = anchor
-                                    }
+                                    },
+                                    bottomContentPadding = bottomContentPadding
                                 )
                             }
                         }
@@ -523,7 +531,13 @@ private fun SharedTasksLoadedBodyContent(
                         } else {
                             LazyColumn(
                                 modifier = Modifier.fillMaxSize(),
-                                contentPadding = PaddingValues(SlockSpacing.Md),
+                                contentPadding =
+                                    PaddingValues(
+                                        start = SlockSpacing.Md,
+                                        top = SlockSpacing.Md,
+                                        end = SlockSpacing.Md,
+                                        bottom = bottomContentPadding
+                                    ),
                                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                                 beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(visibleContent.filteredTasks.size)
                             ) {
@@ -849,7 +863,8 @@ private fun SharedTasksBoardColumn(
     onToggleCollapsed: () -> Unit,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onStatusBadgeClick: (TaskSummary, Offset) -> Unit,
-    onLongPressTask: (TaskSummary, Offset) -> Unit
+    onLongPressTask: (TaskSummary, Offset) -> Unit,
+    bottomContentPadding: Dp
 ) {
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list
@@ -882,6 +897,7 @@ private fun SharedTasksBoardColumn(
                 // own cards independently — mirrors the React board's per-column overflow.
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = bottomContentPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(tasks.size)
                 ) {

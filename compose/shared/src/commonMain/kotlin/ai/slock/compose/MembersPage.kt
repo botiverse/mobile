@@ -813,7 +813,8 @@ internal fun MembersRouteContent(
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: () -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {}
+    inviteHumanLoadJoinLink: () -> Unit = {},
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
@@ -886,7 +887,8 @@ internal fun MembersRouteContent(
             inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
             inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
             inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() }
+            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+            bottomContentPadding = bottomContentPadding
         )
     }
 }
@@ -908,7 +910,8 @@ internal fun MembersListContent(
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: () -> Unit = {},
-    inviteHumanLoadJoinLink: () -> Unit = {}
+    inviteHumanLoadJoinLink: () -> Unit = {},
+    bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val groupedMembers = remember(payload.members) {
         payload.members.groupBy {
@@ -1021,6 +1024,7 @@ internal fun MembersListContent(
                     )
                 }
             }
+            item { Spacer(Modifier.height(bottomContentPadding)) }
         }
     }
     val submit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = createAgentSubmit
