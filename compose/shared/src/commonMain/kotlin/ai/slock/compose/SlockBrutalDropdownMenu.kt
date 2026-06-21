@@ -75,12 +75,16 @@ internal fun SlockBrutalDropdownMenu(
     val popoverWidth = widthDp.dp
     val shadowOffsetDp = SlockBrutalDropdownMenuShadowOffsetValue.dp
     val rowHeight = SlockBrutalDropdownMenuRowHeightValue.dp
-    // Card height = n * rowHeight + (n-1) hairline dividers + outer border. The
-    // SlockAnchoredPopover only needs an upper bound for vertical auto-flip; the actual
-    // content size is set by the Column inside, so this is purely advisory.
+    // Card height = max(n * rowHeight, rowHeight) for a visible "no actions" placeholder
+    // when items is empty + shadow offset. SlockAnchoredPopover only needs an upper bound
+    // for vertical auto-flip; the actual content size is set by the Column inside, so this
+    // is purely advisory. We always reserve at least one row so an empty items list still
+    // produces a visible card (e.g. a non-admin user clicking the trigger still sees a
+    // "No actions available" panel rather than a 4px-tall sliver).
+    val effectiveRowCount = items.size.coerceAtLeast(1)
     val contentSize = Size(
         width = widthDp + SlockBrutalDropdownMenuShadowOffsetValue,
-        height = (items.size * SlockBrutalDropdownMenuRowHeightValue) + SlockBrutalDropdownMenuShadowOffsetValue
+        height = (effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue) + SlockBrutalDropdownMenuShadowOffsetValue
     )
     SlockAnchoredPopover(
         anchor = anchor,
@@ -109,24 +113,28 @@ internal fun SlockBrutalDropdownMenu(
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .slockFloatingContentClickTarget()
             ) {
-                items.forEachIndexed { index, item ->
-                    SlockBrutalDropdownMenuRow(
-                        item = item,
-                        rowHeight = rowHeight,
-                        onClick = {
-                            if (item.enabled) {
-                                onSelect(item.id)
+                if (items.isEmpty()) {
+                    SlockBrutalDropdownMenuEmptyRow(rowHeight = rowHeight)
+                } else {
+                    items.forEachIndexed { index, item ->
+                        SlockBrutalDropdownMenuRow(
+                            item = item,
+                            rowHeight = rowHeight,
+                            onClick = {
+                                if (item.enabled) {
+                                    onSelect(item.id)
+                                }
+                                onDismiss()
                             }
-                            onDismiss()
-                        }
-                    )
-                    if (index < items.lastIndex) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(SlockStroke.Thin)
-                                .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
                         )
+                        if (index < items.lastIndex) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(SlockStroke.Thin)
+                                    .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
+                            )
+                        }
                     }
                 }
             }
@@ -172,6 +180,30 @@ private fun SlockBrutalDropdownMenuRow(
                 lineHeight = 16.sp
             ).withSlockFontWeight(FontWeight.Bold),
             color = labelColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SlockBrutalDropdownMenuEmptyRow(rowHeight: Dp) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(rowHeight)
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "No actions available",
+            style = SlockType.Caption.copy(
+                fontSize = 11.sp,
+                lineHeight = 14.sp
+            ).withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)

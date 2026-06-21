@@ -1546,7 +1546,7 @@ private fun MembersDetailContent(
             )
         }
         val dropdownAnchor = managementMenuAnchor
-        if (managementMenuOpen && dropdownAnchor != null && member.kind == MemberKind.Agent) {
+        if (managementMenuOpen && member.kind == MemberKind.Agent) {
             val menuSummary = detail?.summary
             val menuStatus = member.membersResolvedAgentStatus(menuSummary?.status, menuSummary?.activity)
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
@@ -1560,7 +1560,7 @@ private fun MembersDetailContent(
                 inProgress = actionState?.inProgress == true || diagnosticActionState?.inProgress == true
             )
             SlockBrutalDropdownMenu(
-                anchor = dropdownAnchor,
+                anchor = dropdownAnchor ?: Offset(100f, 100f),
                 items = menuItems,
                 onSelect = { id ->
                     handleMembersManagementMenuSelection(
@@ -1728,6 +1728,7 @@ private fun MembersDetailHeader(
     onRequestManagementMenu: (Offset) -> Unit
 ) {
     val summary = detail?.summary
+    var threeDotButtonCenter by remember { mutableStateOf<Offset?>(null) }
     val statusLabel =
         if (deleted) {
             "Deleted"
@@ -1811,14 +1812,10 @@ private fun MembersDetailHeader(
                 onClick = onOpenDirectMessage
             )
             if (member.kind == MemberKind.Agent) {
-                var threeDotButtonCenter by remember { mutableStateOf<Offset?>(null) }
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Ellipsis,
                     onClick = {
-                        val anchor = threeDotButtonCenter
-                        if (anchor != null) {
-                            onRequestManagementMenu(anchor)
-                        }
+                        onRequestManagementMenu(threeDotButtonCenter ?: Offset.Zero)
                     },
                     size = MembersActionSize,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
