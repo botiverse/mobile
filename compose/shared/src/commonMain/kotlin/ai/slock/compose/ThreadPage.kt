@@ -149,6 +149,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.math.roundToInt
 import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
@@ -6987,25 +6988,73 @@ private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
 private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {
     Canvas(modifier = Modifier.fillMaxSize()) {
         drawRect(spec.background)
-        val cellSize = size.width / ThreadPixelAvatarGridSize
-        spec.grid.forEachIndexed { rowIndex, row ->
-            row.forEachIndexed { columnIndex, key ->
-                val color = ThreadPixelAvatarPalette[key] ?: Color.Transparent
-                if (color != Color.Transparent) {
-                    drawRect(
-                        color = color,
-                        topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
-                        size = Size(cellSize, cellSize)
-                    )
-                }
-            }
+        spec.spans.forEach { span ->
+            val left = threadPixelAvatarGridEdge(span.startColumnIndex, size.width)
+            val right = threadPixelAvatarGridEdge(span.startColumnIndex + span.columnCount, size.width)
+            val top = threadPixelAvatarGridEdge(span.rowIndex, size.height)
+            val bottom = threadPixelAvatarGridEdge(span.rowIndex + 1, size.height)
+            drawRect(
+                color = span.color,
+                topLeft = Offset(left, top),
+                size = Size(right - left, bottom - top)
+            )
         }
     }
 }
 
-private data class ThreadPixelAvatarSpec(val background: Color, val grid: List<String>)
+private fun threadPixelAvatarGridEdge(index: Int, extent: Float): Float =
+    when {
+        index <= 0 -> 0f
+        index >= ThreadPixelAvatarGridCellCount -> extent
+        else -> (extent * index / ThreadPixelAvatarGridCellCount).roundToInt().toFloat()
+    }
 
-private const val ThreadPixelAvatarGridSize = 8f
+private data class ThreadPixelAvatarSpec(val background: Color, val grid: List<String>) {
+    val spans: List<ThreadPixelAvatarSpan> =
+        buildList {
+            grid.forEachIndexed { rowIndex, row ->
+                var spanColor: Color? = null
+                var spanStart = 0
+                var spanLength = 0
+                fun flushSpan() {
+                    val color = spanColor ?: return
+                    add(
+                        ThreadPixelAvatarSpan(
+                            rowIndex = rowIndex,
+                            startColumnIndex = spanStart,
+                            columnCount = spanLength,
+                            color = color
+                        )
+                    )
+                    spanColor = null
+                    spanLength = 0
+                }
+                row.forEachIndexed { columnIndex, key ->
+                    val color = ThreadPixelAvatarPalette[key] ?: Color.Transparent
+                    when {
+                        color == Color.Transparent -> flushSpan()
+                        color == spanColor -> spanLength += 1
+                        else -> {
+                            flushSpan()
+                            spanColor = color
+                            spanStart = columnIndex
+                            spanLength = 1
+                        }
+                    }
+                }
+                flushSpan()
+            }
+        }
+}
+
+private data class ThreadPixelAvatarSpan(
+    val rowIndex: Int,
+    val startColumnIndex: Int,
+    val columnCount: Int,
+    val color: Color
+)
+
+private const val ThreadPixelAvatarGridCellCount = 8
 private const val ThreadPixelAvatarProtocolPrefix = "pixel:"
 private const val ThreadPixelAvatarRandomPrefix = "random:"
 private const val ThreadPixelAvatarDefaultKey = "robot"
@@ -7070,8 +7119,8 @@ private fun String.removeThreadPrefixOrNull(prefix: String): String? =
 private fun randomThreadPixelAvatar(seed: String): ThreadPixelAvatarSpec {
     val random = ThreadPixelAvatarRandom(threadPixelHash(seed))
     val (background, fill) = ThreadPixelAvatarRandomOptions[(random.next() * ThreadPixelAvatarRandomOptions.size).toInt()]
-    val grid = List(ThreadPixelAvatarGridSize.toInt()) {
-        val left = List((ThreadPixelAvatarGridSize / 2).toInt()) {
+    val grid = List(ThreadPixelAvatarGridCellCount) {
+        val left = List(ThreadPixelAvatarGridCellCount / 2) {
             if (random.next() < 0.45) fill else '_'
         }
         (left + left.asReversed()).joinToString(separator = "")

@@ -78,6 +78,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.tmm.kmmresource.compose.stringResource
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -2152,34 +2153,73 @@ private fun PixelAvatar(
     // revert). Reverting to `Canvas { ... }` which directly invokes DrawScope on every
     // recomposition. #195 hit rate gate diagnostic counter is preserved.
     Canvas(modifier = modifier.size(width = avatarSize, height = avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
-        val cellSize = size.width / PixelAvatarGridSize
         drawRect(spec.background)
-        spec.cells.forEach { cell ->
-            drawRect(cell.color, topLeft = Offset(cell.columnIndex * cellSize, cell.rowIndex * cellSize), size = Size(cellSize, cellSize))
+        spec.spans.forEach { span ->
+            val left = pixelAvatarGridEdge(span.startColumnIndex, size.width)
+            val right = pixelAvatarGridEdge(span.startColumnIndex + span.columnCount, size.width)
+            val top = pixelAvatarGridEdge(span.rowIndex, size.height)
+            val bottom = pixelAvatarGridEdge(span.rowIndex + 1, size.height)
+            drawRect(
+                span.color,
+                topLeft = Offset(left, top),
+                size = Size(right - left, bottom - top)
+            )
         }
     }
 }
 
+private fun pixelAvatarGridEdge(index: Int, extent: Float): Float =
+    when {
+        index <= 0 -> 0f
+        index >= PixelAvatarGridCellCount -> extent
+        else -> (extent * index / PixelAvatarGridCellCount).roundToInt().toFloat()
+    }
+
 internal data class PixelAvatarSpec(val background: Color, val grid: List<String>) {
-    val cells: List<PixelAvatarCell> =
+    val spans: List<PixelAvatarSpan> =
         buildList {
             grid.forEachIndexed { rowIndex, row ->
+                var spanColor: Color? = null
+                var spanStart = 0
+                var spanLength = 0
+                fun flushSpan() {
+                    val color = spanColor ?: return
+                    add(
+                        PixelAvatarSpan(
+                            rowIndex = rowIndex,
+                            startColumnIndex = spanStart,
+                            columnCount = spanLength,
+                            color = color
+                        )
+                    )
+                    spanColor = null
+                    spanLength = 0
+                }
                 row.forEachIndexed { columnIndex, key ->
                     val color = PixelAvatarPalette[key] ?: Color.Transparent
-                    if (color != Color.Transparent) {
-                        add(PixelAvatarCell(rowIndex = rowIndex, columnIndex = columnIndex, color = color))
+                    when {
+                        color == Color.Transparent -> flushSpan()
+                        color == spanColor -> spanLength += 1
+                        else -> {
+                            flushSpan()
+                            spanColor = color
+                            spanStart = columnIndex
+                            spanLength = 1
+                        }
                     }
                 }
+                flushSpan()
             }
         }
 }
 
-internal data class PixelAvatarCell(
+internal data class PixelAvatarSpan(
     val rowIndex: Int,
-    val columnIndex: Int,
+    val startColumnIndex: Int,
+    val columnCount: Int,
     val color: Color
 )
-private const val PixelAvatarGridSize = 8f
+private const val PixelAvatarGridCellCount = 8
 private const val PixelAvatarProtocolPrefix = "pixel:"
 private const val PixelAvatarRandomPrefix = "random:"
 internal const val PixelAvatarDefaultKey = "robot"
