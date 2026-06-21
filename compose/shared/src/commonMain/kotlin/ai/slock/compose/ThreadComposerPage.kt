@@ -53,6 +53,7 @@ private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
+private val ComposerSuggestionPanelMaxHeight = 240.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -1114,7 +1115,17 @@ private fun ComposerSuggestionPanel(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
-        content()
+        // Cap suggestion panel height so a long list does not push the composer
+        // textfield off-screen. Content beyond the cap is clipped (Kuikly Compose
+        // does not currently expose a verticalScroll primitive for arbitrary
+        // composables; if a future Kuikly release adds one, wrap this Box with
+        // .verticalScroll(...) instead of clipping).
+        Box(
+            modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight),
+            contentAlignment = Alignment.TopStart
+        ) {
+            content()
+        }
     }
 }
 
