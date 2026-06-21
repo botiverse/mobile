@@ -744,7 +744,7 @@ internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
-private data class RetainedThreadRouteEntry(
+internal data class RetainedThreadRouteEntry(
     val key: String,
     val payload: KuiklyThreadScreenPayload
 )
@@ -767,6 +767,11 @@ private fun upsertRetainedThreadRouteEntry(
     limit: Int = RetainedThreadRouteEntryLimit
 ): List<RetainedThreadRouteEntry> =
     (entries.filterNot { it.key == entry.key } + entry).takeLast(limit)
+
+internal fun retainedThreadRouteEntriesAfterPopToMain(
+    entries: List<RetainedThreadRouteEntry>
+): List<RetainedThreadRouteEntry> =
+    if (entries.isEmpty()) entries else emptyList()
 
 @Composable
 private fun RetainedAppShellTabs(
@@ -1331,6 +1336,8 @@ private fun SlockAppShellContent() {
         }
         appShellRoute = AppShellRouteMain
         threadBackStack = emptyList()
+        setActiveThreadPayload(null)
+        retainedThreadRouteEntries = retainedThreadRouteEntriesAfterPopToMain(retainedThreadRouteEntries)
         bridge.log(
             "app_back_pop_thread result=route_pop popped=true routeBefore=$routeBefore " +
                 "canNavigateBack=$canNavigateBackBefore stackBefore=$threadBackStackSizeBefore " +

@@ -58,4 +58,24 @@ class SlockAppShellTest {
             retainedThreadRouteEntryKey(base.copy(status = "content", title = "general"))
         )
     }
+
+    @Test
+    fun retainedThreadRouteEntriesAreReleasedAfterFinalPopToMain() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-C123",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "C123",
+                streamChannelId = "C123"
+            )
+        val entries =
+            listOf(
+                RetainedThreadRouteEntry(
+                    key = retainedThreadRouteEntryKey(payload),
+                    payload = payload
+                )
+            )
+
+        assertEquals(emptyList(), retainedThreadRouteEntriesAfterPopToMain(entries))
+    }
 }
