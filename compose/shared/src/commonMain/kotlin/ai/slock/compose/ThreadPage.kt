@@ -4414,10 +4414,10 @@ private fun ThreadHashTile() {
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = "#",
-            style = SlockType.PageTitle.withSlockFontWeight(FontWeight.W700).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack
+        SlockLucideIcon(
+            SlockLucideIconName.Hash,
+            modifier = Modifier.size(18.dp),
+            color = "#FF141111"
         )
     }
 }
