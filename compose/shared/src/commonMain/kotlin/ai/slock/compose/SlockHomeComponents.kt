@@ -9,6 +9,7 @@ import com.tencent.kuikly.core.module.RouterModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -1989,28 +1990,49 @@ private fun SlockAvatarHttpImage(
     // #225 fix: HTTP avatar (e.g. peerAvatarUrl) may fail to load; if a
     // Gravatar URL is provided, retry with it before showing the user icon
     // underneath. Mirrors React AvatarSlot / GravatarAvatar chain.
-    var primaryLoaded by remember(source) { mutableStateOf(false) }
+    //
+    // Implementation note: Kuikly's `KuiklyPainter` (returned by
+    // `com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter`) drives
+    // its `StateFlow<State>` from native `applyTo(view)` callbacks. The
+    // Coil3 `onLoading` / `onSuccess` / `onError` callbacks never fire
+    // through `Image(painter = ...)` in this overlay pattern because Compose
+    // does not call `applyTo` directly. However, painting the Image
+    // unconditionally *does* exercise the painter's native draw path
+    // (`onDraw` -> `imageCacheManager.loadImage(src)`) and the underlying
+    // `KuiklyImageBitmap.status` transitions correctly to `isReady = true`
+    // once the fetch completes. We therefore render Image unconditionally
+    // and keep a time-bound fallback as a safety net for the case where the
+    // fetch never completes (e.g. server-side 4xx, blocked network).
     var primaryFailed by remember(source) { mutableStateOf(false) }
     val showFallback = primaryFailed && !fallbackSource.isNullOrBlank()
     val effectiveSource = if (showFallback) fallbackSource else source
-    val painter =
-        rememberAsyncImagePainter(
-            model = effectiveSource,
-            onLoading = { primaryLoaded = false },
-            onSuccess = { primaryLoaded = true },
-            onError = {
-                if (!showFallback) primaryFailed = true
-            }
-        )
-    if (primaryLoaded) {
-        Image(
-            painter = painter,
-            contentDescription = null,
-            modifier = modifier,
-            contentScale = ContentScale.FillBounds
-        )
+    val painter = rememberAsyncImagePainter(model = effectiveSource)
+    val painterState = painter.state.collectAsState()
+    val isError = painterState.value is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Error
+    LaunchedEffect(effectiveSource) {
+        kotlinx.coroutines.delay(AvatarFallbackSwapDelayMs)
+        val currentState = painterState.value
+        val stillLoading =
+            currentState is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Loading ||
+                currentState is com.tencent.kuikly.compose.coil3.AsyncImagePainter.State.Empty
+        if (stillLoading && !primaryFailed && !fallbackSource.isNullOrBlank()) {
+            primaryFailed = true
+        }
     }
+    LaunchedEffect(effectiveSource, isError) {
+        if (isError && !primaryFailed && !fallbackSource.isNullOrBlank()) {
+            primaryFailed = true
+        }
+    }
+    Image(
+        painter = painter,
+        contentDescription = null,
+        modifier = modifier,
+        contentScale = ContentScale.FillBounds
+    )
 }
+
+private const val AvatarFallbackSwapDelayMs: Long = 1500L
 
 @Composable
 private fun DefaultUserAvatar(
