@@ -28,20 +28,19 @@ enum class AppLocale(
 }
 
 /**
- * #85 follow-up: BCP-47 tag used by moko KBA's
+ * #85 follow-up: BCP-47 tag used by KuiklyBase KmmResource's
  * `StringDesc.LocaleType.Custom(tag)` to pick a resource folder at
- * runtime. The `moko-resources/<lang>-<region>/` folder parser expects
+ * runtime. The generated resource folder parser accepts
  * BCP-47 with `r` separator, e.g. `zh-rCN`. We use the same tags
- * moko uses for `moko:resources-ohosarm64` and `moko:resources-android`
- * (i.e. the existing folder names) so the runtime lookup lands on the
+ * as the resource folders so the runtime lookup lands on the
  * actual generated folders.
  *
  * English falls through to the `base/` folder; Simplified Chinese
- * maps to the `zh-rCN/` folder (region-based; moko's BCP-47 matching
+ * maps to the `zh-rCN/` folder (region-based; the BCP-47 matching
  * falls back from `zh-Hans` script-only to `zh-rCN` region-only by
  * language match).
  */
-val AppLocale.mokoLocaleTag: String
+val AppLocale.kmmResourceLocaleTag: String
     get() =
         when (this) {
             AppLocale.English -> "en"

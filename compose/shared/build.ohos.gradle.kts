@@ -8,13 +8,15 @@ plugins {
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight") version "2.1.0-KBA-001"
-    id("dev.icerock.mobile.multiplatform-resources")
+    id("com.tencent.kuiklybase.resource.generator")
 }
 
 val KEY_PAGE_NAME = "pageName"
 
 multiplatformResources {
-    resourcesPackage.set("ai.slock.compose.resources")
+    multiplatformResourcesPackage = "ai.slock.compose.resources"
+    multiplatformResourcesPrefix = "slock_"
+    multiplatformResourcesClassName = "MR"
 }
 
 fun ohosSqliteProviderLibDir(): File {
@@ -92,8 +94,7 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.1-KBA-003")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0-KBA-002")
                 implementation("app.cash.sqldelight:runtime:2.1.0-KBA-001")
-                implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
-                implementation("dev.icerock.moko:resources-compose:0.26.0-KBA-010")
+                implementation("com.tencent.kuiklybase:resource-core:0.0.1")
             }
         }
         val commonTest by getting {

@@ -9,13 +9,15 @@ plugins {
     id("org.jetbrains.compose")
     kotlin("plugin.compose")
     id("app.cash.sqldelight")
-    id("dev.icerock.mobile.multiplatform-resources")
+    id("com.tencent.kuiklybase.resource.generator")
 }
 
 val KEY_PAGE_NAME = "pageName"
 
 multiplatformResources {
-    resourcesPackage.set("ai.slock.compose.resources")
+    multiplatformResourcesPackage = "ai.slock.compose.resources"
+    multiplatformResourcesPrefix = "slock_"
+    multiplatformResourcesClassName = "MR"
 }
 
 kotlin {
@@ -60,15 +62,14 @@ kotlin {
                 implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
                 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
                 implementation("app.cash.sqldelight:runtime:2.1.0")
-                implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
-                implementation("dev.icerock.moko:resources-compose:0.26.0-KBA-010")
+                implementation("com.tencent.kuiklybase:resource-core:0.0.1")
             }
         }
         val commonTest by getting {
             dependencies {
                 implementation(kotlin("test"))
                 implementation("io.ktor:ktor-client-mock:2.3.7")
-                implementation("dev.icerock.moko:resources:0.26.0-KBA-010")
+                implementation("com.tencent.kuiklybase:resource-core:0.0.1")
             }
         }
         val androidMain by getting {
@@ -76,8 +77,7 @@ kotlin {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
                 implementation("app.cash.sqldelight:android-driver:2.1.0")
-                // #85 follow-up: needed for `androidx.compose.ui.platform.LocalContext`
-                // in the Android `actual` of [StringDesc.localized].
+                // #85 follow-up: needed by resource runtime Android localization.
                 implementation("androidx.compose.ui:ui:1.7.3")
             }
         }
@@ -136,6 +136,12 @@ sqldelight {
 
 ksp {
     arg(KEY_PAGE_NAME, getPageName())
+}
+
+tasks.matching { task ->
+    task.name.startsWith("process") && task.name.endsWith("NavigationResources")
+}.configureEach {
+    dependsOn("generateMRandroidMain")
 }
 
 dependencies {

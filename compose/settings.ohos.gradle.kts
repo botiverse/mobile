@@ -34,8 +34,6 @@ pluginManagement {
 
     val sqldelightVersion = "2.1.0-KBA-001"
     val sqliterVersion = "1.3.3-KBA-001"
-    val mokoResourcesVersion = "0.26.0-KBA-010"
-    val mokoGraphicsVersion = "0.10.1-KBA-010"
     val needsStately =
         !mavenArtifactExists("co/touchlab", "stately-strict", sqldelightVersion) ||
             !mavenArtifactExists("co/touchlab", "stately-strict-ohosarm64", sqldelightVersion) ||
@@ -53,17 +51,6 @@ pluginManagement {
             !mavenArtifactExists("app/cash/sqldelight", "runtime", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "runtime-ohosarm64", sqldelightVersion) ||
             !mavenArtifactExists("app/cash/sqldelight", "native-driver-ohosarm64", sqldelightVersion)
-    val needsMokoResources =
-        !mavenArtifactExists(
-            "dev/icerock/mobile/multiplatform-resources",
-            "dev.icerock.mobile.multiplatform-resources.gradle.plugin",
-            mokoResourcesVersion
-        ) ||
-            !mavenArtifactExists("dev/icerock/moko", "resources", mokoResourcesVersion) ||
-            !mavenArtifactExists("dev/icerock/moko", "resources-ohosarm64", mokoResourcesVersion) ||
-            !mavenArtifactExists("dev/icerock/moko", "resources-generator", mokoResourcesVersion) ||
-            !mavenArtifactExists("dev/icerock/moko", "graphics", mokoGraphicsVersion) ||
-            !mavenArtifactExists("dev/icerock/moko", "graphics-ohosarm64", mokoGraphicsVersion)
 
     if (needsStately) {
         ensureSubmodule("third_party/stately")
@@ -108,14 +95,6 @@ pluginManagement {
             ":runtime:publishKotlinMultiplatformPublicationToMavenLocal",
             ":runtime:publishOhosArm64PublicationToMavenLocal",
             ":drivers:native-driver:publishOhosArm64PublicationToMavenLocal"
-        )
-    }
-
-    if (needsMokoResources) {
-        ensureSubmodule("third_party/moko-resources")
-        runChecked(
-            slockRoot,
-            "./scripts/prepare_moko_resources_ohos_kba.sh"
         )
     }
 

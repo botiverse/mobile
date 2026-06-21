@@ -821,13 +821,11 @@ private fun RetainedAppShellRoutePane(
 
 @Composable
 private fun SlockAppShellContent() {
-    // #85 follow-up: seed the moko KBA `StringDesc.localeType`
+    // #85 follow-up: seed the KmmResource `StringDesc.localeType`
     // global from the persisted `AppLocale` as early as possible
-    // in the app shell lifecycle, so any `stringResource(MR.strings.<key>)`
-    // call site (in the home tab, thread page, settings, etc.)
-    // resolves against the user's last selection rather than
-    // the OS default.
-    RememberMokoLocaleSeedFromLocalActivity()
+    // in the app shell lifecycle, so shared `StringDesc` lookups resolve
+    // against the user's last selection rather than the OS default.
+    RememberKmmResourceLocaleSeedFromLocalActivity()
     var selectedTab by remember { mutableStateOf("home") }
     var retainedAppShellTabs by remember { mutableStateOf(setOf("home")) }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
