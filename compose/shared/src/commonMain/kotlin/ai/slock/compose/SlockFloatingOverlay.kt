@@ -108,30 +108,20 @@ internal fun SlockFloatingOverlayHost(
     // bubble up; the host only needs to dismiss on clicks outside the
     // menu.
     var dismissClickableActive by remember { mutableStateOf(false) }
-    // #223: extended to 1000ms while debugging — 150ms was insufficient to
-    // visually verify the menu position via screenshot.
+    // #223: defer the dismiss clickable so the long-press release does not
+    // immediately propagate to onDismiss. 150ms covers the standard Android
+    // long-press threshold (~500ms) minus the time to compose + render the menu.
     LaunchedEffect(Unit) {
-        delay(1000)
+        delay(150)
         dismissClickableActive = true
     }
-    val density = LocalDensity.current
     Box(
         modifier = modifier
             .fillMaxSize()
             .onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInRoot()
-                val size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
-                overlayLayout = SlockFloatingOverlayLayout(origin = pos, size = size)
-                // #223 diagnostic: log host's actual screen position so we can
-                // diff against the popoverOffset returned by positionContent. If
-                // the host reports (0, 0) but its parent chain is non-trivial,
-                // there's a hidden coordinate transform we need to track down.
-                android.util.Log.d(
-                    "SlockPinMenuDebug",
-                    "host onGloballyPositioned: positionInRoot=" + pos +
-                        " size=" + size +
-                        " density=" + density.density +
-                        " fontScale=" + density.fontScale
+                overlayLayout = SlockFloatingOverlayLayout(
+                    origin = coordinates.positionInRoot(),
+                    size = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                 )
             }
             .then(if (dismissClickableActive) Modifier.clickable(onClick = onDismiss) else Modifier),
