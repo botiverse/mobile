@@ -146,11 +146,11 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     horizontalAutoFlip: Boolean = false
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
-        android.util.Log.d("SlockPinMenuDebug", "positionContent: skipped (isReady=" + isReady + " anchor=" + anchor + " contentSize=" + contentSize + ")")
+        slockLogDebug("SlockPinMenuDebug", "positionContent: skipped (isReady=" + isReady + " anchor=" + anchor + " contentSize=" + contentSize + ")")
         return null
     }
     val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
-    android.util.Log.d("SlockPinMenuDebug", "positionContent: anchor=" + anchor + " origin=" + origin + " localAnchor=" + localAnchor + " size=" + size + " contentSize=" + contentSize + " hOffset=" + horizontalOffset + " vOffset=" + verticalOffset + " vPlacement=" + verticalPlacement + " hAutoFlip=" + horizontalAutoFlip)
+    slockLogDebug("SlockPinMenuDebug", "positionContent: anchor=" + anchor + " origin=" + origin + " localAnchor=" + localAnchor + " size=" + size + " contentSize=" + contentSize + " hOffset=" + horizontalOffset + " vOffset=" + verticalOffset + " vPlacement=" + verticalPlacement + " hAutoFlip=" + horizontalAutoFlip)
     val maxX = (size.width - contentSize.width - viewportGap).coerceAtLeast(viewportGap)
     val x = if (horizontalAutoFlip) {
         val preferredRightX = localAnchor.x + horizontalOffset
@@ -180,7 +180,7 @@ internal fun SlockFloatingOverlayLayout.positionContent(
             }
         }
     }
-    android.util.Log.d("SlockPinMenuDebug", "positionContent: result offset=(" + x + ", " + y + ")")
+    slockLogDebug("SlockPinMenuDebug", "positionContent: result offset=(" + x + ", " + y + ")")
     return Offset(x, y)
 }
 

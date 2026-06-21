@@ -1716,7 +1716,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                             x = rowAnchor.x + pressOffset.x,
                             y = rowAnchor.y + rowHeightPx
                         )
-                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
+                        slockLogDebug("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )
@@ -1875,7 +1875,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                             x = rowAnchor.x + pressOffset.x,
                             y = rowAnchor.y + rowHeightPx
                         )
-                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
+                        slockLogDebug("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )
