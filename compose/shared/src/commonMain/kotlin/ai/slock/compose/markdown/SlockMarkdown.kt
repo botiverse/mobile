@@ -27,6 +27,7 @@ import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.material3.Text as KuiklyText
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
@@ -42,6 +43,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -623,6 +625,23 @@ private object SlockMarkdownTextProvider : TextProvider {
             } else {
                 emptyMap()
             }
+        var lastLayoutSignature by remember { mutableStateOf<SlockMarkdownTextLayoutSignature?>(null) }
+        val resolvedOnTextLayout: (TextLayoutResult) -> Unit =
+            if (resolvedInlineContent.isEmpty()) {
+                onTextLayout
+            } else {
+                { result ->
+                    val signature =
+                        SlockMarkdownTextLayoutSignature(
+                            size = result.size,
+                            placeholderRects = result.placeholderRects.toList()
+                        )
+                    if (signature != lastLayoutSignature) {
+                        lastLayoutSignature = signature
+                        onTextLayout(result)
+                    }
+                }
+            }
         KuiklyText(
             text = resolvedText,
             modifier = modifier,
@@ -640,11 +659,16 @@ private object SlockMarkdownTextProvider : TextProvider {
             maxLines = maxLines,
             minLines = minLines,
             inlineContent = resolvedInlineContent,
-            onTextLayout = onTextLayout,
+            onTextLayout = resolvedOnTextLayout,
             style = resolvedStyle
         )
     }
 }
+
+private data class SlockMarkdownTextLayoutSignature(
+    val size: IntSize,
+    val placeholderRects: List<Rect?>
+)
 
 private fun AnnotatedString.hasSlockMarkdownInlineContentPlaceholders(): Boolean =
     hasStringAnnotations(SlockMarkdownInlineContentTag, 0, text.length)
