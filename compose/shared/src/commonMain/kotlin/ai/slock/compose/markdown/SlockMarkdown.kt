@@ -93,6 +93,87 @@ data class ThreadInlineCodeMatch(
     val range: IntRange
 )
 
+internal enum class MarkdownInlineTokenKind {
+    ChannelThread,
+    Channel,
+    Task,
+    UserMention,
+    InlineCode
+}
+
+internal data class MarkdownInlineToken(
+    val id: String,
+    val kind: MarkdownInlineTokenKind,
+    val range: IntRange,
+    val label: String,
+    val tag: ThreadMarkdownTag? = null,
+    val code: String? = null,
+    val highlighted: Boolean = false
+)
+
+internal data class MarkdownInlineTokenPlan(
+    val content: String,
+    val tokens: List<MarkdownInlineToken>
+) {
+    val signature: String =
+        tokens.joinToString(separator = "|") { token ->
+            "${token.id}:${token.kind}:${token.range.first}-${token.range.last}:${token.label}:${token.highlighted}"
+        }
+
+    fun tagTokens(): List<MarkdownInlineToken> =
+        tokens.filter { it.tag != null }
+
+    fun inlineCodeTokens(): List<MarkdownInlineToken> =
+        tokens.filter { it.kind == MarkdownInlineTokenKind.InlineCode }
+}
+
+internal object SlockMarkdownInlineTokenRegistry {
+    fun plan(
+        content: String,
+        highlightedMentions: Set<String> = emptySet()
+    ): MarkdownInlineTokenPlan {
+        val highlightedMentionKeys =
+            highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
+        val tagTokens =
+            content.threadInlineTagMatches().map { match ->
+                MarkdownInlineToken(
+                    id = match.id,
+                    kind = match.tag.kind.toMarkdownInlineTokenKind(),
+                    range = match.range,
+                    label = match.tag.label,
+                    tag = match.tag,
+                    highlighted =
+                        match.tag.kind == ThreadMarkdownTagKind.UserMention &&
+                            highlightedMentionKeys.containsThreadMention(match.tag.label)
+                )
+            }
+        val inlineCodeTokens =
+            content.threadInlineCodeMatches()
+                .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
+                .map { match ->
+                    MarkdownInlineToken(
+                        id = match.id,
+                        kind = MarkdownInlineTokenKind.InlineCode,
+                        range = match.range,
+                        label = match.code,
+                        code = match.code
+                    )
+                }
+        return MarkdownInlineTokenPlan(
+            content = content,
+            tokens = (tagTokens + inlineCodeTokens).sortedBy { it.range.first }
+        )
+    }
+}
+
+private fun ThreadMarkdownTagKind.toMarkdownInlineTokenKind(): MarkdownInlineTokenKind =
+    when (this) {
+        ThreadMarkdownTagKind.ChannelThread -> MarkdownInlineTokenKind.ChannelThread
+        ThreadMarkdownTagKind.Channel -> MarkdownInlineTokenKind.Channel
+        ThreadMarkdownTagKind.Task -> MarkdownInlineTokenKind.Task
+        ThreadMarkdownTagKind.UserMention -> MarkdownInlineTokenKind.UserMention
+    }
+
 data class SlockMarkdownPreviewSample(
     val title: String,
     val body: String,
@@ -443,41 +524,36 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
         this
     }
 
-fun slockMarkdownAnnotator(
+internal fun slockMarkdownAnnotator(
     content: String,
     highlightedMentions: Set<String> = emptySet(),
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
-    onDiagnostics: ((Int, Int, Long) -> Unit)? = null
+    onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
+    tokenPlan: MarkdownInlineTokenPlan =
+        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
-    val highlightedMentionKeys = highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
-    val inlineTagMatches = content.threadInlineTagMatches()
-    val inlineTagById = inlineTagMatches.associateBy { it.id }
-    val highlightedMentionById =
-        inlineTagMatches
-            .filter { it.tag.kind == ThreadMarkdownTagKind.UserMention && highlightedMentionKeys.containsThreadMention(it.tag.label) }
-            .associateBy { it.id }
-    val inlineCodeMatches = content.threadInlineCodeMatches()
-    val inlineCodeChipById =
-        inlineCodeMatches
-            .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
-            .associateBy { it.id }
+    val inlineTagTokens = tokenPlan.tagTokens()
+    val inlineTagById = inlineTagTokens.associateBy { it.id }
+    val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
+    val inlineCodeChipById = tokenPlan.inlineCodeTokens().associateBy { it.id }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
-            inlineTagMatches.size,
-            inlineCodeMatches.size,
+            inlineTagTokens.size,
+            inlineCodeChipById.size,
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
     return markdownAnnotator(
         annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
-                val codeMatch =
+                val codeToken =
                     inlineCodeChipById["slock-code:${child.startOffset}"]
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
-                if (codeMatch != null) {
-                    appendInlineContent(codeMatch.id, codeMatch.code)
+                val code = codeToken?.code
+                if (codeToken != null && code != null) {
+                    appendInlineContent(codeToken.id, code)
                     return@markdownAnnotator true
                 }
             }
@@ -488,61 +564,70 @@ fun slockMarkdownAnnotator(
             }
 
             val nodeText = child.getTextInNode(markdownContent).toString()
-            val nodeMatches =
-                nodeText.threadInlineTagMatches(baseOffset = child.startOffset)
-                    .filter { inlineTagById.containsKey(it.id) }
-            if (nodeMatches.isEmpty()) return@markdownAnnotator false
+            val nodeStart = child.startOffset
+            val nodeEndExclusive = nodeStart + nodeText.length
+            val nodeTokens =
+                inlineTagTokens.filter { token ->
+                    token.range.first >= nodeStart && token.range.last < nodeEndExclusive
+                }
+            if (nodeTokens.isEmpty()) return@markdownAnnotator false
 
             var cursor = 0
-            nodeMatches.forEach { match ->
-                if (match.range.first > cursor) {
-                    append(nodeText.substring(cursor, match.range.first))
+            nodeTokens.forEach { token ->
+                val relativeStart = token.range.first - nodeStart
+                val relativeEndExclusive = token.range.last - nodeStart + 1
+                if (relativeStart > cursor) {
+                    append(nodeText.substring(cursor, relativeStart))
                 }
-                appendInlineContent(match.id, match.tag.label)
-                cursor = match.range.last + 1
+                appendInlineContent(token.id, token.label)
+                cursor = relativeEndExclusive
             }
             if (cursor < nodeText.length) append(nodeText.substring(cursor))
             true
         },
         inlineContent = {
-            inlineTagById.mapValues { (_, match) ->
+            inlineTagById.mapValues { (_, token) ->
+                val tag = token.tag ?: return@mapValues InlineTextContent(
+                    Placeholder(width = 0.sp, height = 0.sp)
+                ) {}
                 val label =
-                    resolveTagLabel?.invoke(match.tag)?.takeIf { it.isNotBlank() }
-                        ?: threadMarkdownTagDisplayLabel(match.tag.label)
+                    resolveTagLabel?.invoke(tag)?.takeIf { it.isNotBlank() }
+                        ?: threadMarkdownTagDisplayLabel(tag.label)
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineTagWidthSp(
                             label,
-                            match.tag.kind,
-                            highlightedMentionById.containsKey(match.id)
+                            tag.kind,
+                            highlightedMentionById.containsKey(token.id)
                         ),
                         height = SlockMarkdownInlineChipHeight
                     )
                 ) {
                     Box(
-                        modifier = Modifier.fillMaxSize().clickable { onOpenTag(match.tag) },
+                        modifier = Modifier.fillMaxSize().clickable { onOpenTag(tag) },
                         contentAlignment = Alignment.Center
                     ) {
-                        val isHighlightedMention = highlightedMentionById.containsKey(match.id)
-                        if (match.tag.kind == ThreadMarkdownTagKind.UserMention &&
+                        val isHighlightedMention = highlightedMentionById.containsKey(token.id)
+                        if (tag.kind == ThreadMarkdownTagKind.UserMention &&
                             !isHighlightedMention
                         ) {
                             SlockMarkdownMentionText(label)
                         } else {
-                            val chipColor = slockMarkdownTagColor(match.tag.kind, highlighted = isHighlightedMention)
+                            val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
                             SlockMarkdownInlineChip(label, chipColor)
                         }
                     }
                 }
-            } + inlineCodeChipById.mapValues { (_, match) ->
+            } + inlineCodeChipById.mapValues { (_, token) ->
+                val code = token.code.orEmpty()
                 InlineTextContent(
                     Placeholder(
-                        width = slockMarkdownInlineCodeWidthSp(match.code),
+                        width = slockMarkdownInlineCodeWidthSp(code),
                         height = SlockMarkdownInlineChipHeight
                     )
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineCodeChip(match.code)
+                        SlockMarkdownInlineCodeChip(code)
                     }
                 }
             }
@@ -726,7 +811,8 @@ private object SlockMarkdownPreparedBodyCache {
 
 internal data class SlockMarkdownInlineTextCacheKey(
     val content: String,
-    val textStyle: TextStyle
+    val textStyle: TextStyle,
+    val tokenPlanSignature: String
 )
 
 internal data class SlockMarkdownInlineTextRender(
@@ -868,7 +954,10 @@ fun SlockMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
-    val annotator = remember(content, highlightedMentions, performanceKey) {
+    val tokenPlan = remember(content, highlightedMentions) {
+        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
+    }
+    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
@@ -885,13 +974,14 @@ fun SlockMarkdownBody(
                             )
                         }
                     }
-                }
+                },
+            tokenPlan = tokenPlan
         )
     }
     if (content.shouldUseSlockMarkdownInlineTextFastPath()) {
         val resolvedStyle = textStyle.withResolvedSlockFontFamily()
         val renderStartedAt = TimeSource.Monotonic.markNow()
-        val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle)
+        val cacheKey = SlockMarkdownInlineTextCacheKey(content, resolvedStyle, tokenPlan.signature)
         val (renderedText, cacheHit) =
             traceMarkdownSection(SlockMarkdownTraceNames.ANNOTATE) {
                 SlockMarkdownInlineTextRenderCache.getOrPut(cacheKey) {

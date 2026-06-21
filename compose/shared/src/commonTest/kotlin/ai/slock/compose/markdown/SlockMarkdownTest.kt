@@ -255,7 +255,7 @@ class SlockMarkdownTest {
                         )
                     )
             )
-        val key = SlockMarkdownInlineTextCacheKey("normal **bold**", SlockType.Body)
+        val key = SlockMarkdownInlineTextCacheKey("normal **bold**", SlockType.Body, "test")
 
         val (first, firstCacheHit) =
             SlockMarkdownInlineTextRenderCache.getOrPut(key) { source }
@@ -302,6 +302,26 @@ class SlockMarkdownTest {
         val inlineContent = slockMarkdownAnnotator("See #markdown专修:7933cf78 and #general:abc123 in chat").inlineContent?.invoke().orEmpty()
         assertTrue(inlineContent.containsKey("slock:4"))
         assertTrue(inlineContent.containsKey("slock:29"))
+    }
+
+    @Test
+    fun inlineTokenRegistryKeepsColonThreadReferenceAsSingleToken() {
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                "Ping @KMP-专家 in #KMP and #KMP:a6967088"
+            )
+
+        assertEquals(
+            listOf(
+                MarkdownInlineTokenKind.UserMention,
+                MarkdownInlineTokenKind.Channel,
+                MarkdownInlineTokenKind.ChannelThread
+            ),
+            plan.tagTokens().map { it.kind }
+        )
+        assertEquals("#KMP:a6967088", plan.tagTokens()[2].label)
+        assertEquals("KMP", plan.tagTokens()[2].tag?.channelName)
+        assertEquals("a6967088", plan.tagTokens()[2].tag?.threadShortId)
     }
 
     @Test
