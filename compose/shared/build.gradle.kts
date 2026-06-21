@@ -15,11 +15,6 @@ plugins {
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
-val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
-val prepareTmmCommonResources by tasks.registering(Sync::class) {
-    from(commonTmmResourceInputDir)
-    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
-}
 val stageTmmCommonSources by tasks.registering(Sync::class) {
     dependsOn("generateMRcommonMain")
     outputs.upToDateWhen { false }
@@ -184,10 +179,6 @@ tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
-}
-
-tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
-    dependsOn(prepareTmmCommonResources)
 }
 
 tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
