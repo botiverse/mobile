@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -128,6 +129,7 @@ internal fun SlockBottomTabBar(
         Row(modifier = Modifier.fillMaxWidth().fillMaxHeight()) {
             items.forEachIndexed { index, item ->
                 val selected = item.selected
+                val label = remember(item.label) { item.label.uppercase() }
                 Column(
                     modifier = Modifier
                         .weight(1f)
@@ -144,7 +146,7 @@ internal fun SlockBottomTabBar(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = item.label.uppercase(),
+                        text = label,
                         style = SlockType.TabLabel.copy(color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,

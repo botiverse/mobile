@@ -928,13 +928,16 @@ fun SlockStructuralHomeShell(
             }
         }
         if (showBottomBar) {
-            SlockAppBottomTabBarHost(
-                items = listOf(
+            val bottomTabItems = remember(selectedTabKey) {
+                listOf(
                     SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = selectedTabKey == "home"),
                     SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
                     SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users, selected = selectedTabKey == "members"),
                     SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedTabKey == "settings")
-                ),
+                )
+            }
+            SlockAppBottomTabBarHost(
+                items = bottomTabItems,
                 onSelect = onTabSelected,
                 modifier = Modifier.fillMaxWidth(),
                 bottomSafeArea = bottomSafeArea
