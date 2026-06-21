@@ -13,6 +13,17 @@ plugins {
 
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
+val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
+val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
+val prepareTmmCommonResources by tasks.registering(Sync::class) {
+    from(commonTmmResourceInputDir)
+    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
+}
+val stageTmmCommonSources by tasks.registering(Sync::class) {
+    dependsOn("generateMRcommonMain")
+    from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
+    into(generatedTmmCommonSourceDir.map { it.dir("src") })
+}
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
@@ -86,7 +97,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
-            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("commonMain/src") })
+            kotlin.srcDir(generatedTmmCommonSourceDir.map { it.dir("src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyOhosVersion()}")
@@ -174,7 +185,15 @@ ksp {
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn("generateMRcommonMain", "generateMRohosArm64Main")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
+}
+
+tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
+    dependsOn(stageTmmCommonSources)
+}
+
+tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
+    dependsOn(prepareTmmCommonResources)
 }
 
 dependencies {
