@@ -70,7 +70,7 @@ internal fun SlockTopTabBar(
                 ) {
                     SlockLucideIcon(item.iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
                     Text(
-                        text = item.label.uppercase(),
+                        text = item.label,
                         style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack),
                         color = SlockColor.TextBlack,
                         maxLines = 1,

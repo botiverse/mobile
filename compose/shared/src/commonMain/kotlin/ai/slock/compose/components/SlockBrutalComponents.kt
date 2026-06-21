@@ -871,46 +871,6 @@ internal fun SlockBrutalIconButton(
     }
 }
 
-/**
- * Brutalist tag / pill: short uppercase label inside a bordered colored block.
- * Text is centered both vertically and horizontally inside a fixed-height box so the
- * glyph stays centered regardless of font ascent metrics (lineHeight vs padding drift).
- *
- * Default height 18dp fits 10sp caption text + 2dp vertical inset on each side; pass
- * [height] to override. Background / border / label color are caller-controlled so the
- * same component is reusable for MemberKindBadge, status pills, role tags, etc.
- */
-@Composable
-internal fun SlockBrutalTag(
-    label: String,
-    modifier: Modifier = Modifier,
-    backgroundColor: Color = SlockColor.SurfaceWhite,
-    borderColor: Color = SlockColor.BorderBlack,
-    textColor: Color = SlockColor.TextBlack,
-    height: Dp = SlockBrutalTagDefaultHeight,
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
-        .withSlockFontWeight(FontWeight.Bold)
-) {
-    Box(
-        modifier = modifier
-            .height(height)
-            .background(backgroundColor)
-            .border(SlockStroke.Thin, borderColor)
-            .padding(horizontal = SlockSpacing.Xs),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = textStyle,
-            color = textColor,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
-        )
-    }
-}
-
-internal val SlockBrutalTagDefaultHeight = 18.dp
-
 @Composable
 internal fun SlockBrutalPanelShell(
     modifier: Modifier = Modifier,

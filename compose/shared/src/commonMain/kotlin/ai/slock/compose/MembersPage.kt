@@ -4,7 +4,6 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalModalLayer
-import ai.slock.compose.components.SlockBrutalTag
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarPickerKeys
@@ -85,6 +84,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -2187,6 +2187,8 @@ private fun MembersAgentAvatarPicker(
     }
 }
 
+private const val MembersAgentProfileDescriptionMaxLength = 3000
+
 @Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
@@ -2198,39 +2200,111 @@ private fun MembersAgentProfileTab(
 ) {
     val summary = detail?.summary
     val scope = rememberCoroutineScope()
-    var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
-    var draftDescription by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
-    var actionLabel by remember(member.id.value) { mutableStateOf<String?>(null) }
     val deleted = summary?.deletedAt?.isNotBlank() == true
-    val saving = actionLabel == "Saving"
+    val canEdit = canManage && !deleted
 
-    fun saveProfile(avatarUrl: String? = null, includeAvatarUrl: Boolean = false) {
-        if (!canManage || onUpdateAgentProfile == null || saving) {
+    // Display Name: independent edit state machine, mirrors React `editingDisplayName`
+    // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
+    // dispatch the update; Enter submits, Escape cancels.
+    var editingDisplayName by remember(member.id.value) { mutableStateOf(false) }
+    var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
+    var savingDisplayName by remember(member.id.value) { mutableStateOf(false) }
+    var displayNameError by remember(member.id.value) { mutableStateOf<String?>(null) }
+
+    // Description: independent edit state machine, mirrors React `editingRole`
+    // (~L1180). Same shape as display name but uses textarea + char counter.
+    var editingRole by remember(member.id.value) { mutableStateOf(false) }
+    var draftRole by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
+    var savingRole by remember(member.id.value) { mutableStateOf(false) }
+    var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+
+    fun saveDisplayName() {
+        if (!canEdit || onUpdateAgentProfile == null || savingDisplayName) {
             onUnavailableAction("Agent profile editing is not available.")
             return
         }
-        val displayName = draftDisplayName.trim()
-        if (displayName.isBlank()) {
-            actionLabel = "Display name is required"
+        val next = draftDisplayName.trim()
+        if (next.isBlank()) {
+            displayNameError = "Display name is required"
             return
         }
         scope.launch {
-            actionLabel = "Saving"
-            actionLabel =
-                when (val result = onUpdateAgentProfile(
-                    AgentProfileUpdateRequest(
-                        agentId = member.id,
-                        displayName = displayName,
-                        description = draftDescription.trim().takeIf { it.isNotBlank() },
-                        avatarUrl = avatarUrl,
-                        includeAvatarUrl = includeAvatarUrl
+            savingDisplayName = true
+            displayNameError = null
+            val result =
+                try {
+                    onUpdateAgentProfile(
+                        AgentProfileUpdateRequest(
+                            agentId = member.id,
+                            displayName = next,
+                            description = member.description?.takeIf { it.isNotBlank() }
+                        )
                     )
-                )) {
-                    is DataResult.Content -> "Saved"
-                    is DataResult.Empty -> "Nothing changed"
-                    is DataResult.NoPermission -> "No permission: ${result.blocker.code}"
-                    is DataResult.Error -> "Save failed: ${result.error.code}"
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_profile_save_failed"))
                 }
+            when (result) {
+                is DataResult.Content -> {
+                    editingDisplayName = false
+                }
+                is DataResult.Empty -> {
+                    editingDisplayName = false
+                }
+                is DataResult.NoPermission -> {
+                    displayNameError = "No permission: ${result.blocker.code}"
+                }
+                is DataResult.Error -> {
+                    displayNameError = "Save failed: ${result.error.code}"
+                }
+            }
+            savingDisplayName = false
+        }
+    }
+
+    fun saveRole() {
+        if (!canEdit || onUpdateAgentProfile == null || savingRole) {
+            onUnavailableAction("Agent profile editing is not available.")
+            return
+        }
+        val next = draftRole.trim()
+        if (next.length > MembersAgentProfileDescriptionMaxLength) {
+            roleError = "Description must be at most $MembersAgentProfileDescriptionMaxLength characters"
+            return
+        }
+        scope.launch {
+            savingRole = true
+            roleError = null
+            val result =
+                try {
+                    onUpdateAgentProfile(
+                        AgentProfileUpdateRequest(
+                            agentId = member.id,
+                            displayName = member.displayName,
+                            description = next.takeIf { it.isNotBlank() }
+                        )
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_profile_save_failed"))
+                }
+            when (result) {
+                is DataResult.Content -> {
+                    editingRole = false
+                }
+                is DataResult.Empty -> {
+                    editingRole = false
+                }
+                is DataResult.NoPermission -> {
+                    roleError = "No permission: ${result.blocker.code}"
+                }
+                is DataResult.Error -> {
+                    roleError = "Save failed: ${result.error.code}"
+                }
+            }
+            savingRole = false
         }
     }
 
@@ -2241,66 +2315,354 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Deleted at", summary.deletedAt.orDash())
             }
         }
-        MembersDetailSection(title = "PROFILE") {
-            MembersDetailField("Agent ID", member.id.value)
-            MembersDetailField("Name", summary?.name?.takeIf { it.isNotBlank() } ?: member.handle)
-            MembersDetailField("Handle", member.detailHandle)
-            MembersDetailField("Creator", summary?.creatorLabel.orDash())
-            if (canManage && !deleted) {
-                SlockBrutalTextField(
-                    label = "Display name",
-                    value = draftDisplayName,
-                    placeholder = member.displayName,
-                    onValueChange = { draftDisplayName = it },
-                    enabled = !saving,
-                    required = true
+
+        // PROFILE section — light divider style (no box border) per React parity.
+        // Each field is its own column with eyebrow label + content, mirroring React's
+        // `<div className="px-5 py-3"><SectionEyebrow>...</SectionEyebrow><p>...</p></div>`
+        // pattern. Display Name and Description each have an independent pencil-edit
+        // state machine (mirrors React `editingDisplayName` + `editingRole`).
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            // Display Name field
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Display Name",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.weight(1f)
                 )
-                SlockBrutalTextField(
-                    label = "Description",
-                    value = draftDescription,
-                    placeholder = "Describe this agent",
-                    onValueChange = { draftDescription = it },
-                    enabled = !saving,
-                    maxLines = 4,
-                    fieldMinHeight = 86.dp
-                )
-                SlockBrutalActionButton(
-                    label = actionLabel ?: "Save profile",
-                    leadingIcon = if (saving) SlockLucideIconName.Loader else SlockLucideIconName.Check,
-                    onClick = { saveProfile() },
-                    enabled = !saving,
-                    backgroundColor = SlockColor.BrandYellow,
-                    minHeight = 40.dp
-                )
+                if (canEdit && !editingDisplayName) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Pencil,
+                        onClick = {
+                            draftDisplayName = member.displayName
+                            displayNameError = null
+                            editingDisplayName = true
+                        },
+                        size = MembersActionSize
+                    )
+                }
+            }
+            if (editingDisplayName) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    SlockBrutalTextField(
+                        label = "Display name",
+                        value = draftDisplayName,
+                        placeholder = "Display name",
+                        onValueChange = {
+                            draftDisplayName = it
+                            if (displayNameError != null) displayNameError = null
+                        },
+                        enabled = !savingDisplayName,
+                        autoFocus = true
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                        SlockBrutalActionButton(
+                            label = if (savingDisplayName) "Saving\u2026" else "Save",
+                            onClick = { saveDisplayName() },
+                            enabled = !savingDisplayName,
+                            backgroundColor = SlockColor.BrandYellow
+                        )
+                        SlockBrutalActionButton(
+                            label = "Cancel",
+                            onClick = {
+                                draftDisplayName = member.displayName
+                                displayNameError = null
+                                editingDisplayName = false
+                            },
+                            enabled = !savingDisplayName,
+                            backgroundColor = SlockColor.SurfaceWhite
+                        )
+                    }
+                    if (displayNameError != null) {
+                        Text(
+                            text = displayNameError.orEmpty(),
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                                .withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
             } else {
-                MembersDetailField("Display name", member.displayName)
-                MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
+                Text(
+                    text = member.displayName,
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // Description field (independent edit state machine)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Description",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.weight(1f)
+                )
+                if (canEdit && !editingRole) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Pencil,
+                        onClick = {
+                            draftRole = member.description.orEmpty()
+                            roleError = null
+                            editingRole = true
+                        },
+                        size = MembersActionSize
+                    )
+                }
+            }
+            if (editingRole) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    SlockBrutalTextField(
+                        label = "Description",
+                        value = draftRole,
+                        placeholder = "Describe this agent",
+                        onValueChange = {
+                            draftRole = it
+                            if (roleError != null) roleError = null
+                        },
+                        enabled = !savingRole,
+                        autoFocus = true,
+                        maxLines = 4,
+                        fieldMinHeight = 86.dp
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SlockBrutalActionButton(
+                            label = if (savingRole) "Saving\u2026" else "Save",
+                            onClick = { saveRole() },
+                            enabled = !savingRole,
+                            backgroundColor = SlockColor.BrandYellow
+                        )
+                        SlockBrutalActionButton(
+                            label = "Cancel",
+                            onClick = {
+                                draftRole = member.description.orEmpty()
+                                roleError = null
+                                editingRole = false
+                            },
+                            enabled = !savingRole,
+                            backgroundColor = SlockColor.SurfaceWhite
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            text = "${draftRole.trim().length}/$MembersAgentProfileDescriptionMaxLength",
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
+                    if (roleError != null) {
+                        Text(
+                            text = roleError.orEmpty(),
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                                .withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = member.description?.takeIf { it.isNotBlank() }
+                        ?: "No description",
+                    style = SlockType.Body.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontStyle = if (member.description.isNullOrBlank()) FontStyle.Italic else FontStyle.Normal
+                    ),
+                    color = if (member.description.isNullOrBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 6,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
+
+        // INFO section — mirrors React L1170-1238. Shows Computer (machine name + status
+        // dot + Connected/Offline + daemon v?), Creator (button + avatar + name + @handle,
+        // clickable). Created row is omitted because AgentDetailSummary doesn't carry a
+        // createdAt field (React Agent type does); tracked as follow-up.
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = "Info",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray
+            )
+            // Computer row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Computer",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.width(86.dp)
+                )
+                Text(
+                    text = summary?.machineName.orBadgeFallback(member.membersComputerName),
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val machineStatusLabel =
+                    if (summary?.machineId != null) "Connected" else "Offline"
+                Text(
+                    text = machineStatusLabel,
+                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                if (summary?.daemonVersion != null) {
+                    Text(
+                        text = " · daemon v${summary.daemonVersion}",
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            // Creator row (clickable button — React opens the creator's profile)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Creator",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.width(86.dp)
+                )
+                Text(
+                    text = summary?.creatorLabel.orDash(),
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        // RUNTIME CONFIG section — mirrors React L1240-1320. Each chip is rendered via
+        // `MembersAgentRuntimeChip` (a purpose-built component for runtime semantic chips;
+        // we don't reuse the deleted `SlockBrutalTag` because runtime chips need their
+        // own color-by-kind mapping and shouldn't be confused with kind badges).
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = "Runtime Config",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                val runtimeLabel = summary?.runtime.orBadgeFallback(member.roleDescription)
+                if (runtimeLabel.isNotBlank()) {
+                    MembersAgentRuntimeChip(
+                        label = runtimeLabel,
+                        kind = MembersAgentRuntimeChipKind.Runtime
+                    )
+                }
+                if (!summary?.model.isNullOrBlank()) {
+                    MembersAgentRuntimeChip(
+                        label = summary?.model.orDash(),
+                        kind = MembersAgentRuntimeChipKind.Model
+                    )
+                }
+                if (!summary?.reasoning.isNullOrBlank()) {
+                    MembersAgentRuntimeChip(
+                        label = summary?.reasoning.orDash(),
+                        kind = MembersAgentRuntimeChipKind.Reasoning
+                    )
+                }
+                if (!summary?.executionMode.isNullOrBlank()) {
+                    MembersAgentRuntimeChip(
+                        label = summary?.executionMode.orDash(),
+                        kind = MembersAgentRuntimeChipKind.Mode
+                    )
+                }
+            }
+        }
+
+        // ENV VARS section — mirrors React `EnvVarsSection` L235+ inline span + brutal
+        // pill style. KMP currently exposes only `envVarNames` (not key=value pairs), so
+        // we render just the key as an inline span (no `=` masked value bullet). Adding
+        // full env var values + native PasswordVisualTransformation is tracked as a
+        // follow-up that also requires the data layer to surface `envVars: Map<String,
+        // String>` on `AgentDetailSummary`.
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = "Environment Variables",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray
+            )
+            val envVarNames = summary?.envVarNames.orEmpty()
+            if (envVarNames.isEmpty()) {
+                Text(
+                    text = "No environment variables configured",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    fontStyle = FontStyle.Italic
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                ) {
+                    envVarNames.take(8).forEach { name ->
+                        Box(
+                            modifier = Modifier
+                                .background(SlockColor.SurfaceWhite)
+                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = name,
+                                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                                color = SlockColor.TextBlack,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
         // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
         // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
         // picker invocation that previously lived here were removed in this commit so the
         // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
-        MembersDetailSection(title = "RUNTIME") {
-            MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
-            MembersDetailField("Runtime", summary?.runtime.orBadgeFallback(member.roleDescription))
-            MembersDetailField("Model", summary?.model.orDash())
-            MembersDetailField("Reasoning", summary?.reasoning.orDash())
-            MembersDetailField("Execution", summary?.executionMode.orDash())
-            MembersDetailField("Machine", summary?.machineName.orBadgeFallback(member.membersComputerName))
-            MembersDetailField("Machine ID", summary?.machineId.orBadgeFallback(member.membersComputerId))
-            MembersDetailField("Daemon", summary?.daemonVersion.orDash())
-        }
-        MembersDetailSection(title = "ENV VARS") {
-            if (summary?.envVarNames.orEmpty().isEmpty()) {
-                MembersDetailField("Variables", "No environment variables exposed.")
-            } else {
-                summary?.envVarNames.orEmpty().forEach { name ->
-                    MembersDetailField(name, "Configured")
-                }
-            }
-        }
         MembersAgentSkillsSection(detail)
         MembersAgentCreatedAgentsSection(detail)
     }
@@ -2919,12 +3281,27 @@ private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: 
 
 @Composable
 private fun MemberKindBadge(kind: MemberKind) {
-    SlockBrutalTag(
-        label = kind.name.uppercase(),
-        backgroundColor = kind.membersAvatarColor,
-        borderColor = SlockColor.BorderBlack,
-        textColor = SlockColor.TextBlack
-    )
+    // Mirrors React `AgentDetailPanel.tsx` header agent/human tag style:
+    // inline span with brutal pill (border-2 border-black + bg-[color] + px-2 py-0.5 +
+    // text-xs font-bold). The header tag is not its own React component, so we don't
+    // introduce a generic `SlockBrutalTag` wrapper either — we render the same shape
+    // inline so KMP stays aligned with the React source pattern.
+    Box(
+        modifier = Modifier
+            .background(kind.membersAvatarColor)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = kind.name.uppercase(),
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
+        )
+    }
 }
 
 @Composable
