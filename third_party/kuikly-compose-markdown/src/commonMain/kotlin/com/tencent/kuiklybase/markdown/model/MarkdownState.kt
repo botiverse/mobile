@@ -74,11 +74,17 @@ class MarkdownState internal constructor(
             nodeListState.clear()
         }
         input.content = content
+        val cacheKey = currentCacheKey()
         if (applyCachedParseIfAvailable()) {
             return true
         }
         if (immediate) {
-            return parseBlocking()
+            val (cached, cacheHit) =
+                mutex.withLock {
+                    parseBlocking(cacheKey, content)
+                } ?: return false
+            applyParseResult(cached)
+            return cacheHit
         } else {
             return parse()
         }
@@ -89,10 +95,27 @@ class MarkdownState internal constructor(
      * Parses the markdown content asynchronously using the Default dispatcher.
      * When a result is available it will be emitted to the [state] flow.
      */
-    suspend fun parse(): Boolean = withContext(Dispatchers.Default) {
-        mutex.withLock {
-            parseBlocking()
+    suspend fun parse(): Boolean {
+        val content = input.content
+        val cacheKey = currentCacheKey()
+        MarkdownParseResultCache.get(cacheKey)?.let { cached ->
+            applyParseResult(cached)
+            return true
         }
+        val parsed =
+            try {
+                withContext(Dispatchers.Default) {
+                    mutex.withLock {
+                        parseContent(content)
+                    }
+                }
+            } catch (error: Throwable) {
+                State.Error(error, input.referenceLinkHandler)
+                null
+            } ?: return false
+        val (cached, cacheHit) = MarkdownParseResultCache.putIfAbsent(cacheKey, parsed)
+        applyParseResult(cached)
+        return cacheHit
     }
 
     private suspend fun applyCachedParseIfAvailable(): Boolean =
@@ -105,38 +128,45 @@ class MarkdownState internal constructor(
             true
         }
 
+    private fun currentCacheKey(): MarkdownParseResultCacheKey =
+        MarkdownParseResultCacheKey(input.content, input.lookupLinks)
+
     /**
      * Parses the markdown content synchronously.
      */
-    private fun parseBlocking(): Boolean =
+    private fun parseBlocking(
+        key: MarkdownParseResultCacheKey,
+        content: String
+    ): Pair<MarkdownCachedParseResult, Boolean>? =
         try {
-            val (cached, cacheHit) = MarkdownParseResultCache.getOrPut(
-                key = MarkdownParseResultCacheKey(input.content, input.lookupLinks)
+            MarkdownParseResultCache.getOrPut(
+                key = key
             ) {
-                val parsedResult: ASTNode = input.parser.buildMarkdownTreeFromString(input.content)
-                val links =
-                    if (input.lookupLinks) {
-                        mutableMapOf<String, String?>().also { values ->
-                            lookupLinkDefinition(values, parsedResult, input.content, recursive = true)
-                        }
-                    } else {
-                        emptyMap()
-                    }
-                MarkdownCachedParseResult(
-                    links = links,
-                    nodes =
-                        parsedResult.children.map {
-                            ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
-                        }
-                )
+                parseContent(content)
             }
-
-            applyParseResult(cached)
-            cacheHit
         } catch (error: Throwable) {
             State.Error(error, input.referenceLinkHandler)
-            false
+            null
         }
+
+    private fun parseContent(content: String): MarkdownCachedParseResult {
+        val parsedResult: ASTNode = input.parser.buildMarkdownTreeFromString(content)
+        val links =
+            if (input.lookupLinks) {
+                mutableMapOf<String, String?>().also { values ->
+                    lookupLinkDefinition(values, parsedResult, content, recursive = true)
+                }
+            } else {
+                emptyMap()
+            }
+        return MarkdownCachedParseResult(
+            links = links,
+            nodes =
+                parsedResult.children.map {
+                    ParseResult(it.startOffset, it.endOffset).apply { this.node = it }
+                }
+        )
+    }
 
     private fun applyParseResult(cached: MarkdownCachedParseResult) {
         if (input.lookupLinks) {
@@ -180,11 +210,10 @@ private object MarkdownParseResultCache {
     private val entries = LinkedHashMap<MarkdownParseResultCacheKey, MarkdownCachedParseResult>()
 
     /**
-     * Thread-safety note: this cache is shared across visible MarkdownState rows.
-     * Fast-path reads may happen before the Default dispatcher hop, while misses
-     * still parse through [MarkdownState.parseBlocking]. Keep the cache code
-     * lock-free and portable; Kotlin/Native OHOS does not support JVM
-     * `synchronized(Any)`.
+     * Thread-safety note: this cache is shared across visible MarkdownState rows,
+     * so callers must only access it from the Kuikly/Compose coroutine thread.
+     * Expensive parse work may run off-thread, but cache lookup and mutation must
+     * stay off Dispatchers.Default.
      *
      * We deliberately do NOT wrap the body in `synchronized(...)` here because:
      * 1. JVM `synchronized(Any)` does not exist on Kotlin/Native (OHOS target) —
@@ -194,9 +223,8 @@ private object MarkdownParseResultCache {
      * 3. The earlier Android-only experiment using `synchronized(LinkedHashMap)`
      *    regressed real-device jank 8% → 22% (GPU p99 21ms → 4950ms) and was reverted.
      *
-     * If a future change needs to allow concurrent cache access (e.g. multiple
-     * MarkdownStates on different threads), prefer moving the lock into the parent
-     * [MarkdownState.mutex] rather than re-adding `synchronized` here.
+     * If a future change needs to allow concurrent cache access, use a portable
+     * cross-platform lock; do not re-add JVM-only `synchronized`.
      */
     fun get(key: MarkdownParseResultCacheKey): MarkdownCachedParseResult? =
         entries[key]
@@ -222,6 +250,23 @@ private object MarkdownParseResultCache {
             }
         }
         return parsed to false
+    }
+
+    fun putIfAbsent(
+        key: MarkdownParseResultCacheKey,
+        value: MarkdownCachedParseResult
+    ): Pair<MarkdownCachedParseResult, Boolean> {
+        entries[key]?.let { cached ->
+            return cached to true
+        }
+        entries[key] = value
+        if (entries.size > MaxEntries) {
+            val firstKey = entries.keys.firstOrNull()
+            if (firstKey != null) {
+                entries.remove(firstKey)
+            }
+        }
+        return value to false
     }
 }
 
