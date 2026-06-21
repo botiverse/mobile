@@ -617,6 +617,12 @@ private object SlockMarkdownTextProvider : TextProvider {
         val resolvedText = remember(text, resolvedStyle) {
             text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
+        val resolvedInlineContent =
+            if (resolvedText.hasSlockMarkdownInlineContentPlaceholders()) {
+                inlineContent
+            } else {
+                emptyMap()
+            }
         KuiklyText(
             text = resolvedText,
             modifier = modifier,
@@ -633,12 +639,17 @@ private object SlockMarkdownTextProvider : TextProvider {
             softWrap = softWrap,
             maxLines = maxLines,
             minLines = minLines,
-            inlineContent = inlineContent,
+            inlineContent = resolvedInlineContent,
             onTextLayout = onTextLayout,
             style = resolvedStyle
         )
     }
 }
+
+private fun AnnotatedString.hasSlockMarkdownInlineContentPlaceholders(): Boolean =
+    hasStringAnnotations(SlockMarkdownInlineContentTag, 0, text.length)
+
+private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this
