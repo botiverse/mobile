@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalModalLayer
+import ai.slock.compose.components.SlockBrutalTag
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarPickerKeys
@@ -1792,6 +1793,11 @@ private fun MembersDetailHeader(
                 label = "Message",
                 leadingIcon = SlockLucideIconName.MessageSquare,
                 enabled = member.kind != MemberKind.System && !deleted,
+                // Match the three-dot IconButton visual height so both sit on the same row
+                // baseline. SlockBrutalIconButton(size=32) outer box = 32 + 3dp shadow = 35dp;
+                // SlockBrutalActionButton with minHeight=MembersActionSize gives 32 + 3dp
+                // shadow = 35dp outer, aligned.
+                minHeight = MembersActionSize,
                 modifier = Modifier.width(92.dp),
                 onClick = onOpenDirectMessage
             )
@@ -2909,15 +2915,11 @@ private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: 
 
 @Composable
 private fun MemberKindBadge(kind: MemberKind) {
-    Text(
-        text = kind.name.uppercase(),
-        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp).withSlockFontWeight(FontWeight.Bold),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        modifier = Modifier
-            .background(kind.membersAvatarColor)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
+    SlockBrutalTag(
+        label = kind.name.uppercase(),
+        backgroundColor = kind.membersAvatarColor,
+        borderColor = SlockColor.BorderBlack,
+        textColor = SlockColor.TextBlack
     )
 }
 
