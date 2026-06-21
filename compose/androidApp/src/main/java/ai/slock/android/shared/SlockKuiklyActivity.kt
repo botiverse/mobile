@@ -748,6 +748,8 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+        private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
+        private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
         private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
 
         fun start(
@@ -785,6 +787,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private fun JSONObject.withAndroidHostPageData(pageName: String): JSONObject =
                 JSONObject(toString()).apply {
                     putAndroidTimeContextIfMissing()
+                    putKuiklyVerificationFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
                         put("slockSocialAuthProviders", "google")
                     }
@@ -801,6 +804,15 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             }
             if (!has("nowEpochMillis")) {
                 put("nowEpochMillis", nowMillis)
+            }
+        }
+
+        private fun JSONObject.putKuiklyVerificationFlagsIfMissing() {
+            if (!has(KEY_VERIFY_KUIKLY_THREAD)) {
+                put(KEY_VERIFY_KUIKLY_THREAD, BuildConfig.DEBUG)
+            }
+            if (!has(KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER)) {
+                put(KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER, BuildConfig.DEBUG)
             }
         }
     }
