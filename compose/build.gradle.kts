@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.jetbrains.compose) apply false
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.sqldelight) apply false
-    id("com.tencent.kuiklybase.resource.generator").version("0.0.1").apply(false)
+    id("com.tencent.kuiklybase.resource.generator").version("0.1.0").apply(false)
 }
 
 buildscript {
