@@ -1774,7 +1774,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
                 if (avatarLabel != null) {
                     ChannelAvatar(avatarWireValue, avatarLabel, presence, showPresence)
                 } else if (symbol == "#") {
@@ -1933,7 +1933,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     .padding(start = ChannelRowHorizontalPadding, end = SlockSpacing.Sm),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(modifier = Modifier.width(ChannelSymbolWidth), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.size(width = ChannelAvatarSize, height = ChannelAvatarSize), contentAlignment = Alignment.Center) {
                 SlockAvatar(avatarWireValue, avatarLabel, gravatarUrl = gravatarUrl)
             }
             com.tencent.kuikly.compose.foundation.layout.Row(
