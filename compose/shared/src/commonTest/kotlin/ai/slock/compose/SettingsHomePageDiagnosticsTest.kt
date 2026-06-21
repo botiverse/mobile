@@ -82,7 +82,7 @@ class SettingsHomePageDiagnosticsTest {
                                         SharedSettingsRecompositionProfilerDefaults(
                                             enableFile = true,
                                             enableLog = false,
-                                            enableOverlay = true,
+                                            enableOverlay = false,
                                             sampleRateLabel = "100%",
                                             hotspotThreshold = 10,
                                             maxEventBufferSize = 100000,

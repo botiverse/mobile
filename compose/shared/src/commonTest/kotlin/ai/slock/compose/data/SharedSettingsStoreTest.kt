@@ -1239,11 +1239,11 @@ class SharedSettingsStoreTest {
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(true, engine.started)
         assertEquals("Running", diagnostics.profiler.statusLabel)
-        assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
+        assertEquals(false, diagnostics.profiler.defaults.enableOverlay)
         assertEquals(true, diagnostics.profiler.enabled)
-        assertEquals(true, preferences.enabled)
+        assertEquals(false, preferences.enabled)
         assertEquals(
-            "Profiler started with file and overlay enabled. Per-frame logcat output is disabled to keep the Kuikly bridge stable.",
+            "Profiler started with file capture enabled. Per-frame logcat output and overlay are disabled to keep the Kuikly runtime stable.",
             diagnostics.profiler.actionFeedback
         )
         assertNull(store.state.value.effect)
@@ -1298,7 +1298,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun persistedProfilerSwitchRestoresCaptureOnDiagnosticsLoad() = runBlocking {
+    fun persistedProfilerSwitchIsClearedOnDiagnosticsLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
         val preferences = FakeRecompositionProfilerPreferenceRepository(enabled = true)
@@ -1322,9 +1322,10 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
 
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
-        assertEquals(true, engine.started)
-        assertEquals(true, diagnostics.profiler.enabled)
-        assertEquals("Running", diagnostics.profiler.statusLabel)
+        assertEquals(false, engine.started)
+        assertEquals(false, diagnostics.profiler.enabled)
+        assertEquals(false, preferences.enabled)
+        assertEquals("Idle", diagnostics.profiler.statusLabel)
         assertEquals(listOf("diagnostics"), capabilities.calls)
         scope.cancel()
     }

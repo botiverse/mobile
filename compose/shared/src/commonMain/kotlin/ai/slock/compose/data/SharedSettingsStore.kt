@@ -599,7 +599,7 @@ class SharedSettingsDataSource(
             }
             return DataResult.Error(ScreenError(code, retryable = false))
         }
-        recompositionProfilerPreferenceRepository?.setEnabled(enabled)
+        recompositionProfilerPreferenceRepository?.setEnabled(false)
         return loadDiagnosticsSnapshot(feedback = result.feedback)
     }
 
@@ -698,24 +698,22 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> emptyList()
                 is DataResult.NoPermission -> emptyList()
             }
+        val persistedProfilerEnabled = recompositionProfilerPreferenceRepository?.getPreference()?.enabled == true
         val profilerEnabled =
-            recompositionProfilerPreferenceRepository?.getPreference()?.enabled
-                ?: recompositionProfilerController.isRunning
-        syncPersistedProfilerState(profilerEnabled)
+            if (recompositionProfilerController.isRunning) {
+                true
+            } else {
+                if (persistedProfilerEnabled) {
+                    recompositionProfilerPreferenceRepository.setEnabled(false)
+                }
+                false
+            }
         return DataResult.Content(
             SharedSettingsDiagnosticsSnapshot(
                 entries = entries,
                 profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback)
             )
         )
-    }
-
-    private fun syncPersistedProfilerState(enabled: Boolean) {
-        if (enabled && !recompositionProfilerController.isRunning) {
-            recompositionProfilerController.start()
-        } else if (!enabled && recompositionProfilerController.isRunning) {
-            recompositionProfilerController.stop()
-        }
     }
 
     private suspend fun performProfilerAction(
