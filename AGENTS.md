@@ -169,7 +169,7 @@ When pushing main, the canonical flow is: edit in a worktree branch, push the
 branch, fast-forward `main` to that branch tip (`git checkout main && git merge
 --ff-only <branch>` or `git push origin main` if `main` is already pointing
 where the branch is), then push. Do not push a divergent / non-fast-forward
-`main` to origin; if divergence is needed, open a PR instead.
+`main` to origin; stop and resolve the branch/main state before publishing.
 
 ### Non-interactive Git commands
 
@@ -381,41 +381,21 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
 
 ## Network Priority Workflow
 
-- Every Android request that reaches `ai.slock.compose.network.SlockApiClient` must be
-  started inside `withSlockRequestPriority(...)`; do not rely on an implicit default.
-- New product API routes must be implemented in `compose/shared` behind shared
-  request/response DTOs and `SlockNetworkClient`; Android must not reintroduce a
-  parallel `SlockApi`, endpoint facade, or app-local JSON parser for those
-  contracts.
-- Request bodies must be explicit `@Serializable` shared DTO types too. Do not
-  build API bodies with `mapOf`, ad hoc `JsonObject`, string concatenation, or
-  route-local anonymous shapes; expose a named request DTO/builder in shared and
-  encode that DTO at the network boundary.
-- Shared `SlockNetworkClient` calls must take an explicit `DataRequestPriority`.
-  Do not add no-priority overloads or defaults. This is the compile-time
-  tripwire: new API methods and fake implementations should fail to compile
-  until the caller chooses Foreground, Visible, or Background.
-- Use `Foreground` only for user-blocking work: opening the current thread, sending
-  messages, uploading attachments for send, opening/downloading the tapped attachment,
-  task status changes, membership/channel mutations, and settings save/delete actions.
-- Use `Visible` for content the user is currently looking at but that is not an
-  immediate mutation: current thread refresh/pagination, current tab files/tasks,
-  visible inbox/saved/search refresh, and explicit retry actions.
-- Use `Background` for warmup/reconcile/periodic work: Home progressive prefetch,
-  unread summary polling, silent home refreshes with cached content, background
-  saved/followed/search refreshes, diagnostics, and any future cache preloads.
-- If a new repository/API call is added, first decide its priority and put the
-  priority key/reason in the call site. Missing priority is a bug because it hides
-  work in the wrong queue and makes request-pool logs useless.
-- Current OkHttp lane policy is intentionally separate per priority: Foreground
-  scheduler/client `12`, Visible `8`, Background `4`. This keeps foreground work well
-  above OkHttp's single-dispatcher per-host default while still capping background
-  refresh. Do not collapse these lanes back into one client or one dispatcher.
-- Background work has its own low-priority lane. It is allowed to run concurrently,
-  but a background request waits before starting HTTP whenever Foreground/Visible work
-  is waiting or active. Already-started background requests are not preemptively
-  cancelled; page/server cancellation is handled by the caller scope and stale-result
-  guards.
+- Every Android request that reaches `ai.slock.compose.network.SlockApiClient`
+  must run inside `withSlockRequestPriority(...)`; missing priority is a bug.
+- New product API routes live in `compose/shared` behind shared
+  `@Serializable` request/response DTOs and `SlockNetworkClient`. Do not add
+  parallel Android endpoint facades, app-local JSON parsers, `mapOf` request
+  bodies, ad hoc `JsonObject`, or route-local anonymous body shapes.
+- Shared `SlockNetworkClient` APIs must require explicit `DataRequestPriority`
+  with no no-priority overloads/defaults, so new API/fake call sites fail to
+  compile until they choose `Foreground`, `Visible`, or `Background`.
+- Priority choice: `Foreground` is only for user-blocking opens/mutations;
+  `Visible` is for on-screen refresh/pagination/retry; `Background` is for
+  warmup, reconcile, polling, cached silent refresh, diagnostics, and preloads.
+- OkHttp lanes stay separated per priority: Foreground `12`, Visible `8`,
+  Background `4`. Do not collapse them into one client/dispatcher; background
+  waits behind active or queued Foreground/Visible work.
 
 ## Shared MVI + Repository/DataSource Layered Contract
 
@@ -506,26 +486,10 @@ class SharedExampleViewModel(
 
 ## Kuikly Compose API Quick Reference
 
-For the full specification, read `.agents/rules/kuiklyComposeDSL.mdc`. This is the
-minimal "don't-use" list that covers ~80% of compile/runtime errors:
-
-| ❌ Do NOT use | ✅ Use instead |
-|---|---|
-| `OutlinedTextField(...)` | `TextField(...)` with custom `shape` / `colors` |
-| `Modifier.verticalScroll(state)` | `LazyColumn` wrapping a single `item {}` |
-| `Modifier.horizontalScroll(state)` | `LazyRow` wrapping a single `item {}` |
-| `Modifier.imePadding()` / `WindowInsets.ime` | Delete — keyboard is handled by the native layer |
-| `Icon` / `IconImage` | `Image` with `painterResource` |
-| `reverseLayout` / `flingBehavior` on LazyColumn/LazyRow | Delete these params |
-| `PullToRefreshBox` | `pullToRefreshItem()` as the first item in LazyList |
-| `pointerInput(Unit) { ... }` reading mutable state | `pointerInput(state1, state2) { ... }` — all captured state must be a key |
-| `PasswordVisualTransformation()` | `KeyboardOptions(keyboardType = KeyboardType.Password)` |
-| `BasicTextField2` / `TextFieldState` | `BasicTextField(value, onValueChange)` legacy API |
-| `Modifier.animateItem()` in LazyColumn/LazyRow | Delete — not supported (OK in Grid/StaggeredGrid) |
-| `TopAppBar(scrollBehavior = ...)` | Fixed `TopAppBar`; scroll collapse is not supported |
-
-Import rules: only `androidx.compose.runtime.*` uses the official package; everything
-else (UI, foundation, material3, animation) imports from `com.tencent.kuikly.compose.*`.
+Do not duplicate the Compose API mapping here. The canonical source is
+`.agents/rules/kuiklyComposeDSL.mdc`; read it before touching Kuikly Compose
+code, especially for package imports, unsupported APIs/modifiers, TextField,
+nested scroll, pull-to-refresh, animation, and lazy list/grid differences.
 
 ## Multi-Platform Build Validation
 
