@@ -184,16 +184,37 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
+fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
+    kotlin.setSrcDirs(
+        kotlin.srcDirs.filterNot { sourceDir ->
+            sourceDir.path.replace(File.separatorChar, '/')
+                .endsWith("/build/generated/tmm-res/commonMain/src")
+        }
+    )
+}
+
+afterEvaluate {
+    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension>("kotlin") {
+        sourceSets.named("commonMain").configure {
+            removeGeneratedTmmPluginCommonSourceDir()
+        }
+    }
+}
+
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
     dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources)
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
+}
+
+tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
+    mustRunAfter(stageTmmCommonSources)
 }
 
 dependencies {

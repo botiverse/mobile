@@ -15,22 +15,16 @@ plugins {
 val KEY_PAGE_NAME = "pageName"
 val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 val generatedTmmCommonSourceDir = layout.buildDirectory.dir("generated/tmm-res-common/commonMain")
+val commonTmmResourceInputDir = layout.projectDirectory.dir("src/commonMain/resources/MR")
+val prepareTmmCommonResources by tasks.registering(Sync::class) {
+    from(commonTmmResourceInputDir)
+    into(generatedTmmResourceDir.map { it.dir("commonMain/res") })
+}
 val stageTmmCommonSources by tasks.registering(Sync::class) {
     dependsOn("generateMRcommonMain")
     outputs.upToDateWhen { false }
     from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
     into(generatedTmmCommonSourceDir.map { it.dir("src") })
-}
-val restoreTmmCommonPluginSources by tasks.registering(Sync::class) {
-    dependsOn(stageTmmCommonSources)
-    mustRunAfter(tasks.matching {
-        it.name == "generateMRandroidMain" ||
-            it.name == "generateMRohosArm64Main" ||
-            (it.name.startsWith("package") && it.name.endsWith("Resources"))
-    })
-    outputs.upToDateWhen { false }
-    from(generatedTmmCommonSourceDir.map { it.dir("src") })
-    into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
 }
 
 multiplatformResources {
@@ -156,24 +150,45 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
+fun org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet.removeGeneratedTmmPluginCommonSourceDir() {
+    kotlin.setSrcDirs(
+        kotlin.srcDirs.filterNot { sourceDir ->
+            sourceDir.path.replace(File.separatorChar, '/')
+                .endsWith("/build/generated/tmm-res/commonMain/src")
+        }
+    )
+}
+
+afterEvaluate {
+    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinMultiplatformExtension>("kotlin") {
+        sourceSets.named("commonMain").configure {
+            removeGeneratedTmmPluginCommonSourceDir()
+        }
+    }
+}
+
 tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
-    dependsOn("kspDebugKotlinAndroid")
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
-    dependsOn("kspReleaseKotlinAndroid")
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn("kspKotlinOhosArm64")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
+}
+
+tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
+    dependsOn(prepareTmmCommonResources)
 }
 
 tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
