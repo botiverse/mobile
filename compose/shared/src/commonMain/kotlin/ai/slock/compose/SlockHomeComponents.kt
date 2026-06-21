@@ -1699,7 +1699,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    var rowAnchor by remember { mutableStateOf(Offset.Zero) }
+    var rowTopLeft by remember { mutableStateOf(Offset.Zero) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
@@ -1711,25 +1711,11 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                         onPressEnd?.invoke()
                     },
                     onTap = { onClick?.invoke() },
-                    // #223 (@artin 21 15:11): anchor menu at the user's actual
-                    // long-press position rather than the row's top-left.
-                    // The offset comes in row-local coordinates; add it to the
-                    // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:21, after seeing logs):
-                        // X follows the finger (pressOffset.x). Y is the
-                        // row's bottom (rowAnchor.y + rowHeightPx) so the
-                        // menu lands 8dp below the row, NOT 8dp below the
-                        // user's press point. Earlier versions either
-                        // double-counted row height (menu one row down) or
-                        // placed the menu inside the row (press at row.top
-                        // → menu at y=8). Settle on row.bottom + 8dp gap as
-                        // the only Y source. Helper still does right-flip /
-                        // clamp / above-flip on its own.
                         val rowHeightPx = this.size.height
                         val longPressAnchor = Offset(
-                            x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + rowHeightPx
+                            x = rowTopLeft.x + pressOffset.x,
+                            y = rowTopLeft.y + rowHeightPx
                         )
                         onLongPress.invoke(longPressAnchor)
                     }
@@ -1755,14 +1741,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // Pin/Unpin menu anchor = row's bottom-left, so the
-                    // menu lands 8dp below the row's bottom edge
-                    // (SlockBaseMenuVerticalOffset). Top-left would put
-                    // the menu inside the row's vertical bounds because
-                    // the row is taller than the menu.
                     val pos = coordinates.positionInRoot()
-                    val size = coordinates.size
-                    rowAnchor = Offset(x = pos.x, y = pos.y + size.height)
+                    rowTopLeft = Offset(x = pos.x, y = pos.y)
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
@@ -1857,7 +1837,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    var rowAnchor by remember { mutableStateOf(Offset.Zero) }
+    var rowTopLeft by remember { mutableStateOf(Offset.Zero) }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
@@ -1869,25 +1849,11 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                         onPressEnd?.invoke()
                     },
                     onTap = { onClick?.invoke() },
-                    // #223 (@artin 21 15:11): anchor menu at the user's actual
-                    // long-press position rather than the row's top-left.
-                    // The offset comes in row-local coordinates; add it to the
-                    // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:21, after seeing logs):
-                        // X follows the finger (pressOffset.x). Y is the
-                        // row's bottom (rowAnchor.y + rowHeightPx) so the
-                        // menu lands 8dp below the row, NOT 8dp below the
-                        // user's press point. Earlier versions either
-                        // double-counted row height (menu one row down) or
-                        // placed the menu inside the row (press at row.top
-                        // → menu at y=8). Settle on row.bottom + 8dp gap as
-                        // the only Y source. Helper still does right-flip /
-                        // clamp / above-flip on its own.
                         val rowHeightPx = this.size.height
                         val longPressAnchor = Offset(
-                            x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + rowHeightPx
+                            x = rowTopLeft.x + pressOffset.x,
+                            y = rowTopLeft.y + rowHeightPx
                         )
                         onLongPress.invoke(longPressAnchor)
                     }
@@ -1913,14 +1879,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
-                    // Pin/Unpin menu anchor = row's bottom-left, so the
-                    // menu lands 8dp below the row's bottom edge
-                    // (SlockBaseMenuVerticalOffset). Top-left would put
-                    // the menu inside the row's vertical bounds because
-                    // the row is taller than the menu.
                     val pos = coordinates.positionInRoot()
-                    val size = coordinates.size
-                    rowAnchor = Offset(x = pos.x, y = pos.y + size.height)
+                    rowTopLeft = Offset(x = pos.x, y = pos.y)
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)

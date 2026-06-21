@@ -26,6 +26,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -40,8 +41,9 @@ internal data class SlockBaseMenuItem(
 private val SlockBaseMenuWidth = 136.dp
 private val SlockBaseMenuRowHeight = 34.dp
 private val SlockBaseMenuShadowOffset = 4.dp
-private const val SlockBaseMenuHorizontalOffset = -8f
-private const val SlockBaseMenuVerticalOffset = 8f
+private val SlockBaseMenuHorizontalOffset = (-8).dp
+private val SlockBaseMenuVerticalOffset = 8.dp
+private val SlockBaseMenuViewportGap = 8.dp
 
 @Composable
 internal fun SlockBaseMenuOverlay(
@@ -62,16 +64,23 @@ internal fun SlockBaseMenuOverlay(
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto
 ) {
     if (items.isEmpty()) return
+    val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
-    val menuSize = Size(
-        width = SlockBaseMenuWidth.value + shadowOffset.value,
-        height = SlockBaseMenuRowHeight.value * items.size + shadowOffset.value
-    )
+    val menuSize = with(density) {
+        Size(
+            width = (SlockBaseMenuWidth + shadowOffset).toPx(),
+            height = SlockBaseMenuRowHeight.toPx() * items.size + shadowOffset.toPx()
+        )
+    }
+    val horizontalOffsetPx = with(density) { SlockBaseMenuHorizontalOffset.toPx() }
+    val verticalOffsetPx = with(density) { SlockBaseMenuVerticalOffset.toPx() }
+    val viewportGapPx = with(density) { SlockBaseMenuViewportGap.toPx() }
     SlockAnchoredPopover(
         anchor = anchor,
         contentSize = menuSize,
-        horizontalOffset = SlockBaseMenuHorizontalOffset,
-        verticalOffset = SlockBaseMenuVerticalOffset,
+        viewportGap = viewportGapPx,
+        horizontalOffset = horizontalOffsetPx,
+        verticalOffset = verticalOffsetPx,
         verticalPlacement = verticalPlacement,
         horizontalAutoFlip = true,
         onDismiss = onDismiss,
