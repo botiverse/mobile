@@ -29,3 +29,7 @@
 	path = third_party/moko-resources
 	url = https://github.com/bytemain/moko-resources.git
 	branch = 0.26.0-ohos
+[submodule "tools/slock-visual-testing-react"]
+	path = tools/slock-visual-testing-react
+	url = https://github.com/bytemain/slock-visual-testing.git
+	branch = main
