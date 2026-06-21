@@ -2154,16 +2154,31 @@ private fun PixelAvatar(
     Canvas(modifier = modifier.size(width = avatarSize, height = avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
         val cellSize = size.width / PixelAvatarGridSize
         drawRect(spec.background)
-        spec.grid.forEachIndexed { rowIndex, row ->
-            row.forEachIndexed { columnIndex, key ->
-                val color = PixelAvatarPalette[key] ?: Color.Transparent
-                if (color != Color.Transparent) drawRect(color, topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize), size = Size(cellSize, cellSize))
-            }
+        spec.cells.forEach { cell ->
+            drawRect(cell.color, topLeft = Offset(cell.columnIndex * cellSize, cell.rowIndex * cellSize), size = Size(cellSize, cellSize))
         }
     }
 }
 
-internal data class PixelAvatarSpec(val background: Color, val grid: List<String>)
+internal data class PixelAvatarSpec(val background: Color, val grid: List<String>) {
+    val cells: List<PixelAvatarCell> =
+        buildList {
+            grid.forEachIndexed { rowIndex, row ->
+                row.forEachIndexed { columnIndex, key ->
+                    val color = PixelAvatarPalette[key] ?: Color.Transparent
+                    if (color != Color.Transparent) {
+                        add(PixelAvatarCell(rowIndex = rowIndex, columnIndex = columnIndex, color = color))
+                    }
+                }
+            }
+        }
+}
+
+internal data class PixelAvatarCell(
+    val rowIndex: Int,
+    val columnIndex: Int,
+    val color: Color
+)
 private const val PixelAvatarGridSize = 8f
 private const val PixelAvatarProtocolPrefix = "pixel:"
 private const val PixelAvatarRandomPrefix = "random:"
