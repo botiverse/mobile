@@ -152,7 +152,13 @@ private data class MarkdownCachedParseResult(
 )
 
 private object MarkdownParseResultCache {
-    private const val MaxEntries = 256
+    // #192 / #195: increased from 256 → 1024 to reduce cold-parse jank
+    // on chat scroll. With 256, scrolling past ~10 long-body messages evicts
+    // the oldest entry and triggers a 1ms+ re-parse on next viewport entry.
+    // 1024 is large enough to hold a typical chat scroll backlog of
+    // 200-400 messages (only the long-body ones are expensive, and only
+    // ~50% of messages in a typical chat exceed 200 chars).
+    private const val MaxEntries = 1024
     private val entries = LinkedHashMap<MarkdownParseResultCacheKey, MarkdownCachedParseResult>()
 
     /**
