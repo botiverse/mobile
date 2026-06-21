@@ -1808,9 +1808,8 @@ class SharedHomeStoreTest {
     // #211 ----------------------------------------------------------------
 
     @Test
-    fun refreshWithoutSidebarOrderKeepsPreviouslyLoadedPinnedList() = runBlocking {
+    fun reloadUsesStoreCachedSidebarOrderWhenHomePayloadOmitsIt() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        var homePayloadSidebarOrder: SettingsServerSidebarOrderSnapshot? = null
         var sidebarOrderLoads = 0
         val loadedSidebarOrder = SettingsServerSidebarOrderSnapshot(
             pinnedChannelIds = listOf("channel-1"),
@@ -1824,7 +1823,7 @@ class SharedHomeStoreTest {
                     sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                     api = RecordingHomeApi(),
                     parseHome = { payload, _ ->
-                        DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = homePayloadSidebarOrder))
+                        DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = null))
                     }
                 ),
             scope = scope,
@@ -1842,15 +1841,20 @@ class SharedHomeStoreTest {
         val initial = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(listOf("channel-1"), initial?.pinnedChannelIds)
 
-        store.accept(SharedHomeIntent.Refresh)
+        store.accept(SharedHomeIntent.SelectServer("server-2"))
+        val otherServer = store.state.value.content as SharedHomeContentState.Content
+        assertEquals("server-2", otherServer.snapshot.server.id.value)
+        assertEquals(null, otherServer.snapshot.sidebarOrder)
 
-        val afterRefresh = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        store.accept(SharedHomeIntent.SelectServer("server-1"))
+
+        val afterReload = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
         assertEquals(
             listOf("channel-1"),
-            afterRefresh?.pinnedChannelIds,
-            "home refresh without a sidebar-order payload must not clear the known pinned list"
+            afterReload?.pinnedChannelIds,
+            "home reload without a sidebar-order payload must use the store-cached pinned list"
         )
-        assertEquals(listOf("channel-1"), afterRefresh?.pinnedOrder)
+        assertEquals(listOf("channel-1"), afterReload?.pinnedOrder)
         scope.cancel()
     }
 

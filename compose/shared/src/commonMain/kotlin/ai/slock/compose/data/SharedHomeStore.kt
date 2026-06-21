@@ -79,6 +79,7 @@ class SharedHomeStore(
     // arriving before the initial load resolves cannot PATCH from an empty
     // base snapshot and clobber any server-side pinned list.
     private val sidebarOrderMutex = Mutex()
+    private val sidebarOrderByServer = linkedMapOf<ServerId, SettingsServerSidebarOrderSnapshot>()
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
     private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
@@ -113,6 +114,7 @@ class SharedHomeStore(
         pendingPresenceEvents.clear()
         pendingPresenceServerId = null
         presenceFactsByServer.clear()
+        sidebarOrderByServer.clear()
         hiddenHomeSnapshotDirty = false
         lastHomeNetworkRefreshServerId = null
         lastHomeNetworkRefreshAtMillis = 0L
@@ -735,16 +737,11 @@ class SharedHomeStore(
         contentRefreshing: Boolean,
         previousContent: SharedHomeContentState.Content?
     ): SharedHomeContentState.Content {
+        snapshot.sidebarOrder?.let { sidebarOrderByServer[snapshot.server.id] = it }
+        val sidebarOrder = snapshot.sidebarOrder ?: sidebarOrderByServer[snapshot.server.id]
         val snapshotWithSidebarOrder =
-            if (snapshot.sidebarOrder == null) {
-                val previousSidebarOrder =
-                    previousContent?.snapshot?.sidebarOrder
-                        ?: previousContent?.baseSnapshot?.sidebarOrder
-                if (previousSidebarOrder != null) {
-                    snapshot.copy(sidebarOrder = previousSidebarOrder)
-                } else {
-                    snapshot
-                }
+            if (sidebarOrder != null && snapshot.sidebarOrder != sidebarOrder) {
+                snapshot.copy(sidebarOrder = sidebarOrder)
             } else {
                 snapshot
             }
@@ -793,28 +790,13 @@ class SharedHomeStore(
         sidebarOrderMutex.withLock {
             val current = _state.value.content as? SharedHomeContentState.Content ?: return@withLock
             when (val result = loadSidebarOrder()) {
-                is DataResult.Content -> {
-                    val nextSnapshot = current.snapshot.copy(sidebarOrder = result.data)
-                    if (nextSnapshot.sidebarOrder == current.snapshot.sidebarOrder) return@withLock
-                    reduceState(
-                        _state.value.copy(
-                            content = current.copy(
-                                snapshot = nextSnapshot,
-                                baseSnapshot = current.baseSnapshot.copy(sidebarOrder = result.data)
-                            )
-                        )
-                    )
-                }
+                is DataResult.Content ->
+                    applySidebarOrderLocally(serverId = current.snapshot.server.id, next = result.data)
                 is DataResult.Empty,
                 is DataResult.Error,
                 is DataResult.NoPermission -> Unit
             }
         }
-    }
-
-    private fun currentSidebarOrderOrEmpty(): SettingsServerSidebarOrderSnapshot {
-        val current = _state.value.content as? SharedHomeContentState.Content
-        return current?.snapshot?.sidebarOrder ?: SettingsServerSidebarOrderSnapshot()
     }
 
     /**
@@ -827,14 +809,28 @@ class SharedHomeStore(
      * error.
      */
     private suspend fun ensureSidebarOrderLoaded(): SettingsServerSidebarOrderSnapshot? {
-        val existing = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
-        if (existing != null) return existing
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return null
+        val serverId = current.snapshot.server.id
+        val existing = current.snapshot.sidebarOrder ?: sidebarOrderByServer[serverId]
+        if (existing != null) {
+            if (current.snapshot.sidebarOrder == null) {
+                applySidebarOrderLocally(serverId = serverId, next = existing)
+            }
+            return existing
+        }
         return sidebarOrderMutex.withLock {
-            val again = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.sidebarOrder
-            if (again != null) return@withLock again
+            val latest = _state.value.content as? SharedHomeContentState.Content ?: return@withLock null
+            val latestServerId = latest.snapshot.server.id
+            val again = latest.snapshot.sidebarOrder ?: sidebarOrderByServer[latestServerId]
+            if (again != null) {
+                if (latest.snapshot.sidebarOrder == null) {
+                    applySidebarOrderLocally(serverId = latestServerId, next = again)
+                }
+                return@withLock again
+            }
             val fetched = loadSidebarOrder()
             if (fetched is DataResult.Content) {
-                applySidebarOrderLocally(fetched.data)
+                applySidebarOrderLocally(serverId = latestServerId, next = fetched.data)
                 fetched.data
             } else {
                 null
@@ -843,9 +839,12 @@ class SharedHomeStore(
     }
 
     private fun applySidebarOrderLocally(
+        serverId: ServerId,
         next: SettingsServerSidebarOrderSnapshot
     ): Boolean {
+        sidebarOrderByServer[serverId] = next
         val current = _state.value.content as? SharedHomeContentState.Content ?: return false
+        if (current.snapshot.server.id != serverId) return false
         if (current.snapshot.sidebarOrder == next) return false
         reduceState(
             _state.value.copy(
@@ -859,6 +858,11 @@ class SharedHomeStore(
     }
 
     private suspend fun togglePinned(conversationId: String) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("Unable to update pinned channels: home not loaded")
+            return
+        }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
             pinUpdateFailureCallback("Unable to update pinned channels: sidebar order not loaded")
@@ -876,23 +880,28 @@ class SharedHomeStore(
                 pinnedOrder = previous.pinnedOrder + conversationId
             )
         }
-        applySidebarOrderLocally(next)
+        applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinnedChannelIds = next.pinnedChannelIds,
             pinnedOrder = next.pinnedOrder
         )
         when (val result = updateSidebarOrder(request)) {
-            is DataResult.Content -> applySidebarOrderLocally(result.data)
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission -> {
-                applySidebarOrderLocally(previous)
+                applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to update pinned channels")
             }
         }
     }
 
     private suspend fun setPinnedSortMode(mode: SlockSidebarSortMode) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("Unable to update pinned sort mode: home not loaded")
+            return
+        }
         val previous = ensureSidebarOrderLoaded()
         if (previous == null) {
             pinUpdateFailureCallback("Unable to update pinned sort mode: sidebar order not loaded")
@@ -900,16 +909,16 @@ class SharedHomeStore(
         }
         if (previous.pinnedSortMode == mode.wireValue) return
         val next = previous.copy(pinnedSortMode = mode.wireValue)
-        applySidebarOrderLocally(next)
+        applySidebarOrderLocally(serverId = serverId, next = next)
         val request = SettingsServerSidebarOrderUpdateRequest(
             pinnedSortMode = mode.wireValue
         )
         when (val result = updateSidebarOrder(request)) {
-            is DataResult.Content -> applySidebarOrderLocally(result.data)
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
             is DataResult.Empty -> Unit
             is DataResult.Error,
             is DataResult.NoPermission -> {
-                applySidebarOrderLocally(previous)
+                applySidebarOrderLocally(serverId = serverId, next = previous)
                 pinUpdateFailureCallback("Unable to update pinned sort mode")
             }
         }
