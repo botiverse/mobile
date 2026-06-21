@@ -1256,6 +1256,48 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun profilerStartRuntimeFailureDoesNotPersistEnabledPreference() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val preferences = FakeRecompositionProfilerPreferenceRepository()
+        val engine =
+            FakeProfilerEngine(
+                startFailure = NoSuchMethodError("missing CompositionObserverKt.observe")
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                        recompositionProfilerPreferenceRepository = preferences,
+                        recompositionProfilerController =
+                            SharedSettingsRecompositionProfilerController(
+                                engine = engine,
+                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
+                            )
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+        store.accept(SharedSettingsIntent.StartRecompositionProfiler)
+
+        assertEquals(false, engine.started)
+        assertEquals(false, preferences.enabled)
+        assertEquals(
+            SharedSettingsActionState(
+                DIAGNOSTICS_ACTION_PROFILER_START,
+                inProgress = false,
+                errorCode = "settings_profiler_runtime_incompatible"
+            ),
+            store.state.value.actionState
+        )
+        assertEquals(listOf("diagnostics", "profiler:true"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun persistedProfilerSwitchRestoresCaptureOnDiagnosticsLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
@@ -2106,7 +2148,9 @@ class SharedSettingsStoreTest {
         }
     }
 
-    private class FakeProfilerEngine : SharedSettingsRecompositionProfilerEngine {
+    private class FakeProfilerEngine(
+        private val startFailure: Throwable? = null
+    ) : SharedSettingsRecompositionProfilerEngine {
         override val isEnabled: Boolean
             get() = started
 
@@ -2117,6 +2161,7 @@ class SharedSettingsStoreTest {
         override fun configure(block: com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder.() -> Unit) = Unit
 
         override fun start() {
+            startFailure?.let { throw it }
             started = true
         }
 

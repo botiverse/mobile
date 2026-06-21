@@ -189,9 +189,21 @@ class SharedSettingsRecompositionProfilerController internal constructor(
                 feedback = "Profiler is already running. The shared default debug policy was refreshed with overlay enabled."
             )
         } else {
-            engine.start()
-            SharedSettingsRecompositionProfilerActionResult(
-                feedback = "Profiler started with file/log/overlay enabled. The bottom-right overlay FAB should appear for this session."
+            runCatching {
+                engine.start()
+            }.fold(
+                onSuccess = {
+                    SharedSettingsRecompositionProfilerActionResult(
+                        feedback = "Profiler started with file/log/overlay enabled. The bottom-right overlay FAB should appear for this session."
+                    )
+                },
+                onFailure = { throwable ->
+                    SharedSettingsRecompositionProfilerActionResult(
+                        feedback =
+                            "Profiler could not start because the bundled Compose runtime tooling hook is incompatible: ${throwable.profilerFailureLabel()}.",
+                        errorCode = "settings_profiler_runtime_incompatible"
+                    )
+                }
             )
         }
     }
@@ -310,6 +322,10 @@ class SharedSettingsRecompositionProfilerController internal constructor(
             "Diagnostics persists the profiler switch in shared settings, routes toggle acknowledgements through the host bridge, and uses Kuikly RecompositionProfiler common APIs for capture and export."
     }
 }
+
+private fun Throwable.profilerFailureLabel(): String =
+    message?.takeIf { it.isNotBlank() }
+        ?: this::class.simpleName.orEmpty().ifBlank { "unknown runtime error" }
 
 private fun Long.formatDurationLabel(): String =
     when {

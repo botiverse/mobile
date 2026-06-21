@@ -587,14 +587,20 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission ->
                 return DataResult.NoPermission(hostResult.blocker)
         }
-        recompositionProfilerPreferenceRepository?.setEnabled(enabled)
-        return performProfilerAction {
+        val result =
             if (enabled) {
                 recompositionProfilerController.start()
             } else {
                 recompositionProfilerController.stop()
             }
+        result.errorCode?.let { code ->
+            if (enabled) {
+                recompositionProfilerPreferenceRepository?.setEnabled(false)
+            }
+            return DataResult.Error(ScreenError(code, retryable = false))
         }
+        recompositionProfilerPreferenceRepository?.setEnabled(enabled)
+        return loadDiagnosticsSnapshot(feedback = result.feedback)
     }
 
     suspend fun startRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
