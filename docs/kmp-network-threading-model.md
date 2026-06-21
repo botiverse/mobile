@@ -62,6 +62,65 @@ latency, `*_parse_start/result dispatcher=Default` proves pure parse left the
 caller/runtime path, and store/first-render markers show whether the return to
 UI state commit is still too heavy.
 
+## Kuikly Reference Check
+
+Checked references:
+
+- `third_party/kuikly-ui/docs/Compose/concepts.md`
+- `third_party/kuikly-ui/docs/DevGuide/thread-and-coroutines.md`
+- `third_party/kuikly-ui/docs/DevGuide/network.md`
+- `third_party/kuikly-ui/core/src/commonMain/kotlin/com/tencent/kuikly/core/module/NetworkModule.kt`
+- `third_party/kuikly-ui/core-render-android/src/main/java/com/tencent/kuikly/core/render/android/expand/module/KRNetworkModule.kt`
+- `third_party/kuikly-ui/core-render-ohos/src/main/ets/modules/KRNetworkModule.ets`
+
+The Kuikly recommendation is not "put networking in a separate client process".
+The recommendation is:
+
+- Kuikly UI operations, observable access, and Module API access stay on the
+  Kuikly thread.
+- Simple async control flow can use Kuikly built-in coroutines, which stay on
+  the Kuikly thread and are dynamic-capable.
+- Expensive work that must support dynamic pages should move behind a Module
+  boundary so the platform host can use its own threading or async primitives.
+- KMP multi-threading with `kotlinx.coroutines` / `Dispatchers.*` is appropriate
+  only when the page does not need dynamic JS-style multi-platform execution.
+- After background work completes, UI state changes must return to the Kuikly
+  thread/runtime context.
+
+The built-in Kuikly `NetworkModule.MODULE_NAME` follows this same shape:
+
+- Common `NetworkModule.httpRequest(...)` builds request JSON and calls
+  `toNative(false, "httpRequest", ...)`.
+- Android `KRNetworkModule` executes HTTP work through
+  `krThreadAdapter.executeOnSubThread { ... }`, then performs
+  `HttpURLConnection` and response stream reads on that worker.
+- OHOS `KRNetworkModule` has `syncMode(): false` and uses ArkTS
+  `http.createHttp().request(...)` asynchronously.
+- The built-in common callback attempts to wrap `data` as a `JSONObject`; if it
+  is not JSON, it returns a `{"data": ...}` object.
+
+That means the built-in module keeps network I/O off the Kuikly thread, but it
+does not produce Slock endpoint typed models in a separate network process. It
+also performs its basic JSON wrapper parse in the common callback path, not in a
+typed endpoint parser service.
+
+Slock's custom `HRSlockNetworkModule` is conceptually aligned with Kuikly's
+Module recommendation, but it exists because Slock needs API-specific behavior
+that the built-in module does not provide as-is:
+
+- raw `bodyText` and `errorBodyText` separation,
+- HTTP status code as the primary result contract,
+- cancellation by request id,
+- OkHttp on Android,
+- multipart and file-ref uploads,
+- Slock diagnostics around request/cancel/callback,
+- auth/server/header policy owned by the shared Slock client.
+
+Replacing `HRSlockNetworkModule` with the built-in `NetworkModule` would not
+automatically improve process isolation or typed parsing. It would mainly trade
+our current raw API contract and cancellation/upload behavior for Kuikly's
+generic `JSONObject` callback contract.
+
 ## End-To-End Flow
 
 ```text
@@ -303,14 +362,48 @@ choices are:
 
 1. Keep the current raw-body host contract and expand shared/KMP off-UI parse
    coverage.
-2. Add endpoint-specific host/native parser support only for proven hot payloads.
-3. Generate host parsers from shared contracts to avoid hand-written platform
+2. Align `HRSlockNetworkModule` more closely with Kuikly's render thread
+   adapter shape where possible, while preserving Slock cancellation, upload,
+   raw body, and diagnostics contracts.
+3. Add endpoint-specific host/native parser support only for proven hot payloads.
+4. Generate host parsers from shared contracts to avoid hand-written platform
    duplication.
-4. Build a background repository pipeline for heavy endpoints such as
+5. Build a background repository pipeline for heavy endpoints such as
    `/tasks/server`, producing a normalized snapshot before the UI route needs
    to render it.
+6. For dynamic pages, prefer a Module-backed parser/normalizer if the payload is
+   large enough that common `Dispatchers.Default` is not a valid execution
+   model.
 
 The current approach is the least duplicative shared-code design. It is not the
 same thing as parsing in a separate network process; it is parsing on a shared
 coroutine background dispatcher after the host network module has returned the
 raw response body.
+
+## Recommended Next Optimization
+
+The next optimization should be evidence-driven, not a blind switch to the
+built-in `NetworkModule`.
+
+Recommended order:
+
+1. Keep using `HRSlockNetworkModule` for Slock API traffic because it owns the
+   Slock-specific raw response, cancellation, upload, auth/header, and
+   diagnostics contract.
+2. Add or verify host-side diagnostics around the native network worker:
+   native task start/end, request id, method/path, bytes read, callback thread,
+   and cancellation/drop.
+3. Keep endpoint JSON decode/map in shared/KMP when it is pure and can run on
+   `Dispatchers.Default`, because this avoids duplicating typed contract logic
+   across Android and OHOS.
+4. For endpoints that still create visible jank after parse offload, split the
+   work further:
+   - host/network phase: HTTP and raw body read,
+   - shared background phase: pure decode/map/normalize,
+   - runtime phase: minimal snapshot commit and recomposition.
+5. Only move typed parsing into the host Module for endpoints proven by traces
+   to be too large or too dynamic-mode-sensitive for shared background parse.
+
+The architectural target is therefore not "network process parses everything".
+It is "every expensive phase has an explicit non-runtime execution boundary,
+and the Kuikly runtime receives only the smallest state commit needed to render".
