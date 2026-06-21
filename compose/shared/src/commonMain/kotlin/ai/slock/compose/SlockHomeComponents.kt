@@ -18,7 +18,6 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.ui.draw.drawBehind
-import com.tencent.kuikly.compose.ui.draw.drawWithCache
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -2145,13 +2144,17 @@ private fun PixelAvatar(
     borderWidth: Dp = SlockStroke.Thin
 ) {
     SlockPixelAvatarDrawCache.onCompose()
-    // #195 hotfix (revert to baseline): `Spacer + drawWithCache` was supposed to cache the
-    // 64-cell drawRect calls, but on Kuikly the `drawWithCache` modifier does not fire its
-    // `onDrawBehind` block on Spacer (emulator repro: PixelAvatar entry logs fire for every
-    // DM row, but the drawWithCache lambda body never runs and the avatar is blank). Same
-    // regression shape as the `markdown.layout_block` drawWithCache attempt (commit 7364294
-    // revert). Reverting to `Canvas { ... }` which directly invokes DrawScope on every
-    // recomposition. #195 hit rate gate diagnostic counter is preserved.
+    if (isSlockNativePixelAvatarViewSupported()) {
+        SlockNativePixelAvatar(
+            spec = spec,
+            modifier = modifier,
+            avatarSize = avatarSize,
+            borderWidth = borderWidth
+        )
+        return
+    }
+    // Non-Android hosts keep the shared Canvas fallback. The Android host registers a native
+    // render view that consumes the same precomputed spans and caches the bitmap by spec/size.
     Canvas(modifier = modifier.size(width = avatarSize, height = avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
         drawRect(spec.background)
         spec.spans.forEach { span ->
@@ -2180,6 +2183,7 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
         buildList {
             grid.forEachIndexed { rowIndex, row ->
                 var spanColor: Color? = null
+                var spanColorArgb: String? = null
                 var spanStart = 0
                 var spanLength = 0
                 fun flushSpan() {
@@ -2189,20 +2193,24 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
                             rowIndex = rowIndex,
                             startColumnIndex = spanStart,
                             columnCount = spanLength,
-                            color = color
+                            color = color,
+                            colorArgb = spanColorArgb ?: SlockColor.TextBlackArgb
                         )
                     )
                     spanColor = null
+                    spanColorArgb = null
                     spanLength = 0
                 }
                 row.forEachIndexed { columnIndex, key ->
                     val color = PixelAvatarPalette[key] ?: Color.Transparent
+                    val colorArgb = PixelAvatarPaletteArgb[key]
                     when {
                         color == Color.Transparent -> flushSpan()
                         color == spanColor -> spanLength += 1
                         else -> {
                             flushSpan()
                             spanColor = color
+                            spanColorArgb = colorArgb
                             spanStart = columnIndex
                             spanLength = 1
                         }
@@ -2211,13 +2219,25 @@ internal data class PixelAvatarSpec(val background: Color, val grid: List<String
                 flushSpan()
             }
         }
+
+    val backgroundArgb: String =
+        PixelAvatarKnownBackgroundArgb[background] ?: SlockColor.BrandYellowArgb
+
+    val nativeSpanPayload: String =
+        spans.joinToString(separator = ";") { span ->
+            "${span.rowIndex},${span.startColumnIndex},${span.columnCount},${span.colorArgb}"
+        }
+
+    val nativeCacheKey: String =
+        "$backgroundArgb|${grid.joinToString(separator = "/")}"
 }
 
 internal data class PixelAvatarSpan(
     val rowIndex: Int,
     val startColumnIndex: Int,
     val columnCount: Int,
-    val color: Color
+    val color: Color,
+    val colorArgb: String
 )
 private const val PixelAvatarGridCellCount = 8
 private const val PixelAvatarProtocolPrefix = "pixel:"
@@ -2231,14 +2251,9 @@ internal const val PixelAvatarDefaultKey = "robot"
 internal val PixelAvatarReservedKeys: Set<String> = setOf("finch")
 
 /**
- * #195 hit-rate gate for [PixelAvatar]'s `drawWithCache` optimization. Tracks how many times
- * `PixelAvatar` is composed vs. how many times the underlying `drawWithCache` block has to
- * rebuild (i.e. the cache is invalidated). The ratio `rebuilds / composes` is the per-frame
- * draw cost; if it stays below `1 / visibleRows`, the optimization is a win.
- *
- * Diagnostic logging is gated behind a debug flag and only emits on Android via
- * `android.util.Log` (Compose UI runs on Android for smoke; OHOS / JS keep counters in memory
- * but skip the log). Goal: hit rate > 50% in a 5-round scroll smoke before commit.
+ * #195/#199 diagnostic counter retained for avatar render churn. Android now routes pixel
+ * avatars through a host bitmap cache; non-Android hosts keep the shared Canvas fallback.
+ * Logging remains aggregate-only and does not include avatar content.
  */
 private object SlockPixelAvatarDrawCache {
     private var composeCount: Int = 0
@@ -2282,7 +2297,18 @@ private object SlockPixelAvatarDrawCache {
 }
 
 internal expect fun logPixelAvatarDrawCache(message: String)
+internal expect fun isSlockNativePixelAvatarViewSupported(): Boolean
+private val PixelAvatarPaletteArgb = mapOf('_' to "#00000000", 'K' to "#FF141111", 'W' to "#FFFFFFFF", 'P' to "#FFFE7DA8", 'O' to "#FFF8A16F", 'Y' to "#FFFFD440", 'L' to "#FFA9D877", 'C' to "#FF27CCF3", 'V' to "#FFBBAFE6", 'B' to "#FF576574", 'R' to "#FFF97264", 'G' to "#FF9DCAAA")
 private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
+private val PixelAvatarKnownBackgroundArgb: Map<Color, String> =
+    PixelAvatarPalette
+        .filterKeys { it != '_' }
+        .entries
+        .associate { entry -> entry.value to PixelAvatarPaletteArgb.getValue(entry.key) } +
+        mapOf(
+            Color(0xFFD7F3FB) to "#FFD7F3FB",
+            Color(0xFF1E1E1C) to "#FF1E1E1C"
+        )
 internal val PixelAvatarFixedSpecs = mapOf(
     "robot" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
     "cat" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
