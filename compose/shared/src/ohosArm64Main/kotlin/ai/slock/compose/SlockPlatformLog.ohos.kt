@@ -1,5 +1,12 @@
 package ai.slock.compose
 
+import com.tencent.kuikly.core.log.KLog
+
 internal actual fun slockPlatformLog(level: SlockLogLevel, tag: String, message: String) {
-    println("${level.name}/$tag: $message")
+    when (level) {
+        SlockLogLevel.Debug -> KLog.d(tag, message)
+        SlockLogLevel.Info -> KLog.i(tag, message)
+        SlockLogLevel.Warn -> KLog.i(tag, "WARN: $message")
+        SlockLogLevel.Error -> KLog.e(tag, message)
+    }
 }
