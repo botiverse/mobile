@@ -1051,6 +1051,15 @@ private fun SlockAppShellContent() {
             )
         }
     val homeState by homeViewModel.state.collectAsState()
+    val conversationHeaderState =
+        remember(homeState.content) {
+            val snapshot = (homeState.content as? SharedHomeContentState.Content)?.snapshot
+            if (snapshot == null) {
+                SharedConversationHeaderState()
+            } else {
+                sharedConversationHeaderState(snapshot.channels + snapshot.directMessages)
+            }
+        }
     // #81: forward the typed selected-server badge projection to the host
     // bridge. The host platform MUST use `count` for the system badge
     // and `source` only for diagnostics / logging. See
@@ -1338,13 +1347,14 @@ private fun SlockAppShellContent() {
         openThreadPayload(returnPayload, pushCurrent = false)
     }
 
-    fun appShellThreadPayload(conversation: ConversationSummary, anchorMessageId: String? = null): KuiklyThreadScreenPayload =
-        buildAppShellThreadPayload(
+    fun appShellThreadPayload(conversation: ConversationSummary, anchorMessageId: String? = null): KuiklyThreadScreenPayload {
+        return buildAppShellThreadPayload(
             conversation = conversation,
             timeContext = threadTimeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             anchorMessageId = anchorMessageId
         )
+    }
 
     fun openDiagnosticsFeedbackChannel(
         draft: SettingsDiagnosticsFeedbackDraft,
@@ -2240,6 +2250,7 @@ private fun SlockAppShellContent() {
                         tasksDataSource = tasksDataSource,
                         computersStore = threadComputersStore,
                         membersStore = threadMembersStore,
+                        conversationHeaderState = conversationHeaderState,
                         onBack = { popThreadRoute() },
                         onOpenThreadPayload = { payload -> openThreadPayload(payload) },
                         onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },

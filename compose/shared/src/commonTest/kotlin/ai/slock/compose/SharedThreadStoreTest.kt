@@ -865,6 +865,53 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun directMessageCachedSnapshotPreservesLaunchPeerHeader() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("dm-1"),
+                        channelId = ChannelId("dm-1"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "b2cddd71-75a9-4cfc-b3e0"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId("cached-1"),
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            author = member("u2", "Stdrc"),
+                            timestampLabel = "2026-06-21T15:32:00Z",
+                            body = "cached dm body"
+                        )
+                    )
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertEquals("artin", payload.title)
+        assertEquals("artin", payload.dmPeerName)
+        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
+        assertEquals("AR", payload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("cached dm body", payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
     fun persistentCachedThreadSnapshotUsesConfiguredInitialWindow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -2954,6 +3001,21 @@ class SharedThreadStoreTest {
             sourceThreadId = "channel-1",
             status = "loading",
             canSend = true
+        )
+
+    private fun directMessagePayload(): KuiklyThreadScreenPayload =
+        KuiklyThreadScreenPayload(
+            instanceId = "shared-shell-thread-dm-1",
+            title = "artin",
+            surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+            sourceThreadId = "dm-1",
+            streamChannelId = "dm-1",
+            status = "loading",
+            canSend = true,
+            dmPeerName = "artin",
+            dmPeerAvatarUrl = "pixel:crown",
+            dmPeerAvatarLabel = "AR",
+            dmPeerGravatarUrl = "https://www.gravatar.com/avatar/artin"
         )
 
     private fun replyRouteWithWrongHint(): KuiklyThreadScreenPayload =

@@ -41,7 +41,8 @@ internal object SharedThreadHeaderContextStore {
         surfaceKind: String,
         conversation: ConversationSummary,
         originMessage: KuiklyThreadMessageItem?,
-        parentMessageId: String?
+        parentMessageId: String?,
+        dmPeerName: String? = null
     ): SharedThreadHeaderContext {
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
         val resolvedOriginParentMessageId =
@@ -62,6 +63,7 @@ internal object SharedThreadHeaderContextStore {
             title =
                 when (surfaceKind) {
                     KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
+                    KuiklyThreadSurfaceKind.DirectMessage -> dmTitleFor(surfaceKind, dmPeerName ?: conversation.name)
                     else -> conversation.name.takeIf { it.isNotBlank() } ?: fallbackTitle(surfaceKind)
                 },
             subtitle =

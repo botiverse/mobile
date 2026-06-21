@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
@@ -402,6 +403,62 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appShellDmPayloadUsesConversationHeaderProjectionForPeerHeaderFields() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("dm-artin"),
+                channelId = ChannelId("dm-artin"),
+                kind = ConversationKind.DirectMessage,
+                name = "artin",
+                avatar = AvatarReference.Pixel("crown"),
+                avatarUrl = "https://cdn.slock.ai/avatars/artin.webp",
+                gravatarUrl = "https://www.gravatar.com/avatar/artin",
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val payload =
+            buildAppShellThreadPayload(conversation)
+        val headerState = sharedConversationHeaderState(listOf(conversation))
+        val renderedPayload =
+            payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals("Direct Message", payload.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals("artin", renderedPayload.title)
+        assertEquals("artin", renderedPayload.dmPeerName)
+        assertEquals("pixel:crown", renderedPayload.dmPeerAvatarUrl)
+        assertEquals("AR", renderedPayload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", renderedPayload.dmPeerGravatarUrl)
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
+    }
+
+    @Test
+    fun appShellChannelPayloadUsesConversationHeaderProjectionForTitleOnly() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "首页专修",
+                subtitle = "Home repair",
+                avatar = AvatarReference.Pixel("ignored"),
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val payload = buildAppShellThreadPayload(conversation)
+        val headerState = sharedConversationHeaderState(listOf(conversation))
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("Channel", payload.title)
+        assertEquals("首页专修", renderedPayload.title)
+        assertEquals("Home repair", renderedPayload.subtitle)
+        assertEquals(null, renderedPayload.dmPeerName)
+        assertEquals(null, renderedPayload.dmPeerAvatarUrl)
+        assertEquals("Message #首页专修", renderedPayload.resolveThreadComposer().placeholder)
+    }
+
+    @Test
     fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
         val payload =
             buildAppShellThreadPayload(
@@ -640,16 +697,35 @@ class ThreadPayloadTest {
                 )
         )
 
+        val headerState =
+            sharedConversationHeaderState(
+                listOf(
+                    ConversationSummary(
+                        threadId = ThreadId("dm-agent-1"),
+                        channelId = ChannelId("dm-agent-1"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "Product-UX-Designer",
+                        subtitle = "online",
+                        joined = true,
+                        permissions = ConversationPermissions(canSend = true)
+                    )
+                )
+            )
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
         assertEquals("dm-agent-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
-        val composer = payload.resolveThreadComposer()
+        assertEquals(null, payload.dmPeerName)
+        assertEquals("Product-UX-Designer", renderedPayload.title)
+        assertEquals("Product-UX-Designer", renderedPayload.dmPeerName)
+        val composer = renderedPayload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, composer.surfaceKind)
         assertEquals("dm-agent-1", composer.streamChannelId)
-        assertEquals("Message @Direct Message", composer.placeholder)
+        assertEquals("Message @Product-UX-Designer", composer.placeholder)
         assertEquals("idle", composer.composerMode)
     }
 

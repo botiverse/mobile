@@ -3263,8 +3263,11 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             surfaceKind = surfaceKind,
             conversation = conversation,
             originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
-            parentMessageId = parentId
+            parentMessageId = parentId,
+            dmPeerName = base.dmPeerName?.takeIf { it.isNotBlank() }
         )
+    val dmPeerAvatarWireValue = conversation.avatar?.wireValue ?: conversation.avatarUrl
+    val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
     return base.copy(
         title = headerContext.title,
         subtitle = headerContext.subtitle,
@@ -3295,7 +3298,11 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         joined = conversation.joined,
         canSend = conversation.permissions.canSend,
         membersCount = conversation.memberCount ?: base.membersCount,
-        errorCode = null
+        errorCode = null,
+        dmPeerName = base.dmPeerName ?: conversation.name.takeIf { isDirectMessage },
+        dmPeerAvatarUrl = base.dmPeerAvatarUrl ?: dmPeerAvatarWireValue.takeIf { isDirectMessage },
+        dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
+        dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
     )
 }
 

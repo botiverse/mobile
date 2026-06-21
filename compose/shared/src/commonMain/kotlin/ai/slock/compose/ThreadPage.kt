@@ -1429,6 +1429,7 @@ internal fun SharedThreadRouteContent(
     tasksDataSource: SharedTasksDataSource,
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
+    conversationHeaderState: SharedConversationHeaderState = SharedConversationHeaderState(),
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
@@ -1445,6 +1446,11 @@ internal fun SharedThreadRouteContent(
         }
     val threadState by threadViewModel.state.collectAsState()
     val payload = threadState.payload
+    val renderedPayload = remember(payload, conversationHeaderState) {
+        payload
+            .withSharedShellEventCapabilities()
+            .withConversationHeader(conversationHeaderState.entryFor(payload))
+    }
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId(initialPayload)
     val auxiliaryRouteKey = resolvedAuxiliaryThreadId ?: "pending-${initialPayload.instanceId}"
     LaunchedEffect(resolvedAuxiliaryThreadId, active) {
@@ -1584,7 +1590,7 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(composerDraftViewModel, initialPayload.instanceId, resolvedAuxiliaryThreadId) {
         composerDraftViewModel.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                initialPayload
+                renderedPayload
                     .resolveThreadComposer()
                     .copy(streamChannelId = resolvedAuxiliaryThreadId)
             )
@@ -1656,9 +1662,6 @@ internal fun SharedThreadRouteContent(
         payload.sourceThreadId
             ?: initialPayload.sourceThreadId
             ?: payload.instanceId.ifBlank { initialPayload.instanceId }
-    val renderedPayload = remember(payload) {
-        payload.withSharedShellEventCapabilities()
-    }
     LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
         if (firstRenderLoggedThreadId != threadRouteKey) {
             firstRenderLoggedThreadId = threadRouteKey
@@ -1767,18 +1770,18 @@ internal fun SharedThreadRouteContent(
     var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     val renderedComposerState =
         remember(
-            payload.composer,
-            payload.instanceId,
-            payload.title,
-            payload.surfaceKind,
-            payload.sourceThreadId,
-            payload.streamChannelId,
-            payload.parentChannelId,
-            payload.parentMessageId,
-            payload.originParentMessageId,
-            payload.canSend
+            renderedPayload.composer,
+            renderedPayload.instanceId,
+            renderedPayload.title,
+            renderedPayload.surfaceKind,
+            renderedPayload.sourceThreadId,
+            renderedPayload.streamChannelId,
+            renderedPayload.parentChannelId,
+            renderedPayload.parentMessageId,
+            renderedPayload.originParentMessageId,
+            renderedPayload.canSend
         ) {
-            payload.resolveThreadComposer()
+            renderedPayload.resolveThreadComposer()
         }
     val loadedMemberSuggestions =
         remember(memberSuggestionSlice.suggestions) {
@@ -1805,7 +1808,7 @@ internal fun SharedThreadRouteContent(
             composerDraftState,
             loadedMemberSuggestions,
             loadedChannelSuggestions,
-            payload.canSend,
+            renderedPayload.canSend,
             resolvedAuxiliaryThreadId
         ) {
             val pendingAttachments =
@@ -1821,7 +1824,7 @@ internal fun SharedThreadRouteContent(
                     .distinctBy { attachment -> attachment.id }
                     .filterNot { attachment -> attachment.id in composerDraftState.removedAttachmentIds }
             renderedComposerState.copy(
-                instanceId = renderedComposerState.instanceId.ifBlank { payload.instanceId },
+                instanceId = renderedComposerState.instanceId.ifBlank { renderedPayload.instanceId },
                 seedText = composerDraftState.seedText,
                 seedAsTask = composerDraftState.seedAsTask,
                 syncNonce = composerDraftState.syncNonce,
@@ -1853,7 +1856,7 @@ internal fun SharedThreadRouteContent(
                 mentionActionNotice = composerDraftState.mentionActionNotice,
                 executingMentionActionIds = composerDraftState.executingMentionActionIds.toList(),
                 streamChannelId = resolvedAuxiliaryThreadId,
-                enabled = payload.canSend && resolvedAuxiliaryThreadId != null && !composerDraftState.sending,
+                enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null && !composerDraftState.sending,
                 memberSuggestions =
                     loadedMemberSuggestions.takeIf { it.isNotEmpty() }
                         ?: renderedComposerState.memberSuggestions,
@@ -1863,10 +1866,10 @@ internal fun SharedThreadRouteContent(
             )
         }
     val composerSurface =
-        remember(composerState, resolvedAuxiliaryThreadId, payload.parentChannelId) {
+        remember(composerState, resolvedAuxiliaryThreadId, renderedPayload.parentChannelId) {
             composerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                parentChannelId = payload.parentChannelId
+                parentChannelId = renderedPayload.parentChannelId
             )
         }
     val routeUiState =
