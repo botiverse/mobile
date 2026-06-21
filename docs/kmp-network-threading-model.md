@@ -31,6 +31,37 @@ Current mobile client shape:
 The remote API server is a separate process somewhere else, but client-side
 HTTP body parsing does not currently happen in a separate app process.
 
+## Does Same Process Mean UI Blocking?
+
+No. A separate process is not required to keep networking off the UI path. The
+important boundary is the execution thread or queue that does the work.
+
+Current expected behavior:
+
+- Kuikly/Compose UI work stays on the runtime thread/queue.
+- Android HTTP and response body string read stay on the host background
+  executor.
+- OHOS HTTP work stays on the host async HTTP path.
+- Shared pure JSON decode/map can run on `Dispatchers.Default`.
+- Only the final validation, merge, and UI-visible state commit returns to the
+  runtime side.
+
+Networking can still cause visible jank if one of these boundaries is broken:
+
+- The host implementation performs HTTP or body reads on the Kuikly/runtime
+  thread.
+- Shared data source code decodes or maps a large response on the caller/runtime
+  coroutine instead of a background dispatcher.
+- Background parse is technically off the runtime thread but still consumes
+  enough CPU to starve rendering on low-core devices.
+- The final store commit is too large, causing reducer work, snapshot diff, or
+  recomposition to monopolize the runtime thread.
+
+That is why the tracing is split by phase. `kuikly_network` explains host/network
+latency, `*_parse_start/result dispatcher=Default` proves pure parse left the
+caller/runtime path, and store/first-render markers show whether the return to
+UI state commit is still too heavy.
+
 ## End-To-End Flow
 
 ```text
