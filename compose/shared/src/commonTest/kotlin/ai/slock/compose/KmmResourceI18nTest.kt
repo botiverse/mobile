@@ -54,6 +54,24 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun bottomTabStringResourcesAreGenerated() {
+        val tabResources = listOf(
+            MR.strings.tab_home,
+            MR.strings.tab_tasks,
+            MR.strings.tab_members,
+            MR.strings.tab_settings
+        )
+
+        tabResources.forEach { resource ->
+            val desc: StringDesc = resource.desc()
+            assertTrue(
+                desc is ResourceStringDesc,
+                "bottom tab resources must produce ResourceStringDesc entries"
+            )
+        }
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.

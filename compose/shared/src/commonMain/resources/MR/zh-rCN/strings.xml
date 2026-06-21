@@ -2,6 +2,10 @@
 <resources>
     <string name="common_ok">确定</string>
     <string name="common_cancel">取消</string>
+    <string name="tab_home">首页</string>
+    <string name="tab_tasks">任务</string>
+    <string name="tab_members">成员</string>
+    <string name="tab_settings">设置</string>
     <string name="settings_invite_by_email">通过邮件邀请</string>
     <string name="settings_delete_server">删除服务器</string>
 </resources>

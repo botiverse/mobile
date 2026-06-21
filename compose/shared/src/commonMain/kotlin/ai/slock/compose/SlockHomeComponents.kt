@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
+import ai.slock.compose.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
 import com.tencent.kuikly.core.module.RouterModule
 import androidx.compose.runtime.Composable
@@ -76,6 +77,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.tmm.kmmresource.compose.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -928,12 +930,22 @@ fun SlockStructuralHomeShell(
             }
         }
         if (showBottomBar) {
-            val bottomTabItems = remember(selectedTabKey) {
+            val homeTabLabel = stringResource(MR.strings.tab_home)
+            val tasksTabLabel = stringResource(MR.strings.tab_tasks)
+            val membersTabLabel = stringResource(MR.strings.tab_members)
+            val settingsTabLabel = stringResource(MR.strings.tab_settings)
+            val bottomTabItems = remember(
+                selectedTabKey,
+                homeTabLabel,
+                tasksTabLabel,
+                membersTabLabel,
+                settingsTabLabel
+            ) {
                 listOf(
-                    SlockBottomTabItemPayload("home", "HOME", SlockLucideIconName.House, selected = selectedTabKey == "home"),
-                    SlockBottomTabItemPayload("tasks", "TASKS", SlockLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
-                    SlockBottomTabItemPayload("members", "MEMBERS", SlockLucideIconName.Users, selected = selectedTabKey == "members"),
-                    SlockBottomTabItemPayload("settings", "SETTINGS", SlockLucideIconName.Settings, selected = selectedTabKey == "settings")
+                    SlockBottomTabItemPayload("home", homeTabLabel, SlockLucideIconName.House, selected = selectedTabKey == "home"),
+                    SlockBottomTabItemPayload("tasks", tasksTabLabel, SlockLucideIconName.SquareCheckBig, selected = selectedTabKey == "tasks"),
+                    SlockBottomTabItemPayload("members", membersTabLabel, SlockLucideIconName.Users, selected = selectedTabKey == "members"),
+                    SlockBottomTabItemPayload("settings", settingsTabLabel, SlockLucideIconName.Settings, selected = selectedTabKey == "settings")
                 )
             }
             SlockAppBottomTabBarHost(
