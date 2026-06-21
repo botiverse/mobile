@@ -2398,16 +2398,65 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
 ): KuiklyThreadScreenPayload {
     val stableMessages = messages.preserveStableItemsFrom(previous.messages) { item -> item.id }
     val stableTasks = tasks.preserveStableItemsFrom(previous.tasks) { item -> item.id }
+    val preservePreviousOrigin = shouldPreserveLoadedOriginFrom(previous)
     val stableOrigin =
-        if (originMessage != null && originMessage == previous.originMessage) {
-            previous.originMessage
-        } else {
-            originMessage
+        when {
+            preservePreviousOrigin -> previous.originMessage
+            originMessage != null && originMessage == previous.originMessage -> previous.originMessage
+            else -> originMessage
         }
-    if (stableMessages === messages && stableTasks === tasks && stableOrigin === originMessage) {
+    val stableOriginParentMessageId =
+        if (preservePreviousOrigin) {
+            previous.originParentMessageId ?: previous.originMessage?.id ?: originParentMessageId
+        } else {
+            originParentMessageId
+        }
+    val stableOriginPreview =
+        if (preservePreviousOrigin) previous.originPreview else originPreview
+    val stableOriginStatus =
+        if (preservePreviousOrigin) previous.originStatus.takeIf { it == "loaded" } ?: "loaded" else originStatus
+    val stableOriginErrorCode =
+        if (preservePreviousOrigin) previous.originErrorCode else originErrorCode
+    if (
+        stableMessages === messages &&
+        stableTasks === tasks &&
+        stableOrigin === originMessage &&
+        stableOriginParentMessageId == originParentMessageId &&
+        stableOriginPreview == originPreview &&
+        stableOriginStatus == originStatus &&
+        stableOriginErrorCode == originErrorCode
+    ) {
         return this
     }
-    return copy(messages = stableMessages, originMessage = stableOrigin, tasks = stableTasks)
+    return copy(
+        messages = stableMessages,
+        originMessage = stableOrigin,
+        originPreview = stableOriginPreview,
+        originParentMessageId = stableOriginParentMessageId,
+        originStatus = stableOriginStatus,
+        originErrorCode = stableOriginErrorCode,
+        tasks = stableTasks
+    )
+}
+
+private fun KuiklyThreadScreenPayload.shouldPreserveLoadedOriginFrom(
+    previous: KuiklyThreadScreenPayload
+): Boolean {
+    val previousOrigin = previous.originMessage ?: return false
+    if (originMessage != null) return false
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread || previous.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) {
+        return false
+    }
+    if (originStatus != "missing" && originStatus != "loading") return false
+    val incomingOriginId =
+        originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: parentMessageId?.takeIf { it.isNotBlank() }
+            ?: return false
+    val previousOriginId =
+        previous.originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: previous.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: previousOrigin.id.takeIf { it.isNotBlank() }
+    return previousOriginId == incomingOriginId && previousOrigin.id == incomingOriginId
 }
 
 private inline fun <T, K> List<T>.preserveStableItemsFrom(

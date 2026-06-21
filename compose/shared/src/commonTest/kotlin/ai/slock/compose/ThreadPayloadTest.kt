@@ -864,6 +864,70 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun refreshPatchPreservesLoadedOriginWhenNetworkSnapshotOnlyProvesSameParent() {
+        val origin =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "user-1",
+                authorName = "Artin",
+                body = "Original task body"
+            )
+        val previous =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-thread-channel-1",
+                title = ThreadReplyPageTitle,
+                subtitle = "#general",
+                status = "content",
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                originParentMessageId = "message-1",
+                originMessage = origin,
+                originStatus = "loaded",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "reply-message-1",
+                            authorId = "agent-1",
+                            authorName = "Android-Developer-4",
+                            body = "Reply body"
+                        )
+                    )
+            )
+        val refreshPatch =
+            previous.copy(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "reply-message-1",
+                            authorId = "agent-1",
+                            authorName = "Android-Developer-4",
+                            body = "Reply body"
+                        ),
+                        KuiklyThreadMessageItem(
+                            id = "reply-message-2",
+                            authorId = "agent-2",
+                            authorName = "KMP-专家",
+                            body = "Fresh reply"
+                        )
+                    ),
+                originMessage = null,
+                originPreview = null,
+                originParentMessageId = "message-1",
+                originStatus = "missing"
+            )
+
+        val payload = refreshPatch.preserveStableTimelineFrom(previous)
+
+        assertEquals("loaded", payload.originStatus)
+        assertEquals("message-1", payload.originParentMessageId)
+        assertEquals("Original task body", payload.originMessage?.body)
+        assertEquals(listOf("reply-message-1", "reply-message-2"), payload.messages.map { it.id })
+    }
+
+    @Test
     fun appShellActivityThreadItemShowsMissingOriginFallbackWhenPreviewIsUnavailable() {
         val request =
             InboxItem(
