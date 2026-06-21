@@ -1701,20 +1701,22 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     // The offset comes in row-local coordinates; add it to the
                     // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:11, @Cindy 21 15:18): anchor at
-                        // the user's press point (X + Y). Placement helper
-                        // decides whether the menu sits below (default) or
-                        // above (flip) the point; we just hand it the press
-                        // position. No row-height math on this side — that's
-                        // what the helper's verticalOffset (SlockBaseMenuVer
-                        // ticalOffset = 8f) is for. X follows the finger so
-                        // the menu opens under the user's thumb; helper does
-                        // the screen-edge flip/clamp.
+                        // #223 (@artin 21 15:21, after seeing logs):
+                        // X follows the finger (pressOffset.x). Y is the
+                        // row's bottom (rowAnchor.y + rowHeightPx) so the
+                        // menu lands 8dp below the row, NOT 8dp below the
+                        // user's press point. Earlier versions either
+                        // double-counted row height (menu one row down) or
+                        // placed the menu inside the row (press at row.top
+                        // → menu at y=8). Settle on row.bottom + 8dp gap as
+                        // the only Y source. Helper still does right-flip /
+                        // clamp / above-flip on its own.
+                        val rowHeightPx = this.size.height
                         val longPressAnchor = Offset(
                             x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + pressOffset.y
+                            y = rowAnchor.y + rowHeightPx
                         )
-                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " longPressAnchor=" + longPressAnchor.toString())
+                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )
@@ -1858,20 +1860,22 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     // The offset comes in row-local coordinates; add it to the
                     // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:11, @Cindy 21 15:18): anchor at
-                        // the user's press point (X + Y). Placement helper
-                        // decides whether the menu sits below (default) or
-                        // above (flip) the point; we just hand it the press
-                        // position. No row-height math on this side — that's
-                        // what the helper's verticalOffset (SlockBaseMenuVer
-                        // ticalOffset = 8f) is for. X follows the finger so
-                        // the menu opens under the user's thumb; helper does
-                        // the screen-edge flip/clamp.
+                        // #223 (@artin 21 15:21, after seeing logs):
+                        // X follows the finger (pressOffset.x). Y is the
+                        // row's bottom (rowAnchor.y + rowHeightPx) so the
+                        // menu lands 8dp below the row, NOT 8dp below the
+                        // user's press point. Earlier versions either
+                        // double-counted row height (menu one row down) or
+                        // placed the menu inside the row (press at row.top
+                        // → menu at y=8). Settle on row.bottom + 8dp gap as
+                        // the only Y source. Helper still does right-flip /
+                        // clamp / above-flip on its own.
+                        val rowHeightPx = this.size.height
                         val longPressAnchor = Offset(
                             x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + pressOffset.y
+                            y = rowAnchor.y + rowHeightPx
                         )
-                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " longPressAnchor=" + longPressAnchor.toString())
+                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " rowHeightPx=" + rowHeightPx + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )

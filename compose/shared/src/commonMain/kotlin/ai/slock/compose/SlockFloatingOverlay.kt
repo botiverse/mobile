@@ -19,6 +19,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.Density
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.IntSize
 
 internal data class SlockFloatingOverlayLayout(
@@ -73,12 +74,11 @@ internal fun SlockAnchoredPopover(
             localAnchor = Offset(anchor.x - overlayLayout.origin.x, anchor.y - overlayLayout.origin.y),
             overlayLayout = overlayLayout
         )
-        val density = LocalDensity.current
+        // Use IntOffset to keep units in px (Modifier.offset(Dp, Dp) does
+        // px→dp→px round trip which loses the integer offset). The host
+        // fills its parent and the popoverOffset is already in px.
         content(
-            Modifier.offset(
-                x = with(density) { popoverOffset.x.toDp() },
-                y = with(density) { popoverOffset.y.toDp() }
-            ),
+            Modifier.offset { IntOffset(popoverOffset.x.toInt(), popoverOffset.y.toInt()) },
             position
         )
     }
