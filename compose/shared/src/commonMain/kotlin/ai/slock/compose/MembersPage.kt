@@ -3032,7 +3032,10 @@ private fun MembersListRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        MembersAvatar(member = member)
+        MembersAvatar(
+            member = member,
+            showStatusOverlay = false
+        )
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
@@ -3055,6 +3058,13 @@ private fun MembersListRow(
                 modifier = Modifier.weight(1f)
             )
         }
+        if (member.kind == MemberKind.Agent) {
+            SlockStatusIndicator(
+                color = member.agentStatus.membersStatusColor(member.presence),
+                size = MemberStatusDotSize,
+                pulsing = member.agentStatus.membersStatusPulsing()
+            )
+        }
     }
 }
 
@@ -3064,6 +3074,7 @@ private fun MembersAvatar(
     avatarSize: Dp = MemberAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
     statusPulsing: Boolean = member.agentStatus.membersStatusPulsing(),
+    showStatusOverlay: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
@@ -3072,7 +3083,7 @@ private fun MembersAvatar(
     SlockAvatarWithStatus(
         modifier = modifier,
         statusColor =
-            if (member.kind == MemberKind.Agent) {
+            if (showStatusOverlay && member.kind == MemberKind.Agent) {
                 member.agentStatus.membersStatusColor(member.presence)
             } else {
                 null
