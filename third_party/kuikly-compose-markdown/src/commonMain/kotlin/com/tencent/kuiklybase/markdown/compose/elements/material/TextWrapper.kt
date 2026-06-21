@@ -17,6 +17,10 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.TextUnit
 import com.tencent.kuiklybase.markdown.compose.LocalMarkdownColors
 import com.tencent.kuiklybase.markdown.compose.LocalTextProvider
+import com.tencent.kuiklybase.markdown.compose.SlockMarkdownVendorTraceThresholdUs
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownLogSubTrace
+import com.tencent.kuiklybase.markdown.compose.slockMarkdownMonotonicNanosSince
+import kotlin.time.TimeSource
 
 @Composable
 fun MarkdownBasicText(
@@ -40,7 +44,25 @@ fun MarkdownBasicText(
 ) {
     // Note: This component is ported over from Material2 Text - to remove the dependency on Material
     val overrideColorOrUnspecified: Color = color ?: style.color ?: LocalMarkdownColors.current.text
+    val styleMergeStartMark = TimeSource.Monotonic.markNow()
+    val mergedStyle = style.merge(
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        lineHeight = lineHeight,
+        fontFamily = fontFamily,
+        textDecoration = textDecoration,
+        fontStyle = fontStyle,
+        letterSpacing = letterSpacing
+    )
+    val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
+    if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace(
+            "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.length}"
+        )
+    }
 
+    val textProviderStartMark = TimeSource.Monotonic.markNow()
     LocalTextProvider.current.Text(
         text = text,
         modifier = modifier,
@@ -53,22 +75,19 @@ fun MarkdownBasicText(
         textDecoration = null,
         textAlign = null,
         lineHeight = TextUnit.Unspecified,
-        style = style.merge(
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            textAlign = textAlign,
-            lineHeight = lineHeight,
-            fontFamily = fontFamily,
-            textDecoration = textDecoration,
-            fontStyle = fontStyle,
-            letterSpacing = letterSpacing
-        ),
+        style = mergedStyle,
         onTextLayout = onTextLayout,
         overflow = overflow,
         softWrap = softWrap,
         maxLines = maxLines,
         minLines = minLines,
     )
+    val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
+    if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace(
+            "phase=markdown.text.provider_text durationUs=$textProviderDurationUs textLength=${text.length}"
+        )
+    }
 }
 
 @Composable
@@ -95,7 +114,25 @@ fun MarkdownBasicText(
     // Note: This component is ported over from Material2 Text - to remove the dependency on Material
     val overrideColorOrUnspecified: Color = color ?: style.color ?: LocalMarkdownColors.current.text
 
+    val styleMergeStartMark = TimeSource.Monotonic.markNow()
+    val mergedStyle = style.merge(
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        lineHeight = lineHeight,
+        fontFamily = fontFamily,
+        textDecoration = textDecoration,
+        fontStyle = fontStyle,
+        letterSpacing = letterSpacing
+    )
+    val styleMergeDurationUs = slockMarkdownMonotonicNanosSince(styleMergeStartMark) / 1_000L
+    if (styleMergeDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace(
+            "phase=markdown.text.merge_style durationUs=$styleMergeDurationUs textLength=${text.text.length}"
+        )
+    }
 
+    val textProviderStartMark = TimeSource.Monotonic.markNow()
     LocalTextProvider.current.RichText(
         text = text,
         modifier = modifier,
@@ -108,16 +145,7 @@ fun MarkdownBasicText(
         textDecoration = null,
         textAlign = null,
         lineHeight = TextUnit.Unspecified,
-        style = style.merge(
-            fontSize = fontSize,
-            fontWeight = fontWeight,
-            textAlign = textAlign,
-            lineHeight = lineHeight,
-            fontFamily = fontFamily,
-            textDecoration = textDecoration,
-            fontStyle = fontStyle,
-            letterSpacing = letterSpacing
-        ),
+        style = mergedStyle,
         onTextLayout = onTextLayout,
         overflow = overflow,
         softWrap = softWrap,
@@ -125,6 +153,12 @@ fun MarkdownBasicText(
         minLines = minLines,
         inlineContent = inlineContent,
     )
+    val textProviderDurationUs = slockMarkdownMonotonicNanosSince(textProviderStartMark) / 1_000L
+    if (textProviderDurationUs >= SlockMarkdownVendorTraceThresholdUs) {
+        slockMarkdownLogSubTrace(
+            "phase=markdown.text.provider_rich_text durationUs=$textProviderDurationUs textLength=${text.text.length}"
+        )
+    }
 }
 
 

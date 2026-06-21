@@ -216,7 +216,7 @@ fun MarkdownSuccess(
     }
 }
 
-private const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
+internal const val SlockMarkdownVendorTraceThresholdUs: Long = 200L
 
 internal fun slockMarkdownMonotonicNanosSince(mark: TimeMark): Long =
     mark.elapsedNow().inWholeNanoseconds
