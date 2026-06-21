@@ -125,6 +125,20 @@ fun MarkdownText(
     val animations = LocalMarkdownAnimations.current
     val transformer = LocalImageTransformer.current
 
+    if (content.canRenderAsPlainText() && annotatorSettings.annotator.inlineContent == null) {
+        MarkdownBasicText(
+            text = content.text,
+            maxLines = maxLines,
+            overflow = overflow,
+            modifier = modifier,
+            style = style,
+            onTextLayout = {
+                onTextLayout?.invoke(it, baseColor)
+            }
+        )
+        return
+    }
+
     val layoutResult: MutableState<TextLayoutResult?> = remember { mutableStateOf(null) }
     val imageState = rememberMarkdownImageState()
 
@@ -164,6 +178,15 @@ fun MarkdownText(
             onTextLayout?.invoke(it, baseColor)
         }
     )
+}
+
+private fun AnnotatedString.canRenderAsPlainText(): Boolean {
+    if (paragraphStyles.isNotEmpty()) return false
+    if (getStringAnnotations(start = 0, end = length).isNotEmpty()) return false
+    if (getLinkAnnotations(start = 0, end = length).isNotEmpty()) return false
+    return spanStyles.all { range ->
+        range.start == 0 && range.end == length
+    }
 }
 
 @Composable
