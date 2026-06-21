@@ -735,7 +735,20 @@ class SharedHomeStore(
         contentRefreshing: Boolean,
         previousContent: SharedHomeContentState.Content?
     ): SharedHomeContentState.Content {
-        val baseSnapshot = snapshot.preserveStableRowsFrom(previousContent?.baseSnapshot)
+        val snapshotWithSidebarOrder =
+            if (snapshot.sidebarOrder == null) {
+                val previousSidebarOrder =
+                    previousContent?.snapshot?.sidebarOrder
+                        ?: previousContent?.baseSnapshot?.sidebarOrder
+                if (previousSidebarOrder != null) {
+                    snapshot.copy(sidebarOrder = previousSidebarOrder)
+                } else {
+                    snapshot
+                }
+            } else {
+                snapshot
+            }
+        val baseSnapshot = snapshotWithSidebarOrder.preserveStableRowsFrom(previousContent?.baseSnapshot)
         val projection = projectPresence(baseSnapshot)
         return SharedHomeContentState.Content(
             snapshot = projection.snapshot.preserveStableRowsFrom(previousContent?.snapshot),

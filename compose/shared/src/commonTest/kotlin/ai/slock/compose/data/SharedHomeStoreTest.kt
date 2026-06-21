@@ -1808,6 +1808,53 @@ class SharedHomeStoreTest {
     // #211 ----------------------------------------------------------------
 
     @Test
+    fun refreshWithoutSidebarOrderKeepsPreviouslyLoadedPinnedList() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var homePayloadSidebarOrder: SettingsServerSidebarOrderSnapshot? = null
+        var sidebarOrderLoads = 0
+        val loadedSidebarOrder = SettingsServerSidebarOrderSnapshot(
+            pinnedChannelIds = listOf("channel-1"),
+            pinnedOrder = listOf("channel-1"),
+            pinnedSortMode = "manual"
+        )
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = RecordingHomeApi(),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(sampleHome(payload.serverId).copy(sidebarOrder = homePayloadSidebarOrder))
+                    }
+                ),
+            scope = scope,
+            loadSidebarOrder = {
+                sidebarOrderLoads += 1
+                if (sidebarOrderLoads == 1) {
+                    DataResult.Content(loadedSidebarOrder)
+                } else {
+                    DataResult.Error(ScreenError(code = "sidebar_order_load_failed", retryable = true))
+                }
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        val initial = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("channel-1"), initial?.pinnedChannelIds)
+
+        store.accept(SharedHomeIntent.Refresh)
+
+        val afterRefresh = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(
+            listOf("channel-1"),
+            afterRefresh?.pinnedChannelIds,
+            "home refresh without a sidebar-order payload must not clear the known pinned list"
+        )
+        assertEquals(listOf("channel-1"), afterRefresh?.pinnedOrder)
+        scope.cancel()
+    }
+
+    @Test
     fun togglePinnedOptimisticallyUpdatesAndPatchesSidebarOrder() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val initial = SettingsServerSidebarOrderSnapshot(
