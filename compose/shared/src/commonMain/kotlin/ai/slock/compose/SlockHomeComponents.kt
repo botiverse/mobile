@@ -2050,13 +2050,19 @@ private fun PixelAvatar(
     }
 }
 
-private data class PixelAvatarSpec(val background: Color, val grid: List<String>)
+internal data class PixelAvatarSpec(val background: Color, val grid: List<String>)
 private const val PixelAvatarGridSize = 8f
 private const val PixelAvatarProtocolPrefix = "pixel:"
 private const val PixelAvatarRandomPrefix = "random:"
-private const val PixelAvatarDefaultKey = "robot"
+internal const val PixelAvatarDefaultKey = "robot"
+/**
+ * Avatar keys reserved for specific agents (mirrors React `RESERVED_AVATAR_KEYS`).
+ * `finch` is reserved for the Cindy OA agent only — excluded from random selection
+ * (CreateAgentDialog) and the manual picker grid (AgentDetailPanel).
+ */
+internal val PixelAvatarReservedKeys: Set<String> = setOf("finch")
 private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
-private val PixelAvatarFixedSpecs = mapOf(
+internal val PixelAvatarFixedSpecs = mapOf(
     "robot" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
     "cat" to PixelAvatarSpec(PixelAvatarPalette.getValue('Y'), listOf("K______K", "KK____KK", "KYKYYKYK", "KYYYYYYK", "KYKYYKYK", "_KYYYYK_", "__KYYK__", "___KK___")),
     "ghost" to PixelAvatarSpec(PixelAvatarPalette.getValue('V'), listOf("__KKKK__", "_KWWWWK_", "KWKWWKWK", "KWWWWWWK", "KWWWWWWK", "KWWKKWWK", "KWKWWKWK", "K_K__K_K")),
@@ -2072,7 +2078,12 @@ private val PixelAvatarFixedSpecs = mapOf(
     "cloud" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("________", "__KK____", "_KWWKK__", "KWWWWWK_", "KWWWWWWK", "KWWWWWWK", "_KKKKKK_", "________")),
     "sun" to PixelAvatarSpec(PixelAvatarPalette.getValue('R'), listOf("_K_KK_K_", "K_KYYK_K", "_KYYYYK_", "KYYYYYYK", "KYYYYYYK", "_KYYYYK_", "K_KYYK_K", "_K_KK_K_")),
     "bell" to PixelAvatarSpec(PixelAvatarPalette.getValue('B'), listOf("___KK___", "__KYYK__", "_KYYYYK_", "_KYYYYK_", "_KYYYYK_", "KYYYYYYK", "KKKKKKKK", "___KK___")),
-    "tree" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___"))
+    "tree" to PixelAvatarSpec(PixelAvatarPalette.getValue('L'), listOf("___KK___", "__KGGK__", "_KGGGGK_", "KGGGGGGK", "KGGGGGGK", "_KKGGKK_", "__KOOK__", "___KK___")),
+    // Reserved for Cindy OA agent — excluded from picker grid (mirrors React
+    // `RESERVED_AVATAR_KEYS`). Bg is `#D7F3FB` (soft-sky tint of cyan),
+    // intentionally NOT in the palette; kept as a literal here to match React
+    // PixelAvatar.tsx without promoting a one-off surface into the shared token.
+    "finch" to PixelAvatarSpec(Color(0xFFD7F3FB), listOf("__KKKK__", "_KCCCCK_", "KCWCCWCK", "KCKCCKCK", "KCCOOCCK", "_KCCCCK_", "_KCKKCK_", "__K__K__"))
 )
 private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('C') to 'K',
@@ -2089,6 +2100,14 @@ private val PixelAvatarRandomOptions = listOf(
     PixelAvatarPalette.getValue('C') to 'W'
 )
 private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(PixelAvatarProtocolPrefix)?.let { PixelAvatarFixedSpecs[it] ?: PixelAvatarFixedSpecs.getValue(PixelAvatarDefaultKey) } ?: removePrefixOrNull(PixelAvatarRandomPrefix)?.let(::randomPixelAvatar)
+
+/**
+ * Returns the picker keys in display order, mirroring React
+ * `AVATAR_KEYS = Object.keys(AVATARS).filter(k => !RESERVED_AVATAR_KEYS.includes(k))`.
+ * Used by the avatar picker modal grid in `MembersAgentProfileTab`.
+ */
+internal val PixelAvatarPickerKeys: List<String> = PixelAvatarFixedSpecs.keys
+    .filterNot { it == PixelAvatarDefaultKey || it in PixelAvatarReservedKeys }
 private fun String.removePrefixOrNull(prefix: String): String? = takeIf { it.startsWith(prefix) }?.substring(prefix.length)
 private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
     val random = PixelAvatarRandom(pixelHash(seed))

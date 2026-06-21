@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentDetailSnapshot
@@ -78,6 +79,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -1980,6 +1982,94 @@ private fun MembersHumanDetailSections(member: MemberProfile, modifier: Modifier
 }
 
 @Composable
+private fun MembersAgentAvatarPicker(
+    member: MemberProfile,
+    onSelect: (String) -> Unit,
+    onClear: () -> Unit,
+    onUploadUnavailable: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    SlockModalLayer(
+        title = "Change avatar",
+        subtitle = member.displayName,
+        onDismiss = onDismiss,
+        maxWidth = 420.dp
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                MembersAvatar(member = member, avatarSize = 80.dp)
+                Text(
+                    text = member.avatar?.wireValue ?: member.avatarUrl ?: "Default",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    textAlign = TextAlign.Center
+                )
+            }
+            Text(
+                text = "Choose",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextBlack,
+                fontWeight = FontWeight.Bold
+            )
+            val rows = PixelAvatarPickerKeys.chunked(4)
+            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                    ) {
+                        row.forEach { key ->
+                            SlockBrutalActionButton(
+                                label = key,
+                                onClick = { onSelect(key) },
+                                modifier = Modifier.weight(1f),
+                                backgroundColor = if (member.avatar?.wireValue == "pixel:$key") SlockColor.BrandYellow else SlockColor.SurfaceWhite,
+                                minHeight = 56.dp,
+                                textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+                                leadingIcon = null
+                            )
+                        }
+                    }
+                }
+            }
+            Text(
+                text = "Actions",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextBlack,
+                fontWeight = FontWeight.Bold
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                SlockBrutalActionButton(
+                    label = "Upload",
+                    leadingIcon = SlockLucideIconName.Upload,
+                    onClick = onUploadUnavailable,
+                    modifier = Modifier.weight(1f)
+                )
+                if (member.avatarUrl != null || member.avatar != null) {
+                    SlockBrutalActionButton(
+                        label = "Clear",
+                        leadingIcon = SlockLucideIconName.X,
+                        onClick = onClear,
+                        modifier = Modifier.weight(1f),
+                        backgroundColor = SlockColor.AccentPink
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
@@ -1993,6 +2083,7 @@ private fun MembersAgentProfileTab(
     var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
     var draftDescription by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
     var actionLabel by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     val deleted = summary?.deletedAt?.isNotBlank() == true
     val saving = actionLabel == "Saving"
 
@@ -2069,15 +2160,42 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
             }
         }
-        // AVATAR section: display the agent's current avatar only. The KMP-only inline 4 button
-        // picker (Robot/Heart/Upload/Clear) was removed in `ff806c04` because it doesn't exist
-        // in React. Phase 2 of #49 will add a clickable avatar tile that opens a modal picker
-        // mirroring React `AgentDetailPanel.tsx` (modal with 17 quick-pick grid + system file
-        // picker upload + clear). Until then users cannot change agent avatar from this UI.
+        // AVATAR section: clickable avatar tile that opens a modal picker mirroring React
+        // `AgentDetailPanel.tsx` (quick-pick grid of pixel keys + system file picker upload +
+        // clear). Non-manageable views render the tile statically. Upload still falls back to a
+        // toast stub here; file picker wiring + multipart upload (#49 Phase 2 Item 4) lands in a
+        // follow-up worktree.
         MembersDetailSection(title = "AVATAR") {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(
+                        if (canManage && !deleted) Modifier.clickable { showAvatarPicker = true }
+                        else Modifier
+                    )
+                    .padding(vertical = SlockSpacing.Xs),
+                horizontalArrangement = Arrangement.Center
+            ) {
                 MembersAvatar(member = member, avatarSize = 96.dp)
             }
+            if (canManage && !deleted) {
+                Text(
+                    text = "Tap to change avatar",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        if (showAvatarPicker && canManage && !deleted) {
+            MembersAgentAvatarPicker(
+                member = member,
+                onSelect = { key -> saveProfile(avatarUrl = "pixel:$key", includeAvatarUrl = true); showAvatarPicker = false },
+                onClear = { saveProfile(avatarUrl = null, includeAvatarUrl = true); showAvatarPicker = false },
+                onUploadUnavailable = { onUnavailableAction("Avatar upload is not available yet."); showAvatarPicker = false },
+                onDismiss = { showAvatarPicker = false }
+            )
         }
         MembersDetailSection(title = "RUNTIME") {
             MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
