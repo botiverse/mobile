@@ -62,7 +62,13 @@ internal fun SlockStatusIndicator(
         } else {
             0f
         }
-    val pulsePadding = if (pulsing) 5.dp else 0.dp
+    // Status dot layout uses a fixed `pulsePadding` slot on every render — pulse and non-pulse
+    // states both occupy the same outer Canvas footprint and draw the visible dot at the same
+    // x/y position inside it, so callers that anchor the indicator (row-end `Modifier.align(End)`,
+    // `SlockAvatarWithStatus.align(BottomEnd)`, inline timestamp column, etc.) get identical dot
+    // alignment regardless of `pulsing`. The pulse ring (alpha-blended expanding circle) is the
+    // only thing that varies — it draws inside the extra `pulsePadding` area when `pulsing` is true.
+    val pulsePadding = 5.dp
     Canvas(modifier = modifier.size(size + pulsePadding)) {
         val stroke = borderWidth.toPx()
         val halfStroke = stroke / 2f
