@@ -1,12 +1,12 @@
 package ai.slock.compose
 
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.State
+import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.animation.core.RepeatMode
 import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
 import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
-import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
@@ -45,10 +45,10 @@ internal fun SlockStatusIndicator(
     borderWidth: Dp = SlockStatusIndicatorTokens.BorderWidth,
     pulsing: Boolean = false
 ) {
-    val pulseProgress =
+    val pulseProgressState: State<Float>? =
         if (pulsing) {
             val transition = rememberInfiniteTransition(label = "slock-status-pulse")
-            val progress by transition.animateFloat(
+            transition.animateFloat(
                 initialValue = 0f,
                 targetValue = 1f,
                 animationSpec =
@@ -58,9 +58,8 @@ internal fun SlockStatusIndicator(
                     ),
                 label = "slock-status-pulse-progress"
             )
-            progress
         } else {
-            0f
+            null
         }
     // Status dot layout uses a fixed `pulsePadding` slot on every render — pulse and non-pulse
     // states both occupy the same outer Canvas footprint and draw the visible dot at the same
@@ -70,6 +69,9 @@ internal fun SlockStatusIndicator(
     // only thing that varies — it draws inside the extra `pulsePadding` area when `pulsing` is true.
     val pulsePadding = 5.dp
     Canvas(modifier = modifier.size(size + pulsePadding)) {
+        // Read the animation state in the draw phase so pulsing only invalidates the Canvas draw,
+        // not the SlockStatusIndicator composable group every frame.
+        val pulseProgress = pulseProgressState?.value ?: 0f
         val stroke = borderWidth.toPx()
         val halfStroke = stroke / 2f
         val pulseInset = pulsePadding.toPx() / 2f
