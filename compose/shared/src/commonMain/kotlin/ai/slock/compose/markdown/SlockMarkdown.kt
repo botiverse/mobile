@@ -885,15 +885,38 @@ fun SlockMarkdownBody(
             }
     ) {
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
-            Markdown(
-                content = content,
-                colors = colors,
-                typography = typography,
-                textProvider = SlockMarkdownTextProvider,
-                annotator = annotator,
-                padding = padding,
-                modifier = markdownModifier
-            )
+            // #192 long-body sub-trace: split layout phase into pre-block setup
+            // vs the third-party `Markdown()` call so 5-10ms spikes can be
+            // localized. Fires only when the wrapped block exceeds the
+            // MarkdownSpikeThresholdUs (200us default), keeping logcat clean for
+            // short bodies. Wrap in `traceMarkdownSection` (not non-composable)
+            // because the call is inside an existing @Composable scope.
+            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_INNER, body.length) {
+                // Local-reference assignments: cheap but measuring them is useful
+                // to confirm KuiklyText-measure is the dominant cost. The
+                // assignment is a single val read; the sub-trace will be near
+                // zero unless something heavier is being done implicitly.
+                val refContent = content
+                val refTypography = typography
+                val refAnnotator = annotator
+                val refPadding = padding
+                val refModifier = markdownModifier
+                val refColors = colors
+                val refTextProvider = SlockMarkdownTextProvider
+                // Pass-through, no-op; just to keep the locals from being flagged unused.
+                @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refModifier; refColors; refTextProvider
+            }
+            traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
+                Markdown(
+                    content = content,
+                    colors = colors,
+                    typography = typography,
+                    textProvider = SlockMarkdownTextProvider,
+                    annotator = annotator,
+                    padding = padding,
+                    modifier = markdownModifier
+                )
+            }
         }
     }
 }

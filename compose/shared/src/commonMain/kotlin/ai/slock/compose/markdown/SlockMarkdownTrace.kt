@@ -132,6 +132,12 @@ internal object SlockMarkdownTraceNames {
     const val PARSE = "markdown.parse"
     const val ANNOTATE = "markdown.annotate"
     const val LAYOUT = "markdown.layout"
+    // #192 / long-body investigation: sub-traces for the markdown.layout phase
+    // so we can localize 5-10ms spikes on long bodies (1000+ chars). Each fires
+    // once per SlockMarkdownBody recomposition. bodyLength tag is the body length.
+    const val LAYOUT_INNER = "markdown.layout_inner" // pre-Markdown call setup
+    const val LAYOUT_BLOCK = "markdown.layout_block" // third-party Markdown() call
+    const val LAYOUT_KUIKLY = "markdown.layout_kuikly" // KuiklyText measure (if isolated)
 }
 
 /**
