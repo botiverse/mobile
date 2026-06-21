@@ -5,9 +5,12 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlin.time.TimeSource
 
 private val inboxSavedSearchRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -135,6 +138,8 @@ class RealInboxRepository(
             block = { networkClient.inbox(DataRequestPriority.Visible, filter, limit, offset) },
             emptyWhen = { it.items.isEmpty() },
             source = "inbox",
+            mapOnDefault = false,
+            diagnosticsLogger = logger,
             warningLogger = warningLogger,
             mapper = { bodyText ->
                 val parsed = parseSharedInboxSnapshot(bodyText)
@@ -344,6 +349,8 @@ private suspend fun <T> executeInboxLike(
     block: suspend () -> HomeNetworkResponse,
     emptyWhen: (T) -> Boolean = { false },
     source: String,
+    mapOnDefault: Boolean = true,
+    diagnosticsLogger: (String) -> Unit = {},
     warningLogger: (String) -> Unit = {},
     mapper: (String) -> T
 ): DataResult<T> {
@@ -354,7 +361,24 @@ private suspend fun <T> executeInboxLike(
         if (!response.isSuccessful) return response.toInboxLikeDataError()
         val body = response.bodyText.orEmpty()
         if (body.isBlank()) return DataResult.Empty(emptyReason)
-        val result = mapper(body)
+        val responseBytes = body.encodeToByteArray().size
+        val dispatcherLabel = if (mapOnDefault) "Default" else "caller"
+        diagnosticsLogger(
+            "inbox_network_body_received source=$source code=${response.code} " +
+                "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+        )
+        val parseStartedAt = TimeSource.Monotonic.markNow()
+        diagnosticsLogger("inbox_parse_start source=$source responseBytes=$responseBytes dispatcher=$dispatcherLabel")
+        val result =
+            if (mapOnDefault) {
+                withContext(Dispatchers.Default) { mapper(body) }
+            } else {
+                mapper(body)
+            }
+        diagnosticsLogger(
+            "inbox_parse_result source=$source result=content " +
+                "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=$dispatcherLabel"
+        )
         if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
     } catch (cancellation: CancellationException) {
         throw cancellation

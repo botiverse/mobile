@@ -10,14 +10,17 @@ import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import kotlin.time.TimeSource
 
 private val memberRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -351,12 +354,13 @@ class RealMemberRepository(
                 block = { networkClient.agentActivityLog(priority, agentId, limit = 50) },
                 source = "agent_activity",
                 mapper = { bodyText ->
-                    val snapshot = parseSharedAgentActivity(bodyText, agentId)
+                    parseSharedAgentActivity(bodyText, agentId)
                         ?: throw IllegalStateException("Agent activity response missing log array")
-                    logger("agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}")
-                    snapshot
                 }
             )
+        (logResult as? DataResult.Content)?.data?.let { snapshot ->
+            logger("agent_activity_log_fetch agentId=${agentId.value} mappedCount=${snapshot.activity.size}")
+        }
         val fallbackEntries = fetchAgentCurrentActivityFallback(priority, agentId)
         return when (logResult) {
             is DataResult.Content -> {
@@ -645,13 +649,15 @@ class RealMemberRepository(
                 block = { networkClient.settingsAgents(priority) },
                 source = "agent_activity_current_fallback",
                 mapper = { bodyText ->
-                    val entries = parseSharedCurrentAgentActivityEntries(bodyText, agentId)
+                    parseSharedCurrentAgentActivityEntries(bodyText, agentId)
                         ?: throw IllegalStateException("Current agent activity response missing agent array")
-                    logger("agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}")
-                    entries
                 }
             )
-        return (result as? DataResult.Content)?.data.orEmpty()
+        val entries = (result as? DataResult.Content)?.data.orEmpty()
+        if (entries.isNotEmpty()) {
+            logger("agent_activity_fallback_fetch agentId=${agentId.value} mappedCount=${entries.size}")
+        }
+        return entries
     }
 
     private suspend fun executeAgentLifecycleAction(
@@ -706,8 +712,24 @@ class RealMemberRepository(
             if (!response.isSuccessful) return response.toDataError()
             val body = response.bodyText.orEmpty()
             if (body.isBlank()) return DataResult.Empty(emptyReason)
-            val result = mapper(body)
-            if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+            if (source != null) {
+                val responseBytes = body.encodeToByteArray().size
+                logger(
+                    "members_network_body_received source=$source code=${response.code} " +
+                        "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+                )
+                val parseStartedAt = TimeSource.Monotonic.markNow()
+                logger("members_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
+                val result = withContext(Dispatchers.Default) { mapper(body) }
+                logger(
+                    "members_parse_result source=$source result=content " +
+                        "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
+                )
+                if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+            } else {
+                val result = withContext(Dispatchers.Default) { mapper(body) }
+                if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
+            }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

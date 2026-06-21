@@ -4,6 +4,8 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -148,7 +150,7 @@ class RealReadReceiptRepository(
             if (!response.isSuccessful) return response.toReadReceiptDataError()
             val body = response.bodyText.orEmpty()
             if (body.isBlank()) return DataResult.Empty(emptyReason)
-            DataResult.Content(mapper(body))
+            DataResult.Content(withContext(Dispatchers.Default) { mapper(body) })
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

@@ -1,6 +1,9 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -322,7 +325,7 @@ internal data class AgentBootstrapTokenSummary(
     val scopeCount: Int
 )
 
-private inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
+private suspend inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
     crossinline transform: (Wire) -> T?,
@@ -332,15 +335,22 @@ private inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     }
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
-    val wire = try {
-        agentsApiJson.decodeFromString(serializer, body)
+    val value = try {
+        withContext(Dispatchers.Default) {
+            val wire = agentsApiJson.decodeFromString(serializer, body)
+            transform(wire) ?: throw AgentsContractMismatchException()
+        }
+    } catch (cancellation: CancellationException) {
+        throw cancellation
     } catch (_: SerializationException) {
         return DataResult.Error(ScreenError(code = contractCode, retryable = false))
+    } catch (_: AgentsContractMismatchException) {
+        return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     }
-    val value = transform(wire)
-        ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     return DataResult.Content(value)
 }
+
+private class AgentsContractMismatchException : IllegalStateException()
 
 private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
     when (code) {
@@ -350,7 +360,7 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
 
-private fun HomeNetworkResponse.mapAgentsCommand(contractCode: String): DataResult<AgentCommandResult> =
+private suspend fun HomeNetworkResponse.mapAgentsCommand(contractCode: String): DataResult<AgentCommandResult> =
     mapAgentsBody(contractCode, AgentCommandResponseDto.serializer()) { wire ->
         if (!wire.ok) null else AgentCommandResult(ok = true)
     }
