@@ -2027,7 +2027,13 @@ internal fun SlockAvatar(
         pixelSpec != null -> traceMarkdownSection(SlockAvatarTraceNames.RENDER, avatarWireValue?.length ?: 0) {
             PixelAvatar(pixelSpec, modifier, avatarSize, borderWidth)
         }
-        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(modifier = modifier.size(avatarSize).background(SlockColor.AccentLavender).border(borderWidth, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
+        avatarWireValue?.startsWith("http://") == true || avatarWireValue?.startsWith("https://") == true -> Box(
+            modifier = modifier
+                .size(width = avatarSize, height = avatarSize)
+                .background(SlockColor.AccentLavender)
+                .border(borderWidth, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
             DefaultUserAvatarIcon(avatarSize)
             SlockAvatarHttpImage(
                 source = avatarWireValue,
@@ -2128,7 +2134,7 @@ private fun PixelAvatar(
     // regression shape as the `markdown.layout_block` drawWithCache attempt (commit 7364294
     // revert). Reverting to `Canvas { ... }` which directly invokes DrawScope on every
     // recomposition. #195 hit rate gate diagnostic counter is preserved.
-    Canvas(modifier = modifier.size(avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
+    Canvas(modifier = modifier.size(width = avatarSize, height = avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
         val cellSize = size.width / PixelAvatarGridSize
         drawRect(spec.background)
         spec.grid.forEachIndexed { rowIndex, row ->
