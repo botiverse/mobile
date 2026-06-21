@@ -108,7 +108,7 @@ internal fun SlockVerticalTabBar(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
+                        .padding(start = 6.dp, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
                 ) {
                     Text(
                         item.section.uppercase(),
@@ -456,7 +456,7 @@ private fun SlockVerticalTabItem(
                 .background(if (selected) SlockColor.AccentPink else Color.Transparent)
                 .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }
-                .padding(horizontal = 10.dp),
+                .padding(start = 14.dp, end = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
