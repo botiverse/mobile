@@ -139,7 +139,12 @@ fun MarkdownTableHeader(
             verticalAlignment = verticalAlignment,
             modifier = Modifier
                 .wrapContentWidth()
-                .onSizeChangedDp { rowWidths.value = it.width.dp },
+                .onSizeChangedDp {
+                    val width = it.width.dp
+                    if (rowWidths.value != width) {
+                        rowWidths.value = width
+                    }
+                },
         ) {
             MarkdownTableRow(
                 content = content,
@@ -232,7 +237,10 @@ private fun MarkdownTableRow(
                         annotatorSettings = annotatorSettings,
                         columnWidths = columnWidths,
                     ) {
-                        height = maxOf(height, it.height.dp)
+                        val nextHeight = maxOf(height, it.height.dp)
+                        if (height != nextHeight) {
+                            height = nextHeight
+                        }
                     }
                 }
             }
@@ -269,15 +277,7 @@ private fun MarkdownTableCell(
     }
 
     Box(modifier = Modifier.padding(tableCellPadding).width(columnWidth)) {
-
-        val str = content.buildMarkdownAnnotatedString(
-            textNode = cell,
-            style = style,
-            annotatorSettings = annotatorSettings,
-        )
-
         MarkdownTableBasicText(
-//            text = str,
             content = content,
             cell = cell,
             style = style,
@@ -296,14 +296,11 @@ private fun MarkdownTableCell(
                 }
                 .onSizeChangedDp { size ->
                     onSizeChanged(size)
-                    val newWidth = size.width.dp
-                    if (tableCellMaxWidth.isSpecified) {
-                        // 固定单元格宽度
-                        columnWidths[index] = maxOf(columnWidths[index] ?: 0.dp, minOf(tableCellMaxWidth, newWidth))
-                    } else {
-                        // 未限制单元格宽度，则默认无限大
-                        columnWidths[index] = maxOf(columnWidths[index] ?: 0.dp, newWidth)
-                    }
+                    columnWidths.updateMarkdownTableColumnWidth(
+                        index = index,
+                        measuredWidth = size.width.dp,
+                        maxWidth = tableCellMaxWidth
+                    )
                 }
         )
     }
@@ -350,4 +347,34 @@ private fun Modifier.onSizeChangedDp(
             onSizeChanged(dpSize)
         }
     }
+}
+
+internal fun MutableMap<Int, Dp>.updateMarkdownTableColumnWidth(
+    index: Int,
+    measuredWidth: Dp,
+    maxWidth: Dp
+): Boolean {
+    val currentWidth = this[index]
+    val nextWidth = markdownTableMeasuredColumnWidth(
+        currentWidth = currentWidth,
+        measuredWidth = measuredWidth,
+        maxWidth = maxWidth
+    )
+    if (currentWidth == nextWidth) return false
+    this[index] = nextWidth
+    return true
+}
+
+internal fun markdownTableMeasuredColumnWidth(
+    currentWidth: Dp?,
+    measuredWidth: Dp,
+    maxWidth: Dp
+): Dp {
+    val boundedWidth =
+        if (maxWidth.isSpecified) {
+            minOf(maxWidth, measuredWidth)
+        } else {
+            measuredWidth
+        }
+    return maxOf(currentWidth ?: 0.dp, boundedWidth)
 }
