@@ -1,7 +1,6 @@
 package com.tencent.kuiklybase.markdown.compose.elements
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -139,7 +138,6 @@ fun MarkdownText(
         return
     }
 
-    val layoutResult: MutableState<TextLayoutResult?> = remember { mutableStateOf(null) }
     val imageState = rememberMarkdownImageState()
 
     val placeholderState by remember(imageState) {
@@ -174,7 +172,6 @@ fun MarkdownText(
         style = style,
         inlineContent = inlineContent,
         onTextLayout = {
-            layoutResult.value = it
             onTextLayout?.invoke(it, baseColor)
         }
     )

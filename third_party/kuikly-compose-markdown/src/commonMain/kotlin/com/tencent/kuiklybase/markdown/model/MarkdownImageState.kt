@@ -46,10 +46,12 @@ internal class MarkdownImageStateImpl : MarkdownImageState {
     override fun setImageSize(size: Size) = updateImageSize(size)
 
     override fun updateContainerSize(size: Size) {
+        if (containerSize.sameMarkdownSizeAs(size)) return
         containerSize = size
     }
 
     override fun updateImageSize(size: Size) {
+        if (intrinsicImageSize.sameMarkdownSizeAs(size)) return
         intrinsicImageSize = size
     }
 }
@@ -59,3 +61,9 @@ fun rememberMarkdownImageState(): MarkdownImageState {
 //    val density = LocalDensity.current
     return remember { MarkdownImageStateImpl() }
 }
+
+private fun Size.sameMarkdownSizeAs(other: Size): Boolean =
+    width.sameMarkdownFloatAs(other.width) && height.sameMarkdownFloatAs(other.height)
+
+private fun Float.sameMarkdownFloatAs(other: Float): Boolean =
+    this == other || (isNaN() && other.isNaN())

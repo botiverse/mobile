@@ -10,17 +10,44 @@ import com.tencent.kuikly.compose.ui.text.TextLinkStyles
 import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
+import com.tencent.kuiklybase.markdown.model.MarkdownImageStateImpl
 import org.intellij.markdown.MarkdownElementTypes
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
 import kotlin.test.Test
 import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class SlockMarkdownTest {
+    @Test
+    fun markdownImageStateIgnoresSameSizeUpdates() {
+        val state = MarkdownImageStateImpl()
+        val initialContainer = state.containerSize
+        val initialIntrinsic = state.intrinsicImageSize
+
+        state.updateContainerSize(Size(Float.NaN, Float.NaN))
+        state.updateImageSize(Size(Float.NaN, Float.NaN))
+
+        assertSame(initialContainer, state.containerSize)
+        assertSame(initialIntrinsic, state.intrinsicImageSize)
+
+        state.updateContainerSize(Size(320f, 48f))
+        val container = state.containerSize
+        state.updateContainerSize(Size(320f, 48f))
+
+        state.updateImageSize(Size(120f, 80f))
+        val intrinsic = state.intrinsicImageSize
+        state.updateImageSize(Size(120f, 80f))
+
+        assertSame(container, state.containerSize)
+        assertSame(intrinsic, state.intrinsicImageSize)
+    }
+
     @Test
     fun singleMarkdownLineBreakRendersAsVisibleNewline() {
         val rendered = renderSlockMarkdownParagraphText("first line\nsecond line")
