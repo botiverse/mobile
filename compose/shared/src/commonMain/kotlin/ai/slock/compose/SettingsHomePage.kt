@@ -5747,6 +5747,7 @@ private fun SettingsDetailShell(
             title = title,
             subtitle = subtitle,
             iconName = iconName,
+            backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
                 SettingsDetailBackButton(onBack)
             }

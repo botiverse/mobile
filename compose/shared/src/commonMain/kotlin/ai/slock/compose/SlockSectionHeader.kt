@@ -47,6 +47,7 @@ internal fun SlockTopPageHeader(
     subtitle: String? = null,
     iconName: SlockLucideIconName? = null,
     iconBackground: Color = SlockColor.BrandYellow,
+    backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
@@ -57,7 +58,7 @@ internal fun SlockTopPageHeader(
             modifier
                 .fillMaxWidth()
                 .height(topSafeArea + SlockSize.PageHeaderHeight)
-                .background(SlockColor.BrandYellow)
+                .background(backgroundColor)
                 .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

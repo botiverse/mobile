@@ -529,7 +529,7 @@ private fun SettingsConnectedAccounts(
 ) {
     val accounts = payload.connectedAccounts
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(payload.connectedAccountsTitle.uppercase())
+        SettingsAccountSectionTitle(payload.connectedAccountsTitle.uppercase(), SlockLucideIconName.Link)
         if (accounts.isEmpty()) {
             SettingsAccountEmptyMessage("No connected accounts", "External login providers will show up here.")
         } else {
@@ -605,7 +605,7 @@ private fun SettingsDisclosureRow(iconName: SlockLucideIconName, title: String, 
 private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfirmLogout: () -> Unit) {
     val confirming = remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle("SESSION")
+        SettingsAccountSectionTitle("SESSION", SlockLucideIconName.LogOut)
         SettingsAccountHardShadowCard {
             Text(
                 payload.logoutTitle,
@@ -660,8 +660,17 @@ private fun SettingsMetaRow(iconName: SlockLucideIconName, text: String) {
 }
 
 @Composable
-private fun SettingsAccountSectionTitle(text: String) {
-    Text(text, style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack)
+private fun SettingsAccountSectionTitle(text: String, iconName: SlockLucideIconName? = null) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 2.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (iconName != null) {
+            SlockLucideIcon(iconName, color = "#FF737373", modifier = Modifier.size(14.dp))
+        }
+        Text(text, style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
+    }
 }
 
 @Composable
