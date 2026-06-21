@@ -1239,11 +1239,14 @@ class SharedSettingsStoreTest {
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(true, engine.started)
         assertEquals("Running", diagnostics.profiler.statusLabel)
-        assertEquals(false, diagnostics.profiler.defaults.enableOverlay)
+        assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
+        assertEquals(true, engine.enableOverlay)
+        assertEquals(false, engine.enableLog)
+        assertEquals(true, engine.enableFile)
         assertEquals(true, diagnostics.profiler.enabled)
         assertEquals(false, preferences.enabled)
         assertEquals(
-            "Profiler started with file capture enabled. Per-frame logcat output and overlay are disabled to keep the Kuikly runtime stable.",
+            "Profiler started with file and overlay enabled. Per-frame logcat output is disabled to keep the Kuikly bridge stable.",
             diagnostics.profiler.actionFeedback
         )
         assertNull(store.state.value.effect)
@@ -2156,10 +2159,18 @@ class SharedSettingsStoreTest {
             get() = started
 
         var started: Boolean = false
+        var enableOverlay: Boolean? = null
+        var enableLog: Boolean? = null
+        var enableFile: Boolean? = null
 
         override fun clearCustomFilters() = Unit
 
-        override fun configure(block: com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder.() -> Unit) = Unit
+        override fun configure(block: com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder.() -> Unit) {
+            val builder = com.tencent.kuikly.compose.profiler.RecompositionConfigBuilder().apply(block)
+            enableOverlay = builder.enableOverlay
+            enableLog = builder.enableLog
+            enableFile = builder.enableFile
+        }
 
         override fun start() {
             startFailure?.let { throw it }
