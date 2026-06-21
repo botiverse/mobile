@@ -5796,14 +5796,38 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Profile, email, password, connected accounts",
                     iconName = SlockLucideIconName.User,
                     value = session?.user?.bestDisplayName,
-                    selected = selectedDestination == SettingsDestinationAccount
+                    selected = selectedDestination == SettingsDestinationAccount,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationAppearance,
+                    title = "Appearance",
+                    subtitle = "Message font size and reading density",
+                    iconName = SlockLucideIconName.Type,
+                    selected = selectedDestination == SettingsDestinationAppearance
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationLanguageRegion,
+                    title = "Language & Region",
+                    subtitle = "Language, timezone, translation",
+                    iconName = SlockLucideIconName.Languages,
+                    selected = selectedDestination == SettingsDestinationLanguageRegion
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationBilling,
+                    title = "Billing",
+                    subtitle = "Plan and usage",
+                    iconName = SlockLucideIconName.ShieldCheck,
+                    value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
+                    selected = selectedDestination == SettingsDestinationBilling
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationComputers,
                     title = "Computers",
                     subtitle = "Connected machines and workspaces",
                     iconName = SlockLucideIconName.Monitor,
-                    selected = selectedDestination == SettingsDestinationComputers
+                    selected = selectedDestination == SettingsDestinationComputers,
+                    section = "Server"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationServer,
@@ -5819,28 +5843,6 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Marketplace, installed apps, OAuth clients",
                     iconName = SlockLucideIconName.Blocks,
                     selected = selectedDestination == SettingsDestinationConnectedApps
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationBilling,
-                    title = "Billing",
-                    subtitle = "Plan and usage",
-                    iconName = SlockLucideIconName.ShieldCheck,
-                    value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                    selected = selectedDestination == SettingsDestinationBilling
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationLanguageRegion,
-                    title = "Language & Region",
-                    subtitle = "Language, timezone, translation",
-                    iconName = SlockLucideIconName.Languages,
-                    selected = selectedDestination == SettingsDestinationLanguageRegion
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationAppearance,
-                    title = "Appearance",
-                    subtitle = "Message font size and reading density",
-                    iconName = SlockLucideIconName.Type,
-                    selected = selectedDestination == SettingsDestinationAppearance
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationNotifications,
@@ -5868,7 +5870,8 @@ private fun appShellSettingsHomePayload(
                     title = "About",
                     subtitle = "Version, diagnostics, feedback",
                     iconName = SlockLucideIconName.Bug,
-                    selected = selectedDestination == SettingsDestinationAbout
+                    selected = selectedDestination == SettingsDestinationAbout,
+                    section = "About"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationRouter,

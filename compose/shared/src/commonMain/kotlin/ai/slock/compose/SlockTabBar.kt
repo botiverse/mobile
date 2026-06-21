@@ -47,7 +47,8 @@ internal data class SlockTabItemPayload(
     val iconName: SlockLucideIconName = SlockLucideIconName.Settings,
     val value: String? = null,
     val selected: Boolean = false,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val section: String? = null
 )
 
 @Serializable
@@ -100,7 +101,25 @@ internal fun SlockVerticalTabBar(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
+        var lastSection: String? = null
         items.forEachIndexed { index, item ->
+            if (item.section != null && item.section != lastSection) {
+                lastSection = item.section
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, top = if (index > 0) 12.dp else 0.dp, bottom = 6.dp)
+                ) {
+                    Text(
+                        item.section.uppercase(),
+                        style = SlockType.Caption.copy(
+                            letterSpacing = 2.sp,
+                            color = SlockColor.TextMutedGray
+                        ),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
             SlockVerticalTabItem(
                 item = item,
                 selected = showSelection && item.selected,
@@ -448,7 +467,7 @@ private fun SlockVerticalTabItem(
             )
             Text(
                 item.title,
-                style = SlockType.ButtonBold.copy(color = textColor),
+                style = SlockType.Button.copy(color = textColor),
                 color = textColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
