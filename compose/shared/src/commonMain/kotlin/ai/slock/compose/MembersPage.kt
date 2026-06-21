@@ -1571,9 +1571,9 @@ private fun MembersDetailHeader(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            MembersSmallActionButton(
+            SlockBrutalActionButton(
                 label = "Message",
-                iconName = SlockLucideIconName.MessageSquare,
+                leadingIcon = SlockLucideIconName.MessageSquare,
                 enabled = member.kind != MemberKind.System && !deleted,
                 modifier = Modifier.width(92.dp),
                 onClick = onOpenDirectMessage
@@ -1776,15 +1776,15 @@ private fun MembersAgentLifecycleSection(
                     }
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton(
+                    SlockBrutalActionButton(
                         label = copyState?.successLabel ?: "Copy diagnostics",
-                        iconName = SlockLucideIconName.Clipboard,
+                        leadingIcon = SlockLucideIconName.Clipboard,
                         enabled = diagnosticActionState?.inProgress != true,
                         modifier = Modifier.weight(1f),
                         onClick = onCopyDiagnostics
                     )
                     onReportIssue?.let { reportIssue ->
-                        MembersSmallActionButton(
+                        SlockBrutalActionButton(
                             label =
                                 when {
                                     reportState?.inProgress == true -> "Reporting..."
@@ -1792,7 +1792,7 @@ private fun MembersAgentLifecycleSection(
                                     reportState?.successLabel != null -> reportState.successLabel
                                     else -> "Report issue"
                                 },
-                            iconName = if (reportState?.inProgress == true) SlockLucideIconName.Loader else SlockLucideIconName.MessageSquarePlus,
+                            leadingIcon = if (reportState?.inProgress == true) SlockLucideIconName.Loader else SlockLucideIconName.MessageSquarePlus,
                             enabled = diagnosticActionState?.inProgress != true,
                             modifier = Modifier.weight(1f),
                             onClick = reportIssue
@@ -1876,16 +1876,16 @@ private fun MembersLifecycleConfirmation(
             color = SlockColor.TextBlack
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-            MembersSmallActionButton(
+            SlockBrutalActionButton(
                 label = "Cancel",
-                iconName = SlockLucideIconName.X,
+                leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onCancel
             )
-            MembersSmallActionButton(
+            SlockBrutalActionButton(
                 label = "Confirm",
-                iconName = SlockLucideIconName.Check,
+                leadingIcon = SlockLucideIconName.Check,
                 enabled = !busy,
                 modifier = Modifier.weight(1f),
                 onClick = onConfirm
@@ -2249,9 +2249,9 @@ private fun MembersWorkspaceTreeView(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
-        MembersSmallActionButton(
+        SlockBrutalActionButton(
             label = "Refresh",
-            iconName = SlockLucideIconName.RefreshCw,
+            leadingIcon = SlockLucideIconName.RefreshCw,
             enabled = true,
             modifier = Modifier.width(92.dp),
             onClick = onRefresh
@@ -2369,9 +2369,9 @@ private fun MembersWorkspaceFileViewer(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
-        MembersSmallActionButton(
+        SlockBrutalActionButton(
             label = "Files",
-            iconName = SlockLucideIconName.ArrowLeft,
+            leadingIcon = SlockLucideIconName.ArrowLeft,
             enabled = true,
             modifier = Modifier.width(96.dp),
             onClick = onBackToTree
@@ -2416,16 +2416,16 @@ private fun MembersWorkspacePreviewContent(
         is SlockWorkspaceFilePreview.Text -> {
             if (preview.markdown) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersSmallActionButton(
+                    SlockBrutalActionButton(
                         label = "Raw",
-                        iconName = SlockLucideIconName.FileCode,
+                        leadingIcon = SlockLucideIconName.FileCode,
                         enabled = true,
                         modifier = Modifier.weight(1f),
                         onClick = { onViewModeChange(MembersWorkspaceViewMode.Raw) }
                     )
-                    MembersSmallActionButton(
+                    SlockBrutalActionButton(
                         label = "Preview",
-                        iconName = SlockLucideIconName.Eye,
+                        leadingIcon = SlockLucideIconName.Eye,
                         enabled = true,
                         modifier = Modifier.weight(1f),
                         onClick = { onViewModeChange(MembersWorkspaceViewMode.Preview) }
@@ -2498,9 +2498,9 @@ private fun MembersWorkspacePreviewContent(
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("Files", message)
-    MembersSmallActionButton(
+    SlockBrutalActionButton(
         label = "Retry",
-        iconName = SlockLucideIconName.RefreshCw,
+        leadingIcon = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -2510,9 +2510,9 @@ private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
 @Composable
 private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("State", message)
-    MembersSmallActionButton(
+    SlockBrutalActionButton(
         label = "Retry",
-        iconName = SlockLucideIconName.RefreshCw,
+        leadingIcon = SlockLucideIconName.RefreshCw,
         enabled = true,
         modifier = Modifier.fillMaxWidth(),
         onClick = onRefresh
@@ -2558,9 +2558,9 @@ private fun MembersAgentActivityTab(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
-            MembersSmallActionButton(
+            SlockBrutalActionButton(
                 label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy Diagnostic Info",
-                iconName = SlockLucideIconName.Clipboard,
+                leadingIcon = SlockLucideIconName.Clipboard,
                 enabled = diagnosticActionState?.inProgress != true,
                 modifier = Modifier.width(168.dp),
                 onClick = onCopyDiagnostics
@@ -2712,23 +2712,6 @@ private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: 
     MembersDetailSection(title = title, modifier = modifier) {
         MembersDetailField("State", detail)
     }
-}
-
-@Composable
-private fun MembersSmallActionButton(
-    label: String,
-    iconName: SlockLucideIconName,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    SlockBrutalActionButton(
-        label = label,
-        leadingIcon = iconName,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled
-    )
 }
 
 @Composable
