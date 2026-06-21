@@ -19,3 +19,15 @@ internal actual fun logMarkdownSpike(
 ) {
     // No-op
 }
+
+/**
+ * js actual for monotonic clock. Uses the standard browser `performance.now()`
+ * which returns DOMHighResTimeStamp in milliseconds; we multiply to nanoseconds
+ * for consistency with the Android actual. `System.nanoTime()` is JVM-only and
+ * does NOT exist on JS targets.
+ *
+ * `performance.now()` is monotonic and not affected by wall-clock changes —
+ * correct for #192 phase duration measurement.
+ */
+internal actual fun slockNanoTimeNanos(): Long =
+    (js("performance.now()") as Double * 1_000_000.0).toLong()

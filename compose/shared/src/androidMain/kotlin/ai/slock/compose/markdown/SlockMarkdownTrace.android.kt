@@ -14,6 +14,8 @@ internal actual fun traceBegin(name: String) {
     Trace.beginSection(name)
 }
 
+internal actual fun slockNanoTimeNanos(): Long = System.nanoTime()
+
 internal actual fun traceEnd() {
     Trace.endSection()
 }

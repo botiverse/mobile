@@ -30,6 +30,17 @@ internal expect fun traceBegin(name: String)
 internal expect fun traceEnd()
 
 /**
+ * KMP-friendly monotonic clock for #192 phase duration measurement.
+ * Wrapped as `expect/actual` because `System.nanoTime()` exists on Android/JVM
+ * but is NOT available on Kotlin/Native (OHOS) or JS — commonMain cannot call
+ * it directly without breaking OHOS compile. Android actual uses `System.nanoTime()`
+ * for Perfetto alignment; OHOS/JS use platform monotonic clocks (`TimeSource.Monotonic`
+ * for OHOS Kotlin/Native, `performance.now()` for JS) so phase durations stay
+ * monotonic and consistent across platforms.
+ */
+internal expect fun slockNanoTimeNanos(): Long
+
+/**
  * Non-Composable variant of [traceMarkdownSection] for call sites that are NOT
  * inside a `@Composable` function (e.g., the `MarkdownParser.buildMarkdownTreeFromString`
  * call inside `buildSlockMarkdownInlineTextAnnotatedString`). Same threshold + log
@@ -41,10 +52,10 @@ internal inline fun <T> traceMarkdownSectionNonComposable(
     block: () -> T
 ): T {
     traceBegin(name)
-    val t0 = System.nanoTime()
+    val t0 = slockNanoTimeNanos()
     val result = block()
     traceEnd()
-    val durationUs = (System.nanoTime() - t0) / 1_000L
+    val durationUs = (slockNanoTimeNanos() - t0) / 1_000L
     if (durationUs >= MarkdownSpikeThresholdUs) {
         logMarkdownSpike(
             phase = name,
@@ -101,10 +112,10 @@ internal fun <T> traceMarkdownSection(
     block: @androidx.compose.runtime.Composable () -> T
 ): T {
     traceBegin(name)
-    val t0 = System.nanoTime()
+    val t0 = slockNanoTimeNanos()
     val result = block()
     traceEnd()
-    val durationUs = (System.nanoTime() - t0) / 1_000L
+    val durationUs = (slockNanoTimeNanos() - t0) / 1_000L
     if (durationUs >= MarkdownSpikeThresholdUs) {
         logMarkdownSpike(
             phase = name,
