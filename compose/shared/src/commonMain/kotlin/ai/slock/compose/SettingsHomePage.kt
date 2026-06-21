@@ -800,10 +800,7 @@ private fun RetainedAppShellTabPane(
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .alpha(if (active) 1f else 0f)
+        modifier = retainedAppShellPaneModifier(active)
     ) {
         content()
     }
@@ -815,14 +812,21 @@ private fun RetainedAppShellRoutePane(
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .alpha(if (active) 1f else 0f)
+        modifier = retainedAppShellPaneModifier(active)
     ) {
         content()
     }
 }
+
+private fun retainedAppShellPaneModifier(active: Boolean): Modifier =
+    if (active) {
+        Modifier.fillMaxSize().alpha(1f)
+    } else {
+        // Keep the retained tab/route composed so remember/LazyListState survive
+        // tab switches, but remove the inactive pane from hit testing. Kuikly
+        // Compose can still route drag gestures to a full-size alpha(0f) LazyColumn.
+        Modifier.size(0.dp).alpha(0f)
+    }
 
 @Composable
 private fun SlockAppShellContent() {
