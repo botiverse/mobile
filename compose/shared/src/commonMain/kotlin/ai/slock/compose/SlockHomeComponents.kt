@@ -1701,17 +1701,20 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     // The offset comes in row-local coordinates; add it to the
                     // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:11): anchor the menu at the user's
-                        // actual long-press position rather than the row's
-                        // top-left. X follows the finger (root px); Y stays at
-                        // row.bottom + 8dp gap so the menu still drops below
-                        // the row. Screen-edge clamping (flip left / clamp) is
-                        // handled by horizontalAutoFlip in positionContent.
-                        val rowHeightPx = this.size.height
+                        // #223 (@artin 21 15:11, @Cindy 21 15:18): anchor at
+                        // the user's press point (X + Y). Placement helper
+                        // decides whether the menu sits below (default) or
+                        // above (flip) the point; we just hand it the press
+                        // position. No row-height math on this side — that's
+                        // what the helper's verticalOffset (SlockBaseMenuVer
+                        // ticalOffset = 8f) is for. X follows the finger so
+                        // the menu opens under the user's thumb; helper does
+                        // the screen-edge flip/clamp.
                         val longPressAnchor = Offset(
                             x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + rowHeightPx
+                            y = rowAnchor.y + pressOffset.y
                         )
+                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )
@@ -1855,17 +1858,20 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     // The offset comes in row-local coordinates; add it to the
                     // row's screen position so the caller sees root-space px.
                     onLongPress = { pressOffset ->
-                        // #223 (@artin 21 15:11): anchor the menu at the user's
-                        // actual long-press position rather than the row's
-                        // top-left. X follows the finger (root px); Y stays at
-                        // row.bottom + 8dp gap so the menu still drops below
-                        // the row. Screen-edge clamping (flip left / clamp) is
-                        // handled by horizontalAutoFlip in positionContent.
-                        val rowHeightPx = this.size.height
+                        // #223 (@artin 21 15:11, @Cindy 21 15:18): anchor at
+                        // the user's press point (X + Y). Placement helper
+                        // decides whether the menu sits below (default) or
+                        // above (flip) the point; we just hand it the press
+                        // position. No row-height math on this side — that's
+                        // what the helper's verticalOffset (SlockBaseMenuVer
+                        // ticalOffset = 8f) is for. X follows the finger so
+                        // the menu opens under the user's thumb; helper does
+                        // the screen-edge flip/clamp.
                         val longPressAnchor = Offset(
                             x = rowAnchor.x + pressOffset.x,
-                            y = rowAnchor.y + rowHeightPx
+                            y = rowAnchor.y + pressOffset.y
                         )
+                        android.util.Log.d("SlockPinMenuDebug", "row longPress: rowAnchor=" + rowAnchor.toString() + " pressOffset=" + pressOffset.toString() + " longPressAnchor=" + longPressAnchor.toString())
                         onLongPress.invoke(longPressAnchor)
                     }
                 )
