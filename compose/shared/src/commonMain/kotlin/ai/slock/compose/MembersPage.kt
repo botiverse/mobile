@@ -5,6 +5,7 @@ import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.PixelAvatarPickerKeys
+import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentDetailSnapshot
@@ -673,6 +674,7 @@ private fun MembersAgentDetailVisualContent() {
         onCopyAgentDiagnostics = {},
         onReportAgentIssue = null,
         onUnavailableAction = {},
+        onUploadAgentAvatar = null,
         timeContext = SlockTimeContext(
             localOffsetMinutes = 480,
             todayEpochDay = 20623,
@@ -766,6 +768,8 @@ internal fun MembersRouteContent(
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
     agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
+    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)? = null,
+    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)? = null,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)? = null,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)? = null,
@@ -847,6 +851,8 @@ internal fun MembersRouteContent(
             onCopyMemberId = { onCopyMemberId(selectedMember) },
             onOpenUrl = onOpenUrl,
             onUpdateAgentProfile = onUpdateAgentProfile,
+            onUploadAgentAvatar = onUploadAgentAvatar,
+            onPickAgentAvatarFile = onPickAgentAvatarFile,
             onAgentLifecycleAction = onAgentLifecycleAction,
             agentWorkspaceTreeLoader = agentWorkspaceTreeLoader,
             agentWorkspaceChildrenLoader = agentWorkspaceChildrenLoader,
@@ -1133,6 +1139,8 @@ private fun MembersDetailContent(
     onCopyMemberId: () -> Unit,
     onOpenUrl: (String) -> Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
+    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
@@ -1403,6 +1411,8 @@ private fun MembersDetailContent(
                                 detail = detail,
                                 canManage = canManage,
                                 onUpdateAgentProfile = onUpdateAgentProfile,
+                                onUploadAgentAvatar = onUploadAgentAvatar,
+                                onPickAgentAvatarFile = onPickAgentAvatarFile,
                                 onUnavailableAction = onUnavailableAction,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
@@ -1986,9 +1996,12 @@ private fun MembersAgentAvatarPicker(
     member: MemberProfile,
     onSelect: (String) -> Unit,
     onClear: () -> Unit,
-    onUploadUnavailable: () -> Unit,
+    onUpload: suspend () -> DataResult<MemberProfile>,
+    onUnavailableAction: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    var uploading by remember(member.id.value) { mutableStateOf(false) }
     SlockModalLayer(
         title = "Change avatar",
         subtitle = member.displayName,
@@ -2050,9 +2063,31 @@ private fun MembersAgentAvatarPicker(
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
                 SlockBrutalActionButton(
-                    label = "Upload",
-                    leadingIcon = SlockLucideIconName.Upload,
-                    onClick = onUploadUnavailable,
+                    label = if (uploading) "Uploading…" else "Upload",
+                    leadingIcon = if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
+                    onClick = {
+                        if (!uploading) {
+                            uploading = true
+                            scope.launch {
+                                when (val result = onUpload()) {
+                                    is DataResult.Content -> onDismiss()
+                                    is DataResult.Empty -> {
+                                        uploading = false
+                                        onUnavailableAction("Avatar upload cancelled.")
+                                    }
+                                    is DataResult.Error -> {
+                                        uploading = false
+                                        onUnavailableAction("Avatar upload failed: ${result.error.code}")
+                                    }
+                                    is DataResult.NoPermission -> {
+                                        uploading = false
+                                        onUnavailableAction("No permission: ${result.blocker.code}")
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    enabled = !uploading,
                     modifier = Modifier.weight(1f)
                 )
                 if (member.avatarUrl != null || member.avatar != null) {
@@ -2075,6 +2110,8 @@ private fun MembersAgentProfileTab(
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
+    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
+    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile>,
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2193,7 +2230,22 @@ private fun MembersAgentProfileTab(
                 member = member,
                 onSelect = { key -> saveProfile(avatarUrl = "pixel:$key", includeAvatarUrl = true); showAvatarPicker = false },
                 onClear = { saveProfile(avatarUrl = null, includeAvatarUrl = true); showAvatarPicker = false },
-                onUploadUnavailable = { onUnavailableAction("Avatar upload is not available yet."); showAvatarPicker = false },
+                onUpload = {
+                    val onUploadAgentAvatar = onUploadAgentAvatar
+                    if (onUploadAgentAvatar == null) {
+                        DataResult.Empty(EmptyReason.NoMembers)
+                    } else {
+                        val picked = onPickAgentAvatarFile()
+                        when (picked) {
+                            is DataResult.Content ->
+                                onUploadAgentAvatar(member.id, picked.data)
+                            is DataResult.Empty -> DataResult.Empty(picked.reason)
+                            is DataResult.Error -> DataResult.Error(picked.error)
+                            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                        }
+                    }
+                },
+                onUnavailableAction = onUnavailableAction,
                 onDismiss = { showAvatarPicker = false }
             )
         }

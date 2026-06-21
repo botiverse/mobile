@@ -155,10 +155,14 @@ import ai.slock.compose.data.ACCOUNT_ACTION_AVATAR_UPLOAD
 import ai.slock.compose.data.ACCOUNT_ACTION_PASSWORD_CHANGE
 import ai.slock.compose.data.ACCOUNT_ACTION_PROFILE_SAVE
 import ai.slock.compose.data.ACCOUNT_ACTION_PROVIDER_CONNECT
+import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AttachmentUploadFile
+import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
+import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.ConnectedAccountStatus
 import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
@@ -7908,6 +7912,40 @@ private fun SharedMembersScreen(
                 agentDetailRefreshKey = "$agentDetailRefreshKey:$localAgentDetailRefreshKey",
                 onUpdateAgentProfile = { request ->
                     val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+                    if (result is DataResult.Content) {
+                        state =
+                            when (val latest = state) {
+                                is SharedMembersUiState.Content ->
+                                    latest.copy(
+                                        members =
+                                            latest.members.map { member ->
+                                                if (member.id == result.data.id) result.data else member
+                                            }
+                                    )
+                                else -> latest
+                            }
+                    }
+                    result
+                },
+                onPickAgentAvatarFile = {
+                    val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
+                    val code = response?.optInt("code", 0) ?: 0
+                    if (code == 204) {
+                        DataResult.Empty(EmptyReason.NoMembers)
+                    } else if (code !in 200..299) {
+                        val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "agent_avatar_picker_failed" }
+                        DataResult.Error(ScreenError(code = errorCode, retryable = true))
+                    } else {
+                        val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+                        if (file != null) DataResult.Content(file)
+                        else DataResult.Error(ScreenError(code = "agent_avatar_picker_empty", retryable = true))
+                    }
+                },
+                onUploadAgentAvatar = { agentId, file ->
+                    val result = memberRepository.uploadAgentAvatar(
+                        priority = DataRequestPriority.Foreground,
+                        request = AgentAvatarUploadRequest(agentId = agentId, file = file)
+                    )
                     if (result is DataResult.Content) {
                         state =
                             when (val latest = state) {
