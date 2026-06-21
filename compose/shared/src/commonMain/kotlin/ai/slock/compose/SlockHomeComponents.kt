@@ -2115,39 +2115,23 @@ private fun PixelAvatar(
     borderWidth: Dp = SlockStroke.Thin
 ) {
     SlockPixelAvatarDrawCache.onCompose()
-    // #195: convert from `Canvas { ... }` (which re-runs the 64 `drawRect` calls on every
-    // recomposition) to `Spacer + drawWithCache` so the draw commands are only re-built when
-    // the `spec` or size actually changes. On Home scroll with stable avatars the spec is
-    // memoized via `remember(avatarWireValue)` upstream, so the cache hit rate should be high
-    // (one re-build per (spec, size) tuple, not per recomposition).
-    //
-    // Safety: `drawWithCache` is the official Compose API for this; it does NOT wrap a
-    // @Composable lambda (unlike typography hoist / ThreadMessageCard marker wrap which
-    // regressed Compose cache invalidation), it only caches imperative DrawScope calls.
-    Spacer(
-        modifier = modifier
-            .size(avatarSize)
-            .border(borderWidth, SlockColor.BorderBlack)
-            .drawWithCache {
-                SlockPixelAvatarDrawCache.onRebuild()
-                val cellSize = size.width / PixelAvatarGridSize
-                onDrawBehind {
-                    drawRect(spec.background)
-                    spec.grid.forEachIndexed { rowIndex, row ->
-                        row.forEachIndexed { columnIndex, key ->
-                            val color = PixelAvatarPalette[key] ?: Color.Transparent
-                            if (color != Color.Transparent) {
-                                drawRect(
-                                    color = color,
-                                    topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
-                                    size = Size(cellSize, cellSize)
-                                )
-                            }
-                        }
-                    }
-                }
+    // #195 hotfix (revert to baseline): `Spacer + drawWithCache` was supposed to cache the
+    // 64-cell drawRect calls, but on Kuikly the `drawWithCache` modifier does not fire its
+    // `onDrawBehind` block on Spacer (emulator repro: PixelAvatar entry logs fire for every
+    // DM row, but the drawWithCache lambda body never runs and the avatar is blank). Same
+    // regression shape as the `markdown.layout_block` drawWithCache attempt (commit 7364294
+    // revert). Reverting to `Canvas { ... }` which directly invokes DrawScope on every
+    // recomposition. #195 hit rate gate diagnostic counter is preserved.
+    Canvas(modifier = modifier.size(avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
+        val cellSize = size.width / PixelAvatarGridSize
+        drawRect(spec.background)
+        spec.grid.forEachIndexed { rowIndex, row ->
+            row.forEachIndexed { columnIndex, key ->
+                val color = PixelAvatarPalette[key] ?: Color.Transparent
+                if (color != Color.Transparent) drawRect(color, topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize), size = Size(cellSize, cellSize))
             }
-    )
+        }
+    }
 }
 
 internal data class PixelAvatarSpec(val background: Color, val grid: List<String>)
