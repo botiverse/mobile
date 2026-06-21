@@ -2,8 +2,6 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -174,69 +172,78 @@ internal class SlockAgentsNetworkApi(
 }
 
 internal class SlockAgentsApiClient(
-    private val transport: SlockAgentsApi
+    private val transport: SlockAgentsApi,
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     suspend fun agents(): DataResult<AgentsPage> =
         transport.agents().mapAgentsBody(
             "agents_list_contract_mismatch",
-            ListSerializer(AgentWireDto.serializer())
+            ListSerializer(AgentWireDto.serializer()),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire -> AgentsPage(agents = wire.mapNotNull { it.toSummary() }) }
 
     suspend fun agent(agentId: MemberId): DataResult<AgentSummary> =
         transport.agent(agentId).mapAgentsBody(
             "agent_detail_contract_mismatch",
-            AgentWireDto.serializer()
+            AgentWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { it.toSummary() }
 
     suspend fun createAgent(body: String): DataResult<AgentSummary> =
         transport.createAgent(body).mapAgentsBody(
             "agent_create_contract_mismatch",
-            AgentWireDto.serializer()
+            AgentWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { it.toSummary() }
 
     suspend fun updateAgent(agentId: MemberId, body: String): DataResult<AgentSummary> =
         transport.updateAgent(agentId, body).mapAgentsBody(
             "agent_update_contract_mismatch",
-            AgentWireDto.serializer()
+            AgentWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { it.toSummary() }
 
     suspend fun startAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.startAgent(agentId).mapAgentsCommand("agent_start_contract_mismatch")
+        transport.startAgent(agentId).mapAgentsCommand("agent_start_contract_mismatch", diagnosticsLogger)
 
     suspend fun stopAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.stopAgent(agentId).mapAgentsCommand("agent_stop_contract_mismatch")
+        transport.stopAgent(agentId).mapAgentsCommand("agent_stop_contract_mismatch", diagnosticsLogger)
 
     suspend fun resetAgent(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
-        transport.resetAgent(agentId, body).mapAgentsCommand("agent_reset_contract_mismatch")
+        transport.resetAgent(agentId, body).mapAgentsCommand("agent_reset_contract_mismatch", diagnosticsLogger)
 
     suspend fun deleteAgent(agentId: MemberId): DataResult<AgentCommandResult> =
-        transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch")
+        transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
 
     suspend fun assignMachine(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
-        transport.assignMachine(agentId, body).mapAgentsCommand("agent_assign_machine_contract_mismatch")
+        transport.assignMachine(agentId, body).mapAgentsCommand("agent_assign_machine_contract_mismatch", diagnosticsLogger)
 
     suspend fun agentDirectMessages(agentId: MemberId): DataResult<AgentDmPage> =
         transport.agentDirectMessages(agentId).mapAgentsBody(
             "agent_dms_contract_mismatch",
-            ListSerializer(AgentDmWireDto.serializer())
+            ListSerializer(AgentDmWireDto.serializer()),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire -> AgentDmPage(itemCount = wire.size) }
 
     suspend fun agentActivityLog(agentId: MemberId, limit: Int = 50): DataResult<AgentActivityPage> =
         transport.agentActivityLog(agentId, limit).mapAgentsBody(
             "agent_activity_log_contract_mismatch",
-            ListSerializer(AgentActivityWireDto.serializer())
+            ListSerializer(AgentActivityWireDto.serializer()),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire -> AgentActivityPage(entryCount = wire.size) }
 
     suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String? = null): DataResult<AgentWorkspaceFilePage> =
         transport.agentWorkspaceFiles(agentId, dirPath).mapAgentsBody(
             "agent_workspace_files_contract_mismatch",
-            AgentWorkspaceFilesResponseDto.serializer()
+            AgentWorkspaceFilesResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { AgentWorkspaceFilePage(fileCount = it.files.size) }
 
     suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): DataResult<AgentWorkspaceFileRead> =
         transport.readAgentWorkspaceFile(agentId, path).mapAgentsBody(
             "agent_workspace_file_read_contract_mismatch",
-            AgentWorkspaceFileReadDto.serializer()
+            AgentWorkspaceFileReadDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire ->
             val resolvedPath = wire.path.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             AgentWorkspaceFileRead(
@@ -250,13 +257,15 @@ internal class SlockAgentsApiClient(
     suspend fun agentSkills(agentId: MemberId): DataResult<AgentSkillsSummary> =
         transport.agentSkills(agentId).mapAgentsBody(
             "agent_skills_contract_mismatch",
-            AgentSkillsResponseDto.serializer()
+            AgentSkillsResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { AgentSkillsSummary(globalCount = it.global.size, workspaceCount = it.workspace.size) }
 
     suspend fun agentScopes(agentId: MemberId): DataResult<AgentScopesSummary> =
         transport.agentScopes(agentId).mapAgentsBody(
             "agent_scopes_contract_mismatch",
-            AgentScopesResponseDto.serializer()
+            AgentScopesResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire ->
             val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
@@ -265,7 +274,8 @@ internal class SlockAgentsApiClient(
     suspend fun updateAgentScopes(agentId: MemberId, body: String): DataResult<AgentScopesSummary> =
         transport.updateAgentScopes(agentId, body).mapAgentsBody(
             "agent_scopes_update_contract_mismatch",
-            AgentScopesResponseDto.serializer()
+            AgentScopesResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire ->
             val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
@@ -274,7 +284,8 @@ internal class SlockAgentsApiClient(
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): DataResult<AgentBootstrapTokenSummary> =
         transport.issueBootstrapToken(agentId, body).mapAgentsBody(
             "agent_bootstrap_token_contract_mismatch",
-            AgentBootstrapTokenResponseDto.serializer()
+            AgentBootstrapTokenResponseDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
         ) { wire ->
             val tokenId = wire.tokenId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
             val prefix = wire.tokenPrefix?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
@@ -328,6 +339,7 @@ internal data class AgentBootstrapTokenSummary(
 private suspend inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     contractCode: String,
     serializer: KSerializer<Wire>,
+    diagnosticsLogger: (String) -> Unit = {},
     crossinline transform: (Wire) -> T?,
 ): DataResult<T> {
     if (!isSuccessful) {
@@ -336,10 +348,18 @@ private suspend inline fun <Wire, T> HomeNetworkResponse.mapAgentsBody(
     val body = bodyText?.takeIf { it.isNotBlank() }
         ?: return DataResult.Error(ScreenError(code = contractCode, retryable = false))
     val value = try {
-        withContext(Dispatchers.Default) {
-            val wire = agentsApiJson.decodeFromString(serializer, body)
-            transform(wire) ?: throw AgentsContractMismatchException()
-        }
+        parseResponseBodyWithTrace(
+            source = contractCode.removeSuffix("_contract_mismatch"),
+            markerPrefix = "agents",
+            body = body,
+            code = code,
+            hasBody = true,
+            diagnosticsLogger = diagnosticsLogger,
+            parser = {
+                val wire = agentsApiJson.decodeFromString(serializer, body)
+                transform(wire) ?: throw AgentsContractMismatchException()
+            }
+        )
     } catch (cancellation: CancellationException) {
         throw cancellation
     } catch (_: SerializationException) {
@@ -360,8 +380,11 @@ private fun <T> HomeNetworkResponse.toAgentsDataError(): DataResult<T> =
         else -> DataResult.Error(ScreenError(code = "http_$code", retryable = code != 404))
     }
 
-private suspend fun HomeNetworkResponse.mapAgentsCommand(contractCode: String): DataResult<AgentCommandResult> =
-    mapAgentsBody(contractCode, AgentCommandResponseDto.serializer()) { wire ->
+private suspend fun HomeNetworkResponse.mapAgentsCommand(
+    contractCode: String,
+    diagnosticsLogger: (String) -> Unit = {}
+): DataResult<AgentCommandResult> =
+    mapAgentsBody(contractCode, AgentCommandResponseDto.serializer(), diagnosticsLogger) { wire ->
         if (!wire.ok) null else AgentCommandResult(ok = true)
     }
 

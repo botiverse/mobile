@@ -10,17 +10,14 @@ import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.time.TimeSource
 
 private val memberRepositoryJson = Json {
     ignoreUnknownKeys = true
@@ -163,7 +160,10 @@ class RealMemberRepository(
     private val warningLogger: (String) -> Unit = {},
     private val logger: (String) -> Unit = {}
 ) : MemberRepository {
-    private val agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient))
+    private val agentsApiClient = SlockAgentsApiClient(
+        transport = SlockAgentsNetworkApi(networkClient),
+        diagnosticsLogger = { message -> logger("agents_api $message") }
+    )
     private val agentActivityCacheMutex = Mutex()
     private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
     private val agentLifecycleActionMutex = Mutex()
@@ -712,24 +712,18 @@ class RealMemberRepository(
             if (!response.isSuccessful) return response.toDataError()
             val body = response.bodyText.orEmpty()
             if (body.isBlank()) return DataResult.Empty(emptyReason)
-            if (source != null) {
-                val responseBytes = body.encodeToByteArray().size
-                logger(
-                    "members_network_body_received source=$source code=${response.code} " +
-                        "responseBytes=$responseBytes hasBody=${response.bodyText != null}"
+            val result =
+                parseResponseBodyWithTrace(
+                    source = source ?: "member_response",
+                    markerPrefix = "members",
+                    body = body,
+                    code = response.code,
+                    hasBody = response.bodyText != null,
+                    diagnosticsLogger = if (source != null) logger else ({ _: String -> }),
+                    resultLabel = { parsed -> if (emptyWhen(parsed)) "empty" else "content" },
+                    parser = { mapper(body) }
                 )
-                val parseStartedAt = TimeSource.Monotonic.markNow()
-                logger("members_parse_start source=$source responseBytes=$responseBytes dispatcher=Default")
-                val result = withContext(Dispatchers.Default) { mapper(body) }
-                logger(
-                    "members_parse_result source=$source result=content " +
-                        "durationMs=${parseStartedAt.elapsedNow().inWholeMilliseconds} dispatcher=Default"
-                )
-                if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
-            } else {
-                val result = withContext(Dispatchers.Default) { mapper(body) }
-                if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
-            }
+            if (emptyWhen(result)) DataResult.Empty(emptyReason) else DataResult.Content(result)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

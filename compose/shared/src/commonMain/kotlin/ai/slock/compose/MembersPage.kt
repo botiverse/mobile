@@ -467,7 +467,8 @@ internal fun MembersPageContent() {
     }
     val agentsApiClient = remember(networkClient) {
         ai.slock.compose.data.SlockAgentsApiClient(
-            ai.slock.compose.data.SlockAgentsNetworkApi(networkClient)
+            transport = ai.slock.compose.data.SlockAgentsNetworkApi(networkClient),
+            diagnosticsLogger = { message -> bridge.log("members_agents_api $message") }
         )
     }
     val computersApiClient = remember(networkClient) {

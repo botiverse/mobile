@@ -108,6 +108,7 @@ internal fun SharedHomeActivityScreen(
             RealReadReceiptRepository(
                 sessionStore = authStore,
                 networkClient = networkClient,
+                logger = { message -> bridge.log("shared_activity_read $message") },
                 warningLogger = { message -> bridge.log("shared_activity_read_warning $message") }
             )
         }

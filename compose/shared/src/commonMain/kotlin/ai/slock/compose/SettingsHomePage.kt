@@ -898,7 +898,10 @@ private fun SlockAppShellContent() {
         }
     val agentsApiClient =
         remember(appShellNetworkClient) {
-            SlockAgentsApiClient(SlockAgentsNetworkApi(appShellNetworkClient))
+            SlockAgentsApiClient(
+                transport = SlockAgentsNetworkApi(appShellNetworkClient),
+                diagnosticsLogger = { message -> bridge.log("app_shell_agents_api $message") }
+            )
         }
     val computersApiClient =
         remember(appShellNetworkClient) {

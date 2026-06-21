@@ -4,8 +4,6 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -43,6 +41,7 @@ private suspend fun SlockNetworkClient.markInboxReadAll(priority: DataRequestPri
 class RealReadReceiptRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
+    private val logger: (String) -> Unit = {},
     private val warningLogger: (String) -> Unit = {}
 ) : ReadReceiptRepository {
     override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> {
@@ -150,7 +149,17 @@ class RealReadReceiptRepository(
             if (!response.isSuccessful) return response.toReadReceiptDataError()
             val body = response.bodyText.orEmpty()
             if (body.isBlank()) return DataResult.Empty(emptyReason)
-            DataResult.Content(withContext(Dispatchers.Default) { mapper(body) })
+            DataResult.Content(
+                parseResponseBodyWithTrace(
+                    source = source,
+                    markerPrefix = "read_receipt",
+                    body = body,
+                    code = response.code,
+                    hasBody = response.bodyText != null,
+                    diagnosticsLogger = logger,
+                    parser = { mapper(body) }
+                )
+            )
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (exception: Exception) {

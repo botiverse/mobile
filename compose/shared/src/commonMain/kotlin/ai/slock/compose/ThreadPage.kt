@@ -1089,7 +1089,10 @@ private fun ThreadPageScreen() {
             )
         }
     val agentsApiClient = remember(networkClient) {
-        SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient))
+        SlockAgentsApiClient(
+            transport = SlockAgentsNetworkApi(networkClient),
+            diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
+        )
     }
     val computersApiClient = remember(networkClient) {
         SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
@@ -1150,7 +1153,10 @@ private fun ThreadPageScreen() {
                         warningLogger = { message -> bridge.log("thread_conversation_repository $message") }
                     ),
                 channelRepository = channelRepository,
-                agentsApiClient = SlockAgentsApiClient(SlockAgentsNetworkApi(networkClient)),
+                agentsApiClient = SlockAgentsApiClient(
+                    transport = SlockAgentsNetworkApi(networkClient),
+                    diagnosticsLogger = { message -> bridge.log("thread_agents_api $message") }
+                ),
                 actionCardsApiClient = SlockIntegrationsActionsPushApiClient(
                     SlockIntegrationsActionsPushNetworkApi(networkClient)
                 ),
