@@ -17,6 +17,9 @@ internal data class SlockAppShellScope(
 ) {
     fun topInset(includeTopSafeArea: Boolean): Dp =
         if (includeTopSafeArea) topSafeArea else 0.dp
+
+    fun bottomInset(includeBottomTabBar: Boolean): Dp =
+        if (includeBottomTabBar) bottomTabBarContentInset else bottomSafeArea + SlockSpacing.Lg
 }
 
 @Composable
@@ -49,20 +52,23 @@ internal fun SlockAppShellSurface(
     bottomTabs: List<SlockBottomTabItemPayload>,
     onBottomTabSelected: (String) -> Unit,
     modifier: Modifier = Modifier,
+    showBottomTabs: Boolean = true,
     content: @Composable () -> Unit
 ) {
     Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Box(modifier = Modifier.fillMaxSize()) {
             content()
         }
-        SlockAppBottomTabBarHost(
-            items = bottomTabs,
-            onSelect = onBottomTabSelected,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.BottomCenter),
-            bottomSafeArea = shellScope.bottomSafeArea
-        )
+        if (showBottomTabs) {
+            SlockAppBottomTabBarHost(
+                items = bottomTabs,
+                onSelect = onBottomTabSelected,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter),
+                bottomSafeArea = shellScope.bottomSafeArea
+            )
+        }
     }
 }

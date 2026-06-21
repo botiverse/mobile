@@ -744,6 +744,17 @@ internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
+internal fun appShellBottomTabsVisible(
+    selectedTab: String,
+    selectedHomeDestination: String?,
+    selectedSettingsDestination: String
+): Boolean =
+    when (retainedAppShellSelectedTab(selectedTab)) {
+        "home" -> selectedHomeDestination == null
+        "settings" -> selectedSettingsDestination == SettingsDestinationHome
+        else -> true
+    }
+
 internal data class RetainedThreadRouteEntry(
     val key: String,
     val payload: KuiklyThreadScreenPayload
@@ -1989,6 +2000,14 @@ private fun SlockAppShellContent() {
                     retainedThreadRouteEntries.filter { it.key == activeKey }
             }
             ?: retainedThreadRouteEntries
+    val showAppShellBottomTabs =
+        appShellRoute == AppShellRouteMain &&
+            appShellBottomTabsVisible(
+                selectedTab = selectedTab,
+                selectedHomeDestination = selectedHomeDestination,
+                selectedSettingsDestination = selectedSettingsDestination
+            )
+    val appShellBottomContentInset = shellScope.bottomInset(showAppShellBottomTabs)
 
     val mainRouteContent: @Composable () -> Unit = {
         RetainedAppShellRoutePane(active = appShellRoute == AppShellRouteMain) {
@@ -2010,7 +2029,8 @@ private fun SlockAppShellContent() {
                         pendingDiagnosticsFeedback = null
                         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                     }
-                }
+                },
+                showBottomTabs = showAppShellBottomTabs
             ) {
                     val tasksTabContent: @Composable (active: Boolean) -> Unit = { active ->
                         PerformanceSceneEffect(bridge, "kuikly_tasks", active = active)
@@ -2060,7 +2080,7 @@ private fun SlockAppShellContent() {
                                 onOpenConversation = { conversation ->
                                     openHomeConversation(conversation, "home")
                                 },
-                                bottomContentPadding = shellScope.bottomTabBarContentInset
+                                bottomContentPadding = appShellBottomContentInset
                             )
                         } else if (selectedHomeDestination == HomeDestinationActivity) {
                             SharedHomeActivityScreen(
@@ -2070,7 +2090,7 @@ private fun SlockAppShellContent() {
                                 onOpenMessage = { request ->
                                     openHomeMessage(request, "home_activity")
                                 },
-                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                bottomContentPadding = appShellBottomContentInset,
                                 timeContext = threadTimeContext,
                                 shellScope = shellScope
                             )
@@ -2101,7 +2121,7 @@ private fun SlockAppShellContent() {
                                         selectedHomeConversationId = null
                                     }
                                 },
-                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                bottomContentPadding = appShellBottomContentInset,
                                 timeContext = threadTimeContext,
                                 shellScope = shellScope
                             )
@@ -2113,7 +2133,7 @@ private fun SlockAppShellContent() {
                                 onOpenItem = { item ->
                                     openHomeMessage(item.toHomeMessageOpenRequest(), "home_saved", pushCurrent = true)
                                 },
-                                bottomContentPadding = shellScope.bottomTabBarContentInset,
+                                bottomContentPadding = appShellBottomContentInset,
                                 timeContext = threadTimeContext,
                                 shellScope = shellScope
                             )
@@ -2198,7 +2218,7 @@ private fun SlockAppShellContent() {
                                     homeViewModel.dispatch(SharedHomeIntent.SelectConversation(conversation.threadId.value))
                                 }
                             },
-                            bottomContentPadding = shellScope.bottomTabBarContentInset,
+                            bottomContentPadding = appShellBottomContentInset,
                             timeContext = threadTimeContext,
                             onLogout = {
                                 authGateMessage = null

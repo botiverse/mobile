@@ -18,6 +18,8 @@ class SlockAppShellTest {
         assertEquals(0.dp, scope.topInset(includeTopSafeArea = false))
         assertEquals(18.dp, scope.bottomSafeArea)
         assertEquals(88.dp, scope.bottomTabBarContentInset)
+        assertEquals(88.dp, scope.bottomInset(includeBottomTabBar = true))
+        assertEquals(18.dp + SlockSpacing.Lg, scope.bottomInset(includeBottomTabBar = false))
     }
 
     @Test
@@ -41,6 +43,50 @@ class SlockAppShellTest {
     @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("thread"))
+    }
+
+    @Test
+    fun appShellBottomTabsOnlyShowOnPrimarySurfaces() {
+        assertEquals(
+            true,
+            appShellBottomTabsVisible(
+                selectedTab = "home",
+                selectedHomeDestination = null,
+                selectedSettingsDestination = "home"
+            )
+        )
+        assertEquals(
+            false,
+            appShellBottomTabsVisible(
+                selectedTab = "home",
+                selectedHomeDestination = "activity",
+                selectedSettingsDestination = "home"
+            )
+        )
+        assertEquals(
+            true,
+            appShellBottomTabsVisible(
+                selectedTab = "settings",
+                selectedHomeDestination = null,
+                selectedSettingsDestination = "home"
+            )
+        )
+        assertEquals(
+            false,
+            appShellBottomTabsVisible(
+                selectedTab = "settings",
+                selectedHomeDestination = null,
+                selectedSettingsDestination = "computerDetail"
+            )
+        )
+        assertEquals(
+            true,
+            appShellBottomTabsVisible(
+                selectedTab = "tasks",
+                selectedHomeDestination = "activity",
+                selectedSettingsDestination = "computerDetail"
+            )
+        )
     }
 
     @Test
