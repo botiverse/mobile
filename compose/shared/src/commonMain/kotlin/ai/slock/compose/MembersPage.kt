@@ -1160,14 +1160,6 @@ private fun MembersDetailContent(
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
-    // AD1 diagnostic for #49 top-left avatar click bug report
-    // (no logs at click time → is canManage=false blocking the clickable, or is
-    // the click not reaching the handler at all?). Logs once per recomposition
-    // where canManage flips.
-    slockLogInfo(
-        tag = "MembersAvatarPicker",
-        message = "render memberId=${member.id.value} kind=${member.kind} deleted=$deleted canManage=$canManage detailLoaded=${detail != null} creatorId=${detail?.summary?.creatorId.orEmpty()}"
-    )
     val scope = rememberCoroutineScope()
     var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
@@ -1398,9 +1390,6 @@ private fun MembersDetailContent(
                 }
             }
         }
-    }
-    LaunchedEffect(showAvatarPicker) {
-        slockLogInfo(tag = "MembersAvatarPicker", message = "showAvatarPicker=$showAvatarPicker canManage=$canManage memberId=${member.id.value}")
     }
     Box(
         modifier = Modifier
@@ -1763,12 +1752,7 @@ private fun MembersDetailHeader(
                 statusSize = 10.dp,
                 statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing(),
                 modifier = if (avatarClick != null) {
-                    Modifier.clickable(
-                        onClick = {
-                            slockLogInfo(tag = "MembersAvatarPicker", message = "top-left avatar clicked memberId=${member.id.value}")
-                            avatarClick()
-                        }
-                    )
+                    Modifier.clickable(onClick = avatarClick)
                 } else {
                     Modifier
                 }
@@ -2081,16 +2065,26 @@ private fun MembersAgentAvatarPicker(
 ) {
     val scope = rememberCoroutineScope()
     var uploading by remember(member.id.value) { mutableStateOf(false) }
-    SlockModalLayer(
+    // Use SlockUnifiedDialog (the unified modal engine — wraps Kuikly `Modal(...)` for
+    // overlay rendering) instead of SlockModalLayer (which is a plain Box and was getting
+    // 0 vertical space when rendered as a sibling after a fillMaxSize LazyColumn in
+    // MembersDetailContent's outer Column — see #49 top-left avatar bug thread).
+    SlockUnifiedDialog(
         title = "Change avatar",
-        subtitle = member.displayName,
-        onDismiss = onDismiss,
-        maxWidth = 420.dp
+        dismissEnabled = !uploading,
+        onDismiss = onDismiss
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
+            Text(
+                text = member.displayName,
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
