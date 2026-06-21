@@ -531,6 +531,14 @@ class MockConversationRepository(
     ): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) { MockSeedData.threadSnapshot }
 
+    override suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean,
+        limit: Int
+    ): DataResult<ThreadSnapshot> =
+        resultFor(scenario, EmptyReason.NoMessages) { MockSeedData.threadSnapshot }
+
     override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> =
         resultFor(scenario, EmptyReason.NoMessages) {
             MockSeedData.threadSnapshot.copy(highlightedMessageId = messageId)
