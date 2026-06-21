@@ -26,6 +26,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.material3.Text
@@ -56,6 +57,7 @@ private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ComposerSuggestionPanelMaxHeight = 240.dp
+private val ComposerSuggestionRowMinHeight = 46.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -745,22 +747,25 @@ internal fun ThreadComposerContent(
                     onClick = { applyMemberSuggestion(it) }
                 )
             } else if (showChannelSuggestions) {
-                ComposerSuggestionPanel(title = "CHANNELS") {
-                    filteredChannelSuggestions.forEach { channel ->
-                        ComposerSuggestionRow(
-                            leading = {
-                                Box(
-                                    modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("#", style = SlockType.Button.copy(fontSize = 14.sp), color = SlockColor.TextBlack)
-                                }
-                            },
-                            title = channel.name,
-                            subtitle = channel.subtitle.orEmpty(),
-                            onClick = { applyChannelSuggestion(channel) }
-                        )
-                    }
+                ComposerSuggestionPanel(
+                    title = "CHANNELS",
+                    itemCount = filteredChannelSuggestions.size,
+                    itemKey = { index -> "channel-$index-${filteredChannelSuggestions[index].name}" }
+                ) { index ->
+                    val channel = filteredChannelSuggestions[index]
+                    ComposerSuggestionRow(
+                        leading = {
+                            Box(
+                                modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("#", style = SlockType.Button.copy(fontSize = 14.sp), color = SlockColor.TextBlack)
+                            }
+                        },
+                        title = channel.name,
+                        subtitle = channel.subtitle.orEmpty(),
+                        onClick = { applyChannelSuggestion(channel) }
+                    )
                 }
             }
             Box(
@@ -911,22 +916,43 @@ private fun ComposerMemberSuggestionPanel(
 ) {
     val inChannel = members.filter { it.inMentionChannel }
     val notInChannel = members.filterNot { it.inMentionChannel }
-    ComposerSuggestionPanel(title = title) {
-        inChannel.forEach { member ->
-            ComposerMemberSuggestionRow(member = member, inChannel = true, onClick = { onClick(member) })
+    val headerIndex = inChannel.size
+    val itemCount = inChannel.size + notInChannel.size + if (notInChannel.isNotEmpty()) 1 else 0
+    ComposerSuggestionPanel(
+        title = title,
+        itemCount = itemCount,
+        itemKey = { index ->
+            when {
+                index < inChannel.size -> "in-${inChannel[index].handle}"
+                notInChannel.isNotEmpty() && index == headerIndex -> "not-in-header"
+                else -> "not-in-${notInChannel[index - headerIndex - 1].handle}"
+            }
         }
-        if (notInChannel.isNotEmpty()) {
-            Text(
-                text = "NOT IN THIS CHANNEL",
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = 12.dp, vertical = 6.dp)
-            )
-            notInChannel.forEach { member ->
+    ) { index ->
+        when {
+            index < inChannel.size -> {
+                val member = inChannel[index]
+                ComposerMemberSuggestionRow(member = member, inChannel = true, onClick = { onClick(member) })
+            }
+            notInChannel.isNotEmpty() && index == headerIndex -> {
+                ComposerSuggestionSectionHeader("NOT IN THIS CHANNEL")
+            }
+            else -> {
+                val member = notInChannel[index - headerIndex - 1]
                 ComposerMemberSuggestionRow(member = member, inChannel = false, onClick = { onClick(member) })
             }
         }
     }
+}
+
+@Composable
+private fun ComposerSuggestionSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+        color = SlockColor.TextMutedGray,
+        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = 12.dp, vertical = 6.dp)
+    )
 }
 
 @Composable
@@ -1110,7 +1136,9 @@ private fun ComposerAttachmentTray(
 @Composable
 private fun ComposerSuggestionPanel(
     title: String,
-    content: @Composable () -> Unit
+    itemCount: Int,
+    itemKey: (Int) -> Any,
+    itemContent: @Composable (Int) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack).background(SlockColor.SurfaceWhite),
@@ -1122,16 +1150,12 @@ private fun ComposerSuggestionPanel(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
-        // Cap suggestion panel height so a long list does not push the composer
-        // textfield off-screen. Content beyond the cap is clipped (Kuikly Compose
-        // does not currently expose a verticalScroll primitive for arbitrary
-        // composables; if a future Kuikly release adds one, wrap this Box with
-        // .verticalScroll(...) instead of clipping).
-        Box(
-            modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight),
-            contentAlignment = Alignment.TopStart
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight)
         ) {
-            content()
+            items(itemCount, key = itemKey) { index ->
+                itemContent(index)
+            }
         }
     }
 }
@@ -1144,7 +1168,13 @@ private fun ComposerSuggestionRow(
     onClick: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 8.dp),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = ComposerSuggestionRowMinHeight)
+                .clickable(onClick = onClick)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
