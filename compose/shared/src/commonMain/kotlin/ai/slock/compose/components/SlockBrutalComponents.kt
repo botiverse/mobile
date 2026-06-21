@@ -709,6 +709,12 @@ internal fun SlockToolbarChip(
         } else {
             0.dp
         }
+    val resolvedBorderColor =
+        when {
+            !enabled -> disabledBorderColor
+            active -> SlockColor.BorderBlack
+            else -> borderColor
+        }
     Box(
         modifier =
             modifier
@@ -728,7 +734,7 @@ internal fun SlockToolbarChip(
                 Modifier
                     .heightIn(min = 30.dp)
                     .background(if (active) activeBackgroundColor else inactiveBackgroundColor)
-                    .border(SlockStroke.Default, if (enabled) borderColor else disabledBorderColor)
+                    .border(SlockStroke.Default, resolvedBorderColor)
                     .clickable(enabled = enabled, onClick = onClick)
                     .padding(horizontal = 10.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center

@@ -9658,7 +9658,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedSender == null,
                         iconName = SlockLucideIconName.CircleUser,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = searchFilterBorderColor(senderActive),
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9675,7 +9675,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = searchFilterBorderColor(channelActive),
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9692,7 +9692,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = searchFilterBorderColor(timeActive),
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9710,7 +9710,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = searchFilterBorderColor(channelActive),
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9729,7 +9729,7 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = searchFilterBorderColor(timeActive),
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9747,7 +9747,7 @@ private fun SharedHomeSearchFilters(
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
                     activeBackgroundColor = SlockColor.BrandYellow,
-                    borderColor = searchFilterBorderColor(sortActive),
+                    borderColor = SlockColor.EmptyStateGray,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
                     onClick = { anchor ->
@@ -9763,7 +9763,7 @@ private fun SharedHomeSearchFilters(
                         active = false,
                         enabled = true,
                         uppercase = false,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
@@ -9778,9 +9778,6 @@ private fun SharedHomeSearchFilters(
         }
     }
 }
-
-private fun searchFilterBorderColor(active: Boolean): Color =
-    if (active) SlockColor.BorderBlack else SearchLightRowBorderColor
 
 @Composable
 private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() -> Unit) {
