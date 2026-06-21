@@ -22,8 +22,16 @@ val prepareTmmCommonResources by tasks.registering(Sync::class) {
 }
 val stageTmmCommonSources by tasks.registering(Sync::class) {
     dependsOn("generateMRcommonMain")
+    outputs.upToDateWhen { false }
     from(generatedTmmResourceDir.map { it.dir("commonMain/src") })
     into(generatedTmmCommonSourceDir.map { it.dir("src") })
+}
+val restoreTmmCommonPluginSources by tasks.registering(Sync::class) {
+    dependsOn(stageTmmCommonSources)
+    mustRunAfter(tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" })
+    outputs.upToDateWhen { false }
+    from(generatedTmmCommonSourceDir.map { it.dir("src") })
+    into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
 }
 
 multiplatformResources {
@@ -151,15 +159,27 @@ ksp {
 }
 
 tasks.matching { it.name == "compileDebugKotlinAndroid" || it.name == "compileReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+    dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources)
+    dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
+}
+
+tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+    dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
+}
+
+tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
+    dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
     dependsOn(prepareTmmCommonResources)
+}
+
+tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
+    mustRunAfter(stageTmmCommonSources)
 }
 
 tasks.matching { task ->
