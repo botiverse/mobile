@@ -3,7 +3,9 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalModalLayer
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
@@ -77,7 +79,10 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -1168,7 +1173,8 @@ private fun MembersDetailContent(
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
     var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
-    var managementExpanded by remember(member.id.value) { mutableStateOf(false) }
+    var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
+    var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
     var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
@@ -1396,22 +1402,28 @@ private fun MembersDetailContent(
     LaunchedEffect(showAvatarPicker) {
         slockLogInfo(tag = "MembersAvatarPicker", message = "showAvatarPicker=$showAvatarPicker canManage=$canManage memberId=${member.id.value}")
     }
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
         MembersDetailHeader(
             member = member,
             detail = detail,
             deleted = deleted,
             canManage = canManage,
-            managementExpanded = managementExpanded,
             onBack = onBack,
             onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
             onOpenDirectMessage = onOpenDirectMessage,
             onCopyMemberId = onCopyMemberId,
-            onToggleManagement = { managementExpanded = !managementExpanded }
+            onRequestManagementMenu = { anchor ->
+                managementMenuAnchor = anchor
+                managementMenuOpen = true
+            }
         )
         if (member.kind == MemberKind.Agent) {
             MembersAgentTabBar(
@@ -1427,28 +1439,6 @@ private fun MembersDetailContent(
         ) {
             item { Spacer(Modifier.height(SlockSpacing.Sm)) }
             if (member.kind == MemberKind.Agent) {
-                if (managementExpanded) {
-                    item {
-                        MembersAgentLifecycleSection(
-                            member = member,
-                            detail = detail,
-                            canManage = canManage,
-                            deleted = deleted,
-                            actionState = actionState,
-                            diagnosticActionState = diagnosticActionState,
-                            pendingConfirmation = pendingConfirmation,
-                            onRequestAction = { runLifecycleAction(it) },
-                            onConfirmAction = { runLifecycleAction(it, confirmed = true) },
-                            onCancelConfirmation = {
-                                pendingConfirmation = null
-                                actionState = null
-                            },
-                            onCopyDiagnostics = { copyDiagnostics() },
-                            onReportIssue = onReportAgentIssue?.let { { reportIssue() } },
-                            modifier = Modifier.padding(horizontal = MembersPageInset)
-                        )
-                    }
-                }
                 item {
                     MembersAgentDetailStateNotice(
                         state = agentDetailState,
@@ -1555,6 +1545,58 @@ private fun MembersDetailContent(
                 onDismiss = { showAvatarPicker = false }
             )
         }
+        val dropdownAnchor = managementMenuAnchor
+        if (managementMenuOpen && dropdownAnchor != null && member.kind == MemberKind.Agent) {
+            val menuSummary = detail?.summary
+            val menuStatus = member.membersResolvedAgentStatus(menuSummary?.status, menuSummary?.activity)
+            val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
+            val menuMachineAssigned = menuSummary?.machineId?.isNotBlank() == true
+            val menuItems = buildMembersManagementMenuItems(
+                primaryAction = menuPrimary,
+                machineAssigned = menuMachineAssigned,
+                canManage = canManage,
+                deleted = deleted,
+                hasReportIssue = onReportAgentIssue != null,
+                inProgress = actionState?.inProgress == true || diagnosticActionState?.inProgress == true
+            )
+            SlockBrutalDropdownMenu(
+                anchor = dropdownAnchor,
+                items = menuItems,
+                onSelect = { id ->
+                    handleMembersManagementMenuSelection(
+                        id = id,
+                        primaryAction = menuPrimary,
+                        runLifecycleAction = { runLifecycleAction(it) },
+                        copyDiagnostics = { copyDiagnostics() },
+                        reportIssue = { reportIssue() }
+                    )
+                },
+                onDismiss = { managementMenuOpen = false }
+            )
+        }
+        pendingConfirmation?.let { action ->
+            SlockBrutalModalLayer(
+                model = SlockModalShellModel(
+                    title = "Confirm ${action.label}",
+                    subtitle = "${action.label} ${member.displayName}. This uses the real agent management API."
+                ),
+                onDismiss = {
+                    pendingConfirmation = null
+                }
+            ) {
+                MembersLifecycleConfirmation(
+                    action = action,
+                    agentName = member.displayName,
+                    busy = actionState?.inProgress == true,
+                    onConfirm = { runLifecycleAction(action, confirmed = true) },
+                    onCancel = {
+                        pendingConfirmation = null
+                        actionState = null
+                    }
+                )
+            }
+        }
+    }
     }
 }
 
@@ -1566,6 +1608,94 @@ private fun DataResult<AgentLifecycleActionResult>.membersLifecycleErrorCode(act
         is DataResult.Error -> error.code
         is DataResult.NoPermission -> blocker.code
     }
+
+private fun buildMembersManagementMenuItems(
+    primaryAction: MembersAgentLifecycleAction?,
+    machineAssigned: Boolean,
+    canManage: Boolean,
+    deleted: Boolean,
+    hasReportIssue: Boolean,
+    inProgress: Boolean
+): List<SlockBrutalDropdownMenuItem> {
+    if (deleted || !canManage) return emptyList()
+    val items = mutableListOf<SlockBrutalDropdownMenuItem>()
+    if (primaryAction != null) {
+        items += SlockBrutalDropdownMenuItem(
+            id = primaryAction.actionKey,
+            label = primaryAction.label,
+            icon = primaryAction.iconName,
+            enabled = !inProgress
+        )
+    }
+    items += SlockBrutalDropdownMenuItem(
+        id = MembersAgentLifecycleAction.Restart.actionKey,
+        label = MembersAgentLifecycleAction.Restart.label,
+        icon = MembersAgentLifecycleAction.Restart.iconName,
+        enabled = !inProgress
+    )
+    items += SlockBrutalDropdownMenuItem(
+        id = MembersAgentLifecycleAction.ResetSession.actionKey,
+        label = MembersAgentLifecycleAction.ResetSession.label,
+        icon = MembersAgentLifecycleAction.ResetSession.iconName,
+        enabled = !inProgress
+    )
+    items += SlockBrutalDropdownMenuItem(
+        id = MembersAgentLifecycleAction.ResetFull.actionKey,
+        label = MembersAgentLifecycleAction.ResetFull.label,
+        icon = MembersAgentLifecycleAction.ResetFull.iconName,
+        enabled = !inProgress
+    )
+    if (machineAssigned) {
+        items += SlockBrutalDropdownMenuItem(
+            id = MembersAgentLifecycleAction.UnassignMachine.actionKey,
+            label = MembersAgentLifecycleAction.UnassignMachine.label,
+            icon = MembersAgentLifecycleAction.UnassignMachine.iconName,
+            enabled = !inProgress
+        )
+    }
+    items += SlockBrutalDropdownMenuItem(
+        id = "copy_diagnostics",
+        label = "Copy diagnostics",
+        icon = SlockLucideIconName.Clipboard,
+        enabled = !inProgress
+    )
+    if (hasReportIssue) {
+        items += SlockBrutalDropdownMenuItem(
+            id = "report_issue",
+            label = "Report issue",
+            icon = SlockLucideIconName.MessageSquarePlus,
+            enabled = !inProgress
+        )
+    }
+    items += SlockBrutalDropdownMenuItem(
+        id = MembersAgentLifecycleAction.Delete.actionKey,
+        label = MembersAgentLifecycleAction.Delete.label,
+        icon = MembersAgentLifecycleAction.Delete.iconName,
+        destructive = true,
+        enabled = !inProgress
+    )
+    return items
+}
+
+private fun handleMembersManagementMenuSelection(
+    id: String,
+    primaryAction: MembersAgentLifecycleAction?,
+    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
+    copyDiagnostics: () -> Unit,
+    reportIssue: () -> Unit
+) {
+    when (id) {
+        "copy_diagnostics" -> copyDiagnostics()
+        "report_issue" -> reportIssue()
+        else -> {
+            val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }
+                ?: primaryAction?.takeIf { it.actionKey == id }
+            if (action != null) {
+                runLifecycleAction(action)
+            }
+        }
+    }
+}
 
 private fun DataResult<AgentWorkspaceTreeSnapshot>.toMembersWorkspaceTreeState(): MembersAgentWorkspaceTreeState =
     when (this) {
@@ -1591,12 +1721,11 @@ private fun MembersDetailHeader(
     detail: AgentDetailSnapshot?,
     deleted: Boolean,
     canManage: Boolean,
-    managementExpanded: Boolean,
     onBack: () -> Unit,
     onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
-    onToggleManagement: () -> Unit
+    onRequestManagementMenu: (Offset) -> Unit
 ) {
     val summary = detail?.summary
     val statusLabel =
@@ -1682,10 +1811,23 @@ private fun MembersDetailHeader(
                 onClick = onOpenDirectMessage
             )
             if (member.kind == MemberKind.Agent) {
+                var threeDotButtonCenter by remember { mutableStateOf<Offset?>(null) }
                 SlockBrutalIconButton(
-                    iconName = if (managementExpanded) SlockLucideIconName.ChevronUp else SlockLucideIconName.Ellipsis,
-                    onClick = onToggleManagement,
-                    size = MembersActionSize
+                    iconName = SlockLucideIconName.Ellipsis,
+                    onClick = {
+                        val anchor = threeDotButtonCenter
+                        if (anchor != null) {
+                            onRequestManagementMenu(anchor)
+                        }
+                    },
+                    size = MembersActionSize,
+                    modifier = Modifier.onGloballyPositioned { coordinates ->
+                        val pos = coordinates.positionInRoot()
+                        threeDotButtonCenter = Offset(
+                            x = pos.x + coordinates.size.width.toFloat() / 2f,
+                            y = pos.y + coordinates.size.height.toFloat() / 2f
+                        )
+                    }
                 )
             } else {
                 SlockBrutalIconButton(
@@ -1799,157 +1941,6 @@ private fun MembersDetailActions(
             modifier = Modifier.weight(1f)
         )
     }
-}
-
-@Composable
-private fun MembersAgentLifecycleSection(
-    member: MemberProfile,
-    detail: AgentDetailSnapshot?,
-    canManage: Boolean,
-    deleted: Boolean,
-    actionState: MembersAgentActionState?,
-    diagnosticActionState: MembersAgentDiagnosticActionState?,
-    pendingConfirmation: MembersAgentLifecycleAction?,
-    onRequestAction: (MembersAgentLifecycleAction) -> Unit,
-    onConfirmAction: (MembersAgentLifecycleAction) -> Unit,
-    onCancelConfirmation: () -> Unit,
-    onCopyDiagnostics: () -> Unit,
-    onReportIssue: (() -> Unit)?,
-    modifier: Modifier = Modifier
-) {
-    val summary = detail?.summary
-    val status = member.membersResolvedAgentStatus(summary?.status, summary?.activity)
-    val primaryAction = membersPrimaryLifecycleAction(status, deleted)
-    val machineAssigned = summary?.machineId?.isNotBlank() == true
-    val copyState = diagnosticActionState?.takeIf { it.actionKey == "copy" }
-    val reportState = diagnosticActionState?.takeIf { it.actionKey == "report" }
-    MembersDetailSection(title = "AGENT ACTIONS", modifier = modifier) {
-        when {
-            deleted -> MembersDetailField("Management", "Agent is deleted.")
-            !canManage -> MembersDetailField("Management", "Management actions require permission.")
-            primaryAction != null -> {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersLifecycleActionButton(
-                        action = primaryAction,
-                        actionState = actionState,
-                        enabled = actionState?.inProgress != true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onRequestAction(primaryAction) }
-                    )
-                    MembersLifecycleActionButton(
-                        action = MembersAgentLifecycleAction.Restart,
-                        actionState = actionState,
-                        enabled = actionState?.inProgress != true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onRequestAction(MembersAgentLifecycleAction.Restart) }
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersLifecycleActionButton(
-                        action = MembersAgentLifecycleAction.ResetSession,
-                        actionState = actionState,
-                        enabled = actionState?.inProgress != true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onRequestAction(MembersAgentLifecycleAction.ResetSession) }
-                    )
-                    MembersLifecycleActionButton(
-                        action = MembersAgentLifecycleAction.ResetFull,
-                        actionState = actionState,
-                        enabled = actionState?.inProgress != true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onRequestAction(MembersAgentLifecycleAction.ResetFull) }
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    MembersLifecycleActionButton(
-                        action = MembersAgentLifecycleAction.Delete,
-                        actionState = actionState,
-                        enabled = actionState?.inProgress != true,
-                        modifier = if (machineAssigned) Modifier.weight(1f) else Modifier.fillMaxWidth(),
-                        onClick = { onRequestAction(MembersAgentLifecycleAction.Delete) }
-                    )
-                    if (machineAssigned) {
-                        MembersLifecycleActionButton(
-                            action = MembersAgentLifecycleAction.UnassignMachine,
-                            actionState = actionState,
-                            enabled = actionState?.inProgress != true,
-                            modifier = Modifier.weight(1f),
-                            onClick = { onRequestAction(MembersAgentLifecycleAction.UnassignMachine) }
-                        )
-                    }
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    SlockBrutalActionButton(
-                        label = copyState?.successLabel ?: "Copy diagnostics",
-                        leadingIcon = SlockLucideIconName.Clipboard,
-                        enabled = diagnosticActionState?.inProgress != true,
-                        modifier = Modifier.weight(1f),
-                        onClick = onCopyDiagnostics
-                    )
-                    onReportIssue?.let { reportIssue ->
-                        SlockBrutalActionButton(
-                            label =
-                                when {
-                                    reportState?.inProgress == true -> "Reporting..."
-                                    reportState?.errorCode != null -> "Report failed"
-                                    reportState?.successLabel != null -> reportState.successLabel
-                                    else -> "Report issue"
-                                },
-                            leadingIcon = if (reportState?.inProgress == true) SlockLucideIconName.Loader else SlockLucideIconName.MessageSquarePlus,
-                            enabled = diagnosticActionState?.inProgress != true,
-                            modifier = Modifier.weight(1f),
-                            onClick = reportIssue
-                        )
-                    }
-                }
-                reportState?.errorCode?.let { errorCode ->
-                    MembersDetailField("Diagnostics", "Failed: $errorCode")
-                }
-                pendingConfirmation?.let { action ->
-                    MembersLifecycleConfirmation(
-                        action = action,
-                        agentName = member.displayName,
-                        busy = actionState?.inProgress == true,
-                        onConfirm = { onConfirmAction(action) },
-                        onCancel = onCancelConfirmation
-                    )
-                }
-                actionState?.let { state ->
-                    if (!state.inProgress) {
-                        MembersDetailField(
-                            "Result",
-                            state.errorCode?.let { "Failed: $it" } ?: state.successLabel ?: "Done"
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MembersLifecycleActionButton(
-    action: MembersAgentLifecycleAction,
-    actionState: MembersAgentActionState?,
-    enabled: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val current = actionState?.takeIf { it.action == action }
-    val label =
-        when {
-            current?.inProgress == true -> "${action.label}..."
-            current?.errorCode == null && current?.successLabel != null -> current.successLabel
-            else -> action.label
-        }
-    SlockBrutalActionButton(
-        label = label,
-        leadingIcon = if (current?.inProgress == true) SlockLucideIconName.Loader else action.iconName,
-        onClick = onClick,
-        modifier = modifier,
-        enabled = enabled,
-        backgroundColor = if (action.destructive) SlockColor.AccentRed else SlockColor.SurfaceWhite
-    )
 }
 
 @Composable
