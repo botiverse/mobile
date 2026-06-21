@@ -120,6 +120,11 @@ internal fun SharedTasksPanel(
             state.loadState
         }
 
+    // #no-task-new-btn: when the task list is empty (ScreenLoadState.Empty),
+    // the user still needs the New Task button and filter toolbar visible.
+    var emptyCreateDialogOpen by remember { mutableStateOf(false) }
+    var emptySelectedMode by remember { mutableStateOf(TasksViewMode.List) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -155,11 +160,43 @@ internal fun SharedTasksPanel(
                         hasAnyFilter = state.selectedFilter != null,
                         isChannelMode = createTasksChannelId != null
                     )
+                // #no-task-new-btn: render toolbar + New Task button above
+                // the empty state body so the user can create the first task.
+                // Filter chips are shown on empty data so the UI isn't jarring
+                // when tasks arrive; view switch persists across empty<->loaded.
+                SharedTasksToolbar(
+                    channelOptions = emptyList(),
+                    selectedChannels = emptySet(),
+                    creatorOptions = emptyList(),
+                    selectedCreatorIds = emptySet(),
+                    assigneeOptions = emptyList(),
+                    selectedAssigneeIds = emptySet(),
+                    selectedMode = emptySelectedMode,
+                    showChannelFilter = showChannelFilter,
+                    openFilterId = null,
+                    showCreateButton = createTasksChannelId != null,
+                    onModeSelected = { mode -> emptySelectedMode = mode },
+                    onChannelChipClick = { },
+                    onCreatorChipClick = { },
+                    onAssigneeChipClick = { },
+                    onClearAll = { },
+                    onCreateClick = { emptyCreateDialogOpen = true }
+                )
                 SharedTasksStateBody(
                     title = emptyCopy.title,
                     detail = emptyCopy.description,
                     iconName = SlockLucideIconName.SquareCheckBig
                 )
+                if (emptyCreateDialogOpen && createTasksChannelId != null) {
+                    TasksCreateDialog(
+                        refreshing = state.refreshing,
+                        onDismiss = { emptyCreateDialogOpen = false },
+                        onSubmit = { titles ->
+                            onIntent(SharedTasksRouteIntent.CreateTasks(createTasksChannelId, titles))
+                            emptyCreateDialogOpen = false
+                        }
+                    )
+                }
             }
             is ScreenLoadState.Error -> {
                 if (showHeader) {
