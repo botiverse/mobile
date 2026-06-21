@@ -12,6 +12,7 @@ plugins {
 }
 
 val KEY_PAGE_NAME = "pageName"
+val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
@@ -85,6 +86,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
+            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("commonMain/src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyOhosVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyOhosVersion()}")
@@ -103,11 +105,13 @@ kotlin {
             }
         }
         val androidMain by getting {
+            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("androidMain/src") })
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyOhosVersion()}")
             }
         }
         val ohosArm64Main by getting {
+            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("ohosArm64Main/src") })
             dependencies {
                 implementation("app.cash.sqldelight:native-driver-ohosarm64:2.1.0-KBA-001")
             }
@@ -167,6 +171,10 @@ sqldelight {
 
 ksp {
     arg(KEY_PAGE_NAME, getPageName())
+}
+
+tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
+    dependsOn("generateMRcommonMain", "generateMRohosArm64Main")
 }
 
 dependencies {

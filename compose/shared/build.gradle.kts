@@ -13,6 +13,7 @@ plugins {
 }
 
 val KEY_PAGE_NAME = "pageName"
+val generatedTmmResourceDir = layout.buildDirectory.dir("generated/tmm-res")
 
 multiplatformResources {
     multiplatformResourcesPackage = "ai.slock.compose.resources"
@@ -50,6 +51,7 @@ kotlin {
     sourceSets {
         val commonMain by getting {
             kotlin.srcDir(rootProject.file("../third_party/kuikly-compose-markdown/src/commonMain/kotlin"))
+            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("commonMain/src") })
             dependencies {
                 implementation("com.tencent.kuikly-open:core:${Version.getKuiklyVersion()}")
                 implementation("com.tencent.kuikly-open:core-annotations:${Version.getKuiklyVersion()}")
@@ -73,6 +75,7 @@ kotlin {
             }
         }
         val androidMain by getting {
+            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("androidMain/src") })
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
@@ -134,6 +137,10 @@ sqldelight {
 
 ksp {
     arg(KEY_PAGE_NAME, getPageName())
+}
+
+tasks.matching { it.name == "compileDebugKotlinAndroid" || it.name == "compileReleaseKotlinAndroid" }.configureEach {
+    dependsOn("generateMRcommonMain", "generateMRandroidMain")
 }
 
 tasks.matching { task ->
