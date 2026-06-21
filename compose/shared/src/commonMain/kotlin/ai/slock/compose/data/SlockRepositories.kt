@@ -211,6 +211,10 @@ interface MemberRepository {
         priority: DataRequestPriority,
         request: AgentProfileUpdateRequest
     ): DataResult<MemberProfile>
+    suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        request: AgentAvatarUploadRequest
+    ): DataResult<MemberProfile>
     suspend fun getAgentDetail(
         priority: DataRequestPriority,
         agentId: MemberId
@@ -608,6 +612,11 @@ data class AgentProfileUpdateRequest(
     val description: String?,
     val avatarUrl: String? = null,
     val includeAvatarUrl: Boolean = false
+)
+
+data class AgentAvatarUploadRequest(
+    val agentId: MemberId,
+    val file: AttachmentUploadFile
 )
 
 enum class AgentResetMode(val wireValue: String) {

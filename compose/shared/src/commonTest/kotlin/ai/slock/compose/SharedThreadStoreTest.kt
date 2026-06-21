@@ -10,6 +10,7 @@ import ai.slock.compose.data.AgentDmSnapshot
 import ai.slock.compose.data.AgentLifecycleActionResult
 import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentReminderSnapshot
 import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AgentSkillsSnapshot
@@ -2708,6 +2709,11 @@ class SharedThreadStoreTest {
         override suspend fun updateAgentProfile(
             priority: ai.slock.compose.data.DataRequestPriority,
             request: AgentProfileUpdateRequest
+        ): DataResult<MemberProfile> = error("unused")
+
+        override suspend fun uploadAgentAvatar(
+            priority: ai.slock.compose.data.DataRequestPriority,
+            request: AgentAvatarUploadRequest
         ): DataResult<MemberProfile> = error("unused")
 
         override suspend fun getAgentDetail(

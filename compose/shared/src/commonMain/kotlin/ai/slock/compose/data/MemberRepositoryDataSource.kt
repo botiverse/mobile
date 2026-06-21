@@ -24,6 +24,16 @@ private val memberRepositoryJson = Json {
     encodeDefaults = true
 }
 
+private fun AttachmentUploadFile.toAgentAvatarMultipartFile(): MultipartFile =
+    MultipartFile(
+        name = "avatar",
+        fileName = fileName,
+        mimeType = mimeType ?: "application/octet-stream",
+        bytes = bytes,
+        fileRef = fileRef,
+        sizeBytes = sizeBytes
+    )
+
 interface SlockNetworkClient {
     suspend fun request(
         priority: DataRequestPriority,
@@ -43,6 +53,13 @@ interface SlockNetworkClient {
 
     suspend fun uploadAccountAvatar(
         priority: DataRequestPriority,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        HomeNetworkResponse(code = 501, bodyText = null)
+
+    suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        agentId: MemberId,
         file: MultipartFile
     ): HomeNetworkResponse =
         HomeNetworkResponse(code = 501, bodyText = null)
@@ -231,6 +248,28 @@ class RealMemberRepository(
             mapper = { bodyText ->
                 parseSharedAgentProfile(bodyText)
                     ?: throw IllegalStateException("Agent profile update response missing agent")
+            }
+        )
+    }
+
+    override suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        request: AgentAvatarUploadRequest
+    ): DataResult<MemberProfile> {
+        currentContext() ?: return authRequired()
+        return executeMember(
+            emptyReason = EmptyReason.NoMembers,
+            block = {
+                networkClient.uploadAgentAvatar(
+                    priority,
+                    request.agentId,
+                    request.file.toAgentAvatarMultipartFile()
+                )
+            },
+            source = "agent_avatar_upload",
+            mapper = { bodyText ->
+                parseSharedAgentProfile(bodyText)
+                    ?: throw IllegalStateException("Agent avatar upload response missing agent")
             }
         )
     }

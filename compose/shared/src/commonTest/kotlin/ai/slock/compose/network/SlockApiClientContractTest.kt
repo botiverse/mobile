@@ -13,6 +13,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import ai.slock.compose.network.MultipartFile
 
 class SlockApiClientContractTest {
     @Test
@@ -128,6 +129,11 @@ class SlockApiClientContractTest {
         client.agentScopes(SlockRequestPriority.Visible, "agent-1")
         client.updateAgentScopes(SlockRequestPriority.Visible, "agent-1", """{"mode":"default"}""")
         client.issueAgentBootstrapToken(SlockRequestPriority.Visible, "agent-1", """{"ttlMs":60000}""")
+        client.uploadAgentAvatar(
+            SlockRequestPriority.Visible,
+            "agent-1",
+            MultipartFile(name = "avatar", fileName = "avatar.png", mimeType = "image/png", bytes = byteArrayOf(1, 2, 3))
+        )
 
         assertEquals("/api/agents", requests[0].url.encodedPath)
         assertEquals("/api/agents/agent-1", requests[1].url.encodedPath)
@@ -154,6 +160,8 @@ class SlockApiClientContractTest {
         assertEquals("/api/agents/agent-1/scopes", requests[15].url.encodedPath)
         assertEquals("POST", requests[16].method.value)
         assertEquals("/api/agents/agent-1/bootstrap-tokens", requests[16].url.encodedPath)
+        assertEquals("POST", requests[17].method.value)
+        assertEquals("/api/agents/agent-1/avatar", requests[17].url.encodedPath)
     }
 
     @Test

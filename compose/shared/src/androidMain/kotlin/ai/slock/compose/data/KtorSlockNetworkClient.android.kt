@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.network.KmpHttpResponse
 import ai.slock.compose.network.MultipartFile
@@ -44,6 +45,17 @@ class KtorSlockNetworkClient(
     ): HomeNetworkResponse =
         client.uploadAccountAvatar(
             priority = priority.toNetworkPriority(),
+            file = file
+        ).toHomeNetworkResponse()
+
+    override suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        client.uploadAgentAvatar(
+            priority = priority.toNetworkPriority(),
+            agentId = agentId.value,
             file = file
         ).toHomeNetworkResponse()
 }

@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.network.HEADER_SERVER_ID
 import ai.slock.compose.network.MultipartFile
@@ -158,6 +159,58 @@ class KuiklySlockNetworkClient(
                 }
             warningLogger(
                 "endpoint category=account_avatar_upload path=auth/me/avatar method=POST " +
+                    "fileCount=1 requestBytes=${file.bytes.size} " +
+                    "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
+                    "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
+                    "result=${response.networkDiagnosticsResult()}"
+            )
+            response
+        }
+
+    override suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        agentId: MemberId,
+        file: MultipartFile
+    ): HomeNetworkResponse =
+        requestScheduler.run(
+            priority = priority.toNetworkPriority(),
+            key = "agents/${agentId.value}/avatar",
+            reason = "multipart"
+        ) {
+            val startedAt = TimeSource.Monotonic.markNow()
+            val boundary = "slock-agent-avatar-${agentId.value}"
+            val response =
+                authMiddleware.request { auth ->
+                    val headers =
+                        authHeaders(
+                            auth = auth,
+                            contentType = "multipart/form-data; boundary=$boundary"
+                        )
+                    if (file.fileRef != null && file.bytes.isEmpty()) {
+                        return@request networkModule.requestMultipartRaw(
+                            url = absoluteUrl("agents/${agentId.value}/avatar"),
+                            method = "POST",
+                            headers = headers,
+                            fields = emptyMap(),
+                            files = listOf(file)
+                        )
+                    }
+                    networkModule.requestRaw(
+                        url = absoluteUrl("agents/${agentId.value}/avatar"),
+                        method = "POST",
+                        headers = headers,
+                        bodyBytes =
+                            buildMultipartBody(
+                                boundary = boundary,
+                                fields = emptyMap(),
+                                files = listOf(file)
+                            ),
+                        bodyText = null
+                    )
+                }
+            warningLogger(
+                "endpoint category=agent_avatar_upload path=agents/${agentId.value}/avatar method=POST " +
                     "fileCount=1 requestBytes=${file.bytes.size} " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
