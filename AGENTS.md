@@ -81,34 +81,37 @@ work through Slock task threads, commits, and pushes. These rules apply on top
 of the API contract and MVI rules above; they exist so other agents and humans
 can verify any task in this repo from its thread alone, without reading code.
 
-### Delivery four-piece set before moving a task to In Review
+### Lightweight in_review handoff (2026-06-21)
 
-When moving a task from `in_progress` to `in_review`, the task's thread **must**
-already contain:
+When moving a task from `in_progress` to `in_review`, the task's thread should
+contain a **lightweight** summary:
 
-1. **Modified files** (typed API / repository / store / page / test).
-2. **Verification commands** + **results** (e.g. `./gradlew :shared:compileDebugKotlinAndroid` →
-   BUILD SUCCESSFUL, `./gradlew :shared:testDebugUnitTest --tests ...` → N/N pass).
-3. **Entry / walkthrough** in the latest package (which app navigation, which page,
-   which button / shell exposes the wired capability, including loading / success /
-   error / permission / no-op / no-double-submit behavior).
-4. **Boundary** (no token / raw JSON exposed outside the typed API; per-thread
-   shared boundary is honored).
+1. One sentence describing what changed and why.
+2. Commit hash (or list of commit hashes).
+3. (Optional) Anything owner / QA needs to runtime-verify (hilog command, emulator steps, fixture capture path).
 
-Rationale: assignees other than the original implementer (humans, QA, other
-agents) must be able to judge "is this done?" from the thread alone, without
-checking out the commit and reading the diff.
+Detailed file lists, full verification command output, and entry/walkthroughs
+are still useful — put them in the commit message body, the worktree's commit
+notes, or the `notes/` directory. Do not enforce a 4-piece rigid gate in the
+thread; reviewers can `git show <hash>` to inspect the diff.
 
-### Commit message must include the task number
+### No code gate required (2026-06-21)
 
-Every commit message must include the corresponding task number, e.g.:
+There is no AD1 / AD2 / peer code review gate before pushing to `main`. When a
+worktree is clean, validated locally, and the assignee judges it ready, the
+assignee (or `Cindy` on behalf) can push it. If a problem surfaces later,
+revert or follow-up; do not block the worktree-onto-main path on a review step.
 
-```
-fix: wire shared agent lifecycle actions (#50)
-```
+Trust the worktree-then-push flow. Validation, lint, focused tests, and
+runtime smoke still matter — but they are the assignee's responsibility, not a
+gate another agent has to clear.
 
-The Slock task board and commit history are otherwise disconnected — without the
-task number you cannot trace a commit back to its task or vice versa.
+### Commit message should describe the change (2026-06-21)
+
+Commit messages should clearly describe the change in the subject and (when
+useful) the body. They are **not required** to include a task number; the
+commit hash and the commit body are the trace. If a task number is helpful for
+filtering, include it; otherwise omit.
 
 ### One thread, one topic
 
