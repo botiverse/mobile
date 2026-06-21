@@ -1325,6 +1325,41 @@ internal class SharedThreadDataSource(
         }
     }
 
+    private suspend fun fetchInitialReplyThreadPayloadFromRepository(
+        session: StoredAuthSession,
+        basePayload: KuiklyThreadScreenPayload,
+        threadId: ThreadId
+    ): DataResult<KuiklyThreadScreenPayload> {
+        val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
+        val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
+        val initialResult =
+            fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
+                repository.getReplyThread(
+                    parentChannelId = ChannelId(parentChannelId),
+                    parentMessageId = MessageId(parentMessageId),
+                    limit = SharedThreadPaging.initialPageSize
+                )
+            }
+        val resolvedBase =
+            basePayload.copy(
+                sourceThreadId = threadId.value,
+                streamChannelId = threadId.value
+            )
+        return when (initialResult) {
+            is DataResult.Content ->
+                DataResult.Content(
+                    initialResult.data
+                        .toKuiklyThreadPayload(resolvedBase, session.user.id)
+                        .withCachedSenderProfiles(session)
+                )
+            is DataResult.Empty -> initialResult
+            is DataResult.Error -> initialResult
+            is DataResult.NoPermission -> initialResult
+        }
+    }
+
     private suspend fun fetchResolvedReplyThreadSnapshot(
         basePayload: KuiklyThreadScreenPayload
     ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot>> {
