@@ -9661,7 +9661,6 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedSender == null,
                         iconName = SlockLucideIconName.CircleUser,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9678,7 +9677,6 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9695,7 +9693,6 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9713,7 +9710,6 @@ private fun SharedHomeSearchFilters(
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9732,7 +9728,6 @@ private fun SharedHomeSearchFilters(
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9750,7 +9745,6 @@ private fun SharedHomeSearchFilters(
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
                     activeBackgroundColor = SlockColor.BrandYellow,
-                    borderColor = SlockColor.EmptyStateGray,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
                     onClick = { anchor ->
@@ -9766,7 +9760,6 @@ private fun SharedHomeSearchFilters(
                         active = false,
                         enabled = true,
                         uppercase = false,
-                        borderColor = SlockColor.EmptyStateGray,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { onIntent(SharedHomeSearchSavedIntent.ClearSearchFilters) }
