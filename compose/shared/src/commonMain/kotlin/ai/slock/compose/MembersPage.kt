@@ -1160,6 +1160,7 @@ private fun MembersDetailContent(
     var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     var managementExpanded by remember(member.id.value) { mutableStateOf(false) }
+    var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
     }
@@ -1344,6 +1345,45 @@ private fun MembersDetailContent(
                 )
         }
     }
+    fun saveAvatar(avatarUrl: String?) {
+        val callback = onUpdateAgentProfile
+        if (!canManage || deleted || callback == null) {
+            onUnavailableAction("Agent avatar editing is not available.")
+            return
+        }
+        scope.launch {
+            val result =
+                try {
+                    callback(
+                        AgentProfileUpdateRequest(
+                            agentId = member.id,
+                            displayName = member.displayName,
+                            description = member.description?.takeIf { it.isNotBlank() },
+                            avatarUrl = avatarUrl,
+                            includeAvatarUrl = true
+                        )
+                    )
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_avatar_save_failed"))
+                }
+            when (result) {
+                is DataResult.Content -> {
+                    showAvatarPicker = false
+                }
+                is DataResult.Empty -> {
+                    onUnavailableAction("Avatar unchanged")
+                }
+                is DataResult.NoPermission -> {
+                    onUnavailableAction("No permission: ${result.blocker.code}")
+                }
+                is DataResult.Error -> {
+                    onUnavailableAction("Avatar save failed: ${result.error.code}")
+                }
+            }
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1356,6 +1396,7 @@ private fun MembersDetailContent(
             canManage = canManage,
             managementExpanded = managementExpanded,
             onBack = onBack,
+            onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
             onOpenDirectMessage = onOpenDirectMessage,
             onCopyMemberId = onCopyMemberId,
             onToggleManagement = { managementExpanded = !managementExpanded }
@@ -1411,8 +1452,6 @@ private fun MembersDetailContent(
                                 detail = detail,
                                 canManage = canManage,
                                 onUpdateAgentProfile = onUpdateAgentProfile,
-                                onUploadAgentAvatar = onUploadAgentAvatar,
-                                onPickAgentAvatarFile = onPickAgentAvatarFile,
                                 onUnavailableAction = onUnavailableAction,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
@@ -1476,6 +1515,34 @@ private fun MembersDetailContent(
             }
             item { Spacer(Modifier.height(180.dp)) }
         }
+        if (showAvatarPicker && canManage && !deleted) {
+            MembersAgentAvatarPicker(
+                member = member,
+                onSelect = { key ->
+                    saveAvatar("pixel:$key")
+                },
+                onClear = {
+                    saveAvatar(null)
+                },
+                onUpload = {
+                    val uploadCallback = onUploadAgentAvatar
+                    if (uploadCallback == null) {
+                        DataResult.Empty(EmptyReason.NoMembers)
+                    } else {
+                        val picked = onPickAgentAvatarFile()
+                        when (picked) {
+                            is DataResult.Content ->
+                                uploadCallback(member.id, picked.data)
+                            is DataResult.Empty -> DataResult.Empty(picked.reason)
+                            is DataResult.Error -> DataResult.Error(picked.error)
+                            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                        }
+                    }
+                },
+                onUnavailableAction = onUnavailableAction,
+                onDismiss = { showAvatarPicker = false }
+            )
+        }
     }
 }
 
@@ -1514,6 +1581,7 @@ private fun MembersDetailHeader(
     canManage: Boolean,
     managementExpanded: Boolean,
     onBack: () -> Unit,
+    onAvatarClick: (() -> Unit)?,
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onToggleManagement: () -> Unit
@@ -1527,6 +1595,7 @@ private fun MembersDetailHeader(
                 ?: summary?.activity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
                 ?: member.detailStatusLabel
         }
+    val avatarClick = onAvatarClick
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1550,7 +1619,12 @@ private fun MembersDetailHeader(
                 member = member,
                 avatarSize = 42.dp,
                 statusSize = 10.dp,
-                statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing()
+                statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing(),
+                modifier = if (avatarClick != null) {
+                    Modifier.clickable(onClick = avatarClick)
+                } else {
+                    Modifier
+                }
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -2110,8 +2184,6 @@ private fun MembersAgentProfileTab(
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
-    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
-    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile>,
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -2120,7 +2192,6 @@ private fun MembersAgentProfileTab(
     var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
     var draftDescription by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
     var actionLabel by remember(member.id.value) { mutableStateOf<String?>(null) }
-    var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     val deleted = summary?.deletedAt?.isNotBlank() == true
     val saving = actionLabel == "Saving"
 
@@ -2197,58 +2268,11 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Description", member.description?.takeIf { it.isNotBlank() } ?: "No description available.")
             }
         }
-        // AVATAR section: clickable avatar tile that opens a modal picker mirroring React
-        // `AgentDetailPanel.tsx` (quick-pick grid of pixel keys + system file picker upload +
-        // clear). Non-manageable views render the tile statically. Upload still falls back to a
-        // toast stub here; file picker wiring + multipart upload (#49 Phase 2 Item 4) lands in a
-        // follow-up worktree.
-        MembersDetailSection(title = "AVATAR") {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .then(
-                        if (canManage && !deleted) Modifier.clickable { showAvatarPicker = true }
-                        else Modifier
-                    )
-                    .padding(vertical = SlockSpacing.Xs),
-                horizontalArrangement = Arrangement.Center
-            ) {
-                MembersAvatar(member = member, avatarSize = 96.dp)
-            }
-            if (canManage && !deleted) {
-                Text(
-                    text = "Tap to change avatar",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-        if (showAvatarPicker && canManage && !deleted) {
-            MembersAgentAvatarPicker(
-                member = member,
-                onSelect = { key -> saveProfile(avatarUrl = "pixel:$key", includeAvatarUrl = true); showAvatarPicker = false },
-                onClear = { saveProfile(avatarUrl = null, includeAvatarUrl = true); showAvatarPicker = false },
-                onUpload = {
-                    val onUploadAgentAvatar = onUploadAgentAvatar
-                    if (onUploadAgentAvatar == null) {
-                        DataResult.Empty(EmptyReason.NoMembers)
-                    } else {
-                        val picked = onPickAgentAvatarFile()
-                        when (picked) {
-                            is DataResult.Content ->
-                                onUploadAgentAvatar(member.id, picked.data)
-                            is DataResult.Empty -> DataResult.Empty(picked.reason)
-                            is DataResult.Error -> DataResult.Error(picked.error)
-                            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                        }
-                    }
-                },
-                onUnavailableAction = onUnavailableAction,
-                onDismiss = { showAvatarPicker = false }
-            )
-        }
+        // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
+        // (PUX #49 spec v4 lock). Clicking it opens the floating `MembersAgentAvatarPicker`
+        // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
+        // picker invocation that previously lived here were removed in this commit so the
+        // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
         MembersDetailSection(title = "RUNTIME") {
             MembersDetailField("Status", if (deleted) "Deleted" else summary?.status?.toMembersDisplayLabel() ?: member.detailStatusLabel)
             MembersDetailField("Runtime", summary?.runtime.orBadgeFallback(member.roleDescription))
@@ -3022,12 +3046,14 @@ private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MemberAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
-    statusPulsing: Boolean = member.agentStatus.membersStatusPulsing()
+    statusPulsing: Boolean = member.agentStatus.membersStatusPulsing(),
+    modifier: Modifier = Modifier
 ) {
     val avatarWireValue = remember(member.avatar, member.avatarUrl, member.gravatarHash, member.kind, member.id) {
         member.avatarWireValueForAvatarSlot()
     }
     SlockAvatarWithStatus(
+        modifier = modifier,
         statusColor =
             if (member.kind == MemberKind.Agent) {
                 member.agentStatus.membersStatusColor(member.presence)
