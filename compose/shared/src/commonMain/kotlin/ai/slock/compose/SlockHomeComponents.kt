@@ -16,6 +16,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
 import com.tencent.kuikly.compose.foundation.Canvas
+import com.tencent.kuikly.compose.ui.draw.drawBehind
+import com.tencent.kuikly.compose.ui.draw.drawWithCache
 import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -2060,16 +2062,40 @@ private fun PixelAvatar(
     avatarSize: Dp = ChannelAvatarSize,
     borderWidth: Dp = SlockStroke.Thin
 ) {
-    Canvas(modifier = modifier.size(avatarSize).border(borderWidth, SlockColor.BorderBlack)) {
-        val cellSize = size.width / PixelAvatarGridSize
-        drawRect(spec.background)
-        spec.grid.forEachIndexed { rowIndex, row ->
-            row.forEachIndexed { columnIndex, key ->
-                val color = PixelAvatarPalette[key] ?: Color.Transparent
-                if (color != Color.Transparent) drawRect(color, topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize), size = Size(cellSize, cellSize))
+    SlockPixelAvatarDrawCache.onCompose()
+    // #195: convert from `Canvas { ... }` (which re-runs the 64 `drawRect` calls on every
+    // recomposition) to `Spacer + drawWithCache` so the draw commands are only re-built when
+    // the `spec` or size actually changes. On Home scroll with stable avatars the spec is
+    // memoized via `remember(avatarWireValue)` upstream, so the cache hit rate should be high
+    // (one re-build per (spec, size) tuple, not per recomposition).
+    //
+    // Safety: `drawWithCache` is the official Compose API for this; it does NOT wrap a
+    // @Composable lambda (unlike typography hoist / ThreadMessageCard marker wrap which
+    // regressed Compose cache invalidation), it only caches imperative DrawScope calls.
+    Spacer(
+        modifier = modifier
+            .size(avatarSize)
+            .border(borderWidth, SlockColor.BorderBlack)
+            .drawWithCache {
+                SlockPixelAvatarDrawCache.onRebuild()
+                val cellSize = size.width / PixelAvatarGridSize
+                onDrawBehind {
+                    drawRect(spec.background)
+                    spec.grid.forEachIndexed { rowIndex, row ->
+                        row.forEachIndexed { columnIndex, key ->
+                            val color = PixelAvatarPalette[key] ?: Color.Transparent
+                            if (color != Color.Transparent) {
+                                drawRect(
+                                    color = color,
+                                    topLeft = Offset(columnIndex * cellSize, rowIndex * cellSize),
+                                    size = Size(cellSize, cellSize)
+                                )
+                            }
+                        }
+                    }
+                }
             }
-        }
-    }
+    )
 }
 
 internal data class PixelAvatarSpec(val background: Color, val grid: List<String>)
@@ -2083,6 +2109,59 @@ internal const val PixelAvatarDefaultKey = "robot"
  * (CreateAgentDialog) and the manual picker grid (AgentDetailPanel).
  */
 internal val PixelAvatarReservedKeys: Set<String> = setOf("finch")
+
+/**
+ * #195 hit-rate gate for [PixelAvatar]'s `drawWithCache` optimization. Tracks how many times
+ * `PixelAvatar` is composed vs. how many times the underlying `drawWithCache` block has to
+ * rebuild (i.e. the cache is invalidated). The ratio `rebuilds / composes` is the per-frame
+ * draw cost; if it stays below `1 / visibleRows`, the optimization is a win.
+ *
+ * Diagnostic logging is gated behind a debug flag and only emits on Android via
+ * `android.util.Log` (Compose UI runs on Android for smoke; OHOS / JS keep counters in memory
+ * but skip the log). Goal: hit rate > 50% in a 5-round scroll smoke before commit.
+ */
+private object SlockPixelAvatarDrawCache {
+    private var composeCount: Int = 0
+    private var rebuildCount: Int = 0
+
+    fun onCompose() {
+        composeCount += 1
+        maybeLog()
+    }
+
+    fun onRebuild() {
+        rebuildCount += 1
+        maybeLog()
+    }
+
+    private var lastLogAtCompose: Int = 0
+
+    private fun maybeLog() {
+        // Log every 64 composes (~one screen worth of avatar rows). Avoid spamming logcat.
+        if (composeCount - lastLogAtCompose < 64) return
+        lastLogAtCompose = composeCount
+        val hitRate =
+            if (composeCount == 0) 0.0
+            else 1.0 - rebuildCount.toDouble() / composeCount.toDouble()
+        // Debug-only log; intentionally keep at info level so it's easy to grep in logcat.
+        // OHOS / JS see the side effect of counters updating but no log line is emitted
+        // (the android.util.Log call is platform-conditional below).
+        // Note: avoid String.format for cross-platform compat (not in Kotlin/Native stdlib);
+        // manual integer-truncation to two decimals is fine for diagnostic purposes.
+        val hitRatePct = (hitRate * 100.0).toInt()
+        logPixelAvatarDrawCache("composes=$composeCount rebuilds=$rebuildCount hitRatePct=$hitRatePct%")
+    }
+
+    fun snapshot(): Pair<Int, Int> = composeCount to rebuildCount
+
+    fun resetForTest() {
+        composeCount = 0
+        rebuildCount = 0
+        lastLogAtCompose = 0
+    }
+}
+
+internal expect fun logPixelAvatarDrawCache(message: String)
 private val PixelAvatarPalette = mapOf('_' to Color.Transparent, 'K' to Color(0xFF141111), 'W' to Color(0xFFFFFFFF), 'P' to Color(0xFFFE7DA8), 'O' to Color(0xFFF8A16F), 'Y' to Color(0xFFFFD440), 'L' to Color(0xFFA9D877), 'C' to Color(0xFF27CCF3), 'V' to Color(0xFFBBAFE6), 'B' to Color(0xFF576574), 'R' to Color(0xFFF97264), 'G' to Color(0xFF9DCAAA))
 internal val PixelAvatarFixedSpecs = mapOf(
     "robot" to PixelAvatarSpec(PixelAvatarPalette.getValue('C'), listOf("_KKKKKK_", "KCKWWKCK", "KWKWWKWK", "KKKKKKKK", "_KWKKWK_", "_KKKKKK_", "_KK__KK_", "_KK__KK_")),
