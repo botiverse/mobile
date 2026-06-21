@@ -125,7 +125,7 @@ fun MarkdownText(
     val animations = LocalMarkdownAnimations.current
     val transformer = LocalImageTransformer.current
 
-    if (content.canRenderAsPlainText() && annotatorSettings.annotator.inlineContent == null) {
+    if (content.canRenderAsPlainText()) {
         MarkdownBasicText(
             text = content.text,
             maxLines = maxLines,
