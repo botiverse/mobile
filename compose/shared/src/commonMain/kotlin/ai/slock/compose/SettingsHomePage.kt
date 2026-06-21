@@ -7188,13 +7188,12 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             )
         }
-    val profilerSections =
-        if (profiler.supported) {
-            listOf(
-                KuiklySharedSettingsSection(
-                    title = "Recomposition profiler",
-                    rows =
-                        listOf(
+    val profilerControlSection =
+        KuiklySharedSettingsSection(
+            title = "Recomposition profiler",
+            rows =
+                if (profiler.supported) {
+                    listOf(
                             KuiklySharedSettingsRow(
                                 "profilerStatus",
                                 SlockLucideIconName.Activity,
@@ -7258,7 +7257,31 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                                 enabled = !profilerBusy
                             )
                         )
-                ),
+                } else {
+                    listOf(
+                        KuiklySharedSettingsRow(
+                            "profilerStatus",
+                            SlockLucideIconName.Activity,
+                            "Shared profiler status",
+                            profiler.detail,
+                            status = profiler.gateLabel
+                        ),
+                        KuiklySharedSettingsRow(
+                            DIAGNOSTICS_ACTION_PROFILER_ENABLED,
+                            SlockLucideIconName.Activity,
+                            "Recomposition profiler",
+                            profiler.detail,
+                            status = profiler.gateLabel,
+                            enabled = false,
+                            toggleValue = false
+                        )
+                    )
+                }
+        )
+    val profilerSections =
+        listOf(profilerControlSection) +
+            if (profiler.supported) {
+                listOf(
                 KuiklySharedSettingsSection(
                     title = "Profiler defaults",
                     rows =
@@ -7355,6 +7378,8 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             profiler.actionFeedback
                 ?: if (profiler.supported) {
                     "Sanitized app diagnostics and Kuikly recomposition profiler"
+                } else if (profiler.detail.isNotBlank()) {
+                    "Sanitized app diagnostics and Kuikly profiler status"
                 } else {
                     "Sanitized app diagnostics"
                 },

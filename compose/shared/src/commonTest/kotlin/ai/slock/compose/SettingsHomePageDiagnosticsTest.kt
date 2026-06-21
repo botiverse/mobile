@@ -13,7 +13,7 @@ import kotlin.test.assertTrue
 
 class SettingsHomePageDiagnosticsTest {
     @Test
-    fun unsupportedProfilerSnapshotHidesProfilerSections() {
+    fun unsupportedProfilerSnapshotShowsDisabledProfilerStatus() {
         val payload =
             emptyList<ai.slock.compose.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
@@ -30,11 +30,15 @@ class SettingsHomePageDiagnosticsTest {
                 actionState = null
             )
 
-        assertEquals("Sanitized app diagnostics", payload.detail)
+        assertEquals("Sanitized app diagnostics and Kuikly profiler status", payload.detail)
         assertEquals(
-            listOf("Actions", "Log"),
+            listOf("Recomposition profiler", "Actions", "Log"),
             payload.sections.map { it.title }
         )
+        val profilerRows = payload.sections.first { it.title == "Recomposition profiler" }.rows.associateBy { it.key }
+        assertFalse(profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).enabled)
+        assertEquals("Debug only", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).status)
+        assertEquals("Recomposition profiler is available only in shared debug builds.", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).detail)
     }
 
     @Test
