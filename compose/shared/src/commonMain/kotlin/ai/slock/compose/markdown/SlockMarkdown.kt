@@ -704,12 +704,7 @@ private object SlockMarkdownTextProvider : TextProvider {
         val resolvedText = remember(text, resolvedStyle) {
             text.withSlockMarkdownSpanFonts(resolvedStyle)
         }
-        val resolvedInlineContent =
-            if (resolvedText.hasSlockMarkdownInlineContentPlaceholders()) {
-                inlineContent
-            } else {
-                emptyMap()
-            }
+        val resolvedInlineContent = resolvedText.filteredSlockMarkdownInlineContent(inlineContent)
         var lastLayoutSignature by remember { mutableStateOf<SlockMarkdownTextLayoutSignature?>(null) }
         val resolvedOnTextLayout: (TextLayoutResult) -> Unit =
             if (resolvedInlineContent.isEmpty()) {
@@ -757,6 +752,25 @@ private data class SlockMarkdownTextLayoutSignature(
 
 private fun AnnotatedString.hasSlockMarkdownInlineContentPlaceholders(): Boolean =
     hasStringAnnotations(SlockMarkdownInlineContentTag, 0, text.length)
+
+internal fun AnnotatedString.slockMarkdownInlineContentIds(): Set<String> =
+    getStringAnnotations(SlockMarkdownInlineContentTag, 0, text.length)
+        .mapTo(mutableSetOf()) { it.item }
+
+internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
+    inlineContent: Map<String, InlineTextContent>
+): Map<String, InlineTextContent> {
+    if (inlineContent.isEmpty() || !hasSlockMarkdownInlineContentPlaceholders()) {
+        return emptyMap()
+    }
+    val ids = slockMarkdownInlineContentIds()
+    if (ids.isEmpty()) return emptyMap()
+    return if (ids.size == inlineContent.size && inlineContent.keys.containsAll(ids)) {
+        inlineContent
+    } else {
+        inlineContent.filterKeys { it in ids }
+    }
+}
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
 

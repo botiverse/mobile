@@ -2,6 +2,7 @@ package ai.slock.compose.markdown
 
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
+import com.tencent.kuikly.compose.foundation.text.appendInlineContent
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.LinkAnnotation
 import com.tencent.kuikly.compose.ui.text.LinkInteractionListener
@@ -157,6 +158,20 @@ class SlockMarkdownTest {
         assertTrue(inlineContent.containsKey("slock:5"))
         assertTrue(inlineContent.containsKey("slock:16"))
         assertTrue(inlineContent.containsKey("slock:43"))
+    }
+
+    @Test
+    fun inlineContentFilteringKeepsOnlyPlaceholdersUsedByTextNode() {
+        val inlineContent = slockMarkdownAnnotator("Ping @artin and #KMP:13374006 for #196")
+            .inlineContent?.invoke()
+            .orEmpty()
+        val textNode = buildAnnotatedString {
+            appendInlineContent("slock:5", "@artin")
+            append(" plain text")
+        }
+
+        assertEquals(setOf("slock:5"), textNode.slockMarkdownInlineContentIds())
+        assertEquals(setOf("slock:5"), textNode.filteredSlockMarkdownInlineContent(inlineContent).keys)
     }
 
     @Test
