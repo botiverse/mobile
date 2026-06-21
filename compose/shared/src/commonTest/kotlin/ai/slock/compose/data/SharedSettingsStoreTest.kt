@@ -1223,6 +1223,7 @@ class SharedSettingsStoreTest {
     fun profilerActionsStayInSharedStoreAndOnlyReloadHostDiagnostics() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities = FakeSettingsCapabilities()
+        val preferences = FakeRecompositionProfilerPreferenceRepository()
         val engine = FakeProfilerEngine()
         val store =
             SharedSettingsStore(
@@ -1230,6 +1231,7 @@ class SharedSettingsStoreTest {
                     SharedSettingsDataSource(
                         sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
                         platformCapabilities = capabilities,
+                        recompositionProfilerPreferenceRepository = preferences,
                         recompositionProfilerController =
                             SharedSettingsRecompositionProfilerController(
                                 engine = engine,
@@ -1246,6 +1248,8 @@ class SharedSettingsStoreTest {
         assertEquals(true, engine.started)
         assertEquals("Running", diagnostics.profiler.statusLabel)
         assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
+        assertEquals(true, diagnostics.profiler.enabled)
+        assertEquals(true, preferences.enabled)
         assertEquals(
             "Profiler started with file/log/overlay enabled. The bottom-right overlay FAB should appear for this session.",
             diagnostics.profiler.actionFeedback
@@ -1255,7 +1259,39 @@ class SharedSettingsStoreTest {
             SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = false),
             store.state.value.actionState
         )
-        assertEquals(listOf("diagnostics", "diagnostics"), capabilities.calls)
+        assertEquals(listOf("diagnostics", "profiler:true", "diagnostics"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun persistedProfilerSwitchRestoresCaptureOnDiagnosticsLoad() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val preferences = FakeRecompositionProfilerPreferenceRepository(enabled = true)
+        val engine = FakeProfilerEngine()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities,
+                        recompositionProfilerPreferenceRepository = preferences,
+                        recompositionProfilerController =
+                            SharedSettingsRecompositionProfilerController(
+                                engine = engine,
+                                debugGate = FakeProfilerDebugGate(supported = true, gateLabel = "Android debug")
+                            )
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Diagnostics))
+
+        val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
+        assertEquals(true, engine.started)
+        assertEquals(true, diagnostics.profiler.enabled)
+        assertEquals("Running", diagnostics.profiler.statusLabel)
+        assertEquals(listOf("diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1978,6 +2014,11 @@ class SharedSettingsStoreTest {
             return diagnosticsResult
         }
 
+        override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
+            calls += "profiler:$enabled"
+            return DataResult.Content(Unit)
+        }
+
         override suspend fun pickAccountAvatarFile(): DataResult<AttachmentUploadFile> {
             calls += "pickAccountAvatarFile"
             return avatarFileResult
@@ -2059,6 +2100,18 @@ class SharedSettingsStoreTest {
             navigation: LargeScreenNavigationPreference
         ): ChatLayoutPreferenceSnapshot =
             ChatLayoutPreferenceSnapshot(myMessageAlignment = alignment, largeScreenNavigation = navigation)
+    }
+
+    private class FakeRecompositionProfilerPreferenceRepository(
+        var enabled: Boolean = false
+    ) : RecompositionProfilerPreferenceRepository {
+        override suspend fun getPreference(): RecompositionProfilerPreferenceSnapshot =
+            RecompositionProfilerPreferenceSnapshot(enabled)
+
+        override suspend fun setEnabled(enabled: Boolean): RecompositionProfilerPreferenceSnapshot {
+            this.enabled = enabled
+            return RecompositionProfilerPreferenceSnapshot(enabled)
+        }
     }
 
     private class FakeProfilerEngine : SharedSettingsRecompositionProfilerEngine {

@@ -95,7 +95,11 @@ class SharedSettingsRecompositionProfilerController internal constructor(
 
     private var lastSavedArtifactHintAvailable: Boolean = false
 
+    internal val isRunning: Boolean
+        get() = debugGate.supported && engine.isEnabled
+
     fun buildSnapshot(
+        enabled: Boolean = isRunning,
         feedback: String? = null
     ): SharedSettingsRecompositionProfilerSnapshot {
         val report = engine.getReport(saveToFile = false)
@@ -120,6 +124,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
             }
         return SharedSettingsRecompositionProfilerSnapshot(
             supported = supported,
+            enabled = enabled,
             gateLabel = debugGate.gateLabel,
             statusLabel = statusLabel,
             detail = detail,
@@ -302,7 +307,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
             "Kuikly docs convention: Android/iOS write to the app sandbox Caches directory, HarmonyOS writes to files. Use the default file names instead of relying on an absolute path from the host."
 
         private const val SHARED_ONLY_NOTE =
-            "This diagnostics flow uses RecompositionProfiler directly inside compose/shared. It does not depend on Activity bridge capability metadata such as supported flags or absolute report paths."
+            "Diagnostics persists the profiler switch in shared settings, routes toggle acknowledgements through the host bridge, and uses Kuikly RecompositionProfiler common APIs for capture and export."
     }
 }
 

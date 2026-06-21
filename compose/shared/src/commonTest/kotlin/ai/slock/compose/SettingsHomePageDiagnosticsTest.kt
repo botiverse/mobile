@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerDefaults
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerFiles
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
@@ -69,6 +70,7 @@ class SettingsHomePageDiagnosticsTest {
                             profiler =
                                 SharedSettingsRecompositionProfilerSnapshot(
                                     supported = true,
+                                    enabled = true,
                                     gateLabel = "Debug build",
                                     statusLabel = "Idle",
                                     detail = "Profiler is ready.",
@@ -108,5 +110,12 @@ class SettingsHomePageDiagnosticsTest {
                 .detail
                 .contains("overlay on")
         )
+        val switchRow =
+            payload.sections
+                .first { it.title == "Recomposition profiler" }
+                .rows
+                .first { it.key == DIAGNOSTICS_ACTION_PROFILER_ENABLED }
+        assertEquals(true, switchRow.toggleValue)
+        assertEquals("false", switchRow.value)
     }
 }

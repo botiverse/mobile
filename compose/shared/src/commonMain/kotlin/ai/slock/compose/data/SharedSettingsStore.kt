@@ -128,6 +128,7 @@ data class SharedSettingsDiagnosticsEntry(
 
 data class SharedSettingsRecompositionProfilerSnapshot(
     val supported: Boolean = false,
+    val enabled: Boolean = false,
     val gateLabel: String = "Unavailable",
     val statusLabel: String = "Unavailable",
     val detail: String = "Recomposition profiler is unavailable on this host.",
@@ -260,6 +261,7 @@ sealed interface SharedSettingsIntent {
     data object CopyDiagnostics : SharedSettingsIntent
     data object ShareDiagnostics : SharedSettingsIntent
     data object ClearDiagnostics : SharedSettingsIntent
+    data class SetRecompositionProfilerEnabled(val enabled: Boolean) : SharedSettingsIntent
     data object StartRecompositionProfiler : SharedSettingsIntent
     data object StopRecompositionProfiler : SharedSettingsIntent
     data object ResetRecompositionProfiler : SharedSettingsIntent
@@ -302,6 +304,9 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
+        DataResult.Content(Unit)
 }
 
 class SharedSettingsDataSource(
@@ -310,6 +315,7 @@ class SharedSettingsDataSource(
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
+    private val recompositionProfilerPreferenceRepository: RecompositionProfilerPreferenceRepository? = null,
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
@@ -571,15 +577,32 @@ class SharedSettingsDataSource(
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()
 
-    suspend fun startRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        performProfilerAction {
-            recompositionProfilerController.start()
+    suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val hostResult = platformCapabilities.setRecompositionProfilerEnabled(enabled)
+        when (hostResult) {
+            is DataResult.Content -> Unit
+            is DataResult.Empty ->
+                return DataResult.Error(ScreenError("settings_profiler_bridge_unavailable", retryable = false))
+            is DataResult.Error ->
+                return DataResult.Error(hostResult.error)
+            is DataResult.NoPermission ->
+                return DataResult.NoPermission(hostResult.blocker)
         }
+        recompositionProfilerPreferenceRepository?.setEnabled(enabled)
+        return performProfilerAction {
+            if (enabled) {
+                recompositionProfilerController.start()
+            } else {
+                recompositionProfilerController.stop()
+            }
+        }
+    }
+
+    suspend fun startRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
+        setRecompositionProfilerEnabled(true)
 
     suspend fun stopRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
-        performProfilerAction {
-            recompositionProfilerController.stop()
-        }
+        setRecompositionProfilerEnabled(false)
 
     suspend fun resetRecompositionProfiler(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         performProfilerAction {
@@ -670,12 +693,24 @@ class SharedSettingsDataSource(
                 is DataResult.Error -> emptyList()
                 is DataResult.NoPermission -> emptyList()
             }
+        val profilerEnabled =
+            recompositionProfilerPreferenceRepository?.getPreference()?.enabled
+                ?: recompositionProfilerController.isRunning
+        syncPersistedProfilerState(profilerEnabled)
         return DataResult.Content(
             SharedSettingsDiagnosticsSnapshot(
                 entries = entries,
-                profiler = recompositionProfilerController.buildSnapshot(feedback = feedback)
+                profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback)
             )
         )
+    }
+
+    private fun syncPersistedProfilerState(enabled: Boolean) {
+        if (enabled && !recompositionProfilerController.isRunning) {
+            recompositionProfilerController.start()
+        } else if (!enabled && recompositionProfilerController.isRunning) {
+            recompositionProfilerController.stop()
+        }
     }
 
     private suspend fun performProfilerAction(
@@ -1066,6 +1101,14 @@ class SharedSettingsStore(
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ShareDiagnostics)
             SharedSettingsIntent.ClearDiagnostics ->
                 _state.value = _state.value.copy(effect = SharedSettingsEffect.ClearDiagnostics)
+            is SharedSettingsIntent.SetRecompositionProfilerEnabled -> {
+                _state.value =
+                    _state.value.copy(
+                        actionState = SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_ENABLED, inProgress = true)
+                    )
+                dataSource.setRecompositionProfilerEnabled(intent.enabled)
+                    .applyDiagnosticsActionResult(DIAGNOSTICS_ACTION_PROFILER_ENABLED)
+            }
             SharedSettingsIntent.StartRecompositionProfiler -> {
                 _state.value =
                     _state.value.copy(
@@ -1642,6 +1685,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
             SharedSettingsIntent.ClearDiagnostics,
+            is SharedSettingsIntent.SetRecompositionProfilerEnabled,
             SharedSettingsIntent.StartRecompositionProfiler,
             SharedSettingsIntent.StopRecompositionProfiler,
             SharedSettingsIntent.ResetRecompositionProfiler,
@@ -1753,6 +1797,7 @@ internal const val SERVER_ACTION_DELETE = "serverDelete"
 internal const val SERVER_ACTION_CONFIRM = "serverConfirm"
 internal const val DIAGNOSTICS_ACTION_PROFILER_START = "diagnosticsProfilerStart"
 internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
+internal const val DIAGNOSTICS_ACTION_PROFILER_ENABLED = "diagnosticsProfilerEnabled"
 internal const val DIAGNOSTICS_ACTION_PROFILER_RESET = "diagnosticsProfilerReset"
 internal const val DIAGNOSTICS_ACTION_PROFILER_REPORT = "diagnosticsProfilerReport"
 internal const val DIAGNOSTICS_ACTION_PROFILER_EXPORT = "diagnosticsProfilerExport"

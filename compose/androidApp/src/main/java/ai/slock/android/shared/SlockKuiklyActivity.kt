@@ -1377,6 +1377,14 @@ internal class SlockKuiklyBridgeModule(
                         "loadAbout" -> loadSettingsAbout()
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "probeNetwork" -> probeSettingsNetwork()
+                        "setRecompositionProfilerEnabled" -> {
+                            val enabled = request.optBoolean("enabled", false)
+                            SlockDiagnosticsLogger.record(
+                                    "SlockDiagnostics",
+                                    "shared_recomposition_profiler_enabled=$enabled"
+                            )
+                            mapOf("status" to "ok", "enabled" to enabled)
+                        }
                         "copyDiagnostics" -> {
                             copyText("Raft diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_logs")

@@ -13,6 +13,7 @@ import ai.slock.compose.components.SlockBrutalSelectField
 import ai.slock.compose.components.SlockBrutalSelectOption
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockLinkButton
+import ai.slock.compose.components.SlockSwitchButton
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
@@ -22,6 +23,7 @@ import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
+import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
 import ai.slock.compose.data.KuiklyNotificationPreferenceEvents
 import ai.slock.compose.data.MOBILE_ACTION_LANGUAGE
 import ai.slock.compose.data.MOBILE_ACTION_MESSAGE_ALIGNMENT
@@ -68,6 +70,7 @@ import ai.slock.compose.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
+import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthGateIntent
@@ -105,6 +108,7 @@ import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_EXPORT
+import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_REPORT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_RESET
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_START
@@ -570,7 +574,8 @@ internal data class KuiklySharedSettingsRow(
     val detail: String = "",
     val value: String = "",
     val status: String = "",
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    val toggleValue: Boolean? = null
 )
 
 private val settingsTabBarSmokePayload = KuiklySettingsHomePayload(
@@ -966,6 +971,12 @@ private fun SlockAppShellContent() {
         remember(sharedPreferenceStore) {
             PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
         }
+    val recompositionProfilerPreferenceRepository =
+        remember(sharedPreferenceStore) {
+            PersistentRecompositionProfilerPreferenceRepository(
+                KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
+            )
+        }
     val notificationPreferenceEvents = remember(pager) { KuiklyNotificationPreferenceEvents(pager) }
     val notificationPreferenceRepository =
         remember(pager, notificationPreferenceEvents) {
@@ -1008,6 +1019,7 @@ private fun SlockAppShellContent() {
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
+                recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
             )
@@ -3094,6 +3106,9 @@ private fun SettingsAppShellContent(
                     onCopyLogs = { onSettingsIntent(SharedSettingsIntent.CopyDiagnostics) },
                     onShareLogs = { onSettingsIntent(SharedSettingsIntent.ShareDiagnostics) },
                     onClearLogs = { onSettingsIntent(SharedSettingsIntent.ClearDiagnostics) },
+                    onSetProfilerEnabled = { enabled ->
+                        onSettingsIntent(SharedSettingsIntent.SetRecompositionProfilerEnabled(enabled))
+                    },
                     onStartProfiler = { onSettingsIntent(SharedSettingsIntent.StartRecompositionProfiler) },
                     onStopProfiler = { onSettingsIntent(SharedSettingsIntent.StopRecompositionProfiler) },
                     onResetProfiler = { onSettingsIntent(SharedSettingsIntent.ResetRecompositionProfiler) },
@@ -5619,6 +5634,9 @@ private fun SharedSettingsRow(
             row.status.takeIf { it.isNotBlank() }?.let {
                 Text(it, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1)
             }
+            row.toggleValue?.let { enabled ->
+                SlockSwitchButton(checked = enabled, enabled = row.enabled)
+            }
         }
     }
 }
@@ -5657,6 +5675,7 @@ private fun SharedSettingsDiagnosticsContent(
     onCopyLogs: () -> Unit,
     onShareLogs: () -> Unit,
     onClearLogs: () -> Unit,
+    onSetProfilerEnabled: (Boolean) -> Unit,
     onStartProfiler: () -> Unit,
     onStopProfiler: () -> Unit,
     onResetProfiler: () -> Unit,
@@ -5666,11 +5685,12 @@ private fun SharedSettingsDiagnosticsContent(
 ) {
     val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
     val payload = (snapshot?.entries ?: emptyList()).toDiagnosticsPayload(state, actionState)
-    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, _ ->
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "copyLogs" -> onCopyLogs()
             "shareLogs" -> onShareLogs()
             "clearLogs" -> onClearLogs()
+            DIAGNOSTICS_ACTION_PROFILER_ENABLED -> onSetProfilerEnabled(value == "true")
             "startProfiler" -> onStartProfiler()
             "stopProfiler" -> onStopProfiler()
             "resetProfiler" -> onResetProfiler()
@@ -7015,6 +7035,7 @@ private fun Boolean.onOffLabel(): String =
 
 private val profilerActionKeys =
     setOf(
+        DIAGNOSTICS_ACTION_PROFILER_ENABLED,
         DIAGNOSTICS_ACTION_PROFILER_START,
         DIAGNOSTICS_ACTION_PROFILER_STOP,
         DIAGNOSTICS_ACTION_PROFILER_RESET,
@@ -7177,30 +7198,20 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                                 status = profiler.statusLabel
                             ),
                             KuiklySharedSettingsRow(
-                                "startProfiler",
-                                SlockLucideIconName.Play,
-                                "Start capture",
-                                "Apply the shared default debug profile with overlay enabled and begin collecting recompositions for the current Kuikly session.",
+                                DIAGNOSTICS_ACTION_PROFILER_ENABLED,
+                                SlockLucideIconName.Activity,
+                                "Recomposition profiler",
+                                "Persist this debug switch locally. When enabled, shared settings asks the host bridge to acknowledge profiler mode, applies the default Kuikly profile, and starts collecting recompositions.",
+                                value = (!profiler.enabled).toString(),
                                 status =
                                     when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_START) -> "Loading"
-                                        profilerRunning -> "Running"
-                                        else -> "Start"
+                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_ENABLED) -> "Loading"
+                                        profiler.enabled && profilerRunning -> "On"
+                                        profiler.enabled -> "Pending"
+                                        else -> "Off"
                                     },
-                                enabled = !profilerRunning && !profilerBusy
-                            ),
-                            KuiklySharedSettingsRow(
-                                "stopProfiler",
-                                SlockLucideIconName.Square,
-                                "Stop capture",
-                                "Stop collection. Per Kuikly docs, stop() writes profiler_report.json automatically and keeps profiler_frames.jsonl for analyzer input.",
-                                status =
-                                    when {
-                                        actionState.isDiagnosticsActionLoading(DIAGNOSTICS_ACTION_PROFILER_STOP) -> "Loading"
-                                        profilerRunning -> "Stop"
-                                        else -> "Idle"
-                                    },
-                                enabled = profilerRunning && !profilerBusy
+                                enabled = !profilerBusy,
+                                toggleValue = profiler.enabled
                             ),
                             KuiklySharedSettingsRow(
                                 "resetProfiler",

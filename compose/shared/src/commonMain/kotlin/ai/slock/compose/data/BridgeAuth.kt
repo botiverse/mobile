@@ -140,6 +140,21 @@ internal class BridgeSettingsPlatformCapabilities(
     suspend fun clearDiagnostics(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "clearDiagnostics"))?.optString("status") == "ok"
 
+    override suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "setRecompositionProfilerEnabled")
+                    .put("enabled", enabled)
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(
+                ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_profiler_bridge_failed" })
+            )
+        }
+        return DataResult.Content(Unit)
+    }
+
     suspend fun sendFeedback(): Boolean =
         bridge.settingsCapability(JSONObject().put("action", "sendFeedback"))?.optString("status") == "ok"
 
