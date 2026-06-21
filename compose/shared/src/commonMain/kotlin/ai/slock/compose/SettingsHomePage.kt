@@ -9640,6 +9640,10 @@ private fun SharedHomeSearchFilters(
             state.timeRange != SearchTimeRange.Any
     val selectedSender = state.senderFilters.firstOrNull { it.id == state.selectedSenderId }
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
+    val senderActive = state.selectedSenderId != null
+    val channelActive = state.selectedChannelId != null
+    val timeActive = state.timeRange != SearchTimeRange.Any
+    val sortActive = state.sort != SearchSort.Relevance
     SharedHomeSearchControlsBlock {
         LazyRow(
             modifier = Modifier.fillMaxWidth().padding(horizontal = SearchControlsHorizontalPadding),
@@ -9649,12 +9653,12 @@ private fun SharedHomeSearchFilters(
                 item {
                     SlockAnchoredToolbarChip(
                         label = selectedSender?.let { "From: ${if (it.isSelf) "Me" else it.displayLabel}" } ?: "From",
-                        active = state.selectedSenderId != null,
+                        active = senderActive,
                         enabled = true,
                         uppercase = selectedSender == null,
                         iconName = SlockLucideIconName.CircleUser,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = searchFilterBorderColor(senderActive),
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9666,12 +9670,12 @@ private fun SharedHomeSearchFilters(
                 item {
                     SlockAnchoredToolbarChip(
                         label = selectedChannel?.label ?: "Channel",
-                        active = state.selectedChannelId != null,
+                        active = channelActive,
                         enabled = true,
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = searchFilterBorderColor(channelActive),
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9683,12 +9687,12 @@ private fun SharedHomeSearchFilters(
                 item {
                     SlockAnchoredToolbarChip(
                         label = state.timeRange.searchLabel,
-                        active = state.timeRange != SearchTimeRange.Any,
+                        active = timeActive,
                         enabled = true,
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = searchFilterBorderColor(timeActive),
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9701,12 +9705,12 @@ private fun SharedHomeSearchFilters(
                 item {
                     SlockAnchoredToolbarChip(
                         label = selectedChannel?.label ?: "Channel",
-                        active = state.selectedChannelId != null,
+                        active = channelActive,
                         enabled = true,
                         uppercase = selectedChannel == null,
                         iconName = selectedChannel?.iconName ?: SlockLucideIconName.Hash,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = searchFilterBorderColor(channelActive),
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9720,12 +9724,12 @@ private fun SharedHomeSearchFilters(
                 item {
                     SlockAnchoredToolbarChip(
                         label = state.timeRange.searchLabel,
-                        active = state.timeRange != SearchTimeRange.Any,
+                        active = timeActive,
                         enabled = true,
                         uppercase = false,
                         iconName = SlockLucideIconName.Calendar,
                         activeBackgroundColor = SlockColor.BrandYellow,
-                        borderColor = SlockColor.BorderBlack,
+                        borderColor = searchFilterBorderColor(timeActive),
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
                         onClick = { anchor ->
@@ -9738,12 +9742,12 @@ private fun SharedHomeSearchFilters(
             item {
                 SlockAnchoredToolbarChip(
                     label = state.sort.searchLabel,
-                    active = state.sort != SearchSort.Relevance,
+                    active = sortActive,
                     enabled = true,
                     uppercase = false,
                     iconName = SlockLucideIconName.ArrowUpDown,
                     activeBackgroundColor = SlockColor.BrandYellow,
-                    borderColor = SlockColor.BorderBlack,
+                    borderColor = searchFilterBorderColor(sortActive),
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
                     onClick = { anchor ->
@@ -9774,6 +9778,9 @@ private fun SharedHomeSearchFilters(
         }
     }
 }
+
+private fun searchFilterBorderColor(active: Boolean): Color =
+    if (active) SlockColor.BorderBlack else SearchLightRowBorderColor
 
 @Composable
 private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() -> Unit) {
