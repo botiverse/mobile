@@ -15,6 +15,8 @@ import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -80,6 +82,18 @@ internal fun SlockBaseMenuOverlay(
         Box(
             modifier = popoverModifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
+                .onGloballyPositioned { menuCoords ->
+                    // #223 diagnostic: log the menu's actual screen position so
+                    // we can diff against the offset the host applied. If this
+                    // does not match positionContent.result + host origin, the
+                    // host is doing a hidden transform.
+                    val menuRoot = menuCoords.positionInRoot()
+                    android.util.Log.d(
+                        "SlockPinMenuDebug",
+                        "menu onGloballyPositioned: positionInRoot=" + menuRoot +
+                            " size=" + menuCoords.size
+                    )
+                }
         ) {
             if (shadowOffset > 0.dp) {
                 Box(
