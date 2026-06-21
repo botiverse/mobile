@@ -1155,6 +1155,14 @@ private fun MembersDetailContent(
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
+    // AD1 diagnostic for #49 top-left avatar click bug report
+    // (no logs at click time → is canManage=false blocking the clickable, or is
+    // the click not reaching the handler at all?). Logs once per recomposition
+    // where canManage flips.
+    slockLogInfo(
+        tag = "MembersAvatarPicker",
+        message = "render memberId=${member.id.value} kind=${member.kind} deleted=$deleted canManage=$canManage detailLoaded=${detail != null} creatorId=${detail?.summary?.creatorId.orEmpty()}"
+    )
     val scope = rememberCoroutineScope()
     var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
@@ -1384,6 +1392,9 @@ private fun MembersDetailContent(
                 }
             }
         }
+    }
+    LaunchedEffect(showAvatarPicker) {
+        slockLogInfo(tag = "MembersAvatarPicker", message = "showAvatarPicker=$showAvatarPicker canManage=$canManage memberId=${member.id.value}")
     }
     Column(
         modifier = Modifier
@@ -1622,7 +1633,12 @@ private fun MembersDetailHeader(
                 statusSize = 10.dp,
                 statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing(),
                 modifier = if (avatarClick != null) {
-                    Modifier.clickable(onClick = avatarClick)
+                    Modifier.clickable(
+                        onClick = {
+                            slockLogInfo(tag = "MembersAvatarPicker", message = "top-left avatar clicked memberId=${member.id.value}")
+                            avatarClick()
+                        }
+                    )
                 } else {
                     Modifier
                 }
