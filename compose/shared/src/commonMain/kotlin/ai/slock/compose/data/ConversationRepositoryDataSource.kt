@@ -168,6 +168,23 @@ class RealConversationRepository(
         )
     }
 
+    override suspend fun getReplyThread(
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        includeFollowedSummaries: Boolean,
+        limit: Int
+    ): DataResult<ThreadSnapshot> {
+        val context = currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
+        return loadReplyThread(
+            context = context,
+            parentChannelId = parentChannelId,
+            parentMessageId = parentMessageId,
+            messageLimit = messageLimit,
+            block = { networkClient.channelMessages(DataRequestPriority.Foreground, parentChannelId, messageLimit) }
+        )
+    }
+
     override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
         return executeConversation(
@@ -424,6 +441,61 @@ class RealConversationRepository(
             },
             emptyWhen = { it.isEmpty() }
         )
+    }
+
+    private suspend fun loadReplyThread(
+        context: NetworkServerContext,
+        parentChannelId: ChannelId,
+        parentMessageId: MessageId,
+        messageLimit: Int,
+        block: suspend () -> HomeNetworkResponse,
+        source: String = "messages_channel_reply_thread"
+    ): DataResult<ThreadSnapshot> = coroutineScope {
+        val loadStartedAt = TimeSource.Monotonic.markNow()
+        warningLogger(
+            "reply_thread_load_start source=$source parentChannelId=${parentChannelId.value} " +
+                "parentMessageId=${parentMessageId.value} messageLimit=$messageLimit"
+        )
+        val createOrOpenResult =
+            async { createOrOpenThread(parentChannelId, parentMessageId) }
+        val messagesDeferred =
+            async {
+                executeConversation(
+                    emptyReason = EmptyReason.NoMessages,
+                    block = block,
+                    emptyWhen = { it.messages.isEmpty() },
+                    source = source,
+                    mapper = { bodyText ->
+                        parseSharedChannelMessages(bodyText, ThreadId(parentChannelId.value))
+                    }
+                )
+            }
+        val createOrOpen = createOrOpenResult.await()
+        val resolvedThreadChannelId: ChannelId? =
+            (createOrOpen as? DataResult.Content)?.data?.threadChannelId
+        val messagesResult = messagesDeferred.await()
+        val rawMessages: List<Message> =
+            (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
+        val snapshotMessages = rawMessages.filter { it.parentMessageId == parentMessageId }
+        val snapshot =
+            buildSharedThreadSnapshot(
+                payload = SharedMessagesPayload(
+                    messages = rawMessages,
+                    hasOlder = (messagesResult as? DataResult.Content)?.data?.hasOlder ?: false,
+                    hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
+                ),
+                threadId = ThreadId(resolvedThreadChannelId?.value ?: parentChannelId.value),
+                canLoadMoreBefore = snapshotMessages.size >= messageLimit
+            )
+        warningLogger(
+            "reply_thread_load_result source=$source " +
+                "result=${messagesResult.conversationDiagnosticsResult()} " +
+                "messages=${snapshotMessages.size} tasks=${snapshot.tasks.size} " +
+                "resolvedThreadChannelId=${resolvedThreadChannelId?.value ?: "null"} " +
+                "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+        )
+        if (messagesResult is DataResult.Content) DataResult.Content(snapshot)
+        else messagesResult as DataResult<ThreadSnapshot>
     }
 
     private suspend fun loadChannelMessages(

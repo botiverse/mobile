@@ -2848,6 +2848,8 @@ class SharedThreadStoreTest {
         val newerLimits: MutableList<Int> = mutableListOf()
         val getMessageContextRequests: MutableList<MessageId> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
+        val getReplyThreadRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
+        val getReplyThreadLimits: MutableList<Int> = mutableListOf()
 
         override suspend fun getThread(
             threadId: ThreadId,
@@ -2857,6 +2859,17 @@ class SharedThreadStoreTest {
             getThreadRequests += threadId
             getThreadLimits += limit
             return threadResultsById[threadId] ?: threadResult
+        }
+
+        override suspend fun getReplyThread(
+            parentChannelId: ChannelId,
+            parentMessageId: MessageId,
+            includeFollowedSummaries: Boolean,
+            limit: Int
+        ): DataResult<ThreadSnapshot> {
+            getReplyThreadRequests += parentChannelId to parentMessageId
+            getReplyThreadLimits += limit
+            return threadResult
         }
 
         override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {
