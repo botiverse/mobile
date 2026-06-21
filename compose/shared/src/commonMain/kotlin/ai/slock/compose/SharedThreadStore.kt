@@ -1304,24 +1304,29 @@ internal class SharedThreadDataSource(
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
                 repository.getThread(threadId, limit = SharedThreadPaging.initialPageSize)
             }
-        val verified =
-            when (initialResult) {
-                is DataResult.Content ->
-                    if (!basePayload.hasUntrustedReplyThreadStreamHint() ||
-                        initialResult.data.matchesReplyThreadParent(basePayload)
-                    ) {
-                        DataResult.Content(basePayload to initialResult.data)
-                    } else {
-                        fetchResolvedReplyThreadSnapshot(basePayload)
-                    }
-                is DataResult.Empty -> return initialResult
-                is DataResult.Error -> return initialResult
-                is DataResult.NoPermission -> return initialResult
-            }
-        return verified.map { (verifiedBase, snapshot) ->
-            snapshot
-                .toKuiklyThreadPayload(verifiedBase, session.user.id)
-                .withCachedSenderProfiles(session)
+        val initialData = initialResult as? DataResult.Content
+        // If the route's stream hint is untrusted (stream != parent channel) and the
+        // thread-channel snapshot's reported parent pair differs from the route,
+        // fall back to the resolve path which POSTs createOrOpenThread to
+        // reconcile. This is the v0.2 defense-in-depth: the snapshot may not
+        // carry parent metadata at all (treated as trust), but if it does and
+        // disagrees with the canonical route parent pair, we don't show it.
+        return when {
+            initialData != null &&
+                basePayload.hasUntrustedReplyThreadStreamHint() &&
+                !initialData.data.parentPairMatchesRoute(basePayload) ->
+                fetchResolvedReplyThreadSnapshot(basePayload).map { (_, snapshot) ->
+                    snapshot
+                        .toKuiklyThreadPayload(basePayload, session.user.id)
+                        .withCachedSenderProfiles(session)
+                }
+            initialData != null ->
+                DataResult.Content(
+                    initialData.data
+                        .toKuiklyThreadPayload(basePayload, session.user.id)
+                        .withCachedSenderProfiles(session)
+                )
+            else -> initialResult as DataResult<KuiklyThreadScreenPayload>
         }
     }
 
@@ -1380,11 +1385,7 @@ internal class SharedThreadDataSource(
             }
         return when (resolvedResult) {
             is DataResult.Content ->
-                if (resolvedResult.data.matchesReplyThreadParent(resolvedBasePayload)) {
-                    DataResult.Content(resolvedBasePayload to resolvedResult.data)
-                } else {
-                    DataResult.Error(ScreenError(code = "thread_parent_mismatch", retryable = true))
-                }
+                DataResult.Content(resolvedBasePayload to resolvedResult.data)
             is DataResult.Empty -> resolvedResult
             is DataResult.Error -> resolvedResult
             is DataResult.NoPermission -> resolvedResult
@@ -2337,7 +2338,7 @@ private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boole
         streamCandidate != parentChannel
 }
 
-private fun ThreadSnapshot.matchesReplyThreadParent(base: KuiklyThreadScreenPayload): Boolean {
+private fun ThreadSnapshot.parentPairMatchesRoute(base: KuiklyThreadScreenPayload): Boolean {
     val expectedParentChannelId = base.parentChannelId?.takeIf { it.isNotBlank() } ?: return true
     val expectedParentMessageId =
         base.parentMessageId?.takeIf { it.isNotBlank() }
@@ -2348,7 +2349,7 @@ private fun ThreadSnapshot.matchesReplyThreadParent(base: KuiklyThreadScreenPayl
         return thread.parentChannelId.value == expectedParentChannelId &&
             thread.parentMessageId.value == expectedParentMessageId
     }
-    val parent = parentMessage ?: return false
+    val parent = parentMessage ?: return true
     return parent.channelId?.value == expectedParentChannelId &&
         parent.id.value == expectedParentMessageId
 }
