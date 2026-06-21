@@ -28,16 +28,19 @@ val stageTmmCommonSources by tasks.registering(Sync::class) {
 }
 val restoreTmmCommonPluginSources by tasks.registering(Sync::class) {
     dependsOn(stageTmmCommonSources)
-    mustRunAfter(tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" })
+    mustRunAfter(tasks.matching {
+        it.name == "generateMRandroidMain" ||
+            it.name == "generateMRohosArm64Main" ||
+            (it.name.startsWith("package") && it.name.endsWith("Resources"))
+    })
     outputs.upToDateWhen { false }
     from(generatedTmmCommonSourceDir.map { it.dir("src") })
     into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
 }
-val finalizeTmmCommonPluginSources by tasks.registering(Sync::class) {
-    dependsOn(stageTmmCommonSources)
-    outputs.upToDateWhen { false }
-    from(generatedTmmCommonSourceDir.map { it.dir("src") })
-    into(generatedTmmResourceDir.map { it.dir("commonMain/src") })
+val hideTmmCommonPluginSources by tasks.registering(Delete::class) {
+    mustRunAfter(restoreTmmCommonPluginSources)
+    mustRunAfter(tasks.matching { it.name.startsWith("ksp") })
+    delete(generatedTmmResourceDir.map { it.dir("commonMain/src") })
 }
 
 multiplatformResources {
@@ -100,7 +103,6 @@ kotlin {
             }
         }
         val androidMain by getting {
-            kotlin.srcDir(generatedTmmResourceDir.map { it.dir("androidMain/src") })
             dependencies {
                 api("com.tencent.kuikly-open:core-render-android:${Version.getKuiklyVersion()}")
                 implementation("io.ktor:ktor-client-okhttp:2.3.7")
@@ -164,24 +166,24 @@ ksp {
     arg(KEY_PAGE_NAME, getPageName())
 }
 
-tasks.matching { it.name == "compileDebugKotlinAndroid" || it.name == "compileReleaseKotlinAndroid" }.configureEach {
-    dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
-    finalizedBy(finalizeTmmCommonPluginSources)
+tasks.matching { it.name == "compileDebugKotlinAndroid" }.configureEach {
+    dependsOn("kspDebugKotlinAndroid", hideTmmCommonPluginSources)
+}
+
+tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
+    dependsOn("kspReleaseKotlinAndroid", hideTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRandroidMain")
-    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
-    dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
-    finalizedBy(finalizeTmmCommonPluginSources)
+    dependsOn("kspKotlinOhosArm64", hideTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
     dependsOn(restoreTmmCommonPluginSources, "generateMRohosArm64Main")
-    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
@@ -190,7 +192,6 @@ tasks.matching { it.name == "generateMRcommonMain" }.configureEach {
 
 tasks.matching { it.name == "generateMRandroidMain" || it.name == "generateMRohosArm64Main" }.configureEach {
     mustRunAfter(stageTmmCommonSources)
-    finalizedBy(finalizeTmmCommonPluginSources)
 }
 
 tasks.matching { task ->
