@@ -15,10 +15,11 @@ internal data class SharedThreadHeaderContext(
 internal object SharedThreadHeaderContextStore {
     fun launchContext(
         surfaceKind: String,
-        parentMessageId: String?
+        parentMessageId: String?,
+        dmPeerName: String? = null
     ): SharedThreadHeaderContext =
         SharedThreadHeaderContext(
-            title = fallbackTitle(surfaceKind),
+            title = dmTitleFor(surfaceKind, dmPeerName),
             subtitle = null,
             originMessage = null,
             originPreview = null,
@@ -90,6 +91,13 @@ internal object SharedThreadHeaderContextStore {
             KuiklyThreadSurfaceKind.DirectMessage -> "Direct Message"
             else -> "Channel"
         }
+
+    private fun dmTitleFor(surfaceKind: String, dmPeerName: String?): String =
+        if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            dmPeerName?.takeIf { it.isNotBlank() } ?: fallbackTitle(surfaceKind)
+        } else {
+            fallbackTitle(surfaceKind)
+        }
 }
 
 internal fun KuiklyThreadScreenPayload.withHeaderContext(
@@ -109,6 +117,7 @@ internal fun KuiklyThreadScreenPayload.withLaunchHeaderContext(): KuiklyThreadSc
     withHeaderContext(
         SharedThreadHeaderContextStore.launchContext(
             surfaceKind = surfaceKind,
-            parentMessageId = originParentMessageId ?: parentMessageId
+            parentMessageId = originParentMessageId ?: parentMessageId,
+            dmPeerName = dmPeerName
         )
     )

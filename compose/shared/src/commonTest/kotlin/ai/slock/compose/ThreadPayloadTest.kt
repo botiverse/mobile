@@ -331,6 +331,77 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun launchPayloadDmPeerNameOverridesDirectMessageFallbackTitle() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "page-dm",
+                      "threadId": "dm-artin",
+                      "surfaceKind": "dm",
+                      "dmPeerName": "artin",
+                      "dmPeerAvatarUrl": "https://cdn.slock.ai/avatars/artin.webp",
+                      "dmPeerAvatarLabel": "AR",
+                      "dmPeerGravatarUrl": "https://www.gravatar.com/avatar/artin"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("page-dm", payload.instanceId)
+        assertEquals("artin", payload.title)
+        assertEquals("dm-artin", payload.sourceThreadId)
+        assertEquals("dm-artin", payload.streamChannelId)
+        assertEquals("artin", payload.dmPeerName)
+        assertEquals("https://cdn.slock.ai/avatars/artin.webp", payload.dmPeerAvatarUrl)
+        assertEquals("AR", payload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+    }
+
+    @Test
+    fun launchPayloadDmWithoutPeerNameFallsBackToDirectMessage() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "page-dm",
+                      "threadId": "dm-1",
+                      "surfaceKind": "dm"
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("Direct Message", payload.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+    }
+
+    @Test
+    fun launchPayloadDmEmptyPeerNameFallsBackToDirectMessage() {
+        val payload =
+            parseThreadScreenPayload(
+                payload =
+                    """
+                    {
+                      "instanceId": "page-dm",
+                      "threadId": "dm-1",
+                      "surfaceKind": "dm",
+                      "dmPeerName": "   ",
+                      "dmPeerAvatarUrl": ""
+                    }
+                    """.trimIndent(),
+                instanceId = "fallback"
+            )
+
+        assertEquals("Direct Message", payload.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+    }
+
+    @Test
     fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
         val payload =
             buildAppShellThreadPayload(

@@ -334,7 +334,11 @@ internal data class KuiklyThreadScreenPayload(
     val showMessageSaveAction: Boolean = true,
     val showTaskOpenActions: Boolean = true,
     val showTaskStatusActions: Boolean = true,
-    val joinLabel: String = "Join channel"
+    val joinLabel: String = "Join channel",
+    val dmPeerName: String? = null,
+    val dmPeerAvatarUrl: String? = null,
+    val dmPeerAvatarLabel: String? = null,
+    val dmPeerGravatarUrl: String? = null
 )
 
 @Serializable
@@ -374,7 +378,11 @@ internal data class WireThreadLaunchPayload(
     val showTaskStatusActions: Boolean = true,
     val emptyTitle: String = "Loading conversation",
     val emptyDetail: String = "Loading messages from this conversation.",
-    val joinLabel: String = "Join channel"
+    val joinLabel: String = "Join channel",
+    val dmPeerName: String? = null,
+    val dmPeerAvatarUrl: String? = null,
+    val dmPeerAvatarLabel: String? = null,
+    val dmPeerGravatarUrl: String? = null
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -453,7 +461,11 @@ internal data class WireThreadLaunchPayload(
             showTaskStatusActions = showTaskStatusActions,
             emptyTitle = emptyTitle,
             emptyDetail = emptyDetail,
-            joinLabel = joinLabel
+            joinLabel = joinLabel,
+            dmPeerName = dmPeerName.nonBlank(),
+            dmPeerAvatarUrl = dmPeerAvatarUrl.nonBlank(),
+            dmPeerAvatarLabel = dmPeerAvatarLabel.nonBlank(),
+            dmPeerGravatarUrl = dmPeerGravatarUrl.nonBlank()
         ).withLaunchHeaderContext()
     }
 }
@@ -4343,7 +4355,13 @@ private fun ThreadPageHeader(
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             ThreadHeaderIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
-            if (payload.showModeTabs) {
+            if (payload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+                ThreadDmPeerAvatarTile(
+                    avatarWireValue = payload.dmPeerAvatarUrl,
+                    avatarLabel = payload.dmPeerAvatarLabel ?: payload.dmPeerName ?: "",
+                    gravatarUrl = payload.dmPeerGravatarUrl
+                )
+            } else if (payload.showModeTabs) {
                 ThreadHashTile()
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -4392,6 +4410,21 @@ private fun ThreadHashTile() {
             color = SlockColor.TextBlack
         )
     }
+}
+
+@Composable
+private fun ThreadDmPeerAvatarTile(
+    avatarWireValue: String?,
+    avatarLabel: String,
+    gravatarUrl: String? = null
+) {
+    SlockAvatar(
+        avatarWireValue = avatarWireValue,
+        label = avatarLabel,
+        avatarSize = 40.dp,
+        borderWidth = SlockStroke.Default,
+        gravatarUrl = gravatarUrl
+    )
 }
 
 @Composable
