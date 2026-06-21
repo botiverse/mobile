@@ -674,29 +674,14 @@ private fun SharedActivityStateBody(
         SlockCenteredLoading(message = title)
         return
     }
-    Column(
-        modifier = Modifier.fillMaxSize().padding(start = 24.dp, top = 24.dp, end = 24.dp, bottom = bottomContentPadding),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(54.dp)
-                    .background(if (loading) SlockColor.BrandYellow else SlockColor.EmptyStateGray)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(if (loading) SlockLucideIconName.RefreshCw else SlockLucideIconName.Activity, modifier = Modifier.size(22.dp), color = "#FF000000")
-        }
-        Spacer(Modifier.height(14.dp))
-        Text(title, style = SlockType.PageTitle, color = SlockColor.TextBlack, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        Text(detail, style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 3, overflow = TextOverflow.Ellipsis)
-        if (actionLabel != null) {
-            Spacer(Modifier.height(16.dp))
-            SharedActivitySmallButton(label = actionLabel, iconName = SlockLucideIconName.RefreshCw, onClick = onAction)
-        }
-    }
+    SlockEmptyState(
+        title = title,
+        detail = detail,
+        iconName = SlockLucideIconName.Activity,
+        actionLabel = actionLabel,
+        onAction = onAction.takeIf { actionLabel != null },
+        modifier = Modifier.padding(bottom = bottomContentPadding)
+    )
 }
 
 private val InboxFilter.label: String

@@ -9456,17 +9456,23 @@ private fun SharedHomeSavedPanel(
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
             )
         }
-        item {
-            SharedHomePanelStatus(
-                loading = state.loading,
-                loadingText = "Loading saved messages...",
-                errorCode = state.errorCode,
-                noPermissionCode = state.noPermissionCode,
-                empty = state.empty || (state.loaded && state.items.isEmpty()),
-                emptyTitle = "No saved messages",
-                emptyDetail = "Saved message threads will appear here.",
-                onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
-            )
+        if (state.loading || state.errorCode != null || state.noPermissionCode != null) {
+            item {
+                SharedHomePanelStatus(
+                    loading = state.loading,
+                    loadingText = "Loading saved messages...",
+                    errorCode = state.errorCode,
+                    noPermissionCode = state.noPermissionCode,
+                    empty = false,
+                    emptyTitle = "",
+                    emptyDetail = "",
+                    onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                )
+            }
+        } else if (state.empty || (state.loaded && state.items.isEmpty())) {
+            item {
+                SharedHomeSavedEmptyState()
+            }
         }
         items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
             val item = state.items[index]
@@ -9490,6 +9496,19 @@ private fun SharedHomeSavedPanel(
             Spacer(Modifier.height(bottomContentPadding))
         }
     }
+}
+
+@Composable
+private fun SharedHomeSavedEmptyState() {
+    SlockEmptyState(
+        title = "No saved messages yet",
+        detail = "Save messages by clicking the bookmark icon on any message.",
+        iconName = SlockLucideIconName.Bookmark,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(300.dp)
+    )
 }
 
 @Composable
