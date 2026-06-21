@@ -4,6 +4,7 @@ import ai.slock.compose.data.AuthSessionRepository
 import ai.slock.compose.data.AgentRepository
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentActivitySnapshot
+import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDmSnapshot
 import ai.slock.compose.data.AgentDmSummary
@@ -818,6 +819,19 @@ class MockMemberRepository(
                 displayName = request.displayName.trim(),
                 description = request.description?.trim()?.takeIf { it.isNotBlank() }
             )
+        }
+
+    override suspend fun uploadAgentAvatar(
+        priority: DataRequestPriority,
+        request: AgentAvatarUploadRequest
+    ): DataResult<MemberProfile> =
+        // Mock implementation: returns the existing member profile without
+        // actually processing the upload. Production wiring (multipart
+        // POST to /agents/{id}/avatar) lives in RealMemberRepository.
+        resultFor(scenario, EmptyReason.NoMembers) {
+            MockSeedData.memberSnapshot.members
+                .firstOrNull { it.id == request.agentId }
+                ?: MockSeedData.memberSnapshot.members.first { it.kind == MemberKind.Agent }
         }
 
     override suspend fun getAgentDetail(
