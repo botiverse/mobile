@@ -1315,9 +1315,9 @@ internal class SharedThreadDataSource(
             initialData != null &&
                 basePayload.hasUntrustedReplyThreadStreamHint() &&
                 !initialData.data.parentPairMatchesRoute(basePayload) ->
-                fetchResolvedReplyThreadSnapshot(basePayload).map { (_, snapshot) ->
+                fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
-                        .toKuiklyThreadPayload(basePayload, session.user.id)
+                        .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
                 }
             initialData != null ->
