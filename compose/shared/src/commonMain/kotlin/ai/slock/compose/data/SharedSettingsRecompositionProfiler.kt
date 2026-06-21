@@ -194,7 +194,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
             }.fold(
                 onSuccess = {
                     SharedSettingsRecompositionProfilerActionResult(
-                        feedback = "Profiler started with file/log/overlay enabled. The bottom-right overlay FAB should appear for this session."
+                        feedback = "Profiler started with file and overlay enabled. Per-frame logcat output is disabled to keep the Kuikly bridge stable."
                     )
                 },
                 onFailure = { throwable ->
@@ -301,7 +301,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         private const val DEFAULT_HOTSPOT_THRESHOLD = 10
         private const val DEFAULT_MAX_EVENT_BUFFER_SIZE = 100_000
         private const val DEFAULT_ENABLE_FILE = true
-        private const val DEFAULT_ENABLE_LOG = true
+        private const val DEFAULT_ENABLE_LOG = false
         private const val DEFAULT_ENABLE_OVERLAY = true
         private const val PROFILER_REPORT_FILE_NAME = "profiler_report.json"
         private const val PROFILER_FRAMES_FILE_NAME = "profiler_frames.jsonl"

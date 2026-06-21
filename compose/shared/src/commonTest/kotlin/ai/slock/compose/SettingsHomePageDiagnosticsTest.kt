@@ -81,7 +81,7 @@ class SettingsHomePageDiagnosticsTest {
                                     defaults =
                                         SharedSettingsRecompositionProfilerDefaults(
                                             enableFile = true,
-                                            enableLog = true,
+                                            enableLog = false,
                                             enableOverlay = true,
                                             sampleRateLabel = "100%",
                                             hotspotThreshold = 10,
