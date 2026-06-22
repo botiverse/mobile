@@ -1102,6 +1102,8 @@ internal class SharedThreadDataSource(
                 messages = emptyList(),
                 canLoadMoreBefore = false,
                 canLoadMoreAfter = false,
+                emptyTitle = ThreadReplyEmptyTitle,
+                emptyDetail = ThreadReplyEmptyDetail,
                 composer =
                     buildThreadSurfaceComposerPayload(
                         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -1130,7 +1132,12 @@ internal class SharedThreadDataSource(
                 writeCachedPayload(payload)
                 DataResult.Content(payload)
             }
-            is DataResult.Empty -> loaded
+            is DataResult.Empty -> {
+                val payload = replyBase.toEmptyReplyThreadPayload()
+                cachePayload(payload)
+                writeCachedPayload(payload)
+                DataResult.Content(payload)
+            }
             is DataResult.Error -> loaded
             is DataResult.NoPermission -> loaded
         }
@@ -1391,6 +1398,19 @@ internal class SharedThreadDataSource(
             is DataResult.NoPermission -> resolvedResult
         }
     }
+
+    private fun KuiklyThreadScreenPayload.toEmptyReplyThreadPayload(): KuiklyThreadScreenPayload =
+        copy(
+            status = "empty",
+            messages = emptyList(),
+            canLoadMoreBefore = false,
+            canLoadMoreAfter = false,
+            olderMessagesStatus = "idle",
+            newerMessagesStatus = "idle",
+            errorCode = null,
+            emptyTitle = ThreadReplyEmptyTitle,
+            emptyDetail = ThreadReplyEmptyDetail
+        )
 
     private suspend fun fetchThreadSnapshotFromRepository(
         fallbackCode: String,
@@ -3341,6 +3361,8 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         focusedMessageId = base.focusedMessageId,
         originStatus = headerContext.originStatus,
         originErrorCode = headerContext.originErrorCode,
+        emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyTitle else base.emptyTitle,
+        emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyDetail else base.emptyDetail,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,

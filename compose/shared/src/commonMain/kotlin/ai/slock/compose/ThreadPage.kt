@@ -203,6 +203,8 @@ private object ThreadLocalSendNextId {
  */
 internal const val DEBUG_THREAD_VIRTUAL_RENDER_LOG = false
 internal const val ThreadReplyPageTitle = "Thread"
+internal const val ThreadReplyEmptyTitle = "No replies yet"
+internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp

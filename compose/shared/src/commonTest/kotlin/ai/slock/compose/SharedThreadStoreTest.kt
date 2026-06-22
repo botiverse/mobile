@@ -2265,6 +2265,83 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun createOrOpenReplyThreadKeepsEmptyPanelForFirstReply() = runBlocking {
+        val api = FakeThreadApi(bodyText = emptyMessagesResponse())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val base = contentPayload("parent body")
+        val parent = base.messages.single()
+
+        val result = dataSource.createOrOpenReplyThread(base, parent)
+
+        val payload = (result as DataResult.Content).data
+        assertEquals("empty", payload.status)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals("thread-m1", payload.resolveThreadComposer().streamChannelId)
+        assertEquals("Reply in thread", payload.resolveThreadComposer().placeholder)
+        assertEquals(listOf("channel-1" to "m1"), api.createdThreads)
+        assertEquals(listOf("thread-m1"), api.channelIds.takeLast(1))
+    }
+
+    @Test
+    fun replyThreadSnapshotWithOnlyOriginUsesReplyEmptyState() = runBlocking {
+        val parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body")
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = emptyList(),
+                            parentMessage = parentMessage,
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    name = "thread-m1",
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base = contentPayload("parent body")
+        val parent = base.messages.single()
+
+        val result = dataSource.createOrOpenReplyThread(base, parent)
+
+        val payload = (result as DataResult.Content).data
+        assertEquals("content", payload.status)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+    }
+
+    @Test
     fun fetchThreadPayloadPreservesReplyOriginWhenRepositoryReturnsParentAsMessage() = runBlocking {
         val parent = contentPayload("parent body").messages.single()
         val repository =
@@ -3322,6 +3399,14 @@ class SharedThreadStoreTest {
                   "senderType": "user"
                 }
               ]
+            }
+            """.trimIndent()
+
+        private fun emptyMessagesResponse(historyLimited: Boolean = false): String =
+            """
+            {
+              "historyLimited": $historyLimited,
+              "messages": []
             }
             """.trimIndent()
 
