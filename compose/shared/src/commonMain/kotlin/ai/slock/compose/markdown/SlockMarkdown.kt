@@ -138,23 +138,27 @@ internal data class MarkdownInlineTokenPlan(
 internal object SlockMarkdownInlineTokenRegistry {
     fun plan(
         content: String,
-        highlightedMentions: Set<String> = emptySet()
+        highlightedMentions: Set<String> = emptySet(),
+        knownChannelNames: Set<String>? = null
     ): MarkdownInlineTokenPlan {
         val highlightedMentionKeys =
             highlightedMentions.mapTo(mutableSetOf()) { threadMarkdownMentionKey(it) }
+        val knownChannelKeys = knownChannelNames?.mapTo(mutableSetOf()) { it.trim().lowercase() }
         val tagTokens =
-            content.threadInlineTagMatches().map { match ->
-                MarkdownInlineToken(
-                    id = match.id,
-                    kind = match.tag.kind.toMarkdownInlineTokenKind(),
-                    range = match.range,
-                    label = match.tag.label,
-                    tag = match.tag,
-                    highlighted =
-                        match.tag.kind == ThreadMarkdownTagKind.UserMention &&
-                            highlightedMentionKeys.containsThreadMention(match.tag.label)
-                )
-            }
+            content.threadInlineTagMatches()
+                .filter { match -> match.tag.matchesKnownMarkdownChannelNames(knownChannelKeys) }
+                .map { match ->
+                    MarkdownInlineToken(
+                        id = match.id,
+                        kind = match.tag.kind.toMarkdownInlineTokenKind(),
+                        range = match.range,
+                        label = match.tag.label,
+                        tag = match.tag,
+                        highlighted =
+                            match.tag.kind == ThreadMarkdownTagKind.UserMention &&
+                                highlightedMentionKeys.containsThreadMention(match.tag.label)
+                    )
+                }
         val inlineCodeTokens =
             content.threadInlineCodeMatches()
                 .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
@@ -392,9 +396,22 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
             )
         }
         startsWith('#') && drop(1).isBareThreadShortIdLikeReference() -> null
-        startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel)
+        startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel, channelName = drop(1))
         else -> null
     }
+
+private fun ThreadMarkdownTag.matchesKnownMarkdownChannelNames(knownChannelKeys: Set<String>?): Boolean {
+    if (knownChannelKeys == null ||
+        (kind != ThreadMarkdownTagKind.Channel && kind != ThreadMarkdownTagKind.ChannelThread)
+    ) {
+        return true
+    }
+    val key =
+        (channelName ?: label.removePrefix("#").substringBefore(":"))
+            .trim()
+            .lowercase()
+    return key.isNotBlank() && key in knownChannelKeys
+}
 
 private fun String.isThreadChannelReference(): Boolean {
     if (!startsWith('#')) return false
@@ -547,12 +564,13 @@ private fun String.normalizeMarkdownInlineCodeText(): String =
 internal fun slockMarkdownAnnotator(
     content: String,
     highlightedMentions: Set<String> = emptySet(),
+    knownChannelNames: Set<String>? = null,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     inlineCodeWidths: Map<String, TextUnit> = emptyMap(),
     tokenPlan: MarkdownInlineTokenPlan =
-        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
+        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions, knownChannelNames)
 ): MarkdownAnnotator {
     val diagnosticsStartedAt = onDiagnostics?.let { TimeSource.Monotonic.markNow() }
     val inlineTagTokens = tokenPlan.tagTokens()
@@ -1019,6 +1037,7 @@ fun SlockMarkdownBody(
     modifier: Modifier = Modifier,
     textStyle: TextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp),
     highlightedMentions: Set<String> = emptySet(),
+    knownChannelNames: Set<String>? = null,
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     onOpenUrl: (String) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
@@ -1092,8 +1111,8 @@ fun SlockMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
-    val tokenPlan = remember(content, highlightedMentions) {
-        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
+    val tokenPlan = remember(content, highlightedMentions, knownChannelNames) {
+        SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions, knownChannelNames)
     }
     val measuredInlineCodeWidths = remember(content, tokenPlan.signature) {
         mutableStateMapOf<String, TextUnit>()
@@ -1103,6 +1122,7 @@ fun SlockMarkdownBody(
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
+            knownChannelNames = knownChannelNames,
             onOpenTag = { tag -> currentOnOpenTag(tag) },
             resolveTagLabel = { tag -> currentResolveTagLabel?.invoke(tag) ?: threadMarkdownTagDisplayLabel(tag.label) },
             onDiagnostics =

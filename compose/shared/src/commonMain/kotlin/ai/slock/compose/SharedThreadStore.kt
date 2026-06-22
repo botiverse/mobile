@@ -184,11 +184,19 @@ internal class SharedThreadDataSource(
         return snapshot
             .toKuiklyThreadPayload(basePayload, session?.user?.id)
             .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
+            .let { payload ->
+                if (session == null) payload else payload.withKnownMarkdownChannelNames(session)
+            }
     }
 
     suspend fun withConversationHeaderFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
         val session = readSession() ?: return basePayload
         return basePayload.withConversationHeaderFallback(resolveConversationHeaderFallback(basePayload, session))
+    }
+
+    suspend fun withKnownMarkdownChannelNames(payload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val session = readSession() ?: return payload
+        return payload.withKnownMarkdownChannelNames(session)
     }
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
@@ -527,6 +535,7 @@ internal class SharedThreadDataSource(
                 is DataResult.Error -> return payloadResult
                 is DataResult.NoPermission -> return payloadResult
             }
+                .withKnownMarkdownChannelNames(session)
         if (persistResult) {
             cachePayload(payload)
             writeCachedPayload(payload)
@@ -1522,6 +1531,24 @@ internal class SharedThreadDataSource(
         return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
 
+    private suspend fun KuiklyThreadScreenPayload.withKnownMarkdownChannelNames(
+        session: StoredAuthSession
+    ): KuiklyThreadScreenPayload {
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
+        val names =
+            localWriteThrough
+                ?.readHomeSnapshot(serverId)
+                ?.channels
+                .orEmpty()
+                .mapNotNull { conversation -> conversation.name.trim().takeIf { it.isNotBlank() } }
+                .distinctBy { it.lowercase() }
+        return if (names.isEmpty() || names == knownMarkdownChannelNames) {
+            this
+        } else {
+            copy(knownMarkdownChannelNames = names)
+        }
+    }
+
     private suspend fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
@@ -1767,7 +1794,10 @@ internal class SharedThreadStore(
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
-        val headerResolvedInitialPayload = dataSource.withConversationHeaderFallback(initialPayload)
+        val headerResolvedInitialPayload =
+            dataSource.withKnownMarkdownChannelNames(
+                dataSource.withConversationHeaderFallback(initialPayload)
+            )
         dataSource.cachePayload(headerResolvedInitialPayload)
         val threadId = headerResolvedInitialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached =
@@ -2373,6 +2403,8 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             timeFormat = base.timeFormat,
             canSend = base.canSend,
             joined = base.joined,
+            knownMarkdownChannelNames =
+                base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
             emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
             emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
@@ -2391,6 +2423,8 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             timeFormat = base.timeFormat,
             canSend = base.canSend,
             joined = base.joined,
+            knownMarkdownChannelNames =
+                base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
             membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
             emptyTitle = base.emptyTitle,
@@ -3031,6 +3065,8 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         originStatus = patch.originStatus,
         originErrorCode = patch.originErrorCode,
         tasks = patch.tasks,
+        knownMarkdownChannelNames =
+            patch.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
         canLoadMoreBefore = patch.canLoadMoreBefore,
         canLoadMoreAfter = patch.canLoadMoreAfter,
         olderMessagesStatus = patch.olderMessagesStatus,

@@ -397,6 +397,7 @@ internal data class KuiklyThreadScreenPayload(
     val originStatus: String = "none",
     val originErrorCode: String? = null,
     val tasks: List<KuiklyThreadTaskItem> = emptyList(),
+    val knownMarkdownChannelNames: List<String> = emptyList(),
     val canLoadMoreBefore: Boolean = false,
     val canLoadMoreAfter: Boolean = false,
     val olderMessagesStatus: String = "idle",
@@ -892,6 +893,11 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
                 ?: threadMarkdownTagDisplayLabel(tag.label)
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
+
+private fun List<String>.toKnownMarkdownChannelNameSet(): Set<String>? =
+    mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
+        .toSet()
+        .takeIf { it.isNotEmpty() }
 
 internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
     value: String?,
@@ -1502,6 +1508,7 @@ private fun ThreadMessageVisualCard(
     highlightedMentions: Set<String> = emptySet(),
     resolvedTaskAssigneeName: String? = null,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
+    knownMarkdownChannelNames: Set<String>? = null,
     timestampLabel: String = message.timestampLabel,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
@@ -1568,6 +1575,7 @@ private fun ThreadMessageVisualCard(
                                 body = message.body,
                                 textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                                 highlightedMentions = highlightedMentions,
+                                knownChannelNames = knownMarkdownChannelNames,
                                 resolveTagLabel = resolveMarkdownTagLabel,
                                 onOpenTag = onOpenMarkdownTag,
                                 onOpenUrl = onOpenMarkdownUrl
@@ -4720,6 +4728,10 @@ private fun ThreadPageContent(
     val openMarkdownUrl: (String) -> Unit = { url ->
         onThreadEvent("openMarkdownUrl", url, null, null)
     }
+    val knownMarkdownChannelNames =
+        remember(payload.knownMarkdownChannelNames) {
+            payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
+        }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(
             modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
@@ -5574,6 +5586,7 @@ private fun ThreadMessagesList(
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
+                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
                             onShowActions = { anchor ->
                                 if (!message.hasLocalSendState()) {
                                     actionMenuAnchor = anchor
@@ -6218,6 +6231,7 @@ private fun ThreadMessageCard(
     taskOpenEnabled: Boolean = true,
     taskStatusActionsEnabled: Boolean = true,
     showSaveAction: Boolean = true,
+    knownMarkdownChannelNames: Set<String>? = null,
     timestampLabel: String = message.timestampLabel,
     onShowActions: (Offset) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -6350,6 +6364,7 @@ private fun ThreadMessageCard(
                                         body = message.body,
                                         textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                                         highlightedMentions = highlightedMentions,
+                                        knownChannelNames = knownMarkdownChannelNames,
                                         resolveTagLabel = resolveMarkdownTagLabel,
                                         onOpenTag = onOpenMarkdownTag,
                                         onOpenUrl = onOpenMarkdownUrl,
@@ -7565,6 +7580,7 @@ private fun ThreadOriginCard(
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = payload.showMessageSaveAction,
+                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = { onThreadEvent("openMember", it, null, null) },
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },

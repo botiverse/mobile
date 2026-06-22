@@ -391,12 +391,27 @@ class SlockMarkdownTest {
                 "#a67dddad 存在并确实触发过；backup reminder #3adea0d5 和 #34xxx 都不是引用。"
 
         val matches = body.threadInlineTagMatches()
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("raft-mobile"))
 
         assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), matches.map { it.tag.label })
         assertEquals(ThreadMarkdownTagKind.Channel, matches[0].tag.kind)
         assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[1].tag.kind)
         assertEquals("raft-mobile", matches[1].tag.channelName)
         assertEquals("4752266f", matches[1].tag.threadShortId)
+        assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), plan.tagTokens().map { it.label })
+    }
+
+    @Test
+    fun inlineChannelReferencesRequireKnownChannelWhenProvided() {
+        val body = "Known #raft-mobile thread #raft-mobile:4752266f unknown #not-channel and #not-channel:4752266f"
+
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = setOf("raft-mobile"))
+
+        assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), plan.tagTokens().map { it.label })
+        assertEquals(
+            listOf(MarkdownInlineTokenKind.Channel, MarkdownInlineTokenKind.ChannelThread),
+            plan.tagTokens().map { it.kind }
+        )
     }
 
     @Test
