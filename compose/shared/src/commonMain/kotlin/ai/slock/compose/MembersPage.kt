@@ -776,6 +776,7 @@ private fun JSONObject.optNullableString(key: String): String? =
 @Composable
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
     onAddHuman: () -> Unit,
     onOpenDirectMessage: (MemberProfile) -> Unit,
     onCopyMemberId: (MemberProfile) -> Unit,
@@ -876,7 +877,8 @@ internal fun MembersRouteContent(
             onCopyAgentDiagnostics = onCopyAgentDiagnostics,
             onReportAgentIssue = onReportAgentIssue,
             onUnavailableAction = onUnavailableAction,
-            timeContext = timeContext
+            timeContext = timeContext,
+            sharedAgentDetailStore = sharedAgentDetailStore
         )
     } else {
         MembersListContent(

@@ -156,6 +156,7 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
+import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
@@ -8068,6 +8069,11 @@ private fun SharedMembersScreen(
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    val sharedAgentDetailStore = remember {
+        SharedAgentDetailStore(
+            logger = { message -> bridge.log("shared_members_screen $message") }
+        )
+    }
 
     LaunchedEffect(Unit) {
         state = SharedMembersUiState.Loading
@@ -8156,6 +8162,7 @@ private fun SharedMembersScreen(
             }
             MembersRouteContent(
                 payload = membersPayload,
+                sharedAgentDetailStore = sharedAgentDetailStore,
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
                 onCopyMemberId = {
