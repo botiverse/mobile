@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import androidx.compose.runtime.Composable
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -157,7 +159,6 @@ private fun ThreadFileRow(
             .fillMaxWidth()
             .height(82.dp)
             .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -263,45 +264,32 @@ private fun ThreadFileSourcePill(text: String) {
 
 @Composable
 private fun ThreadFileDownloadButton(isOpening: Boolean, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(42.dp)
-            .padding(end = 3.dp, bottom = 3.dp)
-            .background(SlockColor.ShadowBlack)
-    ) {
-        Button(
-            onClick = onClick,
-            enabled = !isOpening,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = 0.dp, top = 0.dp, end = 3.dp, bottom = 3.dp)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-        ) {
-            SlockLucideIcon(name = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download, modifier = Modifier.size(24.dp))
-        }
-    }
+    SlockBrutalIconButton(
+        iconName = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+        onClick = onClick,
+        enabled = !isOpening,
+        size = 36.dp,
+        iconSize = 18.dp
+    )
 }
 
 @Composable
-private fun ThreadFilesLoadMore(loading: Boolean, onClick: () -> Unit) {
+private fun ThreadFilesLoadMore(
+    loading: Boolean,
+    onClick: () -> Unit,
+    label: String = "Load more"
+) {
     Box(
         modifier = Modifier.fillMaxWidth().padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
-        Button(
-            onClick = if (!loading) onClick else ({}),
+        SlockBrutalActionButton(
+            label = if (loading) "Loading..." else label,
+            onClick = onClick,
             enabled = !loading,
-            modifier = Modifier
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 18.dp, vertical = 10.dp)
-        ) {
-            Text(
-                text = if (loading) "Loading..." else "Load more",
-                style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
-            )
-        }
+            minWidth = 112.dp,
+            minHeight = 36.dp
+        )
     }
 }
 
@@ -322,7 +310,7 @@ private fun ThreadFilesError(errorCode: String, onRetry: () -> Unit) {
             style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray
         )
-        ThreadFilesLoadMore(loading = false, onClick = onRetry)
+        ThreadFilesLoadMore(loading = false, onClick = onRetry, label = "Retry")
     }
 }
 
