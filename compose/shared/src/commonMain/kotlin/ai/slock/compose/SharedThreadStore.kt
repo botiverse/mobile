@@ -1307,6 +1307,7 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         threadId: ThreadId
     ): DataResult<KuiklyThreadScreenPayload> {
+        val headerFallback = resolveConversationHeaderFallback(basePayload, session)
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
                 repository.getThread(threadId, limit = SharedThreadPaging.initialPageSize)
@@ -1324,12 +1325,14 @@ internal class SharedThreadDataSource(
                 !initialData.data.parentPairMatchesRoute(basePayload) ->
                 fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
+                        .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
                 }
             initialData != null ->
                 DataResult.Content(
                     initialData.data
+                        .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                         .withCachedSenderProfiles(session)
                 )
@@ -1428,6 +1431,18 @@ internal class SharedThreadDataSource(
                 return DataResult.Error(ScreenError(code = fallbackCode, retryable = true))
             }
         return result
+    }
+
+    private suspend fun resolveConversationHeaderFallback(
+        basePayload: KuiklyThreadScreenPayload,
+        session: StoredAuthSession
+    ): ConversationSummary? {
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return null
+        val lookupIds = basePayload.conversationHeaderFallbackIds()
+        if (lookupIds.isEmpty()) return null
+        val home = localWriteThrough?.readHomeSnapshot(serverId) ?: return null
+        return (home.channels + home.directMessages)
+            .firstOrNull { conversation -> conversation.matchesHeaderFallbackId(lookupIds) }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
@@ -3376,6 +3391,52 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
     )
 }
+
+private fun ThreadSnapshot.withConversationHeaderFallback(
+    fallback: ConversationSummary?
+): ThreadSnapshot {
+    fallback ?: return this
+    val current = conversation
+    val fallbackName = fallback.name.takeIf { it.isNotBlank() }
+    val nextName =
+        if (fallbackName != null && current.name.isBlankOrIdentityFor(current)) {
+            fallbackName
+        } else {
+            current.name
+        }
+    val nextConversation =
+        current.copy(
+            name = nextName,
+            subtitle = current.subtitle ?: fallback.subtitle,
+            channelType = current.channelType ?: fallback.channelType,
+            avatarUrl = current.avatarUrl ?: fallback.avatarUrl,
+            avatar = current.avatar ?: fallback.avatar,
+            gravatarUrl = current.gravatarUrl ?: fallback.gravatarUrl,
+            memberCount = current.memberCount ?: fallback.memberCount,
+            permissions = fallback.permissions.takeIf { current.permissions == ConversationPermissions() } ?: current.permissions
+        )
+    return if (nextConversation == current) this else copy(conversation = nextConversation)
+}
+
+private fun KuiklyThreadScreenPayload.conversationHeaderFallbackIds(): Set<String> =
+    listOfNotNull(
+        sourceThreadId,
+        streamChannelId,
+        parentChannelId
+    ).mapNotNull { id -> id.takeIf { it.isNotBlank() } }.toSet()
+
+private fun ConversationSummary.matchesHeaderFallbackId(ids: Set<String>): Boolean =
+    headerFallbackIds().any { it in ids }
+
+private fun ConversationSummary.headerFallbackIds(): Set<String> =
+    listOfNotNull(
+        threadId.value,
+        channelId?.value,
+        thread?.streamChannelId?.value
+    ).filter { it.isNotBlank() }.toSet()
+
+private fun String.isBlankOrIdentityFor(conversation: ConversationSummary): Boolean =
+    isBlank() || this in conversation.headerFallbackIds()
 
 private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
     if (!hasRenderableThreadContent()) return null

@@ -1053,6 +1053,55 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadUsesHomeHeaderWhenRepositorySnapshotTitleIsIdentity() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            channelType = "public",
+                            kind = ConversationKind.Channel,
+                            name = "all",
+                            subtitle = "General updates",
+                            memberCount = 4
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            )
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = "repository body",
+                            conversation = conversationSummary("channel-1").copy(name = "channel-1")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+
+        assertEquals("all", payload.title)
+        assertEquals("General updates", payload.subtitle)
+        assertEquals(4, payload.membersCount)
+        assertEquals("repository body", payload.messages.single().body)
+    }
+
+    @Test
     fun fetchReplyThreadPayloadResolvesThreadChannelBeforeLoadingMessages() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
