@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.MembersAgentLifecycleAction
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -73,6 +74,8 @@ internal interface SharedAgentDetailActions {
     fun copyDiagnostics(diagnostics: String)
 
     suspend fun reportIssue(diagnostics: String): Boolean
+
+    suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile>
 }
 
 internal sealed interface SharedAgentDetailIntent {
@@ -222,17 +225,22 @@ internal class SharedAgentDetailStore(
                 displayNameError = null
             )
             is SharedAgentDetailIntent.UpdateDisplayNameDraft -> current.copy(
-                displayNameDraft = intent.draft
+                displayNameDraft = intent.draft,
+                displayNameError = null
             )
             is SharedAgentDetailIntent.StartSaveDisplayName -> current.copy(
                 displayNameSaving = true,
                 displayNameError = null
             )
             is SharedAgentDetailIntent.SetDisplayNameError -> current.copy(
+                displayNameSaving = false,
                 displayNameError = intent.code
             )
             SharedAgentDetailIntent.FinishSaveDisplayName -> current.copy(
-                displayNameSaving = false
+                displayNameEditing = false,
+                displayNameDraft = null,
+                displayNameSaving = false,
+                displayNameError = null
             )
             SharedAgentDetailIntent.CancelEditDisplayName -> current.copy(
                 displayNameEditing = false,
@@ -246,17 +254,22 @@ internal class SharedAgentDetailStore(
                 roleError = null
             )
             is SharedAgentDetailIntent.UpdateRoleDraft -> current.copy(
-                roleDraft = intent.draft
+                roleDraft = intent.draft,
+                roleError = null
             )
             is SharedAgentDetailIntent.StartSaveRole -> current.copy(
                 roleSaving = true,
                 roleError = null
             )
             is SharedAgentDetailIntent.SetRoleError -> current.copy(
+                roleSaving = false,
                 roleError = intent.code
             )
             SharedAgentDetailIntent.FinishSaveRole -> current.copy(
-                roleSaving = false
+                roleEditing = false,
+                roleDraft = null,
+                roleSaving = false,
+                roleError = null
             )
             SharedAgentDetailIntent.CancelEditRole -> current.copy(
                 roleEditing = false,

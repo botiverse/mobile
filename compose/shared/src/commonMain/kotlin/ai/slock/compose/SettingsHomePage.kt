@@ -174,6 +174,7 @@ import ai.slock.compose.data.ACCOUNT_ACTION_PROFILE_SAVE
 import ai.slock.compose.data.ACCOUNT_ACTION_PROVIDER_CONNECT
 import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentMachineAssignmentRequest
+import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AttachmentUploadFile
@@ -8214,6 +8215,26 @@ private fun SharedMembersScreen(
                             bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
                             return ok
                         }
+
+                        override suspend fun updateAgentProfile(
+                            request: AgentProfileUpdateRequest
+                        ): DataResult<MemberProfile> {
+                            val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+                            if (result is DataResult.Content) {
+                                state =
+                                    when (val latest = state) {
+                                        is SharedMembersUiState.Content ->
+                                            latest.copy(
+                                                members =
+                                                    latest.members.map { member ->
+                                                        if (member.id == result.data.id) result.data else member
+                                                    }
+                                            )
+                                        else -> latest
+                                    }
+                            }
+                            return result
+                        }
                     }
                 }
             MembersRouteContent(
@@ -8231,23 +8252,6 @@ private fun SharedMembersScreen(
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },
                 agentDetailRefreshKey = "$agentDetailRefreshKey:$localAgentDetailRefreshKey",
-                onUpdateAgentProfile = { request ->
-                    val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
-                    if (result is DataResult.Content) {
-                        state =
-                            when (val latest = state) {
-                                is SharedMembersUiState.Content ->
-                                    latest.copy(
-                                        members =
-                                            latest.members.map { member ->
-                                                if (member.id == result.data.id) result.data else member
-                                            }
-                                    )
-                                else -> latest
-                            }
-                    }
-                    result
-                },
                 onPickAgentAvatarFile = {
                     val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
                     val code = response?.optInt("code", 0) ?: 0
