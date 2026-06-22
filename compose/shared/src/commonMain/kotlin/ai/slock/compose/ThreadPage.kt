@@ -1271,6 +1271,7 @@ private fun ThreadPageScreen() {
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
+    val threadPageCoroutineScope = rememberCoroutineScope()
     fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
         val launchPayload = nextPayload.toWireThreadLaunchPayload()
         if (!launchPayload.hasRouteIdentity()) {
@@ -1293,6 +1294,14 @@ private fun ThreadPageScreen() {
         },
         onOpenThreadPayload = ::openStandaloneThreadPayload,
         onReplaceThreadPayload = {},
+        onAuthRequired = { code ->
+            bridge.logWarn("thread_auth_required code=$code route=standalone instanceId=${payload.instanceId}")
+            bridge.toast("Session expired")
+            threadPageCoroutineScope.launch {
+                authStore.clearSession()
+            }
+            routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
+        },
         realtimeEventSignal = threadRealtimeEventSignal
     )
 }
@@ -3229,8 +3238,10 @@ internal fun SharedThreadRouteContent(
                             }
                             is DataResult.Error ->
                                 bridge.toast("Attachment upload failed: ${uploadResult.error.code}")
-                            is DataResult.NoPermission ->
-                                bridge.toast("Attachment upload failed: no_permission")
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(uploadResult)) return@launch
+                                bridge.toast("Attachment upload failed: ${uploadResult.blocker.code}")
+                            }
                             is DataResult.Empty ->
                                 bridge.toast("Attachment upload failed: empty_upload_result")
                         }

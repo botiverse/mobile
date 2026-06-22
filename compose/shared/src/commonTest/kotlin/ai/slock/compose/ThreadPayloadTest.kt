@@ -1183,6 +1183,13 @@ class ThreadPayloadTest {
         assertEquals(true, initialPayload.canSend)
         assertEquals(null, initialPayload.dmPeerName)
         assertEquals(null, initialPayload.dmPeerAvatarUrl)
+
+        val composer = initialPayload.resolveThreadComposer()
+        assertEquals(KuiklyThreadSurfaceKind.Channel, composer.surfaceKind)
+        assertEquals("channel-1", composer.streamChannelId)
+        assertEquals(null, composer.mentionChannelId)
+        assertEquals(null, composer.parentMessageId)
+        assertEquals(true, composer.showAsTaskToggle)
     }
 
     @Test
@@ -1242,6 +1249,51 @@ class ThreadPayloadTest {
         assertEquals(true, initialPayload.canSend)
         assertEquals(null, initialPayload.dmPeerName)
         assertEquals(null, initialPayload.dmPeerAvatarUrl)
+    }
+
+    @Test
+    fun standaloneReplyThreadLaunchPreservesComposerRoutingIntent() {
+        val launch =
+            WireThreadLaunchPayload(
+                instanceId = "thread-route",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                threadId = "thread-channel-1",
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1",
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-message-1",
+                originParentMessageId = "parent-message-1",
+                focusedMessageId = "reply-2",
+                alignOwnMessagesRight = true,
+                localOffsetMinutes = 480,
+                todayEpochDay = 20593
+            )
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals("thread-route", initialPayload.instanceId)
+        assertEquals("loading", initialPayload.status)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals("thread-channel-1", initialPayload.sourceThreadId)
+        assertEquals("thread-channel-1", initialPayload.streamChannelId)
+        assertEquals("parent-channel-1", initialPayload.parentChannelId)
+        assertEquals("parent-message-1", initialPayload.parentMessageId)
+        assertEquals("parent-message-1", initialPayload.originParentMessageId)
+        assertEquals("reply-2", initialPayload.focusedMessageId)
+        assertEquals(false, initialPayload.showModeTabs)
+        assertEquals(true, initialPayload.showOpenInChannelAction)
+
+        val composer = initialPayload.resolveThreadComposer()
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)
+        assertEquals("thread-channel-1", composer.streamChannelId)
+        assertEquals("parent-channel-1", composer.mentionChannelId)
+        assertEquals("parent-message-1", composer.parentMessageId)
+        assertEquals("Reply in thread", composer.placeholder)
+        assertEquals(true, composer.showAsTaskToggle)
     }
 
     @Test
