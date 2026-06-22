@@ -206,6 +206,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun homeSurfaceVisibilityDispatchDelaysVisibleProjectionOnly() {
+        assertEquals(0L, homeSurfaceVisibilityDispatchDelayMs(false))
+        assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))
+    }
+
+    @Test
     fun retainedThreadRouteEntryKeyUsesRouteIdentity() {
         val base =
             KuiklyThreadScreenPayload(

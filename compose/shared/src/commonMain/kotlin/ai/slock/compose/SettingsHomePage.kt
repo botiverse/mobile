@@ -342,6 +342,7 @@ import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -370,6 +371,7 @@ const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val AppShellRouteMain = "main"
 private const val AppShellRouteThread = "thread"
 private const val RetainedThreadRouteEntryLimit = 4
+private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private const val HomeDestinationSearch = "search"
 private const val HomeDestinationActivity = "activity"
 private const val HomeDestinationSaved = "saved"
@@ -824,6 +826,9 @@ internal fun appShellBottomTabsVisible(
 internal fun sharedHomeShouldStartOnActive(active: Boolean, state: SharedHomeState): Boolean =
     active && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
+internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
+    if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
+
 internal data class RetainedThreadRouteEntry(
     val key: String,
     val payload: KuiklyThreadScreenPayload
@@ -1233,6 +1238,10 @@ private fun SlockAppShellContent() {
     val latestActiveThreadPayload by rememberUpdatedState(activeRouteThreadPayload)
     val homeSurfaceVisible = selectedTab == "home" && appShellRoute == AppShellRouteMain
     LaunchedEffect(homeSurfaceVisible) {
+        val delayMs = homeSurfaceVisibilityDispatchDelayMs(homeSurfaceVisible)
+        if (delayMs > 0L) {
+            delay(delayMs)
+        }
         homeViewModel.dispatch(SharedHomeIntent.SetSurfaceVisible(homeSurfaceVisible))
     }
     val loadedSettingsTimeFormat =
