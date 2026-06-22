@@ -89,6 +89,9 @@
       "title": "Navigation Tabbar States",
       "surface": "navigation",
       "fixture": "fixtures/components.navigation.tabbar.states.json",
+      "skip": {
+        "reason": "React baseline invalid: current provider renders a hand-built VisualMobileTabBar approximation instead of the real MainLayout MobileTabBar route/component."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -2946,14 +2949,15 @@
       "title": "Navigation Tabbar States",
       "surface": "navigation",
       "group": "product-navigation",
-      "status": "baseline",
-      "notes": "Real React mobile tabbar surface vs Android rendering of shared SlockBottomTabBar. Provider captures component bounds, not full page navigation behavior.",
+      "status": "skipped",
+      "notes": "Skipped until React renders the real MainLayout MobileTabBar route/component. The previous React provider was a hand-built VisualMobileTabBar approximation and is not a valid parity baseline.",
       "providers": [
         {
           "id": "react",
-          "status": "ready",
+          "status": "pending",
+          "reason": "Needs real MainLayout/MobileTabBar capture; current visual-testing provider is an approximation.",
           "components": [
-            "MobileTabBarSurface"
+            "MobileTabBar"
           ],
           "path": "packages/web/src/components/layout/MainLayout.tsx",
           "fixture": "fixtures/components.navigation.tabbar.states.json"
