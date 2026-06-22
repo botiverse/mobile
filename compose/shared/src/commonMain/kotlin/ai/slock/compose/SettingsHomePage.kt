@@ -365,8 +365,10 @@ private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_searc
 private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
 private const val HOME_ACTIVITY_VISUAL_PAGE = "compose_home_activity_visual"
 private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
+const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 private const val AUTH_CHOOSE_SERVER_VISUAL_PAGE = "compose_auth_choose_server_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
+private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 
 private const val AppShellRouteMain = "main"
 private const val AppShellRouteThread = "thread"
@@ -554,6 +556,14 @@ internal class ComposeHomeCreateChannelDialogVisualPage : ai.slock.compose.base.
     override fun willInit() {
         super.willInit()
         setContent { HomeCreateChannelDialogVisualContent() }
+    }
+}
+
+@Page(AUTH_CHOOSE_SERVER_PAGE, supportInLocal = true)
+internal class ComposeAuthChooseServerPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthChooseServerPageContent() }
     }
 }
 
@@ -2224,6 +2234,7 @@ private fun SlockAppShellContent() {
                                     onOpenSaved = {
                                         openHomeSecondaryDestination(HomeDestinationSaved)
                                     },
+                                    onOpenServerSelection = { pager.openAuthChooseServerPage() },
                                     onCreateChannel = { openCreateChannelDialog() },
                                     onOpenConversation = { conversation ->
                                         openHomeConversation(conversation, "home")
@@ -2459,6 +2470,7 @@ private fun SlockAppShellContent() {
                         initialPayload = entry.payload,
                         bridge = bridge,
                         dataSource = threadDataSource,
+                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
                         authStore = authStore,
                         tasksDataSource = tasksDataSource,
                         computersStore = appShellComputersStore,
@@ -7802,6 +7814,77 @@ private data class PendingAppShellSocialAuth(
 )
 
 @Composable
+private fun AuthChooseServerPageContent() {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authDataSource =
+        remember {
+            SharedAuthDataSource(
+                transport =
+                    KuiklySlockAuthTransport(
+                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+                    ),
+                sessionStore = sharedStores.authStore,
+                diagnosticsLogger = { message -> bridge.log("shared_auth_choose_server $message") }
+            )
+        }
+    var session by remember { mutableStateOf<StoredAuthSession?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var restoreAttempt by remember { mutableStateOf(0) }
+
+    LaunchedEffect(sharedStores.authStore, restoreAttempt) {
+        runCatchingPreservingCancellation { sharedStores.authStore.readSession() }
+            .onSuccess { restored ->
+                session = restored
+                errorMessage =
+                    if (restored == null) {
+                        "Sign in before choosing a server."
+                    } else {
+                        null
+                    }
+            }
+            .onFailure {
+                session = null
+                errorMessage = "Could not restore your session."
+            }
+    }
+
+    when (val restoredSession = session) {
+        null -> {
+            if (errorMessage == null) {
+                AppShellRestoreSplashContent()
+            } else {
+                AppShellAuthErrorContent(
+                    message = errorMessage ?: "Sign in before choosing a server.",
+                    onRetry = {
+                        errorMessage = null
+                        session = null
+                        restoreAttempt += 1
+                    },
+                    onSignIn = { pager.openLoginReplacingCurrentPage() },
+                    onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
+                )
+            }
+        }
+        else ->
+            AppShellServerGateContent(
+                session = restoredSession.copy(selectedServerId = null, selectedServerSlug = null),
+                authDataSource = authDataSource,
+                onReady = {
+                    bridge.realtimeDisconnect("server_changed")
+                    pager.openAppShellReplacingCurrentPage()
+                },
+                onSignOut = {
+                    bridge.realtimeDisconnect("logout")
+                    pager.openLoginReplacingCurrentPage()
+                }
+            )
+    }
+}
+
+@Composable
 private fun AuthChooseServerVisualContent() {
     val session = remember { authChooseServerVisualSession() }
     val store = remember(session) { InMemorySlockAuthSessionStore(session) }
@@ -7911,6 +7994,38 @@ private fun Pager.openAppShellAuthDiagnostics() {
             JSONObject().put("pageName", AUTH_DIAGNOSTICS_PAGE)
         )
 }
+
+private fun Pager.openAuthChooseServerPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(AUTH_CHOOSE_SERVER_PAGE, authChooseServerPageData(replaceCurrent = false))
+}
+
+private fun Pager.openAppShellReplacingCurrentPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(SLOCK_APP_SHELL_PAGE, appShellPageData(replaceCurrent = true))
+}
+
+private fun Pager.openLoginReplacingCurrentPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
+}
+
+internal fun authChooseServerPageData(replaceCurrent: Boolean = false): JSONObject =
+    slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
+
+internal fun appShellPageData(replaceCurrent: Boolean = false): JSONObject =
+    slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
+
+internal fun loginPageData(replaceCurrent: Boolean = false): JSONObject =
+    slockAuthRoutePageData(LOGIN_PAGE, replaceCurrent)
+
+private fun slockAuthRoutePageData(pageName: String, replaceCurrent: Boolean): JSONObject =
+    JSONObject().apply {
+        put("pageName", pageName)
+        if (replaceCurrent) {
+            put(AUTH_REPLACE_CURRENT_PAGE, true)
+        }
+    }
 
 @Composable
 private fun AppShellServerGateContent(
@@ -8595,6 +8710,7 @@ private fun SharedHomeScreen(
     onOpenSearch: () -> Unit,
     onOpenActivity: () -> Unit,
     onOpenSaved: () -> Unit,
+    onOpenServerSelection: () -> Unit,
     onCreateChannel: () -> Unit,
     onOpenConversation: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp = SlockSpacing.Lg
@@ -8623,9 +8739,7 @@ private fun SharedHomeScreen(
                         onSelectedConversationCleared()
                         onIntent(SharedHomeIntent.SelectServer(serverId))
                     },
-                    onCreateServerClick = {
-                        bridge.toast("Create server is not available yet")
-                    },
+                    onCreateServerClick = onOpenServerSelection,
                     onCreateChannelClick = onCreateChannel
                 )
             } else {
@@ -8645,9 +8759,7 @@ private fun SharedHomeScreen(
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
                 },
-                onCreateServerClick = {
-                    bridge.toast("Create server is not available yet")
-                },
+                onCreateServerClick = onOpenServerSelection,
                 onCreateChannelClick = onCreateChannel
             )
         is SharedHomeContentState.Error ->
@@ -8719,9 +8831,7 @@ private fun SharedHomeScreen(
                     onSelectedConversationCleared()
                     onIntent(SharedHomeIntent.SelectServer(serverId))
                 },
-                onCreateServerClick = {
-                    bridge.toast("Create server is not available yet")
-                },
+                onCreateServerClick = onOpenServerSelection,
                 onCreateChannelClick = onCreateChannel,
                 onSearchClick = {
                     onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Search))
