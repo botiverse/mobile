@@ -5106,7 +5106,8 @@ private fun ThreadMessagesList(
         payload.messages.lastOrNull()?.attachments?.size,
         payload.messages.lastOrNull()?.taskId,
         payload.messages.lastOrNull()?.replyCount,
-        payload.messages.lastOrNull()?.unreadReplyCount
+        payload.messages.lastOrNull()?.unreadReplyCount,
+        payload.messages.lastOrNull()?.threadReactionLayoutSignature()
     ) {
         payload.latestMessageLayoutKey()
     }
@@ -5234,7 +5235,9 @@ private fun ThreadMessagesList(
                 listState.awaitThreadMessagesLayoutFrame()
                 if (listState.isThreadItemVisible(latestItemIndex)) {
                     listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-                } else if (attempt >= ThreadBottomAnchorMinimumAttempts) {
+                } else if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                    listState.canScrollToThreadItem(latestItemIndex)
+                ) {
                     listState.scrollToItem(latestItemIndex)
                 }
                 delay(ThreadLayoutStabilityFrameDelayMs)
@@ -5244,6 +5247,11 @@ private fun ThreadMessagesList(
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+            }
+            if (listState.canScrollToThreadItem(latestItemIndex)) {
+                listState.scrollToItem(latestItemIndex)
+                listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
             }
             initialBottomAnchorReady = true
             return@LaunchedEffect
@@ -5765,8 +5773,17 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
         append(latest.replyCount)
         append(':')
         append(latest.unreadReplyCount)
+        append(':')
+        append(latest.threadReactionLayoutSignature())
     }
 }
+
+private fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
+    reactions
+        .filter { reaction -> reaction.count > 0 }
+        .joinToString(separator = "|") { reaction ->
+            "${reaction.emoji}:${reaction.count}:${reaction.selected}"
+        }
 
 internal fun KuiklyThreadScreenPayload.visibleReadAllMarkerKey(): String? {
     val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return null
@@ -5840,6 +5857,9 @@ private fun LazyListState.isThreadItemVisible(index: Int): Boolean {
     if (index < 0) return false
     return layoutInfo.visibleItemsInfo.any { it.index == index }
 }
+
+private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
+    index >= 0 && layoutInfo.totalItemsCount > index
 
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
     if (latestItemIndex < 0) return

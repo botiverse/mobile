@@ -30,6 +30,7 @@ class ThreadBottomAnchorSignatureTest {
         unreadReplyCount: Int = 0,
         taskId: String? = null,
         attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
+        reactions: List<KuiklyThreadReactionItem> = emptyList(),
         metadata: Map<String, String> = emptyMap()
     ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
         id = id,
@@ -40,6 +41,7 @@ class ThreadBottomAnchorSignatureTest {
         unreadReplyCount = unreadReplyCount,
         taskId = taskId,
         attachments = attachments,
+        reactions = reactions,
         metadata = metadata
     )
 
@@ -92,6 +94,31 @@ class ThreadBottomAnchorSignatureTest {
     fun latestMessageLayoutKey_replyCountChange_changesKey() {
         val a = payload(messages = listOf(message("m1", replyCount = 1)))
         val b = payload(messages = listOf(message("m1", replyCount = 2)))
+        assertNotEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
+    }
+
+    @Test
+    fun latestMessageLayoutKey_reactionChange_changesKey() {
+        val a =
+            payload(
+                messages =
+                    listOf(
+                        message(
+                            "m1",
+                            reactions = listOf(KuiklyThreadReactionItem(emoji = "👍", count = 1))
+                        )
+                    )
+            )
+        val b =
+            payload(
+                messages =
+                    listOf(
+                        message(
+                            "m1",
+                            reactions = listOf(KuiklyThreadReactionItem(emoji = "👍", count = 2))
+                        )
+                    )
+            )
         assertNotEquals(a.latestMessageLayoutKeyPublic(), b.latestMessageLayoutKeyPublic())
     }
 
