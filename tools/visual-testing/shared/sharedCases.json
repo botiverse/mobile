@@ -1616,8 +1616,7 @@
       "id": "components.settings.appearance.page",
       "title": "Settings Appearance Page",
       "surface": "settings",
-      "baselineStatus": "pending",
-      "notes": "React SettingsPanel AppearanceSection is documented, but Android/KMP has no first-class Appearance page provider yet; exclude from default parity accounting until a real provider exists.",
+      "notes": "Real React SettingsPanel AppearanceSection and KMP SettingsAppearanceContent via compose_settings_page_visual appearance variant; component-level coverage only, full Settings route remains screens.settings.appearance pending.",
       "fixture": "fixtures/components.settings.appearance.page.json",
       "viewport": {
         "width": 390,
@@ -1641,7 +1640,7 @@
         "contract": "component-bounds"
       },
       "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
-      "androidCaseHint": "pending:first-class-kmp-appearance-page",
+      "androidCaseHint": "compose_settings_page_visual:appearance",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -2236,7 +2235,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing true Settings Computers page parity."
+      "notes": "Pending: needs React Settings Computers route/provider plus Android Settings Computers route capture with seeded computer list; do not activate through the generic settings visual page."
     },
     {
       "id": "screens.settings.computer-detail",
@@ -2272,7 +2271,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing true Settings Computer Detail page parity."
+      "notes": "Pending: needs React Settings Computer Detail route/provider plus Android Settings Computer Detail route capture with seeded computer/workspace/agent state; do not activate through the generic settings visual page."
     },
     {
       "id": "screens.settings.storage",
@@ -2308,7 +2307,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing true Settings Storage page parity."
+      "notes": "Pending: needs React Settings Storage route/provider plus Android Settings Storage route capture with seeded storage rows; do not activate through the generic settings visual page."
     },
     {
       "id": "screens.settings.appearance",
@@ -2344,7 +2343,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Existing components.settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route."
+      "notes": "Pending as a full Settings screen route. Component coverage lives in components.settings.appearance.page; this screen case needs real Settings route launch on both providers, not a component visual page."
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2352,7 +2351,6 @@
       "captureType": "real-screen",
       "surface": "settings",
       "category": "app/settings",
-      "baselineStatus": "pending",
       "fixture": "fixtures/screens.settings.server-danger-modal.json",
       "viewport": {
         "width": 390,
@@ -2371,16 +2369,26 @@
       "capture": {
         "selector": "[data-visual-case='screens.settings.server-danger-modal']",
         "crop": "element",
-        "contract": "screen-route"
+        "contract": "screen-route",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "[data-testid='server-danger-delete-button']"
+          },
+          {
+            "type": "wait",
+            "ms": 120
+          }
+        ]
       },
       "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
-      "androidCaseHint": "pending",
+      "androidCaseHint": "compose_settings_page_visual:server-danger-modal",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing real SlockModal-open capture for server danger actions; do not restore the stale standalone settings.server.danger page."
+      "notes": "Real React SettingsPanel DangerZoneSection modal and KMP SlockUnifiedDialog safe open state; destructive submit stays disabled and no delete action is invoked."
     },
     {
       "id": "screens.settings.billing-portal",
@@ -4370,27 +4378,30 @@
       "title": "Settings Appearance Page",
       "surface": "settings",
       "group": "product-settings",
-      "status": "pending",
-      "notes": "React SettingsPanel sub-page documented, but Android/Harmony provider is pending until a real KMP page exists.",
+      "status": "baseline",
+      "notes": "Real React SettingsPanel AppearanceSection mapped to KMP SettingsAppearanceContent through the shared settings visual page; full Settings route coverage remains screens.settings.appearance pending.",
       "providers": [
         {
           "id": "react",
           "status": "ready",
           "components": [
+            "SettingsPanel",
             "AppearanceSection"
           ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
           "fixture": "fixtures/components.settings.appearance.page.json"
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "kmp-shared",
           "components": [
-            "SettingsHomePage"
+            "SettingsPageVisualContent",
+            "SettingsAppearanceContent"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "No first-class KMP Appearance settings page yet; do not count a placeholder or Mobile fallback as parity."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsAppearancePage",
+          "route": "compose_settings_page_visual:appearance"
         },
         {
           "id": "harmony",
@@ -4911,21 +4922,21 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Missing true Settings Computers page parity.",
+      "notes": "Pending: needs React Settings Computers route/provider plus Android Settings Computers route capture with seeded computer list; do not activate through the generic settings visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
           "fixture": "fixtures/screens.settings.computers.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs real React Settings Computers route/provider and seeded computer list; SettingsPanel has no Computers screen provider yet."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android Settings Computers route capture with seeded computer list, not the generic settings visual page."
         },
         {
           "id": "harmony",
@@ -4944,21 +4955,21 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Missing true Settings Computer Detail page parity.",
+      "notes": "Pending: needs React Settings Computer Detail route/provider plus Android Settings Computer Detail route capture with seeded computer/workspace/agent state; do not activate through the generic settings visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
           "fixture": "fixtures/screens.settings.computer-detail.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs real React Settings Computer Detail route/provider and seeded selected-computer state."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android Settings Computer Detail route capture with seeded computer/workspace/agent state, not the generic settings visual page."
         },
         {
           "id": "harmony",
@@ -4977,21 +4988,21 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Missing true Settings Storage page parity.",
+      "notes": "Pending: needs React Settings Storage route/provider plus Android Settings Storage route capture with seeded storage rows; do not activate through the generic settings visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
           "fixture": "fixtures/screens.settings.storage.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs real React Settings Storage route/provider and seeded storage rows."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsStoragePage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android Settings Storage route capture with seeded storage rows, not the generic settings visual page."
         },
         {
           "id": "harmony",
@@ -5010,21 +5021,21 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Existing components.settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route.",
+      "notes": "Pending as a full Settings screen route. Component coverage lives in components.settings.appearance.page; this screen case needs real Settings route launch on both providers, not a component visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
           "fixture": "fixtures/screens.settings.appearance.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs a real React Settings route capture for the Appearance screen; component-only SettingsPanel capture is tracked separately."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android Settings route launch capture for Appearance, not the shared component visual page."
         },
         {
           "id": "harmony",
@@ -5042,22 +5053,32 @@
       "surface": "settings",
       "category": "app/settings",
       "group": "screens-settings",
-      "status": "pending",
-      "notes": "Missing real SlockModal-open capture for server danger actions; do not restore the stale standalone settings.server.danger page.",
+      "status": "baseline",
+      "notes": "Real React SettingsPanel DangerZoneSection modal and KMP SlockUnifiedDialog safe open state; destructive submit stays disabled and no delete action is invoked.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
+          "status": "ready",
+          "components": [
+            "SettingsPanel",
+            "DangerZoneSection",
+            "Modal"
+          ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
-          "fixture": "fixtures/screens.settings.server-danger-modal.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "fixture": "fixtures/screens.settings.server-danger-modal.json"
         },
         {
           "id": "android",
-          "status": "pending",
-          "source": "android-real-screen",
+          "status": "ready",
+          "source": "kmp-shared",
+          "components": [
+            "SettingsVisualServerFocusedContent",
+            "SlockUnifiedDialog"
+          ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerDangerModal",
+          "route": "compose_settings_page_visual:server-danger-modal",
+          "notes": "Fixture-only safe modal state; delete confirmation is empty and the Delete Server action button is disabled."
         },
         {
           "id": "harmony",
