@@ -429,7 +429,7 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 96.dp,
         minHeight = 32.dp,
-        shadowOffset = 2.dp,
+        shadowOffset = 0.dp,
         textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
     )
 }
@@ -699,7 +699,7 @@ private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClic
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 84.dp,
         minHeight = 32.dp,
-        shadowOffset = 2.dp,
+        shadowOffset = 0.dp,
         textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
     )
 }
