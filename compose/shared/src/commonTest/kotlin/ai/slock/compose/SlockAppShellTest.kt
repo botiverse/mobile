@@ -1,5 +1,16 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.SharedHomeContentState
+import ai.slock.compose.data.SharedHomeState
+import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.StoredAuthServer
+import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,6 +49,16 @@ class SlockAppShellTest {
         assertEquals(listOf("home", "members", "settings", "tasks"), retainedAppShellTabOrder("tasks"))
         assertEquals(listOf("home", "tasks", "settings", "members"), retainedAppShellTabOrder("members"))
         assertEquals(listOf("home", "tasks", "members", "settings"), retainedAppShellTabOrder("settings"))
+    }
+
+    @Test
+    fun retainedAppShellComposedTabsCanDescribeMountedInactiveTabs() {
+        assertEquals(
+            listOf("home", "tasks"),
+            retainedAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(listOf("tasks"), activeOnlyAppShellComposedTabs("tasks"))
+        assertEquals(listOf("home"), activeOnlyAppShellComposedTabs("thread"))
     }
 
     @Test
@@ -97,6 +118,44 @@ class SlockAppShellTest {
                 selectedSettingsDestination = "computerDetail"
             )
         )
+    }
+
+    @Test
+    fun sharedHomeStartOnActiveSkipsFreshContentWithoutRealtimeDirty() {
+        assertEquals(true, sharedHomeShouldStartOnActive(active = true, state = SharedHomeState()))
+        assertEquals(false, sharedHomeShouldStartOnActive(active = false, state = SharedHomeState()))
+
+        val loadedState =
+            SharedHomeState(
+                content =
+                    SharedHomeContentState.Content(
+                        snapshot =
+                            HomeSnapshot(
+                                server = ServerSummary(ServerId("server-1"), "Slock"),
+                                currentMember =
+                                    MemberProfile(
+                                        id = MemberId("user-1"),
+                                        displayName = "Artin",
+                                        handle = "artin",
+                                        kind = MemberKind.Human
+                                    ),
+                                channels = emptyList(),
+                                directMessages = emptyList(),
+                                unreadTotal = 0
+                            ),
+                        session =
+                            StoredAuthSession(
+                                user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
+                                accessToken = "token",
+                                refreshToken = "refresh",
+                                selectedServerId = "server-1",
+                                servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+                            )
+                    )
+            )
+
+        assertEquals(false, sharedHomeShouldStartOnActive(active = true, state = loadedState))
+        assertEquals(true, sharedHomeShouldStartOnActive(active = true, state = loadedState.copy(homeRealtimeDirty = true)))
     }
 
     @Test

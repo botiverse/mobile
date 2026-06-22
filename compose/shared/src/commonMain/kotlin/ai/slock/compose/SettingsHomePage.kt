@@ -743,6 +743,14 @@ internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
     return retainedAppShellTabKeys.filter { it != activeTab } + activeTab
 }
 
+internal fun retainedAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return retainedAppShellTabOrder(activeTab).filter { it == activeTab || it in mountedTabs }
+}
+
+internal fun activeOnlyAppShellComposedTabs(selectedTab: String): List<String> =
+    listOf(retainedAppShellSelectedTab(selectedTab))
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -767,6 +775,9 @@ internal fun appShellBottomTabsVisible(
         "settings" -> selectedSettingsDestination == SettingsDestinationHome
         else -> true
     }
+
+internal fun sharedHomeShouldStartOnActive(active: Boolean, state: SharedHomeState): Boolean =
+    active && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
 internal data class RetainedThreadRouteEntry(
     val key: String,
@@ -800,18 +811,14 @@ internal fun retainedThreadRouteEntriesAfterPopToMain(
 @Composable
 private fun RetainedAppShellTabs(
     selectedTab: String,
-    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        retainedAppShellTabOrder(activeTab).forEach { tab ->
-            if (tab == activeTab || tab in mountedTabs) {
-                key("retained-$tab") {
-                    val active = activeTab == tab
-                    RetainedAppShellTabPane(active = active) {
-                        content(tab, active)
-                    }
+        activeOnlyAppShellComposedTabs(activeTab).forEach { tab ->
+            key("retained-$tab") {
+                RetainedAppShellTabPane(active = true) {
+                    content(tab, true)
                 }
             }
         }
@@ -2029,6 +2036,7 @@ private fun SlockAppShellContent() {
                 bottomTabs = appShellBottomTabs(selectedTab),
                 onBottomTabSelected = {
                     val nextTab = retainedAppShellSelectedTab(it)
+                    val visitedBefore = nextTab in retainedAppShellTabs
                     bridge.performanceMarker(
                         phase = appShellBottomTabPerformancePhase(nextTab),
                         routeName = appShellBottomTabPerformanceRoute(nextTab),
@@ -2037,7 +2045,8 @@ private fun SlockAppShellContent() {
                             mapOf(
                                 "from" to retainedAppShellSelectedTab(selectedTab),
                                 "to" to nextTab,
-                                "retained" to isRetainedAppShellTab(nextTab).toString()
+                                "primaryTab" to isRetainedAppShellTab(nextTab).toString(),
+                                "visitedBefore" to visitedBefore.toString()
                             )
                     )
                     selectedTab = nextTab
@@ -2255,8 +2264,7 @@ private fun SlockAppShellContent() {
                         )
                     }
                     RetainedAppShellTabs(
-                        selectedTab = selectedTab,
-                        mountedTabs = retainedAppShellTabs
+                        selectedTab = selectedTab
                     ) { tab, active ->
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
@@ -8373,8 +8381,8 @@ private fun SharedHomeScreen(
     onOpenConversation: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    LaunchedEffect(active) {
-        if (active) {
+    LaunchedEffect(active, state.content, state.homeRealtimeDirty) {
+        if (sharedHomeShouldStartOnActive(active, state)) {
             onIntent(SharedHomeIntent.Start)
         }
     }
