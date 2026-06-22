@@ -164,9 +164,19 @@ private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_me
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
+private const val ThreadFirstContentExtrasDelayMs = 96L
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
+
+internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
+    status == "loading" &&
+        messages.isEmpty() &&
+        originMessage == null &&
+        originPreview.isNullOrBlank()
+
+internal fun KuiklyThreadScreenPayload.shouldStageThreadFirstContentExtras(): Boolean =
+    status == "content"
 
 /**
  * Phase 1 (#172) instrumentation helper: monotonic counter that yields
@@ -1568,6 +1578,117 @@ internal fun SharedThreadRouteContent(
             onResolvedAuxiliaryThreadIdChanged(resolvedAuxiliaryThreadId)
         }
     }
+    var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
+    var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
+    var createAgentComputerServerId by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
+    var createAgentComputerServerResolved by remember(initialPayload.instanceId) { mutableStateOf(false) }
+    var attachmentOpenStates by remember(initialPayload.instanceId) {
+        mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
+    }
+    var attachmentCommentsDialogState by remember(initialPayload.instanceId) {
+        mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
+    }
+    var quotedPreviewStates by remember(initialPayload.instanceId) {
+        mutableStateOf<Map<String, ThreadQuotedMessagePreviewUiState>>(emptyMap())
+    }
+    var currentSession by remember(initialPayload.instanceId) {
+        mutableStateOf<StoredAuthSession?>(null)
+    }
+    var currentServerSlug by remember(initialPayload.instanceId) {
+        mutableStateOf<String?>(null)
+    }
+    var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
+    var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
+    var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
+    var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val threadRouteKey =
+        payload.sourceThreadId
+            ?: initialPayload.sourceThreadId
+            ?: payload.instanceId.ifBlank { initialPayload.instanceId }
+
+    LaunchedEffect(authStore, initialPayload.instanceId) {
+        val session = authStore.readSession()
+        currentSession = session
+        currentServerSlug = session?.currentServerSlug()
+        createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
+        createAgentComputerServerResolved = true
+    }
+    LaunchedEffect(initialPayload) {
+        bridge.performanceMarker(
+            phase = "thread_open_start",
+            routeName = "kuikly_thread",
+            event = "instant",
+            threadId = initialPayload.sourceThreadId ?: initialPayload.instanceId,
+            metadata =
+                mapOf(
+                    "status" to initialPayload.status.ifBlank { "unknown" },
+                    "source" to initialPayload.threadRenderDiagnosticsSource()
+                )
+        )
+        pendingActionCardIds = emptySet()
+        createAgentDialogState = null
+        attachmentOpenStates = emptyMap()
+        attachmentCommentsDialogState = null
+        quotedPreviewStates = emptyMap()
+        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
+    }
+    LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
+        if (firstRenderLoggedThreadId != threadRouteKey) {
+            firstRenderLoggedThreadId = threadRouteKey
+            bridge.performanceMarker(
+                phase = "thread_first_render",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadRouteKey,
+                metadata =
+                    mapOf(
+                        "status" to payload.status.ifBlank { "unknown" },
+                        "messages" to payload.messages.size.toString(),
+                        "source" to payload.threadRenderDiagnosticsSource()
+                    )
+            )
+            bridge.log(
+                "thread_first_render threadId=${threadRouteKey.orEmpty()} status=${payload.status} " +
+                    "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
+            )
+        }
+        if (payload.status == "content" && firstContentLoggedThreadId != threadRouteKey) {
+            firstContentLoggedThreadId = threadRouteKey
+            bridge.performanceMarker(
+                phase = "thread_payload_ready",
+                routeName = "kuikly_thread",
+                event = "instant",
+                threadId = threadRouteKey,
+                metadata =
+                    mapOf(
+                        "messages" to payload.messages.size.toString(),
+                        "tasks" to payload.tasks.size.toString()
+                    )
+            )
+            bridge.log(
+                "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
+            )
+            if (performanceSnapshotLoggedThreadId != threadRouteKey) {
+                performanceSnapshotLoggedThreadId = threadRouteKey
+                delay(ThreadFirstContentTaskJoinDelayMs)
+                requestKuiklyThreadPerformanceSnapshot(
+                    bridge = bridge,
+                    threadId = threadRouteKey.orEmpty(),
+                    reason = "thread_first_content"
+                )
+            }
+        }
+    }
+    if (renderedPayload.shouldRenderThreadEarlyLoadingShell()) {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            ThreadStateMessage("Loading thread…", null)
+        }
+        return
+    }
     val taskChannelId = resolvedAuxiliaryThreadId?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
         taskChannelId?.let { resolvedTaskChannelId ->
@@ -1624,37 +1745,10 @@ internal fun SharedThreadRouteContent(
             SharedThreadComposerDraftViewModel()
         }
     val composerDraftState by composerDraftViewModel.state.collectAsState()
-    var pendingReactionKeys by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
-    var pendingActionCardIds by remember(initialPayload.instanceId) { mutableStateOf<Set<String>>(emptySet()) }
-    var createAgentDialogState by remember(initialPayload.instanceId) { mutableStateOf<ThreadCreateAgentActionDialogState?>(null) }
-    var createAgentComputerServerId by remember(initialPayload.instanceId) { mutableStateOf<String?>(null) }
-    var createAgentComputerServerResolved by remember(initialPayload.instanceId) { mutableStateOf(false) }
     val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
     val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
         computersStore?.computerPickerSliceFlow(createAgentComputerServerId) ?: emptyComputerPickerSliceFlow
     }.collectAsState(SharedComputersPickerSlice())
-    var attachmentOpenStates by remember(initialPayload.instanceId) {
-        mutableStateOf<Map<String, ThreadAttachmentOpenUiState>>(emptyMap())
-    }
-    var attachmentCommentsDialogState by remember(initialPayload.instanceId) {
-        mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
-    }
-    var quotedPreviewStates by remember(initialPayload.instanceId) {
-        mutableStateOf<Map<String, ThreadQuotedMessagePreviewUiState>>(emptyMap())
-    }
-    var currentSession by remember(initialPayload.instanceId) {
-        mutableStateOf<StoredAuthSession?>(null)
-    }
-    var currentServerSlug by remember(initialPayload.instanceId) {
-        mutableStateOf<String?>(null)
-    }
-    var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    var performanceSnapshotLoggedThreadId by remember { mutableStateOf<String?>(null) }
-    var startedTasksJoinThreadId by remember { mutableStateOf<String?>(null) }
-    var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
-    var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
-    val coroutineScope = rememberCoroutineScope()
 
     fun routeAuthRequired(code: String? = null): Boolean {
         if (!code.isAuthSessionErrorCode()) return false
@@ -1669,14 +1763,6 @@ internal fun SharedThreadRouteContent(
         } else {
             false
         }
-
-    LaunchedEffect(authStore, initialPayload.instanceId) {
-        val session = authStore.readSession()
-        currentSession = session
-        currentServerSlug = session?.currentServerSlug()
-        createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
-        createAgentComputerServerResolved = true
-    }
 
     LaunchedEffect(
         computersStore,
@@ -1707,25 +1793,6 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    LaunchedEffect(initialPayload) {
-        bridge.performanceMarker(
-            phase = "thread_open_start",
-            routeName = "kuikly_thread",
-            event = "instant",
-            threadId = initialPayload.sourceThreadId ?: initialPayload.instanceId,
-            metadata =
-                mapOf(
-                    "status" to initialPayload.status.ifBlank { "unknown" },
-                    "source" to initialPayload.threadRenderDiagnosticsSource()
-                )
-        )
-        pendingActionCardIds = emptySet()
-        createAgentDialogState = null
-        attachmentOpenStates = emptyMap()
-        attachmentCommentsDialogState = null
-        quotedPreviewStates = emptyMap()
-        threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
-    }
     LaunchedEffect(membersStore, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
         membersStore?.dispatch(
             SharedMembersIntent.EnsureSuggestions(
@@ -1766,57 +1833,6 @@ internal fun SharedThreadRouteContent(
                     )
                 )
             )
-        }
-    }
-    val threadRouteKey =
-        payload.sourceThreadId
-            ?: initialPayload.sourceThreadId
-            ?: payload.instanceId.ifBlank { initialPayload.instanceId }
-    LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
-        if (firstRenderLoggedThreadId != threadRouteKey) {
-            firstRenderLoggedThreadId = threadRouteKey
-            bridge.performanceMarker(
-                phase = "thread_first_render",
-                routeName = "kuikly_thread",
-                event = "instant",
-                threadId = threadRouteKey,
-                metadata =
-                    mapOf(
-                        "status" to payload.status.ifBlank { "unknown" },
-                        "messages" to payload.messages.size.toString(),
-                        "source" to payload.threadRenderDiagnosticsSource()
-                    )
-            )
-            bridge.log(
-                "thread_first_render threadId=${threadRouteKey.orEmpty()} status=${payload.status} " +
-                    "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
-            )
-        }
-        if (payload.status == "content" && firstContentLoggedThreadId != threadRouteKey) {
-            firstContentLoggedThreadId = threadRouteKey
-            bridge.performanceMarker(
-                phase = "thread_payload_ready",
-                routeName = "kuikly_thread",
-                event = "instant",
-                threadId = threadRouteKey,
-                metadata =
-                    mapOf(
-                        "messages" to payload.messages.size.toString(),
-                        "tasks" to payload.tasks.size.toString()
-                    )
-            )
-            bridge.log(
-                "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
-            )
-            if (performanceSnapshotLoggedThreadId != threadRouteKey) {
-                performanceSnapshotLoggedThreadId = threadRouteKey
-                delay(ThreadFirstContentTaskJoinDelayMs)
-                requestKuiklyThreadPerformanceSnapshot(
-                    bridge = bridge,
-                    threadId = threadRouteKey.orEmpty(),
-                    reason = "thread_first_content"
-                )
-            }
         }
     }
     LaunchedEffect(threadRouteKey, taskChannelId?.value, payload.status) {
@@ -1996,6 +2012,18 @@ internal fun SharedThreadRouteContent(
     val renderedFiles = routeUiState.files
     val renderedComposer = routeUiState.composer
     val renderedTasks = routeUiState.tasks
+    var firstContentExtrasVisible by remember(threadRouteKey, renderedThread.status) {
+        mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
+    }
+    LaunchedEffect(threadRouteKey, renderedThread.status) {
+        if (renderedThread.shouldStageThreadFirstContentExtras()) {
+            firstContentExtrasVisible = false
+            delay(ThreadFirstContentExtrasDelayMs)
+            firstContentExtrasVisible = true
+        } else {
+            firstContentExtrasVisible = true
+        }
+    }
     val attachmentCommentsEnabled = currentServerSlug.attachmentCommentsEnabledForThread()
 
     fun setAttachmentCommentsState(next: ThreadAttachmentCommentsDialogState) {
@@ -2463,6 +2491,7 @@ internal fun SharedThreadRouteContent(
             composerSurface = composerSurface,
             composerState = renderedComposer,
             tasksState = renderedTasks,
+            contentExtrasVisible = firstContentExtrasVisible,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
@@ -4200,6 +4229,7 @@ private fun ThreadPageContent(
     composerSurface: ThreadComposerSurface,
     composerState: KuiklyThreadComposerPayload,
     tasksState: TasksUiState,
+    contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
@@ -4214,7 +4244,7 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
-    if (payload.status == "loading" && payload.originStatus == "none") {
+    if (payload.shouldRenderThreadEarlyLoadingShell()) {
         Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
             ThreadStateMessage("Loading thread…", null)
         }
@@ -4322,6 +4352,7 @@ private fun ThreadPageContent(
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             currentServerSlug = currentServerSlug,
                             quotedPreviewStates = quotedPreviewStates,
+                            contentExtrasVisible = contentExtrasVisible,
                             onEnsureQuotedPreview = onEnsureQuotedPreview,
                             onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onThreadEvent = onThreadEvent,
@@ -4357,6 +4388,7 @@ private fun ThreadPageContent(
                 )
             } else if (
                 payload.status != "loading" &&
+                contentExtrasVisible &&
                 shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)
             ) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
@@ -4617,6 +4649,7 @@ private fun ThreadChatTab(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
+    contentExtrasVisible: Boolean = true,
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -4637,6 +4670,7 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     quotedPreviewStates = quotedPreviewStates,
+                    contentExtrasVisible = contentExtrasVisible,
                     onEnsureQuotedPreview = onEnsureQuotedPreview,
                     onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
@@ -4667,6 +4701,7 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     quotedPreviewStates = quotedPreviewStates,
+                    contentExtrasVisible = contentExtrasVisible,
                     onEnsureQuotedPreview = onEnsureQuotedPreview,
                     onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
@@ -4688,6 +4723,7 @@ private fun ThreadChatTab(
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
                 quotedPreviewStates = quotedPreviewStates,
+                contentExtrasVisible = contentExtrasVisible,
                 onEnsureQuotedPreview = onEnsureQuotedPreview,
                 onOpenQuotedPermalink = onOpenQuotedPermalink,
                 onThreadEvent = onThreadEvent,
@@ -4709,6 +4745,7 @@ private fun ThreadMessagesList(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
+    contentExtrasVisible: Boolean = true,
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -4957,6 +4994,7 @@ private fun ThreadMessagesList(
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
                 quotedPreviewStates = quotedPreviewStates,
+                contentExtrasVisible = contentExtrasVisible,
                 onEnsureQuotedPreview = onEnsureQuotedPreview,
                 onOpenQuotedPermalink = onOpenQuotedPermalink,
                 onThreadEvent = onThreadEvent,
@@ -5019,20 +5057,28 @@ private fun ThreadMessagesList(
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, index)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val actionCardSignature =
-                    remember(message.id, message.metadata) { message.threadActionCardSignature() }
+                    if (contentExtrasVisible) {
+                        remember(message.id, message.metadata) { message.threadActionCardSignature() }
+                    } else {
+                        null
+                    }
                 val actionCard =
-                    remember(actionCardSignature, messagePerformanceKey) {
-                        val startedAt = TimeSource.Monotonic.markNow()
-                        message.threadActionCard()
-                            .also { card ->
-                                val durationMs = startedAt.elapsedNow().inWholeMilliseconds
-                                if (shouldLogThreadPerformance(durationMs)) {
-                                    diagnosticsLogger(
-                                        "thread_action_card_parse key=$messagePerformanceKey " +
-                                            "hasActionCard=${card != null} durationMs=$durationMs"
-                                    )
+                    if (contentExtrasVisible) {
+                        remember(actionCardSignature, messagePerformanceKey) {
+                            val startedAt = TimeSource.Monotonic.markNow()
+                            message.threadActionCard()
+                                .also { card ->
+                                    val durationMs = startedAt.elapsedNow().inWholeMilliseconds
+                                    if (shouldLogThreadPerformance(durationMs)) {
+                                        diagnosticsLogger(
+                                            "thread_action_card_parse key=$messagePerformanceKey " +
+                                                "hasActionCard=${card != null} durationMs=$durationMs"
+                                        )
+                                    }
                                 }
-                            }
+                        }
+                    } else {
+                        null
                     }
                 // Phase 1 (#172) instrumentation: one-shot per-row log gated
                 // by DEBUG_THREAD_VIRTUAL_RENDER_LOG so the diagnostic is
@@ -5076,12 +5122,12 @@ private fun ThreadMessagesList(
                         ThreadSystemMessageRow(
                             message = displayMessage,
                             highlightedMentions = highlightedMentions,
-                            showReplyAction = payload.showReplyActions,
+                            showReplyAction = payload.showReplyActions && contentExtrasVisible,
                             timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor ->
@@ -5102,8 +5148,8 @@ private fun ThreadMessagesList(
                             showReplyAction = payload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             onShowActions = { anchor ->
                                 if (!message.hasLocalSendState()) {
                                     actionMenuAnchor = anchor
@@ -5128,15 +5174,21 @@ private fun ThreadMessagesList(
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
                             onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                            attachmentOpenStates = attachmentOpenStates,
-                            pendingActionCardIds = pendingActionCardIds,
+                            attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
+                            pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             currentServerSlug = currentServerSlug,
-                            quotedPreviewState = displayMessage.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates),
+                            quotedPreviewState =
+                                if (contentExtrasVisible) {
+                                    displayMessage.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates)
+                                } else {
+                                    null
+                                },
                             onEnsureQuotedPreview = onEnsureQuotedPreview,
                             onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                            onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            richContentEnabled = contentExtrasVisible
                         )
                     }
                 }
@@ -5627,7 +5679,7 @@ private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 4
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
-private const val ThreadFirstContentTaskJoinDelayMs = 16L
+private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
@@ -5756,6 +5808,7 @@ private fun ThreadMessageCard(
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
+    richContentEnabled: Boolean = true,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
@@ -5799,7 +5852,7 @@ private fun ThreadMessageCard(
                             modifier =
                                 Modifier
                                     .threadMessageContentWidth(messageMaxWidthFraction)
-                                    .padding(end = if (showSaveAction) 30.dp else 0.dp)
+                                    .padding(end = if (showSaveAction && richContentEnabled) 30.dp else 0.dp)
                                     .background(Color.Transparent),
                             pressFeedback = false
                         ) {
@@ -5834,7 +5887,7 @@ private fun ThreadMessageCard(
                                 )
                             }
                         }
-                        if (actionCard != null) {
+                        if (richContentEnabled && actionCard != null) {
                             ThreadActionCardView(
                                 card = actionCard,
                                 pending = message.id in pendingActionCardIds,
@@ -5844,13 +5897,15 @@ private fun ThreadMessageCard(
                                 onCommit = { onCommitActionCard(message.id) }
                             )
                         } else if (message.body.isNotBlank()) {
-                            message.commentRef?.let { commentRef ->
-                                ThreadMessageCommentRefChip(
-                                    ref = commentRef,
-                                    enabled = commentRef.hasThreadCommentHostSource(),
-                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                    onOpen = { onOpenCommentHost(commentRef) }
-                                )
+                            if (richContentEnabled) {
+                                message.commentRef?.let { commentRef ->
+                                    ThreadMessageCommentRefChip(
+                                        ref = commentRef,
+                                        enabled = commentRef.hasThreadCommentHostSource(),
+                                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                        onOpen = { onOpenCommentHost(commentRef) }
+                                    )
+                                }
                             }
                             Box(
                                 modifier =
@@ -5858,38 +5913,50 @@ private fun ThreadMessageCard(
                                         .threadMessageContentWidth(messageMaxWidthFraction)
                                         .background(Color.Transparent)
                             ) {
-                                SlockMarkdownBody(
-                                    body = message.body,
-                                    textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                                    highlightedMentions = highlightedMentions,
-                                    resolveTagLabel = resolveMarkdownTagLabel,
-                                    onOpenTag = onOpenMarkdownTag,
-                                    onOpenUrl = onOpenMarkdownUrl,
-                                    performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
-                                    performanceLogger = diagnosticsLogger
-                                )
-                            }
-                            quotedPreviewState?.let { previewState ->
-                                LaunchedEffect(previewState.permalink.key, currentServerSlug) {
-                                    onEnsureQuotedPreview(previewState.permalink)
+                                if (richContentEnabled) {
+                                    SlockMarkdownBody(
+                                        body = message.body,
+                                        textStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                        highlightedMentions = highlightedMentions,
+                                        resolveTagLabel = resolveMarkdownTagLabel,
+                                        onOpenTag = onOpenMarkdownTag,
+                                        onOpenUrl = onOpenMarkdownUrl,
+                                        performanceKey = threadMessagePerformanceKey(message.id, messageIndex),
+                                        performanceLogger = diagnosticsLogger
+                                    )
+                                } else {
+                                    Text(
+                                        text = message.body,
+                                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                                        color = SlockColor.TextBlack
+                                    )
                                 }
-                                ThreadQuotedMessagePreviewCard(
-                                    state = previewState,
-                                    timestampLabel = previewState.timestampLabel,
-                                    modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                    onOpen = { onOpenQuotedPermalink(previewState.permalink) }
-                                )
+                            }
+                            if (richContentEnabled) {
+                                quotedPreviewState?.let { previewState ->
+                                    LaunchedEffect(previewState.permalink.key, currentServerSlug) {
+                                        onEnsureQuotedPreview(previewState.permalink)
+                                    }
+                                    ThreadQuotedMessagePreviewCard(
+                                        state = previewState,
+                                        timestampLabel = previewState.timestampLabel,
+                                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
+                                        onOpen = { onOpenQuotedPermalink(previewState.permalink) }
+                                    )
+                                }
                             }
                         }
-                        Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                            ThreadMessageAttachments(
-                                attachments = message.attachments,
-                                alignEnd = alignOwnMessageRight,
-                                attachmentOpenStates = attachmentOpenStates,
-                                commentsEnabled = attachmentCommentsEnabled,
-                                onOpenComments = onOpenAttachmentComments,
-                                onOpenAttachment = onOpenAttachment
-                            )
+                        if (richContentEnabled) {
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                ThreadMessageAttachments(
+                                    attachments = message.attachments,
+                                    alignEnd = alignOwnMessageRight,
+                                    attachmentOpenStates = attachmentOpenStates,
+                                    commentsEnabled = attachmentCommentsEnabled,
+                                    onOpenComments = onOpenAttachmentComments,
+                                    onOpenAttachment = onOpenAttachment
+                                )
+                            }
                         }
                         if (message.hasLocalSendState()) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
@@ -5900,25 +5967,27 @@ private fun ThreadMessageCard(
                                 )
                             }
                         }
-                        Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
-                            if (!message.hasLocalSendState()) {
-                                ThreadMessageFooterMeta(
-                                    message = message,
-                                    showReplyAction = showReplyAction,
-                                    taskOpenEnabled = taskOpenEnabled,
-                                    taskStatusActionsEnabled = taskStatusActionsEnabled,
-                                    resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-                                    alignEnd = alignOwnMessageRight,
-                                    onOpenThread = { onOpenThread(message.id) },
-                                    onOpenTask = onOpenTask,
-                                    onShowActions = onShowActions,
-                                    onOpenTaskStatusMenu = onOpenTaskStatusMenu,
-                                    onToggleReaction = onToggleReaction
-                                )
+                        if (richContentEnabled) {
+                            Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
+                                if (!message.hasLocalSendState()) {
+                                    ThreadMessageFooterMeta(
+                                        message = message,
+                                        showReplyAction = showReplyAction,
+                                        taskOpenEnabled = taskOpenEnabled,
+                                        taskStatusActionsEnabled = taskStatusActionsEnabled,
+                                        resolvedTaskAssigneeName = resolvedTaskAssigneeName,
+                                        alignEnd = alignOwnMessageRight,
+                                        onOpenThread = { onOpenThread(message.id) },
+                                        onOpenTask = onOpenTask,
+                                        onShowActions = onShowActions,
+                                        onOpenTaskStatusMenu = onOpenTaskStatusMenu,
+                                        onToggleReaction = onToggleReaction
+                                    )
+                                }
                             }
                         }
                     }
-                    if (showSaveAction && !message.hasLocalSendState()) {
+                    if (showSaveAction && richContentEnabled && !message.hasLocalSendState()) {
                         ThreadMessageBookmarkButton(
                             saved = message.isSaved,
                             onClick = onToggleSaved,
@@ -6961,6 +7030,7 @@ private fun ThreadOriginCard(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
+    contentExtrasVisible: Boolean = true,
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
@@ -7004,7 +7074,8 @@ private fun ThreadOriginCard(
             }
             else -> {
                 payload.originMessage?.let { origin ->
-                    if (origin.isSystemMessage() && origin.threadActionCard() == null) {
+                    val originActionCard = if (contentExtrasVisible) origin.threadActionCard() else null
+                    if (origin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = origin,
                             highlightedMentions = highlightedMentions,
@@ -7015,8 +7086,8 @@ private fun ThreadOriginCard(
                                 id = origin.taskAssigneeId
                             ),
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             onOpenThread = { onThreadEvent("openMessageThread", origin.id, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
@@ -7026,6 +7097,7 @@ private fun ThreadOriginCard(
                     } else {
                         ThreadMessageCard(
                             message = origin,
+                            actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
                             showReplyAction = false,
                             resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
@@ -7033,8 +7105,8 @@ private fun ThreadOriginCard(
                                 id = origin.taskAssigneeId
                             ),
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = payload.showMessageSaveAction,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = { onThreadEvent("openMember", it, null, null) },
@@ -7048,15 +7120,21 @@ private fun ThreadOriginCard(
                             onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", origin.id, it, null) },
-                            attachmentOpenStates = attachmentOpenStates,
-                            pendingActionCardIds = pendingActionCardIds,
+                            attachmentOpenStates = if (contentExtrasVisible) attachmentOpenStates else emptyMap(),
+                            pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             currentServerSlug = currentServerSlug,
-                            quotedPreviewState = origin.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates),
+                            quotedPreviewState =
+                                if (contentExtrasVisible) {
+                                    origin.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates)
+                                } else {
+                                    null
+                                },
                             onEnsureQuotedPreview = onEnsureQuotedPreview,
                             onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                            onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            richContentEnabled = contentExtrasVisible
                         )
                     }
                 } ?: payload.originPreview?.takeIf { it.isNotBlank() }?.let {
