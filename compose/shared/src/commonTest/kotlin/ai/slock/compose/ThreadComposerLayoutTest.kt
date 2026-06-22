@@ -7,16 +7,21 @@ import kotlin.test.assertEquals
 class ThreadComposerLayoutTest {
     @Test
     fun threadComposerBottomPaddingIncludesClosedKeyboardSafeArea() {
-        assertEquals(40.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 24.dp))
+        assertEquals(38.dp, threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = 24.dp))
     }
 
     @Test
     fun threadComposerBottomPaddingDoesNotDoubleCountSafeAreaWhenKeyboardOpen() {
-        assertEquals(136.dp, threadComposerBottomPadding(keyboardInsetDp = 120f, bottomSafeArea = 24.dp))
+        assertEquals(134.dp, threadComposerBottomPadding(keyboardInsetDp = 120f, bottomSafeArea = 24.dp))
     }
 
     @Test
     fun threadComposerBottomPaddingKeepsSmallLiftWithoutSafeArea() {
-        assertEquals(16.dp, threadComposerBottomPadding(keyboardInsetDp = -1f, bottomSafeArea = 0.dp))
+        assertEquals(14.dp, threadComposerBottomPadding(keyboardInsetDp = -1f, bottomSafeArea = 0.dp))
+    }
+
+    @Test
+    fun threadLoadingComposerPlaceholderReservesClosedComposerHeight() {
+        assertEquals(118.dp, threadLoadingComposerPlaceholderHeight(bottomSafeArea = 24.dp))
     }
 }

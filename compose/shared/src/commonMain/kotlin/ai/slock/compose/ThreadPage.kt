@@ -294,6 +294,7 @@ internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
+private val ThreadLoadingComposerPlaceholderContentHeight = 66.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionIconSize = 15.dp
@@ -306,6 +307,10 @@ internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea:
     val safeAreaInset = if (keyboardInsetDp > 0f) 0.dp else bottomSafeArea
     return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
 }
+
+internal fun threadLoadingComposerPlaceholderHeight(bottomSafeArea: Dp): Dp =
+    SlockStroke.Default + 12.dp + ThreadLoadingComposerPlaceholderContentHeight +
+        threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = bottomSafeArea)
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     val raw = channelName?.trim().orEmpty()
@@ -4629,6 +4634,9 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
+    val showComposerForSelectedTab =
+        contentExtrasVisible &&
+            shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)
     val taskPanelChannelId =
         remember(taskChannelId, payload.sourceThreadId, payload.instanceId) {
             taskChannelId
@@ -4742,11 +4750,7 @@ private fun ThreadPageContent(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
-            } else if (
-                payload.status != "loading" &&
-                contentExtrasVisible &&
-                shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)
-            ) {
+            } else if (payload.status != "loading" && showComposerForSelectedTab) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(
@@ -4775,6 +4779,8 @@ private fun ThreadPageContent(
                         )
                     }
                 }
+            } else if (payload.status == "loading" && showComposerForSelectedTab) {
+                ThreadLoadingComposerPlaceholder(composerBottomSafeArea)
             }
         }
         when (activeModal) {
@@ -4818,6 +4824,17 @@ private fun ThreadPageContent(
                     }
                 )
         }
+    }
+}
+
+@Composable
+private fun ThreadLoadingComposerPlaceholder(bottomSafeArea: Dp) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .height(threadLoadingComposerPlaceholderHeight(bottomSafeArea))
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 
