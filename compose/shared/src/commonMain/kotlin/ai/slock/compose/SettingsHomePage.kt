@@ -12396,6 +12396,11 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
         timeRange = SearchTimeRange.Last7Days,
     myMessagesOnly = false,
     selectedSenderId = "user_artin",
+    // Visual fixture is static + non-interactive (`onIntent = {}` in HomeSearchVisualContent),
+    // so the store never actually runs a search. Mark `searched = true` explicitly so the
+    // panel's "items/empty/results-count" branch falls into the "has results" path instead
+    // of the "Search everything" empty state. See #首页专修:491a6bbd / #74.
+    searched = true,
     senderFilters =
         listOf(
             SearchSenderFilterItem(
@@ -12486,7 +12491,6 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
             )
         ),
     totalCount = 3,
-    searched = true,
     hasMore = true,
     nextOffset = 3
 )
