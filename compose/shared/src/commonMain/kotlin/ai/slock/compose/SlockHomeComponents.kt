@@ -2399,10 +2399,13 @@ private fun String.toPixelAvatarSpec(): PixelAvatarSpec? = removePrefixOrNull(Pi
 /**
  * Returns the picker keys in display order, mirroring React
  * `AVATAR_KEYS = Object.keys(AVATARS).filter(k => !RESERVED_AVATAR_KEYS.includes(k))`.
+ * Includes the default key (`robot`) — React renders the default as a separate
+ * second button in the picker (`title="Default (robot)"`) so callers prepend
+ * the Upload cell and use this list directly for the remaining keys.
  * Used by the avatar picker modal grid in `MembersAgentProfileTab`.
  */
 internal val PixelAvatarPickerKeys: List<String> = PixelAvatarFixedSpecs.keys
-    .filterNot { it == PixelAvatarDefaultKey || it in PixelAvatarReservedKeys }
+    .filterNot { it in PixelAvatarReservedKeys }
 private fun String.removePrefixOrNull(prefix: String): String? = takeIf { it.startsWith(prefix) }?.substring(prefix.length)
 private fun randomPixelAvatar(seed: String): PixelAvatarSpec {
     val random = PixelAvatarRandom(pixelHash(seed))

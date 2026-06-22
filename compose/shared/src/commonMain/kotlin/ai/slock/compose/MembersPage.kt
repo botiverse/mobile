@@ -6,6 +6,7 @@ import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalModalLayer
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
+import ai.slock.compose.PixelAvatarDefaultKey
 import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
@@ -75,6 +76,8 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -2257,81 +2260,129 @@ private fun MembersAgentAvatarPicker(
                 )
             }
             Text(
-                text = "Choose",
+                text = "Choose Avatar",
                 style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
             )
-            val rows = PixelAvatarPickerKeys.chunked(4)
-            Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                rows.forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                    ) {
-                        row.forEach { key ->
-                            SlockBrutalActionButton(
-                                label = key,
-                                onClick = { onSelect(key) },
-                                modifier = Modifier.weight(1f),
-                                backgroundColor = if (member.avatar?.wireValue == "pixel:$key") SlockColor.BrandYellow else SlockColor.SurfaceWhite,
-                                minHeight = 56.dp,
-                                textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
-                                leadingIcon = null
-                            )
-                        }
-                    }
-                }
+            // React parity: each cell renders the actual pixel art (or upload icon
+            // for the first cell) inside a 40dp cell with a 2dp border, mirroring
+            // `AgentDetailPanel.tsx:2331-2391`. Active selection gets a pink border
+            // + pink tint background (React `border-brutal-pink bg-brutal-pink/20`).
+            val activeCustomAvatar = member.avatarUrl != null
+            val activePixelKey = if (activeCustomAvatar) {
+                null
+            } else {
+                (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarDefaultKey)
             }
-            Text(
-                text = "Actions",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
-                    .withSlockFontWeight(FontWeight.Bold),
-                color = SlockColor.TextBlack,
-            )
-            Row(
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
             ) {
-                SlockBrutalActionButton(
-                    label = if (uploading) "Uploading…" else "Upload",
-                    leadingIcon = if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
-                    onClick = {
-                        if (!uploading) {
-                            uploading = true
-                            scope.launch {
-                                when (val result = onUpload()) {
-                                    is DataResult.Content -> onDismiss()
-                                    is DataResult.Empty -> {
-                                        uploading = false
-                                        onUnavailableAction("Avatar upload cancelled.")
-                                    }
-                                    is DataResult.Error -> {
-                                        uploading = false
-                                        onUnavailableAction("Avatar upload failed: ${result.error.code}")
-                                    }
-                                    is DataResult.NoPermission -> {
-                                        uploading = false
-                                        onUnavailableAction("No permission: ${result.blocker.code}")
+                // Cell 1: Upload custom image (mirrors React label/input combo;
+                // here we route through the existing onUpload callback path since
+                // file picking is owned by Android-App-Integrator via
+                // onPickAgentAvatarFile — out of scope for #57).
+                Box(
+                    modifier = Modifier
+                        .size(MembersAgentAvatarPickerCellSize)
+                        .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
+                        .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+                        .clickable(enabled = !uploading) {
+                            if (!uploading) {
+                                uploading = true
+                                scope.launch {
+                                    when (val result = onUpload()) {
+                                        is DataResult.Content -> onDismiss()
+                                        is DataResult.Empty -> {
+                                            uploading = false
+                                            onUnavailableAction("Avatar upload cancelled.")
+                                        }
+                                        is DataResult.Error -> {
+                                            uploading = false
+                                            onUnavailableAction("Avatar upload failed: ${result.error.code}")
+                                        }
+                                        is DataResult.NoPermission -> {
+                                            uploading = false
+                                            onUnavailableAction("No permission: ${result.blocker.code}")
+                                        }
                                     }
                                 }
                             }
-                        }
-                    },
-                    enabled = !uploading,
-                    modifier = Modifier.weight(1f)
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (activeCustomAvatar) {
+                        // Show the currently uploaded image (mirrors React's
+                        // `<img src={agent.avatarUrl!} />` inside the Upload cell).
+                        // `SlockAvatar` handles the HTTP path internally with the
+                        // existing lavender fallback background + http image overlay.
+                        SlockAvatar(
+                            avatarWireValue = member.avatarUrl,
+                            label = "Custom avatar",
+                            avatarSize = MembersAgentAvatarPickerAvatarSize,
+                            borderWidth = 0.dp
+                        )
+                    } else {
+                        SlockLucideIcon(
+                            if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
+                            modifier = Modifier.size(16.dp),
+                            color = "#99000000"
+                        )
+                    }
+                }
+                // Cell 2: Default (robot) — mirrors React `title="Default (robot)"`.
+                // Click calls onClear which sets avatar to null → renderer falls back
+                // to robot pixel art, same as React `handleClearAvatar`.
+                MembersAgentAvatarPickerCell(
+                    wireValue = "pixel:$PixelAvatarDefaultKey",
+                    fallbackLabel = PixelAvatarDefaultKey,
+                    active = activePixelKey == PixelAvatarDefaultKey,
+                    onClick = onClear
                 )
-                if (member.avatarUrl != null || member.avatar != null) {
-                    SlockBrutalActionButton(
-                        label = "Clear",
-                        leadingIcon = SlockLucideIconName.X,
-                        onClick = onClear,
-                        modifier = Modifier.weight(1f),
-                        backgroundColor = SlockColor.AccentPink
+                // Cells 3..N: remaining pixel keys (PixelAvatarPickerKeys now
+                // includes "robot" since #57; see SlockHomeComponents.kt
+                // PixelAvatarPickerKeys comment).
+                PixelAvatarPickerKeys.filter { it != PixelAvatarDefaultKey }.forEach { key ->
+                    MembersAgentAvatarPickerCell(
+                        wireValue = "pixel:$key",
+                        fallbackLabel = key,
+                        active = activePixelKey == key,
+                        onClick = { onSelect(key) }
                     )
                 }
             }
         }
+    }
+}
+
+private val MembersAgentAvatarPickerCellSize = 40.dp
+private val MembersAgentAvatarPickerAvatarSize = 36.dp
+
+@Composable
+private fun MembersAgentAvatarPickerCell(
+    wireValue: String,
+    fallbackLabel: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(MembersAgentAvatarPickerCellSize)
+            .border(SlockStroke.Default, if (active) SlockColor.AccentPink else SlockColor.BorderBlack)
+            .background(if (active) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockAvatar(
+            avatarWireValue = wireValue,
+            label = fallbackLabel,
+            avatarSize = MembersAgentAvatarPickerAvatarSize,
+            borderWidth = 0.dp
+        )
     }
 }
 
