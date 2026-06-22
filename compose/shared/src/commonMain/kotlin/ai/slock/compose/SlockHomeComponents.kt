@@ -150,6 +150,7 @@ data class SlockHomeConversationItem(
     val id: String = "",
     val name: String = "",
     val kind: String = "",
+    val channelType: String? = null,
     val unreadCount: Int = 0,
     val lastMessageAt: String? = null,
     val createdAt: String? = null,
@@ -358,7 +359,7 @@ private fun openThreadPageFromConversationId(
             ?: return
     val surfaceKind =
         when (conversation.kind) {
-            "dm", "direct_message", "direct-message", "private" ->
+            "dm", "direct_message", "direct-message" ->
                 KuiklyThreadSurfaceKind.DirectMessage
             "thread" -> KuiklyThreadSurfaceKind.ReplyThread
             else -> KuiklyThreadSurfaceKind.Channel
@@ -370,6 +371,7 @@ private fun openThreadPageFromConversationId(
             title = "#${conversation.name}",
             subtitle = null,
             surfaceKind = surfaceKind,
+            channelKind = conversation.homeChannelKind(),
             threadId = threadChannelId,
             sourceThreadId = if (surfaceKind == KuiklyThreadSurfaceKind.Channel) conversationId else null,
             streamChannelId = threadChannelId,
@@ -678,7 +680,7 @@ fun SlockStructuralHomeShell(
                             if (pinnedExpanded) {
                                 items(displayedPinned.size, key = { index -> "pinned-${displayedPinned[index].id}" }) { index ->
                                     val pinned = displayedPinned[index]
-                                    val isJoint = pinned.kind.equals("joint", ignoreCase = true)
+                                    val isJoint = pinned.homeChannelKind().equals("joint", ignoreCase = true)
                                     val isDirectMessage = pinned.kind.equals("directmessage", ignoreCase = true)
                                     // #211 React parity (revised by @artin 23:38): pinned copy and
                                     // original-section copy of the same conversation both
@@ -720,7 +722,7 @@ fun SlockStructuralHomeShell(
                                     } else {
                                         ChannelRow(
                                             name = pinned.name,
-                                            symbol = if (isJoint) "git-branch" else "#",
+                                            symbol = pinned.homeChannelSymbol(),
                                             joined = pinned.joined,
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
@@ -765,6 +767,7 @@ fun SlockStructuralHomeShell(
                                 }
                                 ChannelRow(
                                     name = channel.name,
+                                    symbol = channel.homeChannelSymbol(),
                                     joined = channel.joined,
                                     hasDraft = channel.hasDraft,
                                     badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
@@ -803,7 +806,7 @@ fun SlockStructuralHomeShell(
                                     }
                                     ChannelRow(
                                         name = channel.name,
-                                        symbol = "git-branch",
+                                        symbol = channel.homeChannelSymbol(),
                                         joined = channel.joined,
                                         hasDraft = channel.hasDraft,
                                         badge = channel.unreadCount.takeIf { it > 0 }?.toString(),
@@ -1079,7 +1082,7 @@ internal fun homeConversationSectionForSelection(
     }
     val channel = channels.firstOrNull { it.id == selectedChannelId }
     if (channel != null) {
-        return if (channel.kind.equals("joint", ignoreCase = true)) {
+        return if (channel.homeChannelKind().equals("joint", ignoreCase = true)) {
             SlockHomeConversationSection.JointChannel
         } else {
             SlockHomeConversationSection.Channel
@@ -1091,6 +1094,20 @@ internal fun homeConversationSectionForSelection(
         null
     }
 }
+
+internal fun SlockHomeConversationItem.homeChannelKind(): String =
+    channelType?.takeIf { it.isNotBlank() }?.lowercase()
+        ?: kind.lowercase()
+
+internal fun SlockHomeConversationItem.homeChannelSymbol(): String =
+    homeChannelKind().toSlockChannelSymbol()
+
+internal fun String?.toSlockChannelSymbol(): String =
+    when (this?.lowercase()) {
+        "private" -> "lock"
+        "joint" -> "git-branch"
+        else -> "#"
+    }
 
 internal fun SlockHomeSidebarSelection.sectionSelection(
     section: SlockHomeConversationSection
@@ -1785,6 +1802,12 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 } else if (symbol == "git-branch") {
                     SlockLucideIcon(
                         "git-branch",
+                        Modifier.size(ChannelSymbolIconSize),
+                        color = if (joined) SlockColor.TextBlackArgb else "#75000000"
+                    )
+                } else if (symbol == "lock") {
+                    SlockLucideIcon(
+                        "lock",
                         Modifier.size(ChannelSymbolIconSize),
                         color = if (joined) SlockColor.TextBlackArgb else "#75000000"
                     )

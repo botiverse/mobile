@@ -357,6 +357,7 @@ internal data class KuiklyThreadScreenPayload(
     val subtitle: String? = null,
     val status: String = "loading",
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val channelKind: String = "channel",
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
@@ -420,6 +421,7 @@ internal data class WireThreadLaunchPayload(
     val title: String = "Thread",
     val subtitle: String? = null,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
+    val channelKind: String = "channel",
     val threadId: String? = null,
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
@@ -497,6 +499,7 @@ internal data class WireThreadLaunchPayload(
             subtitle = null,
             status = "loading",
             surfaceKind = surfaceKind,
+            channelKind = channelKind,
             sourceThreadId = resolvedSourceId,
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
@@ -4481,7 +4484,7 @@ private fun ThreadPageHeader(
                     gravatarUrl = payload.dmPeerGravatarUrl
                 )
             } else if (payload.showModeTabs) {
-                ThreadHashTile()
+                ThreadChannelTile(payload.channelKind)
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
@@ -4516,7 +4519,7 @@ private fun ThreadPageHeader(
 }
 
 @Composable
-private fun ThreadHashTile() {
+private fun ThreadChannelTile(channelKind: String) {
     Box(
         modifier = Modifier.size(40.dp)
             .background(SlockColor.BrandYellow)
@@ -4524,12 +4527,19 @@ private fun ThreadHashTile() {
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
-            SlockLucideIconName.Hash,
+            channelKind.threadChannelHeaderIcon(),
             modifier = Modifier.size(18.dp),
             color = "#FF141111"
         )
     }
 }
+
+internal fun String?.threadChannelHeaderIcon(): SlockLucideIconName =
+    when (this?.lowercase()) {
+        "private" -> SlockLucideIconName.Lock
+        "joint" -> SlockLucideIconName.GitBranch
+        else -> SlockLucideIconName.Hash
+    }
 
 @Composable
 private fun ThreadDmPeerAvatarTile(
@@ -7471,7 +7481,7 @@ private fun ThreadQuotedMessagePreviewCard(
                     horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     SlockLucideIcon(
-                        if (state.channelKind == "dm") SlockLucideIconName.AtSign else SlockLucideIconName.Hash,
+                        state.channelKind.quotedPreviewChannelIcon(),
                         modifier = Modifier.size(11.dp),
                         color = "#FF6B7280"
                     )
@@ -7545,6 +7555,14 @@ private fun ThreadQuotedMessagePreviewCard(
         }
     }
 }
+
+private fun String?.quotedPreviewChannelIcon(): SlockLucideIconName =
+    when (this?.lowercase()) {
+        "dm" -> SlockLucideIconName.AtSign
+        "private" -> SlockLucideIconName.Lock
+        "joint" -> SlockLucideIconName.GitBranch
+        else -> SlockLucideIconName.Hash
+    }
 
 @Composable
 private fun ThreadQuotedPreviewTag(label: String) {

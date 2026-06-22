@@ -6,6 +6,7 @@ import ai.slock.compose.model.ConversationSummary
 internal data class SharedConversationHeaderEntry(
     val ids: Set<String>,
     val surfaceKind: String,
+    val channelKind: String = "channel",
     val title: String,
     val subtitle: String? = null,
     val avatarWireValue: String? = null,
@@ -53,7 +54,8 @@ internal fun KuiklyThreadScreenPayload.withConversationHeader(
         KuiklyThreadSurfaceKind.Channel ->
             copy(
                 title = entry.title,
-                subtitle = entry.subtitle
+                subtitle = entry.subtitle,
+                channelKind = entry.channelKind
             )
         else -> this
     }
@@ -89,6 +91,7 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,
+        channelKind = channelType?.takeIf { it.isNotBlank() } ?: kind.name.lowercase(),
         title = displayName,
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = avatar?.wireValue ?: avatarUrl,

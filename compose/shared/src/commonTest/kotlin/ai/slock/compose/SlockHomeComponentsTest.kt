@@ -106,6 +106,13 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeChannelSymbolUsesLockForPrivateChannels() {
+        assertEquals("#", SlockHomeConversationItem(kind = "channel").homeChannelSymbol())
+        assertEquals("lock", SlockHomeConversationItem(kind = "channel", channelType = "private").homeChannelSymbol())
+        assertEquals("git-branch", SlockHomeConversationItem(kind = "channel", channelType = "joint").homeChannelSymbol())
+    }
+
+    @Test
     fun sidebarSelectionRequiresMatchingConversationSection() {
         val pinnedSelection =
             SlockHomeSidebarSelection(

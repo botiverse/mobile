@@ -3531,7 +3531,7 @@ private fun Message.toQuotedMessagePreview(
         status = "loaded",
         permalink = permalink,
         channelName = conversation.quotedPreviewChannelName(permalink),
-        channelKind = if (conversation.kind == ConversationKind.DirectMessage || permalink.routeKind == "dm") "dm" else "channel",
+        channelKind = conversation.quotedPreviewChannelKind(permalink),
         isThread = permalink.threadParentMessageId != null || conversation.kind == ConversationKind.Thread,
         isArchived = conversation.archived,
         timestampLabel = timestampLabel,
@@ -3549,6 +3549,13 @@ private fun ConversationSummary.quotedPreviewChannelName(permalink: SlockQuotedM
         } else {
             "Channel"
         }
+
+private fun ConversationSummary.quotedPreviewChannelKind(permalink: SlockQuotedMessagePermalink): String =
+    when {
+        kind == ConversationKind.DirectMessage || permalink.routeKind == "dm" -> "dm"
+        !channelType.isNullOrBlank() -> channelType
+        else -> kind.name.lowercase()
+    }
 
 private fun List<Attachment>.quotedPreviewAttachmentLabel(): String? {
     if (isEmpty()) return null

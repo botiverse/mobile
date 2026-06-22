@@ -459,6 +459,27 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun appShellPrivateChannelPayloadUsesLockHeaderKind() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("private-1"),
+                channelId = ChannelId("private-1"),
+                channelType = "private",
+                kind = ConversationKind.Channel,
+                name = "onboarding-slocktest",
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val payload = buildAppShellThreadPayload(conversation)
+        val headerState = sharedConversationHeaderState(listOf(conversation))
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("private", payload.channelKind)
+        assertEquals("private", renderedPayload.channelKind)
+        assertEquals(SlockLucideIconName.Lock, renderedPayload.channelKind.threadChannelHeaderIcon())
+    }
+
+    @Test
     fun appShellPayloadMarksJointChannelsAsMemberScopedMentions() {
         val payload =
             buildAppShellThreadPayload(
