@@ -13,6 +13,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.base.Size
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.buildMarkdownAnnotatedString
@@ -344,6 +345,17 @@ class SlockMarkdownTest {
         assertTrue(shortTokenWidth in 38f..43f)
         assertTrue(envVarWidth in 96f..104f)
         assertTrue(pathWidth < 145f)
+    }
+
+    @Test
+    fun inlineCodePlaceholdersCanUseMeasuredWidthOverrides() {
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = "Use `mimo`",
+                inlineCodeWidths = mapOf("slock-code:4" to 31.sp)
+            ).inlineContent?.invoke().orEmpty()
+
+        assertEquals(31.sp, inlineContent.getValue("slock-code:4").placeholder.width)
     }
 
     @Test

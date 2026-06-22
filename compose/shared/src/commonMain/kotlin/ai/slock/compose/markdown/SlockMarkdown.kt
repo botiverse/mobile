@@ -10,10 +10,12 @@ import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.extension.nativeRef
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -30,6 +32,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Rect
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.AnnotatedString
 import com.tencent.kuikly.compose.ui.text.Placeholder
 import com.tencent.kuikly.compose.ui.text.SpanStyle
@@ -45,8 +48,12 @@ import com.tencent.kuikly.compose.ui.text.style.TextDecoration
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.TextUnit
+import com.tencent.kuikly.compose.ui.unit.isSpecified
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.base.ViewConst
+import com.tencent.kuikly.core.views.TextConst
+import com.tencent.kuikly.core.views.shadow.TextShadow
 import com.tencent.kuiklybase.markdown.annotator.DefaultAnnotatorSettings
 import com.tencent.kuiklybase.markdown.annotator.LocalUriHandler
 import com.tencent.kuiklybase.markdown.annotator.UriHandler
@@ -65,6 +72,7 @@ import org.intellij.markdown.MarkdownTokenTypes
 import org.intellij.markdown.ast.getTextInNode
 import org.intellij.markdown.flavours.gfm.GFMFlavourDescriptor
 import org.intellij.markdown.parser.MarkdownParser
+import kotlin.math.abs
 import kotlin.time.TimeSource
 
 data class ThreadMarkdownTag(
@@ -530,6 +538,7 @@ internal fun slockMarkdownAnnotator(
     onOpenTag: (ThreadMarkdownTag) -> Unit = {},
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
+    inlineCodeWidths: Map<String, TextUnit> = emptyMap(),
     tokenPlan: MarkdownInlineTokenPlan =
         SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
 ): MarkdownAnnotator {
@@ -622,7 +631,7 @@ internal fun slockMarkdownAnnotator(
                 val code = token.code.orEmpty()
                 InlineTextContent(
                     Placeholder(
-                        width = slockMarkdownInlineCodeWidthSp(code),
+                        width = inlineCodeWidths[token.id] ?: slockMarkdownInlineCodeWidthSp(code),
                         height = SlockMarkdownInlineCodeChipHeight
                     )
                 ) {
@@ -890,6 +899,108 @@ private fun buildSlockMarkdownInlineTextAnnotatedString(
 }
 
 @Composable
+private fun SlockMarkdownMeasuredInlineCodeBox(
+    modifier: Modifier,
+    tokenPlan: MarkdownInlineTokenPlan,
+    measuredInlineCodeWidths: MutableMap<String, TextUnit>,
+    content: @Composable (Modifier) -> Unit
+) {
+    val inlineCodeTokens = tokenPlan.inlineCodeTokens()
+    if (inlineCodeTokens.isEmpty()) {
+        content(modifier)
+        return
+    }
+
+    val density = LocalDensity.current
+    val codeTextStyle = remember {
+        SlockType.Caption.copy(
+            fontSize = 14.sp,
+            lineHeight = 20.sp
+        ).withResolvedSlockFontFamily()
+    }
+    val activeIds = remember(tokenPlan.signature) {
+        inlineCodeTokens.mapTo(mutableSetOf()) { it.id }
+    }
+    Box(
+        modifier =
+            modifier.nativeRef { viewRef ->
+                val fontScale = density.density / getPager().pagerDensity()
+                val measuredByCode = mutableMapOf<String, TextUnit>()
+                inlineCodeTokens.forEach { token ->
+                    val code = token.code.orEmpty()
+                    val measuredWidth =
+                        measuredByCode.getOrPut(code) {
+                            measureSlockMarkdownInlineCodeWidthSp(
+                                pagerId = viewRef.pagerId,
+                                nativeRef = viewRef.nativeRef,
+                                code = code,
+                                style = codeTextStyle,
+                                fontScale = fontScale
+                            )
+                        }
+                    val previousWidth = measuredInlineCodeWidths[token.id]
+                    if (previousWidth == null ||
+                        abs(previousWidth.value - measuredWidth.value) > SlockMarkdownMeasuredWidthEpsilonSp
+                    ) {
+                        measuredInlineCodeWidths[token.id] = measuredWidth
+                    }
+                }
+                measuredInlineCodeWidths.keys
+                    .filterNot { it in activeIds }
+                    .forEach { measuredInlineCodeWidths.remove(it) }
+            }
+    ) {
+        content(Modifier.fillMaxWidth())
+    }
+}
+
+private fun measureSlockMarkdownInlineCodeWidthSp(
+    pagerId: String,
+    nativeRef: Int,
+    code: String,
+    style: TextStyle,
+    fontScale: Float
+): TextUnit {
+    val fallbackWidth = slockMarkdownInlineCodeWidthSp(code)
+    val shadow = TextShadow(pagerId, nativeRef, ViewConst.TYPE_RICH_TEXT)
+    return try {
+        shadow.setProp(TextConst.VALUE, code)
+        if (style.fontSize.isSpecified) {
+            shadow.setProp(TextConst.FONT_SIZE, style.fontSize.value * fontScale)
+        }
+        if (style.lineHeight.isSpecified) {
+            shadow.setProp(TextConst.LINE_HEIGHT, style.lineHeight.value * fontScale)
+        }
+        shadow.setProp(TextConst.FONT_WEIGHT, style.fontWeight.slockMarkdownTextConstWeight())
+        shadow.setProp(TextConst.TEXT_USE_DP_FONT_SIZE_DIM, 1)
+        val measuredWidth = shadow.calculateRenderViewSize(100000f, 100000f).width
+        if (measuredWidth.isFinite() && measuredWidth > 0f) {
+            (measuredWidth + SlockMarkdownInlineCodeHorizontalChromeSp)
+                .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
+                .sp
+        } else {
+            fallbackWidth
+        }
+    } catch (_: Throwable) {
+        fallbackWidth
+    } finally {
+        shadow.removeFromParentComponent()
+    }
+}
+
+private fun FontWeight?.slockMarkdownTextConstWeight(): String =
+    when (this) {
+        FontWeight.W100 -> "300"
+        FontWeight.W200 -> "200"
+        FontWeight.W300 -> "300"
+        FontWeight.W400, null -> "400"
+        FontWeight.W500 -> "500"
+        FontWeight.W600 -> "600"
+        FontWeight.W700, FontWeight.W800, FontWeight.W900 -> "700"
+        else -> "400"
+    }
+
+@Composable
 fun SlockMarkdownBody(
     body: String,
     modifier: Modifier = Modifier,
@@ -971,7 +1082,11 @@ fun SlockMarkdownBody(
     val tokenPlan = remember(content, highlightedMentions) {
         SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions)
     }
-    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan) {
+    val measuredInlineCodeWidths = remember(content, tokenPlan.signature) {
+        mutableStateMapOf<String, TextUnit>()
+    }
+    val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
+    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
@@ -989,6 +1104,7 @@ fun SlockMarkdownBody(
                         }
                     }
                 },
+            inlineCodeWidths = inlineCodeWidthOverrides,
             tokenPlan = tokenPlan
         )
     }
@@ -1013,26 +1129,32 @@ fun SlockMarkdownBody(
             )
         }
         traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT, body.length) {
-            KuiklyText(
-                text = renderedText.fontResolvedText,
+            SlockMarkdownMeasuredInlineCodeBox(
                 modifier = markdownModifier,
-                color = resolvedStyle.color,
-                fontSize = resolvedStyle.fontSize,
-                fontStyle = resolvedStyle.fontStyle,
-                fontWeight = resolvedStyle.fontWeight,
-                fontFamily = resolvedStyle.fontFamily,
-                letterSpacing = resolvedStyle.letterSpacing,
-                textDecoration = resolvedStyle.textDecoration,
-                textAlign = resolvedStyle.textAlign,
-                lineHeight = resolvedStyle.lineHeight,
-                overflow = TextOverflow.Clip,
-                softWrap = true,
-                maxLines = Int.MAX_VALUE,
-                minLines = 1,
-                inlineContent = inlineContent,
-                onTextLayout = {},
-                style = resolvedStyle
-            )
+                tokenPlan = tokenPlan,
+                measuredInlineCodeWidths = measuredInlineCodeWidths
+            ) { contentModifier ->
+                KuiklyText(
+                    text = renderedText.fontResolvedText,
+                    modifier = contentModifier,
+                    color = resolvedStyle.color,
+                    fontSize = resolvedStyle.fontSize,
+                    fontStyle = resolvedStyle.fontStyle,
+                    fontWeight = resolvedStyle.fontWeight,
+                    fontFamily = resolvedStyle.fontFamily,
+                    letterSpacing = resolvedStyle.letterSpacing,
+                    textDecoration = resolvedStyle.textDecoration,
+                    textAlign = resolvedStyle.textAlign,
+                    lineHeight = resolvedStyle.lineHeight,
+                    overflow = TextOverflow.Clip,
+                    softWrap = true,
+                    maxLines = Int.MAX_VALUE,
+                    minLines = 1,
+                    inlineContent = inlineContent,
+                    onTextLayout = {},
+                    style = resolvedStyle
+                )
+            }
         }
         return
     }
@@ -1085,15 +1207,21 @@ fun SlockMarkdownBody(
                 @Suppress("UNUSED_EXPRESSION") refContent; refTypography; refAnnotator; refPadding; refModifier; refColors; refTextProvider
             }
             traceMarkdownSection(SlockMarkdownTraceNames.LAYOUT_BLOCK, body.length) {
-                Markdown(
-                    content = content,
-                    colors = colors,
-                    typography = typography,
-                    textProvider = SlockMarkdownTextProvider,
-                    annotator = annotator,
-                    padding = padding,
-                    modifier = markdownModifier
-                )
+                SlockMarkdownMeasuredInlineCodeBox(
+                    modifier = markdownModifier,
+                    tokenPlan = tokenPlan,
+                    measuredInlineCodeWidths = measuredInlineCodeWidths
+                ) { contentModifier ->
+                    Markdown(
+                        content = content,
+                        colors = colors,
+                        typography = typography,
+                        textProvider = SlockMarkdownTextProvider,
+                        annotator = annotator,
+                        padding = padding,
+                        modifier = contentModifier
+                    )
+                }
             }
         }
     }
@@ -1174,7 +1302,9 @@ internal fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
 
 internal fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() + 8f).coerceAtLeast(24f).sp
+    (code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() + SlockMarkdownInlineCodeHorizontalChromeSp)
+        .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
+        .sp
 
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.copy(
@@ -1186,6 +1316,9 @@ internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
+private const val SlockMarkdownInlineCodeHorizontalChromeSp = 8f
+private const val SlockMarkdownInlineCodeMinWidthSp = 24f
+private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
