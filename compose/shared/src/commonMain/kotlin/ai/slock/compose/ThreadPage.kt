@@ -882,6 +882,35 @@ private fun KuiklyThreadScreenPayload.findMarkdownMentionMember(tag: ThreadMarkd
     }
 }
 
+private fun KuiklyThreadScreenPayload.findMemberDetail(memberId: String): KuiklyThreadMemberItem? {
+    val key = memberId.takeIf { it.isNotBlank() } ?: return null
+    members.firstOrNull { it.id == key }?.let { return it }
+    return threadAuthorMessages()
+        .firstOrNull { it.authorId == key }
+        ?.toThreadMemberDetailItem()
+}
+
+private fun KuiklyThreadScreenPayload.threadAuthorMessages(): Sequence<KuiklyThreadMessageItem> =
+    sequence {
+        originMessage?.let { yield(it) }
+        messages.forEach { yield(it) }
+    }
+
+private fun KuiklyThreadMessageItem.toThreadMemberDetailItem(): KuiklyThreadMemberItem {
+    val isAgent = authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
+    val displayLabel = authorName.ifBlank { authorId.ifBlank { "Member" } }
+    return KuiklyThreadMemberItem(
+        id = authorId,
+        displayName = displayLabel,
+        handle = displayLabel.removePrefix("@"),
+        roleLabel = if (isAgent) "Agent" else "Member",
+        avatarUrl = resolvedThreadAvatarWireValue(),
+        avatarLabel = avatarLabel.ifBlank { displayLabel.take(1).uppercase() },
+        kind = if (isAgent) "agent" else "human",
+        canRemove = false
+    )
+}
+
 internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: ThreadMarkdownTag): String =
     when (tag.kind) {
         ThreadMarkdownTagKind.UserMention ->
@@ -1624,6 +1653,7 @@ internal fun SharedThreadRouteContent(
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
     onOpenParentThread: () -> Boolean = { false },
+    onOpenMemberProfile: (String) -> Unit = {},
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
     active: Boolean = true,
@@ -2768,6 +2798,9 @@ internal fun SharedThreadRouteContent(
                     if (!onOpenParentThread()) {
                         onBack()
                     }
+                }
+                action == "openMember" && !itemId.isNullOrBlank() -> {
+                    onOpenMemberProfile(itemId)
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
                     val previousSaved =
@@ -4753,6 +4786,15 @@ private fun ThreadPageContent(
     val openMarkdownUrl: (String) -> Unit = { url ->
         onThreadEvent("openMarkdownUrl", url, null, null)
     }
+    val openThreadMember: (String) -> Unit = { memberId ->
+        val member = payload.findMemberDetail(memberId)
+        if (member != null) {
+            activeMemberId = member.id
+            activeModal = "memberDetail"
+        } else if (memberId.isNotBlank()) {
+            onThreadEvent("openMember", memberId, null, null)
+        }
+    }
     val knownMarkdownChannelNames =
         remember(payload.knownMarkdownChannelNames) {
             payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
@@ -4809,6 +4851,7 @@ private fun ThreadPageContent(
                             onEnsureQuotedPreview = onEnsureQuotedPreview,
                             onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onThreadEvent = onThreadEvent,
+                            onOpenMember = openThreadMember,
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
                             diagnosticsLogger = diagnosticsLogger
@@ -4887,7 +4930,7 @@ private fun ThreadPageContent(
                     }
                 )
             "memberDetail" ->
-                payload.members.firstOrNull { it.id == activeMemberId }?.let { member ->
+                activeMemberId?.let { payload.findMemberDetail(it) }?.let { member ->
                     ThreadMemberDetailModal(
                         member = member,
                         removeMemberStatus = payload.removeMemberStatus,
@@ -5106,6 +5149,7 @@ private fun ThreadChatTab(
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
@@ -5127,6 +5171,7 @@ private fun ThreadChatTab(
                     onEnsureQuotedPreview = onEnsureQuotedPreview,
                     onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
+                    onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger
@@ -5158,6 +5203,7 @@ private fun ThreadChatTab(
                     onEnsureQuotedPreview = onEnsureQuotedPreview,
                     onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
+                    onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger
@@ -5180,6 +5226,7 @@ private fun ThreadChatTab(
                 onEnsureQuotedPreview = onEnsureQuotedPreview,
                 onOpenQuotedPermalink = onOpenQuotedPermalink,
                 onThreadEvent = onThreadEvent,
+                onOpenMember = onOpenMember,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                 diagnosticsLogger = diagnosticsLogger
@@ -5202,6 +5249,7 @@ private fun ThreadMessagesList(
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
@@ -5509,6 +5557,7 @@ private fun ThreadMessagesList(
                         onEnsureQuotedPreview = onEnsureQuotedPreview,
                         onOpenQuotedPermalink = onOpenQuotedPermalink,
                         onThreadEvent = onThreadEvent,
+                        onOpenMember = onOpenMember,
                         onShowActions = { message, anchor ->
                             actionMenuAnchor = anchor
                             actionMessageId = message.id
@@ -5662,7 +5711,7 @@ private fun ThreadMessagesList(
                                     )
                                 }
                             },
-                            onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                            onOpenMember = onOpenMember,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor ->
@@ -7693,6 +7742,7 @@ private fun ThreadOriginCard(
     onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -7769,7 +7819,7 @@ private fun ThreadOriginCard(
                             showSaveAction = payload.showMessageSaveAction,
                             knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
-                            onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                            onOpenMember = onOpenMember,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
