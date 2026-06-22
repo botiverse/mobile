@@ -586,7 +586,7 @@ private fun PlanActionButton(
         disabledBackgroundColor = background,
         minWidth = 0.dp,
         minHeight = 42.dp,
-        shadowOffset = 2.dp,
+        shadowOffset = 0.dp,
         textStyle = SlockType.ButtonBold.copy(color = SlockColor.TextBlack)
     )
 }
