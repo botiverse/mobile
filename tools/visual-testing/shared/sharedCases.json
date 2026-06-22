@@ -7,6 +7,9 @@
       "title": "Shared Tokens",
       "surface": "tokens",
       "fixture": "fixtures/tokens.palette.json",
+      "skip": {
+        "reason": "Temporarily hidden: palette screenshot is not a valid parity gate; use token-audit for machine validation."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -26,50 +29,6 @@
         "crop": "element",
         "contract": "shell-canvas"
       },
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
-      "id": "auth.login.inputs",
-      "title": "Auth Login Inputs",
-      "surface": "auth",
-      "fixture": "fixtures/auth.login.inputs.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "default",
-          "name": "Default",
-          "props": {}
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='auth.login.inputs']",
-        "crop": "element",
-        "contract": "component-bounds",
-        "interactions": [
-          {
-            "type": "fill",
-            "target": "input[type='email']",
-            "value": "artin@slock.ai"
-          },
-          {
-            "type": "fill",
-            "target": "input[type='password']",
-            "value": "correct horse battery staple"
-          }
-        ]
-      },
-      "reactPathHint": "packages/web/src/components/auth/LoginPage.tsx",
-      "androidCaseHint": "compose_auth_login_inputs",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -958,40 +917,6 @@
       }
     },
     {
-      "id": "settings.row.states",
-      "title": "Settings Row States",
-      "surface": "settings",
-      "fixture": "fixtures/settings.row.states.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "account-selected",
-          "name": "Account Selected",
-          "props": {
-            "selected": "account"
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='settings.row.states']",
-        "crop": "element",
-        "contract": "component-bounds"
-      },
-      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx#SettingsSidebarItemButton",
-      "androidCaseHint": "compose_settings_row_visual",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
       "id": "settings.page.states",
       "title": "Settings Page States",
       "surface": "settings",
@@ -1191,43 +1116,8 @@
         "crop": "element",
         "contract": "component-bounds"
       },
-      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#ProfileSection",
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#ProfileSection + #DangerZoneSection",
       "androidCaseHint": "compose_settings_page_visual:server-profile",
-      "tolerance": {
-        "pixelRatio": 0.02,
-        "layoutDp": 1,
-        "ignoreAntialiasing": true
-      }
-    },
-    {
-      "id": "settings.server.danger",
-      "title": "Settings Server Danger",
-      "surface": "settings",
-      "fixture": "fixtures/settings.server.danger.json",
-      "viewport": {
-        "width": 390,
-        "height": 844,
-        "density": 3
-      },
-      "theme": "light",
-      "locale": "zh-CN",
-      "variants": [
-        {
-          "id": "server-danger",
-          "name": "Danger Zone",
-          "props": {
-            "tab": "server",
-            "section": "danger"
-          }
-        }
-      ],
-      "capture": {
-        "selector": "[data-visual-case='settings.server.danger']",
-        "crop": "element",
-        "contract": "component-bounds"
-      },
-      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
-      "androidCaseHint": "compose_settings_page_visual:server-danger",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -1823,46 +1713,801 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       }
+    },
+    {
+      "id": "screens.tasks.index",
+      "title": "Tasks Index Screen",
+      "captureType": "real-screen",
+      "surface": "tasks",
+      "category": "app/tasks",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.tasks.index.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.tasks.index']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/task/TasksPanel.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Tasks screen parity: list, filters, task status, and create-task entry need real route captures."
+    },
+    {
+      "id": "screens.auth.login",
+      "title": "Auth Login Screen",
+      "captureType": "real-screen",
+      "surface": "auth",
+      "category": "auth",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.auth.login.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.auth.login']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/auth/LoginPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true login route parity; old auth.login inputs are not active in the canonical manifest."
+    },
+    {
+      "id": "screens.auth.forgot-password",
+      "title": "Forgot Password Screen",
+      "captureType": "real-screen",
+      "surface": "auth",
+      "category": "auth",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.auth.forgot-password.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.auth.forgot-password']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/auth/ForgotPasswordPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing forgot-password route parity for the auth recovery flow."
+    },
+    {
+      "id": "screens.thread.channel",
+      "title": "Thread Channel Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.thread.channel.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.thread.channel']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/ThreadPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing full channel conversation screen: message list, header, composer, thread context, attachments, loading/empty/error states."
+    },
+    {
+      "id": "screens.thread.dm",
+      "title": "Thread DM Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.thread.dm.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.thread.dm']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/ThreadPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing full DM conversation screen variant with member identity/status and reply affordances."
+    },
+    {
+      "id": "screens.thread.task-thread",
+      "title": "Task Thread Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.thread.task-thread.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.thread.task-thread']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/ThreadPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing task-thread conversation variant with bound task context and status controls."
+    },
+    {
+      "id": "screens.members.index",
+      "title": "Members Index Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.members.index.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.index']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing full Members landing screen: humans/agents groups, empty/loading/error, and invite/add flows."
+    },
+    {
+      "id": "screens.members.agent-detail.permissions",
+      "title": "Members Agent Detail Permissions Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.members.agent-detail.permissions.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.permissions']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing agent detail Permissions tab true-screen parity."
+    },
+    {
+      "id": "screens.members.agent-detail.workspace",
+      "title": "Members Agent Detail Workspace Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.members.agent-detail.workspace.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.workspace']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing agent detail Workspace tab true-screen parity: workspace tree and file preview states."
+    },
+    {
+      "id": "screens.members.agent-detail.activity",
+      "title": "Members Agent Detail Activity Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.members.agent-detail.activity.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.activity']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing agent detail Activity tab true-screen parity."
+    },
+    {
+      "id": "components.members.agent-lifecycle-actions",
+      "title": "Members Agent Lifecycle Actions",
+      "captureType": "component-fixture",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/components.members.agent-lifecycle-actions.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.members.agent-lifecycle-actions']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing component fixture for agent lifecycle actions/menu/modal states."
+    },
+    {
+      "id": "components.members.avatar-management",
+      "title": "Members Avatar Management",
+      "captureType": "component-fixture",
+      "surface": "members",
+      "category": "members",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/components.members.avatar-management.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.members.avatar-management']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing component fixture for avatar picker/management menu states."
+    },
+    {
+      "id": "screens.settings.computers",
+      "title": "Settings Computers Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.computers.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.computers']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Settings Computers page parity."
+    },
+    {
+      "id": "screens.settings.computer-detail",
+      "title": "Settings Computer Detail Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.computer-detail.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.computer-detail']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Settings Computer Detail page parity."
+    },
+    {
+      "id": "screens.settings.storage",
+      "title": "Settings Storage Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.storage.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.storage']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Settings Storage page parity."
+    },
+    {
+      "id": "screens.settings.appearance",
+      "title": "Settings Appearance Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.appearance.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.appearance']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Existing settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route."
+    },
+    {
+      "id": "screens.settings.server-danger-modal",
+      "title": "Settings Server Danger Modal",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.server-danger-modal.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.server-danger-modal']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing real SlockModal-open capture for server danger actions; do not restore the stale standalone settings.server.danger page."
+    },
+    {
+      "id": "screens.settings.billing-portal",
+      "title": "Settings Billing Portal Flow",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.settings.billing-portal.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.settings.billing-portal']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/settings/SettingsPanel.tsx#BillingTabContent",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing real billing portal/open-browser/WebView fallback visual gate."
+    },
+    {
+      "id": "screens.home.index",
+      "title": "Home Index Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.home.index.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.home.index']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/Sidebar.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Home channel/thread list screen parity with realistic server/channel data."
+    },
+    {
+      "id": "screens.home.saved",
+      "title": "Home Saved Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.home.saved.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.home.saved']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/SavedPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Existing home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture."
+    },
+    {
+      "id": "screens.home.activity",
+      "title": "Home Activity Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.home.activity.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.home.activity']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/pages/ActivityPage.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Existing home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture."
+    },
+    {
+      "id": "components.thread.message-row.rich-content",
+      "title": "Thread Message Row Rich Content",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/components.thread.message-row.rich-content.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.message-row.rich-content']",
+        "crop": "element",
+        "contract": "component-bounds"
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageItem.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing expanded message-row fixture with richer body, mentions, attachments, reply count, and task/link states."
     }
   ],
   "componentMatrix": [
-    {
-      "id": "auth.login.inputs",
-      "title": "Auth Login Inputs",
-      "surface": "auth",
-      "group": "product-auth",
-      "status": "baseline",
-      "notes": "Real React LoginPage auth input typography vs Android rendering of the shared KMP Login page.",
-      "providers": [
-        {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "LoginPage",
-            "FormField"
-          ],
-          "path": "packages/web/src/components/auth/LoginPage.tsx",
-          "fixture": "fixtures/auth.login.inputs.json"
-        },
-        {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "AuthTextField",
-            "LoginContent"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthComponents.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureAuthLoginInputs"
-        },
-        {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared",
-          "reason": "Needs OHOS real auth route capture."
-        }
-      ]
-    },
     {
       "id": "auth.register.inputs",
       "title": "Auth Register Inputs",
@@ -2220,47 +2865,6 @@
           "source": "kmp-shared-ohos"
         }
       }
-    },
-    {
-      "id": "settings.row.states",
-      "title": "Settings Row States",
-      "surface": "settings",
-      "group": "product",
-      "status": "baseline",
-      "notes": "Real React Settings sidebar row item vs Android rendering of shared SettingsHomePage vertical tab rows. First baseline covers Account selected and adjacent settings rows.",
-      "providers": [
-        {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "SettingsSidebarItemButton",
-            "Settings sidebar row"
-          ],
-          "path": "packages/web/src/components/layout/Sidebar.tsx",
-          "fixture": "fixtures/settings.row.states.json"
-        },
-        {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsHomePage",
-            "SlockVerticalTabBar"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsRowStates"
-        },
-        {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsHomePage shared settings sections"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Depends on Harmony real-device/provider capture."
-        }
-      ]
     },
     {
       "id": "navigation.tabbar.states",
@@ -2824,7 +3428,7 @@
       "surface": "settings",
       "group": "product-settings",
       "status": "baseline",
-      "notes": "Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent. Rows remain separately tracked in settings.row.states.",
+      "notes": "Real React SettingsPanel Account page vs Android rendering of shared SettingsDetailShell/SharedSettingsSectionContent.",
       "providers": [
         {
           "id": "react",
@@ -3055,48 +3659,6 @@
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerProfile",
           "route": "compose_settings_page_visual:server-profile"
-        },
-        {
-          "id": "harmony",
-          "status": "pending",
-          "source": "kmp-shared-ohos",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
-        }
-      ]
-    },
-    {
-      "id": "settings.server.danger",
-      "title": "Settings Server Danger",
-      "surface": "settings",
-      "group": "product-settings",
-      "status": "baseline",
-      "notes": "React SettingsPanel sub-page mapped to the real shared KMP Settings visual route using a pageData variant and typed sample snapshot.",
-      "providers": [
-        {
-          "id": "react",
-          "status": "ready",
-          "components": [
-            "DangerZoneSection"
-          ],
-          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.server.danger.json"
-        },
-        {
-          "id": "android",
-          "status": "ready",
-          "source": "kmp-shared",
-          "components": [
-            "SettingsHomePage",
-            "SettingsDetailShell"
-          ],
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerDanger",
-          "route": "compose_settings_page_visual:server-danger"
         },
         {
           "id": "harmony",
@@ -3830,6 +4392,732 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
           "reason": "Needs Harmony real-device/provider capture; pending providers are excluded from similarity accounting."
+        }
+      ]
+    },
+    {
+      "id": "screens.tasks.index",
+      "title": "Tasks Index Screen",
+      "captureType": "real-screen",
+      "surface": "tasks",
+      "category": "app/tasks",
+      "group": "screens-tasks",
+      "status": "pending",
+      "notes": "Missing true Tasks screen parity: list, filters, task status, and create-task entry need real route captures.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/task/TasksPanel.tsx",
+          "fixture": "fixtures/screens.tasks.index.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SharedTasksPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.auth.login",
+      "title": "Auth Login Screen",
+      "captureType": "real-screen",
+      "surface": "auth",
+      "category": "auth",
+      "group": "screens-auth",
+      "status": "pending",
+      "notes": "Missing true login route parity; old auth.login inputs are not active in the canonical manifest.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/auth/LoginPage.tsx",
+          "fixture": "fixtures/screens.auth.login.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.auth.forgot-password",
+      "title": "Forgot Password Screen",
+      "captureType": "real-screen",
+      "surface": "auth",
+      "category": "auth",
+      "group": "screens-auth",
+      "status": "pending",
+      "notes": "Missing forgot-password route parity for the auth recovery flow.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/auth/ForgotPasswordPage.tsx",
+          "fixture": "fixtures/screens.auth.forgot-password.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/AuthPages.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.thread.channel",
+      "title": "Thread Channel Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "screens-thread",
+      "status": "pending",
+      "notes": "Missing full channel conversation screen: message list, header, composer, thread context, attachments, loading/empty/error states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/ThreadPage.tsx",
+          "fixture": "fixtures/screens.thread.channel.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.thread.dm",
+      "title": "Thread DM Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "screens-thread",
+      "status": "pending",
+      "notes": "Missing full DM conversation screen variant with member identity/status and reply affordances.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/ThreadPage.tsx",
+          "fixture": "fixtures/screens.thread.dm.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.thread.task-thread",
+      "title": "Task Thread Screen",
+      "captureType": "real-screen",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "screens-thread",
+      "status": "pending",
+      "notes": "Missing task-thread conversation variant with bound task context and status controls.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/ThreadPage.tsx",
+          "fixture": "fixtures/screens.thread.task-thread.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.index",
+      "title": "Members Index Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "pending",
+      "notes": "Missing full Members landing screen: humans/agents groups, empty/loading/error, and invite/add flows.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/screens.members.index.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.permissions",
+      "title": "Members Agent Detail Permissions Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "pending",
+      "notes": "Missing agent detail Permissions tab true-screen parity.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/screens.members.agent-detail.permissions.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.workspace",
+      "title": "Members Agent Detail Workspace Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "pending",
+      "notes": "Missing agent detail Workspace tab true-screen parity: workspace tree and file preview states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/screens.members.agent-detail.workspace.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.activity",
+      "title": "Members Agent Detail Activity Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "pending",
+      "notes": "Missing agent detail Activity tab true-screen parity.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/screens.members.agent-detail.activity.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "components.members.agent-lifecycle-actions",
+      "title": "Members Agent Lifecycle Actions",
+      "captureType": "component-fixture",
+      "surface": "members",
+      "category": "members",
+      "group": "components-members",
+      "status": "pending",
+      "notes": "Missing component fixture for agent lifecycle actions/menu/modal states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/components.members.agent-lifecycle-actions.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Android/KMP component fixture capture."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "components.members.avatar-management",
+      "title": "Members Avatar Management",
+      "captureType": "component-fixture",
+      "surface": "members",
+      "category": "members",
+      "group": "components-members",
+      "status": "pending",
+      "notes": "Missing component fixture for avatar picker/management menu states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/MembersPage.tsx",
+          "fixture": "fixtures/components.members.avatar-management.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Android/KMP component fixture capture."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.computers",
+      "title": "Settings Computers Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Missing true Settings Computers page parity.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/screens.settings.computers.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.computer-detail",
+      "title": "Settings Computer Detail Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Missing true Settings Computer Detail page parity.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/screens.settings.computer-detail.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsComputersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.storage",
+      "title": "Settings Storage Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Missing true Settings Storage page parity.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx",
+          "fixture": "fixtures/screens.settings.storage.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsStoragePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsStoragePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.appearance",
+      "title": "Settings Appearance Screen",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Existing settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx#AppearanceSection",
+          "fixture": "fixtures/screens.settings.appearance.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.server-danger-modal",
+      "title": "Settings Server Danger Modal",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Missing real SlockModal-open capture for server danger actions; do not restore the stale standalone settings.server.danger page.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx#DangerZoneSection",
+          "fixture": "fixtures/screens.settings.server-danger-modal.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.settings.billing-portal",
+      "title": "Settings Billing Portal Flow",
+      "captureType": "real-screen",
+      "surface": "settings",
+      "category": "app/settings",
+      "group": "screens-settings",
+      "status": "pending",
+      "notes": "Missing real billing portal/open-browser/WebView fallback visual gate.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/settings/SettingsPanel.tsx#BillingTabContent",
+          "fixture": "fixtures/screens.settings.billing-portal.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.home.index",
+      "title": "Home Index Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "group": "screens-home",
+      "status": "pending",
+      "notes": "Missing true Home channel/thread list screen parity with realistic server/channel data.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/layout/Sidebar.tsx",
+          "fixture": "fixtures/screens.home.index.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.home.saved",
+      "title": "Home Saved Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "group": "screens-home",
+      "status": "pending",
+      "notes": "Existing home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/SavedPage.tsx",
+          "fixture": "fixtures/screens.home.saved.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.home.activity",
+      "title": "Home Activity Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "group": "screens-home",
+      "status": "pending",
+      "notes": "Existing home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/pages/ActivityPage.tsx",
+          "fixture": "fixtures/screens.home.activity.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/HomePage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "components.thread.message-row.rich-content",
+      "title": "Thread Message Row Rich Content",
+      "captureType": "component-fixture",
+      "surface": "thread",
+      "category": "app/thread",
+      "group": "components-thread",
+      "status": "pending",
+      "notes": "Missing expanded message-row fixture with richer body, mentions, attachments, reply count, and task/link states.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/message/MessageItem.tsx",
+          "fixture": "fixtures/components.thread.message-row.rich-content.json",
+          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadMessageRow.kt",
+          "reason": "Needs Android/KMP component fixture capture."
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "kmp-shared-ohos",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadMessageRow.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
     }

@@ -62,6 +62,175 @@ node tools/visual-testing/src/cli.mjs publish-gh-pages --baseline react --curren
 
 The Android repo keeps `scripts/slock-visual-testing.mjs` as a compatibility shim.
 
+## Capture Taxonomy
+
+Visual testing is split into two explicit suites:
+
+- `components.*` cases are component fixture captures. They may use deterministic
+  mock fixture state, but both providers must render the real product
+  component/code path. These cases use `captureType: "component-fixture"` and
+  appear under **Components Parity** in the generated report.
+- `screens.*` cases are full real-screen captures. They must launch the real
+  product page/route/screen container on device, not a purpose-built visual
+  fixture page. These cases use `captureType: "real-screen"` and appear under
+  **Screens Parity** in the generated report.
+
+The CLI infers `real-screen` for ids prefixed with `screens.` and
+`component-fixture` otherwise. Existing legacy case ids such as
+`home.activity.results` are therefore treated as component fixture captures
+until they are deliberately renamed or replaced. New cases should use the
+taxonomy prefix from the start:
+
+```json
+{
+  "id": "components.thread.message-row",
+  "captureType": "component-fixture"
+}
+```
+
+```json
+{
+  "id": "screens.thread.channel",
+  "captureType": "real-screen"
+}
+```
+
+Generated `diff`, `metadata`, `component-matrix`, HTML, and `llms.txt` output
+include `captureType` so downstream summaries can distinguish fixture parity
+from true app-screen parity.
+
+Component providers should also emit stable style probes in their metadata JSON
+when typography or design-token parity matters. The report reads these optional
+fields and shows them beside the screenshots:
+
+```json
+{
+  "typography": [
+    {
+      "selector": "[data-testid='message-body']",
+      "text": "Hello @Cindy",
+      "fontFamily": "Inter",
+      "fontSize": 14,
+      "fontWeight": 400,
+      "lineHeight": 20,
+      "letterSpacing": 0,
+      "color": "#141111"
+    }
+  ],
+  "styleTokens": [
+    {
+      "selector": "[data-testid='message-card']",
+      "backgroundColor": "#FFFFFF",
+      "borderColor": "#141111",
+      "shadow": "3px 3px 0 #141111"
+    }
+  ]
+}
+```
+
+Use stable selector/component labels rather than pixel coordinates. Keep this
+metadata out of the image itself; it belongs in provider metadata and the report
+case card so typography, size, weight, color, and token differences are
+machine-readable.
+
+## Android / KMP Connected Captures
+
+Most Android baselines should be captured through the dedicated KMP visual pages,
+not by manually navigating the app to an equivalent state. The connected test
+entry point is:
+
+```text
+compose/androidApp/src/androidTest/java/ai/slock/android/visual/KmpVisualScreenshotCaptureTest.kt
+```
+
+Each test method launches `SlockKuiklyActivity` with a `compose_*_visual` page
+and deterministic `pageData`, captures the app window, crops/normalizes to dp
+pixels, validates that the image is non-blank, and writes both PNG and metadata.
+
+Run a focused case from the Android repo:
+
+```bash
+cd compose
+ANDROID_SERIAL=emulator-5560 ./gradlew --no-daemon --console=plain \
+  :androidApp:connectedConnectedTestAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=ai.slock.android.visual.KmpVisualScreenshotCaptureTest#captureThreadMessageRow
+```
+
+Artifacts are mirrored for `adb pull` here:
+
+```text
+/sdcard/Download/slock-visual-testing/android/<caseId>.png
+/sdcard/Download/slock-visual-testing/android/<caseId>.metadata.json
+```
+
+Copy both files into the visual-testing result tree before diffing:
+
+```bash
+adb -s emulator-5560 pull \
+  /sdcard/Download/slock-visual-testing/android/thread.message.row.png \
+  ../visual-testing-results/android/
+adb -s emulator-5560 pull \
+  /sdcard/Download/slock-visual-testing/android/thread.message.row.metadata.json \
+  ../visual-testing-results/android/
+```
+
+Use the built-in KMP visual-page path first for these surfaces:
+
+| Case | Connected test method | KMP visual page |
+| --- | --- | --- |
+| `tokens.palette` | `captureTokenPalette` | `compose_tokens_palette_visual` |
+| `navigation.tabbar.states` | `captureNavigationTabbarStates` | `compose_bottom_tabbar_visual` |
+| `auth.login.inputs.empty` | `captureAuthLoginInputsEmpty` | `compose_auth_login_inputs` |
+| `auth.login.inputs.filled` | `captureAuthLoginInputsFilled` | `compose_auth_login_inputs` |
+| `auth.login.inputs.invalid` | `captureAuthLoginInputsInvalid` | `compose_auth_login_inputs` |
+| `auth.register.inputs` | `captureAuthRegisterInputs` | `compose_auth_register_inputs` |
+| `thread.message.row` | `captureThreadMessageRow` | `compose_thread_message_row_visual` |
+| `thread.composer.empty` | `captureThreadComposerEmpty` | `compose_thread_composer_visual` |
+| `thread.composer.states` | `captureThreadComposerStates` | `compose_thread_composer_visual` |
+| `thread.composer.as-task-selected` | `captureThreadComposerAsTaskSelected` | `compose_thread_composer_visual` |
+| `home.titlebar.states` | `captureHomeTitlebarStates` | `compose_home_titlebar_visual` |
+| `home.notification-center.states` | `captureHomeNotificationCenterStates` | `compose_home_notification_center_visual` |
+| `home.search.results` | `captureHomeSearchResults` | `compose_home_search_visual` |
+| `home.search.channel-dropdown` | `captureHomeSearchChannelDropdown` | `compose_home_search_channel_dropdown_visual` |
+| `home.saved.results` | `captureHomeSavedResults` | `compose_home_saved_visual` |
+| `home.activity.results` | `captureHomeActivityResults` | `compose_home_activity_visual` |
+| `home.create-channel.dialog` | `captureHomeCreateChannelDialog` | `compose_home_create_channel_dialog_visual` |
+| `members.create-agent.dialog` | `captureMembersCreateAgentCodexDialog` | `compose_create_agent_dialog_visual` |
+| `members.create-agent.claude-dialog` | `captureMembersCreateAgentClaudeDialog` | `compose_create_agent_dialog_visual` |
+| `members.create-agent.claude-custom-provider-dialog` | `captureMembersCreateAgentClaudeCustomProviderDialog` | `compose_create_agent_dialog_visual` |
+| `members.agent-detail.profile` | `captureMembersAgentDetailProfile` | `compose_members_agent_detail_visual` |
+| `channel.members.panel` | `captureChannelMembersPanel` | `compose_channel_members_panel_visual` |
+| `channel.settings.panel` | `captureChannelSettingsPanel` | `compose_channel_settings_panel_visual` |
+| `channel.members.add-panel` | `captureChannelAddMemberPanel` | `compose_channel_add_member_panel_visual` |
+| `settings.page.states` | `captureSettingsPageStates` | `compose_settings_page_visual` |
+| `settings.account.page` | `captureSettingsAccountPage` | `compose_settings_page_visual` |
+| `settings.account.provider-linked` | `captureSettingsAccountProviderLinked` | `compose_settings_page_visual` |
+| `settings.account.password-expanded` | `captureSettingsAccountPasswordExpanded` | `compose_settings_page_visual` |
+| `settings.account.error-state` | `captureSettingsAccountErrorState` | `compose_settings_page_visual` |
+| `settings.server.profile` | `captureSettingsServerProfile` | `compose_settings_page_visual` |
+| `settings.administration.admins` | `captureSettingsAdministrationAdmins` | `compose_settings_page_visual` |
+| `settings.administration.invites` | `captureSettingsAdministrationInvites` | `compose_settings_page_visual` |
+| `settings.administration.join-links` | `captureSettingsAdministrationJoinLinks` | `compose_settings_page_visual` |
+| `settings.administration.pre-join-agreement` | `captureSettingsAdministrationPreJoinAgreement` | `compose_settings_page_visual` |
+| `settings.administration.onboarding` | `captureSettingsAdministrationOnboarding` | `compose_settings_page_visual` |
+| `settings.administration.member-permissions` | `captureSettingsAdministrationMemberPermissions` | `compose_settings_page_visual` |
+| `settings.administration.translation` | `captureSettingsAdministrationTranslation` | `compose_settings_page_visual` |
+| `settings.billing.page` | `captureSettingsBillingPage` | `compose_settings_page_visual` |
+| `settings.billing.loading` | `captureSettingsBillingLoading` | `compose_settings_page_visual` |
+| `settings.billing.no-permission` | `captureSettingsBillingNoPermission` | `compose_settings_page_visual` |
+| `settings.billing.trial` | `captureSettingsBillingTrial` | `compose_settings_page_visual` |
+| `settings.billing.founder` | `captureSettingsBillingFounder` | `compose_settings_page_visual` |
+| `settings.billing.downgrade` | `captureSettingsBillingDowngrade` | `compose_settings_page_visual` |
+| `settings.language-region.page` | `captureSettingsLanguageRegionPage` | `compose_settings_page_visual` |
+| `settings.appearance.page` | `captureSettingsAppearancePage` | `compose_settings_page_visual` |
+| `settings.notifications.page` | `captureSettingsNotificationsPage` | `compose_settings_page_visual` |
+| `settings.connected-apps.page` | `captureSettingsConnectedAppsPage` | `compose_settings_page_visual` |
+
+Only fall back to manual device navigation when a case has no KMP visual page,
+or when the goal is explicitly to validate a full end-to-end interaction. If a
+case cannot be rendered through a real provider, mark it blocked and create a
+follow-up case/task instead of checking in a fake baseline.
+
 ## Package Boundary
 
 The package is intentionally small and portable. A packed or published
@@ -122,6 +291,16 @@ artifacts/visual-testing/token-audit.md
 ```
 
 Usage findings distinguish real-surface hard-coded colors that match known tokens from unknown colors that are outside the shared token set. Existing debt is reported instead of silently folded into the palette screenshot; cleanups should be split by component or surface.
+
+Visual cases can be temporarily removed from default capture/diff/report/site accounting with a top-level `skip` field in `shared/sharedCases.json`:
+
+```json
+"skip": {
+  "reason": "Temporarily hidden: case is not a valid parity gate yet."
+}
+```
+
+Skipped cases are excluded by default. Pass `--include-skipped` for explicit one-off capture/diff work while preserving the reason in the component matrix.
 
 ## State Variants
 

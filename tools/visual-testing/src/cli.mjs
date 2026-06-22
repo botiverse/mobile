@@ -31,6 +31,17 @@ const analysisRoot = path.join(resultRoot, "analysis");
 const defaultAndroidRepoDir = repoRoot;
 const pixelPerfectPassThreshold = 0.99;
 const pixelPerfectBasicPassThreshold = 0.96;
+const componentFixtureCaptureType = "component-fixture";
+const realScreenCaptureType = "real-screen";
+const captureTypeValues = new Set([componentFixtureCaptureType, realScreenCaptureType]);
+const captureTypeLabels = {
+  [componentFixtureCaptureType]: "Components Parity",
+  [realScreenCaptureType]: "Screens Parity",
+};
+const captureTypeSegments = {
+  [componentFixtureCaptureType]: "components",
+  [realScreenCaptureType]: "screens",
+};
 const defaultKmpTokenPath = path.join(
   "compose",
   "shared",
@@ -177,6 +188,54 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
 }
 
+function parseTimestamp(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const raw = String(value).trim();
+  if (/^\d+$/.test(raw)) {
+    const numeric = Number(raw);
+    if (!Number.isFinite(numeric)) return null;
+    const millis = numeric < 100000000000 ? numeric * 1000 : numeric;
+    const date = new Date(millis);
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function utcTimestampText(value) {
+  const date = parseTimestamp(value);
+  if (!date) return value ? String(value) : "unknown";
+  return date.toISOString().replace("T", " ").replace(/\.\d{3}Z$/, " UTC");
+}
+
+function localizedTimestampHtml(value, options = {}) {
+  const date = parseTimestamp(value);
+  const label = options.label ? `${options.label} ` : "";
+  if (!date) return `${xmlEscape(label)}${xmlEscape(value ? String(value) : "unknown")}`;
+  const iso = date.toISOString();
+  return `${xmlEscape(label)}<time class="localizedTime" datetime="${xmlEscape(iso)}" data-timestamp="${xmlEscape(iso)}" title="${xmlEscape(String(value))}">${xmlEscape(utcTimestampText(iso))}</time>`;
+}
+
+function localizedTimeScript() {
+  return `<script>
+    (() => {
+      const formatter = new Intl.DateTimeFormat(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      });
+      for (const node of document.querySelectorAll("time.localizedTime[data-timestamp]")) {
+        const date = new Date(node.dataset.timestamp);
+        if (!Number.isNaN(date.getTime())) node.textContent = formatter.format(date);
+      }
+    })();
+  </script>`;
+}
+
 function normalizeHex(value) {
   const raw = String(value || "").trim().replace(/^0x/i, "").replace(/^#/, "").toUpperCase();
   if (/^[0-9A-F]{8}$/.test(raw)) return `#${raw.slice(2)}`;
@@ -277,20 +336,24 @@ function extractReactComponent(file) {
 }
 
 function normalizeCase(item, knownPaths) {
+  const captureType = normalizeCaptureType(item.captureType, item.id);
   const category = item.category || caseCategory(item);
   return {
+    ...item,
+    captureType,
+    captureGroup: captureTypeLabel(captureType),
     category,
-    surface: item.surface || item.id.split(".")[0] || "unknown",
+    surface: item.surface || caseSurface(item) || "unknown",
     fixture: item.fixture || `fixtures/${item.id}.json`,
     viewport: item.viewport || { width: 390, height: 844, density: 3 },
     theme: item.theme || "light",
     locale: item.locale || "zh-CN",
     tolerance: item.tolerance || { pixelRatio: 0.02, layoutDp: 1, ignoreAntialiasing: true },
     capture: {
+      ...(item.capture || {}),
       selector: item.selector || item.capture?.selector || `[data-visual-case='${item.id}']`,
       crop: item.capture?.crop || "element",
     },
-    ...item,
     variants: normalizeVariants(item),
     reactSourceExists: item.reactPathHint ? knownPaths.has(item.reactPathHint) : false,
   };
@@ -353,26 +416,42 @@ function scanReact() {
       metadata: "visual-testing-results/<provider>/<case-id>.metadata.json",
     },
     metadataRequiredFields: ["provider", "caseId", "image", "viewport", "capturedAt"],
+    metadataOptionalFields: {
+      typography: "Array or object with text/style probes such as selector, text, fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, color.",
+      styleTokens: "Array or object with relevant design-token/computed-style probes such as backgroundColor, borderColor, shadow, radius, spacing.",
+      computedStyles: "Array or object for provider-specific computed CSS/KMP style snapshots. Prefer stable selector/component labels.",
+    },
   });
   console.log(`scan: ${inventory.length} component files, ${Object.keys(tokens).length} tokens, ${cases.length} cases, ${componentMatrix.length} matrix rows`);
 }
 
 function normalizeComponentMatrix(sharedManifest, cases) {
   const rows = new Map();
+  const skippedCases = new Map(cases.filter(isSkippedCase).map((visualCase) => [visualCase.id, visualCase]));
   for (const visualCase of cases) {
     rows.set(visualCase.id, normalizeMatrixRow({
       id: visualCase.id,
       title: visualCase.title || visualCase.id,
+      captureType: visualCase.captureType,
+      captureGroup: visualCase.captureGroup,
       category: visualCase.category || caseCategory(visualCase),
       surface: visualCase.surface || "unknown",
       group: visualCase.group || visualCase.category || visualCase.surface || "unknown",
-      status: visualCase.baselineStatus || "active",
+      status: isSkippedCase(visualCase) ? "skipped" : visualCase.baselineStatus || "active",
       providers: visualCase.providerMatrix || {},
+      notes: skipReason(visualCase),
     }));
   }
   for (const row of sharedManifest?.componentMatrix || []) {
     const base = rows.get(row.id) || {};
-    rows.set(row.id, normalizeMatrixRow({ ...base, ...row, providers: { ...(base.providers || {}), ...(row.providers || {}) } }));
+    const skippedCase = skippedCases.get(row.id);
+    rows.set(row.id, normalizeMatrixRow({
+      ...base,
+      ...row,
+      status: skippedCase ? "skipped" : row.status || base.status,
+      notes: skippedCase ? skipReason(skippedCase) : row.notes || base.notes,
+      providers: mergeProviderMatrix(base.providers, row.providers),
+    }));
   }
   return [...rows.values()].sort((a, b) => {
     const groupCompare = String(a.group || "").localeCompare(String(b.group || ""));
@@ -381,30 +460,55 @@ function normalizeComponentMatrix(sharedManifest, cases) {
 }
 
 function normalizeMatrixRow(row) {
-  const providers = {};
-  for (const [provider, value] of Object.entries(row.providers || {})) {
-    providers[provider] = normalizeProviderMatrixEntry(value);
-  }
+  const captureType = normalizeCaptureType(row.captureType, row.id);
   return {
     id: row.id,
     title: row.title || row.id,
+    captureType,
+    captureGroup: row.captureGroup || captureTypeLabel(captureType),
     category: row.category || caseCategory(row),
     surface: row.surface || "unknown",
     group: row.group || row.category || row.surface || "unknown",
     status: row.status || "active",
-    providers,
+    providers: normalizeProviderMatrix(row.providers),
     notes: row.notes || "",
   };
+}
+
+function skipReason(visualCase) {
+  if (!isSkippedCase(visualCase)) return visualCase.notes || "";
+  if (typeof visualCase.skip === "object" && visualCase.skip.reason) return visualCase.skip.reason;
+  return visualCase.notes || "Skipped from visual similarity accounting.";
 }
 
 function normalizeProviderMatrixEntry(value) {
   if (typeof value === "string") return { status: value, components: [], path: "", fixture: "", reason: "" };
   return {
+    ...value,
     status: value.status || "pending",
     components: Array.isArray(value.components) ? value.components : [],
     path: value.path || "",
     fixture: value.fixture || "",
     reason: value.reason || "",
+  };
+}
+
+function normalizeProviderMatrix(providers) {
+  const normalized = {};
+  const entries = Array.isArray(providers)
+    ? providers.map((entry) => [entry.id || entry.provider || entry.name, entry])
+    : Object.entries(providers || {});
+  for (const [provider, value] of entries) {
+    if (!provider) continue;
+    normalized[provider] = normalizeProviderMatrixEntry(value);
+  }
+  return normalized;
+}
+
+function mergeProviderMatrix(baseProviders, nextProviders) {
+  return {
+    ...normalizeProviderMatrix(baseProviders),
+    ...normalizeProviderMatrix(nextProviders),
   };
 }
 
@@ -479,19 +583,31 @@ function selectedCases(manifest, flags) {
     .map((item) => item.trim())
     .filter(Boolean);
   const includePending = Boolean(flags["include-pending"]);
+  const includeSkipped = Boolean(flags["include-skipped"]);
   const allCases = manifest.cases || [];
   let cases = only
     ? allCases.filter((item) => only.has(item.id))
     : allCases.filter((item) => includePending || item.baselineStatus !== "pending");
+  cases = cases.filter((item) => includeSkipped || !isSkippedCase(item));
   if (filters.length > 0) {
     cases = cases.filter((item) => filters.some((filter) => caseMatchesFilter(item, filter)));
   }
   if (only && cases.length !== only.size) {
     const found = new Set(cases.map((item) => item.id));
     const missing = [...only].filter((item) => !found.has(item));
+    const skipped = allCases.filter((item) => only.has(item.id) && isSkippedCase(item)).map((item) => item.id);
+    if (skipped.length > 0 && !includeSkipped) {
+      throw new Error(`Skipped visual testing case(s): ${skipped.join(", ")}. Pass --include-skipped to run them explicitly.`);
+    }
     throw new Error(`Unknown visual testing case(s): ${missing.join(", ")}`);
   }
   return cases;
+}
+
+function isSkippedCase(visualCase) {
+  const value = visualCase?.skip;
+  if (value === true) return true;
+  return Boolean(value && typeof value === "object" && value.enabled !== false);
 }
 
 function hasCaseSelection(flags) {
@@ -508,13 +624,36 @@ function expectedFullPublishCaseCount(flags) {
   }).length;
 }
 
+function normalizeCaptureType(value, id = "") {
+  const raw = String(value || "").trim();
+  if (captureTypeValues.has(raw)) return raw;
+  if (String(id || "").startsWith("screens.")) return realScreenCaptureType;
+  return componentFixtureCaptureType;
+}
+
+function captureTypeLabel(value) {
+  return captureTypeLabels[normalizeCaptureType(value)] || captureTypeLabels[componentFixtureCaptureType];
+}
+
+function captureTypeSegment(value) {
+  return captureTypeSegments[normalizeCaptureType(value)] || captureTypeSegments[componentFixtureCaptureType];
+}
+
+function caseSurface(visualCase) {
+  const id = String(visualCase.id || "");
+  if (!id) return visualCase.surface || "unknown";
+  const parts = id.split(".");
+  if ((parts[0] === "components" || parts[0] === "screens") && parts[1]) return parts[1];
+  return visualCase.surface || parts[0] || "unknown";
+}
+
 function caseCategory(visualCase) {
   if (visualCase.category) return visualCase.category;
   if (String(visualCase.id || "").includes("/")) {
     const parts = String(visualCase.id).split("/");
     return parts.slice(0, -1).join("/") || parts[0] || "uncategorized";
   }
-  const surface = visualCase.surface || String(visualCase.id || "").split(".")[0] || "uncategorized";
+  const surface = caseSurface(visualCase);
   if (["home", "thread", "settings", "navigation", "tasks"].includes(surface)) return `app/${surface}`;
   if (surface === "components") return "components";
   if (surface === "tokens") return "tokens";
@@ -524,16 +663,32 @@ function caseCategory(visualCase) {
 
 function casePath(visualCase) {
   if (String(visualCase.id || "").includes("/")) return String(visualCase.id);
+  const captureType = normalizeCaptureType(visualCase.captureType, visualCase.id);
+  const captureSegment = captureTypeSegment(captureType);
   const category = caseCategory(visualCase);
   const id = String(visualCase.id || "");
-  const surfacePrefix = `${visualCase.surface || ""}.`;
-  const local = surfacePrefix !== "." && id.startsWith(surfacePrefix) ? id.slice(surfacePrefix.length) : id;
-  return `${category}/${local.replaceAll(".", "/")}`;
+  const taxonomyPrefix = `${captureSegment}.`;
+  const withoutTaxonomy = id.startsWith(taxonomyPrefix) ? id.slice(taxonomyPrefix.length) : id;
+  const surfacePrefix = `${caseSurface(visualCase)}.`;
+  const local = surfacePrefix !== "." && withoutTaxonomy.startsWith(surfacePrefix)
+    ? withoutTaxonomy.slice(surfacePrefix.length)
+    : withoutTaxonomy;
+  return `${captureSegment}/${category}/${local.replaceAll(".", "/")}`;
 }
 
 function caseMatchesFilter(visualCase, filter) {
   const normalized = filter.replace(/\/+$/g, "");
-  const candidates = [visualCase.id, caseCategory(visualCase), casePath(visualCase), visualCase.surface, visualCase.group]
+  const captureType = normalizeCaptureType(visualCase.captureType, visualCase.id);
+  const candidates = [
+    visualCase.id,
+    captureType,
+    captureTypeLabel(captureType),
+    captureTypeSegment(captureType),
+    caseCategory(visualCase),
+    casePath(visualCase),
+    visualCase.surface,
+    visualCase.group,
+  ]
     .filter(Boolean)
     .map(String);
   if (normalized.endsWith("/*")) {
@@ -600,9 +755,13 @@ function diff(flags) {
     const currentMetadata = readMetadata(current, visualCase.id);
     const baselineImage = rawBaselineImage && isCanonicalProviderCapture(baseline, baselineMetadata) ? rawBaselineImage : null;
     const currentImage = rawCurrentImage && isCanonicalProviderCapture(current, currentMetadata) ? rawCurrentImage : null;
+    const captureType = normalizeCaptureType(visualCase.captureType, visualCase.id);
     const entry = {
       id: visualCase.id,
       surface: visualCase.surface,
+      category: visualCase.category || caseCategory(visualCase),
+      captureType,
+      captureGroup: captureTypeLabel(captureType),
       baseline,
       current,
       tolerance: visualCase.tolerance,
@@ -716,6 +875,9 @@ function report(flags) {
   if (!fs.existsSync(diffPath)) diff(flags);
   if (shouldRunAnalysis(flags) && (flags.force || flags.analyze || flags.analysis || !fs.existsSync(analysisPath(comparison)))) analyze(flags);
   const diffData = withAnalysis(fs.existsSync(diffPath) ? readJson(diffPath) : { results: [], summary: {} }, baseline, current);
+  const manifest = loadManifest(flags);
+  const componentMatrix = enrichComponentMatrix(manifest.componentMatrix || normalizeComponentMatrix(null, manifest.cases || []), diffData, baseline, current);
+  const componentMatrixSummary = summarizeComponentMatrix(componentMatrix);
   const html = visualDetailHtml(diffData, {
     generatedAt: diffData.generatedAt || new Date().toISOString(),
     runId: "local",
@@ -725,8 +887,8 @@ function report(flags) {
     current,
     comparison,
     summary: diffData.summary || {},
-    componentMatrixSummary: {},
-    componentMatrix: [],
+    componentMatrixSummary,
+    componentMatrix,
   }, "", "./");
   ensureDir(resultRoot);
   fs.writeFileSync(path.join(resultRoot, "report.html"), html);
@@ -1097,8 +1259,11 @@ function enrichComponentMatrix(matrix, diffData, baseline, current) {
   const resultById = new Map((diffData.results || []).map((item) => [item.id, item]));
   return (matrix || []).map((row) => {
     const result = resultById.get(row.id);
+    const captureType = normalizeCaptureType(row.captureType, row.id);
     return {
       ...row,
+      captureType,
+      captureGroup: row.captureGroup || captureTypeLabel(captureType),
       category: row.category || caseCategory(row),
       comparison: result
         ? {
@@ -1121,21 +1286,37 @@ function summarizeComponentMatrix(matrix) {
     total: 0,
     active: 0,
     pending: 0,
+    skipped: 0,
+    captureTypes: {
+      [componentFixtureCaptureType]: { total: 0, active: 0, pending: 0, skipped: 0 },
+      [realScreenCaptureType]: { total: 0, active: 0, pending: 0, skipped: 0 },
+    },
     providers: {},
   };
   for (const row of matrix || []) {
+    const captureType = normalizeCaptureType(row.captureType, row.id);
     summary.total += 1;
-    if (row.status === "active") summary.active += 1;
+    if (isActiveCoverageStatus(row.status)) summary.active += 1;
+    else if (row.status === "skipped") summary.skipped += 1;
     else summary.pending += 1;
+    if (!summary.captureTypes[captureType]) summary.captureTypes[captureType] = { total: 0, active: 0, pending: 0, skipped: 0 };
+    summary.captureTypes[captureType].total += 1;
+    if (isActiveCoverageStatus(row.status)) summary.captureTypes[captureType].active += 1;
+    else if (row.status === "skipped") summary.captureTypes[captureType].skipped += 1;
+    else summary.captureTypes[captureType].pending += 1;
     for (const [provider, entry] of Object.entries(row.providers || {})) {
       if (!summary.providers[provider]) summary.providers[provider] = { active: 0, pending: 0, unsupported: 0, total: 0 };
       summary.providers[provider].total += 1;
-      if (entry.status === "active") summary.providers[provider].active += 1;
+      if (isActiveCoverageStatus(entry.status)) summary.providers[provider].active += 1;
       else if (entry.status === "unsupported") summary.providers[provider].unsupported += 1;
       else summary.providers[provider].pending += 1;
     }
   }
   return summary;
+}
+
+function isActiveCoverageStatus(status) {
+  return ["active", "baseline", "ready"].includes(String(status || ""));
 }
 
 function copyCurrentResultFiles(diffData, latestDir, comparison) {
@@ -1176,6 +1357,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
   const tree = categoryTreeHtml(diffData.results || [], latestPrefix);
   const groups = groupedCaseCards(diffData.results || [], latestPrefix);
   const analysisSummary = diffData.analysis?.summary || metadata.analysisSummary || {};
+  const capturePills = captureTypeSummaryPills(metadata.componentMatrixSummary);
   const rows = groups.map((group) => {
     const cards = group.items.map((item) => caseCardHtml(item, latestPrefix)).join("\n");
     return `<section class="caseGroup" id="group-${xmlEscape(anchorId(group.category))}">
@@ -1187,10 +1369,10 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
   const matrixSection = matrixRows
     ? `<section class="machineData">
       <details>
-        <summary>Component matrix</summary>
+        <summary>Visual coverage matrix</summary>
         <div class="matrix">
           <table>
-            <thead><tr><th>Group</th><th>Case</th><th>Status</th><th>Providers</th><th>${xmlEscape(metadata.baseline)} vs ${xmlEscape(metadata.current)}</th></tr></thead>
+            <thead><tr><th>Type</th><th>Group</th><th>Case</th><th>Status</th><th>Providers</th><th>${xmlEscape(metadata.baseline)} vs ${xmlEscape(metadata.current)}</th></tr></thead>
             <tbody>${matrixRows}</tbody>
           </table>
         </div>
@@ -1233,6 +1415,14 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .rawPanel { border: 1px solid #141111; background: #fffaf0; padding: 8px; overflow: auto; }
     .rawPanel strong { display: block; margin-bottom: 6px; font-size: 12px; }
     .rawPanel img { width: auto; max-width: 100%; height: auto; border: 1px solid #cfc7c2; }
+    .visualMetadata { border: 1px solid #141111; background: #fffaf0; margin: 10px 0; padding: 8px; }
+    .visualMetadata summary { cursor: pointer; font-weight: 800; }
+    .metadataSection { margin-top: 8px; }
+    .metadataSection h3 { margin: 0 0 6px; font-size: 13px; }
+    .metadataGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+    .metadataPanel { border: 1px solid #cfc7c2; background: #fff; padding: 8px; min-width: 0; }
+    .metadataPanel strong { display: block; margin-bottom: 6px; font-size: 12px; }
+    .metadataPanel pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 11px; }
     .caseMeta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0; }
     .caseMeta div { border: 1px solid #141111; background: #fffaf0; padding: 6px; font-size: 12px; }
     .caseLinks { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -1253,6 +1443,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
     .matrix th, .matrix td { border: 1px solid #141111; padding: 8px; text-align: left; vertical-align: top; font-size: 13px; }
     .matrix th { background: #FFD440; }
     .runMeta { color: #514946; margin: 0 0 10px; }
+    .captureTime { display: block; margin-top: 4px; color: #514946; }
     .providerStatus { display: inline-block; border: 1px solid #141111; padding: 2px 5px; margin: 2px 4px 2px 0; background: #fffaf0; }
     .same { color: #2f6f1f; }
     .pass { color: #2f6f1f; }
@@ -1269,7 +1460,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
 <body>
   <header>
     <h1><a href="${xmlEscape(homeHref)}">Slock Visual Testing</a></h1>
-    <p class="runMeta"><code>${xmlEscape(metadata.runId || "local")}</code> · <strong>${xmlEscape(metadata.baseline)}</strong> vs <strong>${xmlEscape(metadata.current)}</strong> · ${xmlEscape(metadata.generatedAt)}</p>
+    <p class="runMeta"><code>${xmlEscape(metadata.runId || "local")}</code> · <strong>${xmlEscape(metadata.baseline)}</strong> vs <strong>${xmlEscape(metadata.current)}</strong> · ${localizedTimestampHtml(metadata.generatedAt, { label: "Generated" })}</p>
     <div class="summary">
       <span class="pill">Total ${Number(metadata.summary.total || 0)}</span>
       <span class="pill">Same ${Number(metadata.summary.same || 0)}</span>
@@ -1279,6 +1470,7 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
       <span class="pill">Missing ${Number(metadata.summary.missing || 0)}</span>
       <span class="pill">AI ${Number(analysisSummary.ready || 0)}/${Number(analysisSummary.total || 0)} ready</span>
       ${metadata.componentMatrixSummary?.total ? `<span class="pill">Matrix ${Number(metadata.componentMatrixSummary?.active || 0)}/${Number(metadata.componentMatrixSummary?.total || 0)} active</span>` : ""}
+      ${capturePills}
     </div>
   </header>
   <div class="layout">
@@ -1293,12 +1485,13 @@ function visualDetailHtml(diffData, metadata, latestPrefix, homeHref = "./") {
       <summary>Downloads / machine data</summary>
       <div class="downloads">
         <a href="${xmlEscape(diffJsonHref)}">diff JSON</a>
-        <a href="${xmlEscape(matrixHref)}">component matrix JSON</a>
+        <a href="${xmlEscape(matrixHref)}">coverage matrix JSON</a>
         <a href="${xmlEscape(metadataHref)}">run metadata JSON</a>
       </div>
     </details>
   </section>
   ${matrixSection}
+  ${localizedTimeScript()}
 </body>
 </html>
 `;
@@ -1311,20 +1504,24 @@ function caseCardHtml(item, latestPrefix) {
     const cropInfo = cropContractPreview(item);
     const baselineRaw = rawSizeText(item.baselineMetadata);
     const currentRaw = rawSizeText(item.currentMetadata);
+    const baselineCaptured = providerCapturedHtml(item.baselineMetadata);
+    const currentCaptured = providerCapturedHtml(item.currentMetadata);
     const baselineImage = item.baselineImage ? `${latestPrefix}${path.relative(resultRoot, path.join(repoRoot, item.baselineImage))}` : "";
     const currentImage = item.currentImage ? `${latestPrefix}${path.relative(resultRoot, path.join(repoRoot, item.currentImage))}` : "";
     const sideBySide = item.sideBySideImage ? `${latestPrefix}${path.relative(resultRoot, path.join(repoRoot, item.sideBySideImage))}` : "";
     const acceptance = item.acceptance ? `<p class="cropInfo">${xmlEscape(item.acceptance)}${item.rawStatus && item.rawStatus !== item.status ? ` · raw ${xmlEscape(item.rawStatus)}` : ""}</p>` : "";
+    const captureType = normalizeCaptureType(item.captureType, item.id);
     return `<article class="case" id="case-${xmlEscape(anchorId(item.id))}">
       <div class="caseHeader">
-        <div><code>${xmlEscape(item.id)}</code><span>${xmlEscape(casePath(item))}</span></div>
+        <div><code>${xmlEscape(item.id)}</code><span>${xmlEscape(captureTypeLabel(captureType))} · ${xmlEscape(casePath(item))}</span></div>
         <strong class="${xmlEscape(item.status)}">${xmlEscape(item.status)}</strong>
       </div>
       ${image ? `<a href="${xmlEscape(image)}"><img class="sideBySide" src="${xmlEscape(image)}" alt="${xmlEscape(item.id)} side by side"/></a>` : ""}
       <div class="caseMeta">
-        <div><strong>${xmlEscape(providerLabel(item.baseline))}</strong><br/><code>${xmlEscape(baselineRaw)}</code></div>
-        <div><strong>${xmlEscape(providerLabel(item.current))}</strong><br/><code>${xmlEscape(currentRaw)}</code></div>
+        <div><strong>${xmlEscape(providerLabel(item.baseline))}</strong><br/><code>${xmlEscape(baselineRaw)}</code>${baselineCaptured}</div>
+        <div><strong>${xmlEscape(providerLabel(item.current))}</strong><br/><code>${xmlEscape(currentRaw)}</code>${currentCaptured}</div>
       </div>
+      ${componentMetadataHtml(item)}
       <p>${similarityPreview(item.metrics)}</p>
       ${acceptance}
       ${cropInfo ? `<p class="cropInfo">${cropInfo}</p>` : ""}
@@ -1336,6 +1533,56 @@ function caseCardHtml(item, latestPrefix) {
         ${sideBySide ? `<a href="${xmlEscape(sideBySide)}">Side-by-side PNG</a>` : ""}
       </div>
     </article>`;
+}
+
+function providerCapturedHtml(metadata) {
+  return metadata?.capturedAt
+    ? `<span class="captureTime">${localizedTimestampHtml(metadata.capturedAt, { label: "Captured" })}</span>`
+    : "";
+}
+
+function componentMetadataHtml(item) {
+  if (normalizeCaptureType(item.captureType, item.id) !== componentFixtureCaptureType) return "";
+  const sections = [
+    ["typography", "Typography"],
+    ["styleTokens", "Style tokens"],
+    ["computedStyles", "Computed styles"],
+  ].map(([field, label]) => metadataComparisonSection(field, label, item.baseline, item.current, item.baselineMetadata, item.currentMetadata))
+    .filter(Boolean)
+    .join("");
+  if (!sections) {
+    return `<details class="visualMetadata">
+      <summary>Component metadata</summary>
+      <p class="cropInfo">No typography/style metadata captured yet. Providers can emit <code>typography</code>, <code>styleTokens</code>, or <code>computedStyles</code> in their metadata JSON.</p>
+    </details>`;
+  }
+  return `<details class="visualMetadata" open>
+    <summary>Component metadata</summary>
+    ${sections}
+  </details>`;
+}
+
+function metadataComparisonSection(field, label, baseline, current, baselineMetadata, currentMetadata) {
+  const baselineValue = baselineMetadata?.[field];
+  const currentValue = currentMetadata?.[field];
+  if (baselineValue === undefined && currentValue === undefined) return "";
+  return `<section class="metadataSection">
+    <h3>${xmlEscape(label)}</h3>
+    <div class="metadataGrid">
+      ${metadataValuePanel(providerLabel(baseline), baselineValue)}
+      ${metadataValuePanel(providerLabel(current), currentValue)}
+    </div>
+  </section>`;
+}
+
+function metadataValuePanel(label, value) {
+  const content = value === undefined
+    ? "not captured"
+    : JSON.stringify(value, null, 2);
+  return `<div class="metadataPanel">
+    <strong>${xmlEscape(label)}</strong>
+    <pre>${xmlEscape(content)}</pre>
+  </div>`;
 }
 
 function analysisHtml(analysis, latestPrefix) {
@@ -1377,7 +1624,8 @@ function groupedCaseCards(results, latestPrefix) {
   const groups = [];
   const byCategory = new Map();
   for (const item of results || []) {
-    const category = caseCategory(item);
+    const captureType = normalizeCaptureType(item.captureType, item.id);
+    const category = `${captureTypeLabel(captureType)} / ${caseCategory(item)}`;
     if (!byCategory.has(category)) {
       const group = { category, items: [] };
       byCategory.set(category, group);
@@ -1423,6 +1671,7 @@ function treeNodeHtml(node, hrefPrefix) {
 
 function componentMatrixHtml(matrix) {
   return (matrix || []).map((row) => {
+    const captureType = normalizeCaptureType(row.captureType, row.id);
     const providers = Object.entries(row.providers || {}).map(([provider, entry]) => {
       const components = entry.components?.length ? ` ${entry.components.join(", ")}` : "";
       const reason = entry.reason ? `<br/><small>${xmlEscape(entry.reason)}</small>` : "";
@@ -1434,6 +1683,7 @@ function componentMatrixHtml(matrix) {
       ? `${xmlEscape(row.comparison.status)}${rawStatus}${acceptance}${row.comparison.rgbSimilarity !== null ? `<br/><code>RGB ${(Number(row.comparison.rgbSimilarity) * 100).toFixed(1)}%</code><br/><code>Pixel ${(Number(row.comparison.pixelPerfectSimilarity || 0) * 100).toFixed(2)}%</code>` : ""}`
       : "pending";
     return `<tr>
+      <td><strong>${xmlEscape(captureTypeLabel(captureType))}</strong><br/><code>${xmlEscape(captureType)}</code></td>
       <td>${xmlEscape(row.category || row.group || "")}</td>
       <td><code>${xmlEscape(row.id)}</code><br/>${xmlEscape(row.title || "")}</td>
       <td class="${xmlEscape(row.status || "")}">${xmlEscape(row.status || "")}</td>
@@ -1441,6 +1691,15 @@ function componentMatrixHtml(matrix) {
       <td>${comparison}</td>
     </tr>`;
   }).join("\n");
+}
+
+function captureTypeSummaryPills(summary = {}) {
+  const rows = Object.entries(summary.captureTypes || {})
+    .filter(([, value]) => Number(value.total || 0) > 0)
+    .map(([captureType, value]) =>
+      `<span class="pill">${xmlEscape(captureTypeLabel(captureType))} ${Number(value.active || 0)}/${Number(value.total || 0)} active</span>`,
+    );
+  return rows.join("");
 }
 
 function siteIndexJson(metadata, runs) {
@@ -1461,24 +1720,32 @@ function siteLlmsText(metadata, runs) {
   const providerLines = Object.entries(matrixSummary.providers || {}).map(
     ([provider, value]) => `- ${provider}: active ${Number(value.active || 0)}, pending ${Number(value.pending || 0)}, unsupported ${Number(value.unsupported || 0)}`,
   );
+  const captureTypeLines = Object.entries(matrixSummary.captureTypes || {})
+    .filter(([, value]) => Number(value.total || 0) > 0)
+    .map(([captureType, value]) => `- ${captureTypeLabel(captureType)} (${captureType}): active ${Number(value.active || 0)}, pending ${Number(value.pending || 0)}, total ${Number(value.total || 0)}`);
   const pendingRows = (metadata.componentMatrix || []).filter((row) => row.status !== "active");
   const lines = [
     "# Slock Visual Testing",
     "",
-    `Generated: ${metadata.generatedAt}`,
+    `Generated: ${utcTimestampText(metadata.generatedAt)}`,
     `Latest run: ${metadata.runId}`,
     `Latest commit: ${metadata.commit}`,
     metadata.commitSubject ? `Commit subject: ${metadata.commitSubject}` : null,
     `Providers: ${metadata.baseline} vs ${metadata.current}`,
     `Summary: total ${Number(metadata.summary.total || 0)}, same ${Number(metadata.summary.same || 0)}, pass ${Number(metadata.summary.pass || 0)}, basic-pass ${Number(metadata.summary["basic-pass"] || 0)}, different ${Number(metadata.summary.different || 0)}, missing ${Number(metadata.summary.missing || 0)}`,
     `AI analysis: ready ${Number(analysisSummary.ready || 0)} / total ${Number(analysisSummary.total || 0)}, pending ${Number(analysisSummary.pending || 0)}`,
-    `Component matrix: active ${Number(matrixSummary.active || 0)} / total ${Number(matrixSummary.total || 0)}`,
+    `Visual coverage matrix: active ${Number(matrixSummary.active || 0)} / total ${Number(matrixSummary.total || 0)}, pending ${Number(matrixSummary.pending || 0)}, skipped ${Number(matrixSummary.skipped || 0)}`,
+    `Capture taxonomy: components use ${componentFixtureCaptureType}; real screens use ${realScreenCaptureType}`,
+    "",
+    "## Capture Type Coverage",
+    "",
+    ...(captureTypeLines.length ? captureTypeLines : ["- none"]),
     "",
     "## Provider Coverage",
     "",
     ...providerLines,
     "",
-    "## Pending Component Rows",
+    "## Pending Coverage Rows",
     "",
     ...(pendingRows.length ? pendingRows.map((row) => `- ${row.id}: ${row.notes || row.title || row.status}`) : ["- none"]),
     "",
@@ -1497,7 +1764,7 @@ function siteLlmsText(metadata, runs) {
 function siteHomeHtml(metadata, runs) {
   const rows = runs.map((run) => `<tr>
     <td><code>${xmlEscape(run.runId)}</code><br/>${xmlEscape(run.commitSubject || "")}</td>
-    <td>${xmlEscape(run.generatedAt)}</td>
+    <td>${localizedTimestampHtml(run.generatedAt)}</td>
     <td>${xmlEscape(run.baseline)} vs ${xmlEscape(run.current)}</td>
     <td>Total ${Number(run.summary?.total || 0)}<br/>Pass ${Number(run.summary?.pass || 0)}<br/>Basic pass ${Number(run.summary?.["basic-pass"] || 0)}<br/>Different ${Number(run.summary?.different || 0)}<br/>Missing ${Number(run.summary?.missing || 0)}</td>
     <td><a href="${xmlEscape(run.href)}">查看详情</a></td>
@@ -1505,6 +1772,7 @@ function siteHomeHtml(metadata, runs) {
   const latestRun = runs[0] || runSummary(metadata, "latest/");
   const latestSummary = latestRun.summary || {};
   const analysisSummary = metadata.analysisSummary || {};
+  const capturePills = captureTypeSummaryPills(metadata.componentMatrixSummary);
   return `<!doctype html>
 <html>
 <head>
@@ -1521,6 +1789,7 @@ function siteHomeHtml(metadata, runs) {
     .hero p { margin: 0 0 14px; color: #514946; }
     .primary { display: inline-block; border: 2px solid #141111; background: #FFD440; color: #141111; padding: 10px 14px; box-shadow: 3px 3px 0 #141111; text-decoration: none; }
     .meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 0; }
+    .runMeta { color: #514946; margin: 0 0 14px; }
     .downloads { border: 2px solid #141111; background: #fff; padding: 12px; margin: 18px 0; box-shadow: 4px 4px 0 #141111; }
     .downloads h2 { margin: 0 0 8px; font-size: 18px; }
     .links { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
@@ -1537,6 +1806,7 @@ function siteHomeHtml(metadata, runs) {
     <section class="hero">
       <h2>最新视觉对比</h2>
       <p><code>${xmlEscape(metadata.runId)}</code> · ${xmlEscape(metadata.baseline)} vs ${xmlEscape(metadata.current)}</p>
+      <p class="runMeta">${localizedTimestampHtml(metadata.generatedAt, { label: "Generated" })}</p>
       <a class="primary" href="${xmlEscape(latestRun.href || "latest/")}">查看详情</a>
       <div class="meta">
         <span class="pill">Total ${Number(latestSummary.total || 0)}</span>
@@ -1545,6 +1815,7 @@ function siteHomeHtml(metadata, runs) {
         <span class="pill">Different ${Number(latestSummary.different || 0)}</span>
         <span class="pill">Missing ${Number(latestSummary.missing || 0)}</span>
         <span class="pill">AI ${Number(analysisSummary.ready || 0)}/${Number(analysisSummary.total || 0)} ready</span>
+        ${capturePills}
       </div>
     </section>
     <section class="downloads">
@@ -1553,7 +1824,7 @@ function siteHomeHtml(metadata, runs) {
       <div class="links">
         <a class="pill" href="index.json">index.json</a>
         <a class="pill" href="llms.txt">llms.txt</a>
-        <a class="pill" href="latest/component-matrix.json">component-matrix.json</a>
+        <a class="pill" href="latest/component-matrix.json">coverage matrix JSON</a>
         <a class="pill" href="latest/metadata.json">latest metadata</a>
       </div>
     </section>
@@ -1563,6 +1834,7 @@ function siteHomeHtml(metadata, runs) {
       <tbody>${rows}</tbody>
     </table>
   </main>
+  ${localizedTimeScript()}
 </body>
 </html>
 `;
@@ -1770,6 +2042,12 @@ function validate(flags) {
     if (!visualCase.id) errors.push("case missing id");
     if (visualCase.id && ids.has(visualCase.id)) errors.push(`duplicate case id: ${visualCase.id}`);
     if (visualCase.id) ids.add(visualCase.id);
+    if (visualCase.captureType !== undefined && !captureTypeValues.has(String(visualCase.captureType))) {
+      errors.push(`${visualCase.id}: captureType must be ${[...captureTypeValues].join(" or ")}`);
+    }
+    if (visualCase.skip !== undefined && typeof visualCase.skip !== "boolean" && (typeof visualCase.skip !== "object" || Array.isArray(visualCase.skip))) {
+      errors.push(`${visualCase.id}: skip must be a boolean or object`);
+    }
     if (!visualCase.fixture) errors.push(`${visualCase.id}: missing fixture`);
     if (!Array.isArray(visualCase.variants) || visualCase.variants.length === 0) {
       errors.push(`${visualCase.id}: variants must include at least one state variant`);
@@ -2058,6 +2336,7 @@ function usage() {
   slock-visual capture --providers react
   slock-visual capture --providers android [--case case.id] --command './capture-provider.sh'
   slock-visual diff [--baseline react] [--current android] [--case case.id] [--category 'app/home/*'] [--include-pending]
+  slock-visual diff [--baseline react] [--current android] [--case case.id] [--include-skipped]
   slock-visual analyze [--baseline react] [--current android] [--model MODEL] [--force] [--skip-model]
   slock-visual report [--baseline react] [--current android] [--skip-analysis]
   slock-visual site [--baseline react] [--current android] [--skip-analysis] [--site-dir artifacts/visual-testing-site]
