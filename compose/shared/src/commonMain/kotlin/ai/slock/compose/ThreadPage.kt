@@ -2767,7 +2767,35 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "openParentMessage" -> {
                     if (!onOpenParentThread()) {
-                        onBack()
+                        val parentMessageId =
+                            itemId?.takeIf { it.isNotBlank() }
+                                ?: renderedThread.originParentMessageId?.takeIf { it.isNotBlank() }
+                                ?: renderedThread.parentMessageId?.takeIf { it.isNotBlank() }
+                        if (parentMessageId.isNullOrBlank()) {
+                            bridge.toast("Unable to open parent message")
+                            return@ThreadPageContent
+                        }
+                        val loadingPayload = renderedThread.parentMessageContextLoadingPayload(parentMessageId)
+                        onOpenThreadPayload(loadingPayload)
+                        coroutineScope.launch {
+                            when (val result = dataSource.openMessageContext(parentMessageId, loadingPayload)) {
+                                is DataResult.Content -> onReplaceThreadPayload(result.data)
+                                is DataResult.Empty,
+                                is DataResult.Error -> {
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed")
+                                    )
+                                    bridge.toast("Unable to open parent message")
+                                }
+                                is DataResult.NoPermission -> {
+                                    if (routeAuthRequired(result)) return@launch
+                                    onReplaceThreadPayload(
+                                        loadingPayload.copy(status = "error", errorCode = "thread_parent_context_failed")
+                                    )
+                                    bridge.toast("Unable to open parent message")
+                                }
+                            }
+                        }
                     }
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
@@ -4369,6 +4397,58 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         emptyDetail = "Loading the message thread.",
         composer = composer
     )
+}
+
+internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
+    parentMessageId: String
+): KuiklyThreadScreenPayload {
+    val focusedParentMessageId = parentMessageId.takeIf { it.isNotBlank() }
+        ?: originParentMessageId?.takeIf { it.isNotBlank() }
+        ?: this.parentMessageId?.takeIf { it.isNotBlank() }
+    val parentThreadId = parentChannelId?.takeIf { it.isNotBlank() }
+    val parentSurfaceKind =
+        if (channelKind.equals("dm", ignoreCase = true) || memberScopedMentions && parentThreadId == null) {
+            KuiklyThreadSurfaceKind.DirectMessage
+        } else {
+            KuiklyThreadSurfaceKind.Channel
+        }
+    return copy(
+        instanceId = parentThreadId?.let { "shared-shell-thread-$it" }
+            ?: focusedParentMessageId?.let { "shared-shell-parent-message-$it" }
+            ?: "shared-shell-parent-message",
+        title = SharedThreadHeaderContextStore.launchContext(parentSurfaceKind, null).title,
+        subtitle = null,
+        status = "loading",
+        surfaceKind = parentSurfaceKind,
+        sourceThreadId = parentThreadId,
+        streamChannelId = parentThreadId,
+        parentChannelId = null,
+        parentMessageId = null,
+        originParentMessageId = null,
+        focusedMessageId = focusedParentMessageId,
+        navigationLabel = "Back",
+        selectedTab = KuiklyThreadTab.Chat.wireValue,
+        showModeTabs = true,
+        showReplyActions = true,
+        showOpenInChannelAction = false,
+        originMessage = null,
+        originPreview = null,
+        originStatus = "none",
+        originErrorCode = null,
+        messages = emptyList(),
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        errorCode = null,
+        filesPayload = "{}",
+        composer =
+            KuiklyThreadComposerPayload(
+                surfaceKind = parentSurfaceKind,
+                enabled = canSend,
+                streamChannelId = parentThreadId
+            ),
+        emptyTitle = "Opening conversation",
+        emptyDetail = "Loading the parent message context."
+    ).withLaunchHeaderContext()
 }
 
 private fun KuiklyThreadFilesPayload.shouldFetchInitialFiles(): Boolean =
