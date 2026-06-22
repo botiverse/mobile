@@ -245,6 +245,17 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentDetailActivityScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.members.agent-detail.activity",
+            pageName = "compose_members",
+            pageData = membersAgentDetailActivityPageData(),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureMembersAgentLifecycleActions() {
         captureKmpComponentCase(
             caseId = "components.members.agent-lifecycle-actions",
@@ -739,6 +750,49 @@ class KmpVisualScreenshotCaptureTest {
             .put("providerApiKey", providerApiKey)
             .put("advancedOpen", advancedOpen)
             .put("command", command)
+
+    private fun membersAgentDetailActivityPageData(): JSONObject {
+        val instanceId = "visual-members-agent-activity"
+        val payload =
+            JSONObject()
+                .put("instanceId", instanceId)
+                .put("title", "Members")
+                .put("selectedMemberId", "agent-product-ux")
+                .put("initialAgentTab", "activity")
+                .put("localOffsetMinutes", 480)
+                .put("todayEpochDay", 20623)
+                .put("timeFormat", "24h")
+                .put("canCreateAgents", false)
+                .put(
+                    "members",
+                    JSONArray()
+                        .put(
+                            JSONObject()
+                                .put("id", "agent-product-ux")
+                                .put("displayName", "Product UX Designer")
+                                .put("handle", "@Product-UX-Designer")
+                                .put("kind", "Agent")
+                                .put(
+                                    "description",
+                                    "Turns product feedback, screenshots, and release notes into actionable UX specs."
+                                )
+                                .put("roleDescription", "Product / UX agent")
+                                .put("avatarWireValue", "pixel:paint")
+                                .put("avatarLabel", "P")
+                                .put("presence", "Active")
+                                .put("agentStatus", "Working")
+                                .put(
+                                    "permissionBadges",
+                                    JSONArray()
+                                        .put("computer:MacBook Pro")
+                                        .put("runtime:Codex")
+                                )
+                        )
+                )
+        return JSONObject()
+            .put("instanceId", instanceId)
+            .put("payload", payload.toString())
+    }
 
     private fun conversation(
         id: String,

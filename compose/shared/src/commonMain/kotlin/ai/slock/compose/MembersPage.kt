@@ -410,7 +410,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
             )
         ),
         activity = "working",
-        activityDetail = "Reviewing Agent detail fixtures"
+        activityDetail = "Capturing deterministic Activity tab state"
     ),
     directMessages = listOf(
         AgentDmSummary(
@@ -431,14 +431,37 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     ),
     activity = listOf(
         AgentActivityEntry(
-            id = "activity-agent-detail-fixture",
+            id = "activity-agent-detail-working",
             type = "status",
-            title = "Agent detail visual fixture",
-            body = "Rebuilt from current main with real Members detail components.",
+            title = "Working",
+            body = "Capturing deterministic Activity tab state",
             timestamp = "2026-06-19T12:28:00Z",
-            details = listOf("runtime" to "codex", "surface" to "members.agent-detail.profile"),
             statusActivity = "working",
-            statusDetail = "Capturing deterministic profile state"
+            statusDetail = "Capturing deterministic Activity tab state"
+        ),
+        AgentActivityEntry(
+            id = "activity-agent-detail-thinking",
+            type = "thinking",
+            title = "Thinking",
+            body = "Comparing React and Android Members Activity screenshots before publishing.",
+            timestamp = "2026-06-19T12:29:00Z"
+        ),
+        AgentActivityEntry(
+            id = "activity-agent-detail-command",
+            type = "tool_start",
+            title = "Running command",
+            body = "node tools/visual-testing/src/cli.mjs diff --case screens.members.agent-detail.activity",
+            timestamp = "2026-06-19T12:30:00Z",
+            toolName = "shell",
+            toolInput = "node tools/visual-testing/src/cli.mjs diff --case screens.members.agent-detail.activity"
+        ),
+        AgentActivityEntry(
+            id = "activity-agent-detail-report",
+            type = "slock_action",
+            title = "Posted status update",
+            body = "Reported capture progress in #product:d4870bc3 and kept #225 in review.",
+            timestamp = "2026-06-19T12:31:00Z",
+            refTextEnabled = true
         )
     ),
     skills = AgentSkillsSnapshot(

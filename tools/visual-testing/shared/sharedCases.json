@@ -2081,7 +2081,6 @@
       "captureType": "real-screen",
       "surface": "members",
       "category": "members",
-      "baselineStatus": "pending",
       "fixture": "fixtures/screens.members.agent-detail.activity.json",
       "viewport": {
         "width": 390,
@@ -2102,14 +2101,14 @@
         "crop": "element",
         "contract": "screen-route"
       },
-      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=activity",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Current React harness only renders the AgentDetailPanel component fixture, and Android compose_members has no pageData contract to preselect an agent or Activity tab; do not activate through compose_members_agent_detail_visual."
+      "notes": "Real route capture. React uses MainLayout at /s/visual/agent/agent-product-ux?agentTab=activity with a seeded trajectory log. Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity; the real Members route consumes mock detail/activity data through the SharedAgentDetailStore loader."
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -4804,22 +4803,34 @@
       "surface": "members",
       "category": "members",
       "group": "screens-members",
-      "status": "pending",
-      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Current React harness only renders the AgentDetailPanel component fixture, and Android compose_members has no pageData contract to preselect an agent or Activity tab; do not activate through compose_members_agent_detail_visual.",
+      "status": "baseline",
+      "notes": "Real route capture. React uses MainLayout at /s/visual/agent/agent-product-ux?agentTab=activity with a seeded trajectory log. Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity; the real Members route consumes mock detail/activity data through the SharedAgentDetailStore loader.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/pages/MembersPage.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
           "fixture": "fixtures/screens.members.agent-detail.activity.json",
-          "reason": "Needs React route/provider fixture that opens the real Members route to Agent Detail Activity with seeded diagnostics/activity rows; current VisualTestingCases only has an AgentDetailPanel component fixture."
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel",
+            "AgentActivityLog"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
-          "reason": "Needs real Android MEMBERS_PAGE route launch into the Activity tab with seeded diagnostics/activity rows; compose_members currently has no pageData contract for selectedMemberId/initialAgentTab, and compose_members_agent_detail_visual is component-only."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailActivityScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=activity",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentActivityTab"
+          ]
         },
         {
           "id": "harmony",
