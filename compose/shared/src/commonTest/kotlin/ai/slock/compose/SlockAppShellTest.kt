@@ -109,6 +109,48 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun retainedHomeSecondaryDestinationOrderKeepsActiveOnTop() {
+        assertEquals(listOf("search", "activity", "saved"), retainedHomeSecondaryDestinationOrder(null))
+        assertEquals(listOf("activity", "saved", "search"), retainedHomeSecondaryDestinationOrder("search"))
+        assertEquals(listOf("search", "saved", "activity"), retainedHomeSecondaryDestinationOrder("activity"))
+        assertEquals(listOf("search", "activity", "saved"), retainedHomeSecondaryDestinationOrder("saved"))
+        assertEquals(listOf("search", "activity", "saved"), retainedHomeSecondaryDestinationOrder("unknown"))
+    }
+
+    @Test
+    fun retainedHomeSecondaryComposedDestinationsKeepsOnlyMountedOrActive() {
+        assertEquals(
+            listOf("activity", "search"),
+            retainedHomeSecondaryComposedDestinations(
+                activeDestination = "search",
+                mountedDestinations = setOf("activity")
+            )
+        )
+        assertEquals(
+            listOf("search", "saved", "activity"),
+            retainedHomeSecondaryComposedDestinations(
+                activeDestination = "activity",
+                mountedDestinations = setOf("search", "saved")
+            )
+        )
+        assertEquals(
+            listOf("saved"),
+            retainedHomeSecondaryComposedDestinations(
+                activeDestination = null,
+                mountedDestinations = setOf("saved", "unknown")
+            )
+        )
+    }
+
+    @Test
+    fun homeSecondaryPerformanceRouteUsesDestinationIdentity() {
+        assertEquals("kuikly_home_search", homeSecondaryPerformanceRoute("search"))
+        assertEquals("kuikly_home_activity", homeSecondaryPerformanceRoute("activity"))
+        assertEquals("kuikly_home_saved", homeSecondaryPerformanceRoute("saved"))
+        assertEquals("kuikly_home_secondary", homeSecondaryPerformanceRoute("unknown"))
+    }
+
+    @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("thread"))
     }
