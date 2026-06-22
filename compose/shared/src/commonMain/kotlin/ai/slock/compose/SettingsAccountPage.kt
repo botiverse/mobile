@@ -429,7 +429,6 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 96.dp,
         minHeight = 32.dp,
-        shadowOffset = 0.dp,
         textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
     )
 }
@@ -635,7 +634,6 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                         backgroundColor = SlockColor.AccentRed,
                         minWidth = 0.dp,
                         minHeight = 44.dp,
-                        shadowOffset = 0.dp,
                         textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
                     )
                 }
@@ -698,7 +696,6 @@ private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClic
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 84.dp,
         minHeight = 32.dp,
-        shadowOffset = 0.dp,
         textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
     )
 }
