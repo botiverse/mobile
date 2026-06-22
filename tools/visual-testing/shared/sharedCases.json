@@ -89,9 +89,6 @@
       "title": "Navigation Tabbar States",
       "surface": "navigation",
       "fixture": "fixtures/components.navigation.tabbar.states.json",
-      "skip": {
-        "reason": "React baseline invalid: current provider renders a hand-built VisualMobileTabBar approximation instead of the real MainLayout MobileTabBar route/component."
-      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -114,7 +111,7 @@
         "contract": "component-bounds"
       },
       "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#MobileTabBarSurface",
-      "androidCaseHint": "compose_bottom_tabbar_smoke",
+      "androidCaseHint": "compose_bottom_tabbar_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
@@ -245,9 +242,6 @@
       "title": "Thread Header States",
       "surface": "thread",
       "fixture": "fixtures/components.thread.header.states.json",
-      "skip": {
-        "reason": "React baseline invalid: current provider renders a hand-built PanelHeader wrapper instead of the real ChatPanel/thread header route."
-      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -360,9 +354,6 @@
       "title": "Home Titlebar States",
       "surface": "home",
       "fixture": "fixtures/components.home.titlebar.states.json",
-      "skip": {
-        "reason": "React baseline invalid: current provider renders a hand-built titlebar instead of the real mobile Home/Sidebar titlebar route."
-      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -2878,19 +2869,18 @@
       "title": "Thread Header States",
       "surface": "thread",
       "group": "product-thread",
-      "status": "skipped",
-      "notes": "Skipped until React renders the real ChatPanel/thread header route. The previous React provider was a hand-built PanelHeader wrapper and is not a valid parity baseline.",
+      "status": "baseline",
+      "notes": "React now captures the real ChatPanel PanelHeader with the visual channel fixture. The previous hand-built PanelHeader wrapper was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "reason": "Needs real ChatPanel/thread header capture; current visual-testing provider is an approximation.",
+          "status": "ready",
           "components": [
-            "PanelHeader",
-            "ReorderablePanelTabs"
+            "ChatPanel",
+            "PanelHeader"
           ],
           "path": "packages/web/src/components/message/ChatPanel.tsx",
-          "fixture": "fixtures/components.thread.header.states.json"
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#ThreadHeaderVisualCaseView"
         },
         {
           "id": "android",
@@ -2958,18 +2948,17 @@
       "title": "Navigation Tabbar States",
       "surface": "navigation",
       "group": "product-navigation",
-      "status": "skipped",
-      "notes": "Skipped until React renders the real MainLayout MobileTabBar route/component. The previous React provider was a hand-built VisualMobileTabBar approximation and is not a valid parity baseline.",
+      "status": "baseline",
+      "notes": "React now captures the real MainLayout MobileTabBar from the visual route. The previous hand-built VisualMobileTabBar approximation was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "reason": "Needs real MainLayout/MobileTabBar capture; current visual-testing provider is an approximation.",
+          "status": "ready",
           "components": [
             "MobileTabBar"
           ],
           "path": "packages/web/src/components/layout/MainLayout.tsx",
-          "fixture": "fixtures/components.navigation.tabbar.states.json"
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#NavigationTabbarVisualCaseView"
         },
         {
           "id": "android",
@@ -2994,19 +2983,18 @@
       "title": "Home Titlebar States",
       "surface": "home",
       "group": "product-home",
-      "status": "skipped",
-      "notes": "Skipped until React renders the real mobile Home/Sidebar titlebar route. The previous React provider was hand-built header markup and is not a valid parity baseline.",
+      "status": "baseline",
+      "notes": "React now captures the real mobile Sidebar titlebar with the visual server and notification fixture. The previous hand-built titlebar markup was removed from the provider path. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "reason": "Needs real mobile Home/Sidebar titlebar capture; current visual-testing provider is an approximation.",
+          "status": "ready",
           "components": [
-            "HomeTitlebarSurface",
+            "Sidebar",
             "NotificationTrigger"
           ],
           "path": "packages/web/src/components/layout/Sidebar.tsx",
-          "fixture": "fixtures/components.home.titlebar.states.json"
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#HomeTitlebarVisualCaseView"
         },
         {
           "id": "android",
