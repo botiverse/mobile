@@ -74,6 +74,7 @@ export const SlockLucidePathIconNames: string[] = [
   'image',
   'image-plus',
   'inbox',
+  'info',
   'key',
   'key-round',
   'languages',
@@ -2316,6 +2317,45 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 5.45 5.11 2 12 v 6 a 2 2 0 0 0 2 2 h 16 a 2 2 0 0 0 2 -2 v -6 l -3.45 -6.89 A 2 2 0 0 0 16.76 4 H 7.24 a 2 2 0 0 0 -1.79 1.11 z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'info':
+      return [
+    {
+      commands: 'M 2 12 A 10 10 0 1 0 22 12 A 10 10 0 1 0 2 12 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 12 16 v -4',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 12 8 h 0.01',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

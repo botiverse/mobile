@@ -106,6 +106,7 @@ LUCIDE_ICONS = [
     "image",
     "image-plus",
     "inbox",
+    "info",
     "key",
     "key-round",
     "languages",

@@ -1423,7 +1423,7 @@ private fun HomeNotificationCenter(notifications: List<SlockHomeNotificationItem
 @Composable
 private fun HomeNotificationPopover(notifications: List<SlockHomeNotificationItem>, onView: (SlockHomeNotificationItem) -> Unit, onDismiss: (SlockHomeNotificationItem) -> Unit, modifier: Modifier = Modifier) {
     HardShadowPanel(modifier = modifier, minWidth = 280.dp, maxWidth = 340.dp) {
-        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        com.tencent.kuikly.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Sm), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Text("NOTIFICATIONS", style = SlockType.SectionLabel, color = SlockColor.TextMutedGray, maxLines = 1)
             Text("${notifications.size} ${if (notifications.size == 1) "item" else "items"}", style = SlockType.Button, color = SlockColor.TextMutedGray, maxLines = 1)
         }
@@ -1438,8 +1438,8 @@ private fun HomeNotificationRow(notification: SlockHomeNotificationItem, onView:
         Box(modifier = Modifier.size(24.dp).background(notification.kind.notificationColor()).border(SlockStroke.Default, SlockColor.BorderBlack), contentAlignment = Alignment.Center) {
             SlockLucideIcon(
                 when (notification.kind) {
-                    SlockHomeNotificationKind.Warning -> SlockLucideIconName.CircleArrowUp
-                    SlockHomeNotificationKind.Info -> SlockLucideIconName.BellRing
+                    SlockHomeNotificationKind.Warning -> SlockLucideIconName.TriangleAlert
+                    SlockHomeNotificationKind.Info -> SlockLucideIconName.Info
                     SlockHomeNotificationKind.Error -> SlockLucideIconName.TriangleAlert
                 },
                 Modifier.size(16.dp)

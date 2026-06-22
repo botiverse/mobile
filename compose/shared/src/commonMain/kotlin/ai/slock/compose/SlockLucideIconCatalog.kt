@@ -69,6 +69,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Image("image"),
     ImagePlus("image-plus"),
     Inbox("inbox"),
+    Info("info"),
     Key("key"),
     KeyRound("key-round"),
     Languages("languages"),
