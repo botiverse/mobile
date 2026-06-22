@@ -42,7 +42,6 @@ import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
-import com.tencent.kuikly.compose.extension.bouncesEnable
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -633,7 +632,7 @@ fun SlockStructuralHomeShell(
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
                         LazyColumn(
                             state = listState,
-                            modifier = Modifier.fillMaxSize().bouncesEnable(false),
+                            modifier = Modifier.fillMaxSize(),
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
