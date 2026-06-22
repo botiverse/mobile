@@ -841,6 +841,7 @@ internal fun ThreadComposerContent(
                         },
                         placeholderColor = SlockColor.TextMutedGray,
                         cursorBrush = SolidColor(SlockColor.TextBlack),
+                        systemNewlineAction = true,
                         // React mobile uses a one-line textarea; keep the toolbar as the touch target.
                         modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerTextFieldMinHeight)
                     )

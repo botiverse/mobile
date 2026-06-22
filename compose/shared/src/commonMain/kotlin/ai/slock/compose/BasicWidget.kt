@@ -428,6 +428,7 @@ internal fun TextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     focusRequester: FocusRequester = remember { FocusRequester() },
+    systemNewlineAction: Boolean = false,
     /**
      * Task #43 QA-4: visual transformation for password-typed inputs.
      * When non-null (e.g. [PasswordVisualTransformation()]), the
@@ -445,6 +446,7 @@ internal fun TextField(
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
 
     val updatedModifier = modifier
+        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
         .onFocusChanged {
@@ -510,7 +512,8 @@ internal fun TextField(
     onTextLayout: (TextLayoutResult) -> Unit = {},
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    focusRequester: FocusRequester = remember { FocusRequester() }
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    systemNewlineAction: Boolean = false
 ) {
     var lastFocus by remember { mutableStateOf(false) }
 
@@ -521,6 +524,7 @@ internal fun TextField(
     val currentOnTextLayout by rememberUpdatedState(onTextLayout)
 
     val updatedModifier = modifier
+        .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
         .onFocusChanged {
@@ -567,6 +571,8 @@ internal fun TextField(
         }
     }
 }
+
+private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
 
 @Composable
 fun Modifier.dtReport(enable: Boolean): Modifier {
