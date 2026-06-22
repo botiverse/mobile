@@ -1371,6 +1371,81 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchReplyThreadPayloadKeepsResolvedEmptyThreadRenderable() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResultsById =
+                    mapOf(
+                        ThreadId("wrong-thread") to
+                            DataResult.Content(
+                                threadSnapshot(
+                                    threadId = "wrong-thread",
+                                    body = "wrong reply body",
+                                    id = "wrong-reply",
+                                    conversation =
+                                        conversationSummary("wrong-thread").copy(
+                                            kind = ConversationKind.Thread,
+                                            channelId = ChannelId("wrong-thread"),
+                                            name = "wrong",
+                                            subtitle = "#wrong",
+                                            thread =
+                                                ThreadConversation(
+                                                    parentChannelId = ChannelId("other-channel"),
+                                                    parentMessageId = MessageId("other-message"),
+                                                    streamChannelId = ChannelId("wrong-thread")
+                                                )
+                                        )
+                                )
+                            ),
+                        ThreadId("thread-m1") to DataResult.Empty(EmptyReason.NoMessages)
+                    ),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-m1"),
+                            changed = false,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 0
+                        )
+                    )
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "wrong-thread",
+                streamChannelId = "wrong-thread",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                originStatus = "loading"
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("empty", payload.status)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.composer.streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals(null, payload.errorCode)
+    }
+
+    @Test
     fun startSkipsMismatchedReplyThreadMemoryCacheBeforeResolvedFetch() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = replyHintRepository()

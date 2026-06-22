@@ -1337,9 +1337,10 @@ internal class SharedThreadDataSource(
                 !initialData.data.parentPairMatchesRoute(basePayload) ->
                 fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
-                        .withConversationHeaderFallback(headerFallback)
-                        .toKuiklyThreadPayload(resolvedBase, session.user.id)
-                        .withCachedSenderProfiles(session)
+                        ?.withConversationHeaderFallback(headerFallback)
+                        ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
+                        ?.withCachedSenderProfiles(session)
+                        ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
             initialData != null ->
                 DataResult.Content(
@@ -1389,7 +1390,7 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchResolvedReplyThreadSnapshot(
         basePayload: KuiklyThreadScreenPayload
-    ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot>> {
+    ): DataResult<Pair<KuiklyThreadScreenPayload, ThreadSnapshot?>> {
         val resolvedBasePayload =
             when (val resolved = createOrOpenReplyThreadStream(basePayload)) {
                 is DataResult.Content -> resolved.data
@@ -1408,7 +1409,12 @@ internal class SharedThreadDataSource(
         return when (resolvedResult) {
             is DataResult.Content ->
                 DataResult.Content(resolvedBasePayload to resolvedResult.data)
-            is DataResult.Empty -> resolvedResult
+            is DataResult.Empty ->
+                if (resolvedResult.reason == EmptyReason.NoMessages) {
+                    DataResult.Content(resolvedBasePayload to null)
+                } else {
+                    resolvedResult
+                }
             is DataResult.Error -> resolvedResult
             is DataResult.NoPermission -> resolvedResult
         }
