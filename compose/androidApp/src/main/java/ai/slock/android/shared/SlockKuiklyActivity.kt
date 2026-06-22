@@ -700,14 +700,18 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_ICON_GALLERY = SlockKuiklyPages.ICON_GALLERY
         const val PAGE_ROUTER = SlockKuiklyPages.ROUTER
 
-        private const val KEY_PAGE_NAME = "pageName"
-        private const val KEY_PAGE_DATA = "pageData"
+        internal const val KEY_PAGE_NAME = "pageName"
+        internal const val KEY_PAGE_DATA = "pageData"
         const val KEY_SUPPRESS_SOFT_KEYBOARD = "slockSuppressSoftKeyboard"
 
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
         private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
+        private const val THREAD_SURFACE_CHANNEL = "channel"
+        private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
+        private const val THREAD_SURFACE_REPLY_THREAD = "thread"
+        private const val NOTIFICATION_CATEGORY_DIRECT_MESSAGE = "direct_message"
 
         fun start(
             context: Context,
@@ -741,6 +745,44 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             return pageData.optBoolean(KEY_REPLACE_CURRENT_PAGE, false)
         }
 
+        internal fun buildUnreadNotificationThreadPageData(request: JSONObject): JSONObject? {
+            val threadId = request.optTrimmedString("threadId") ?: return null
+            val messageId = request.optTrimmedString("messageId") ?: return null
+            val parentMessageId = request.optTrimmedString("parentMessageId")
+            val parentChannelId =
+                    request.optTrimmedString("parentChannelId")
+                            ?: request.optTrimmedString("channelId").takeIf { parentMessageId != null }
+            val surfaceKind =
+                    when {
+                        parentChannelId != null && parentMessageId != null -> THREAD_SURFACE_REPLY_THREAD
+                        request.optString("category") == NOTIFICATION_CATEGORY_DIRECT_MESSAGE -> THREAD_SURFACE_DIRECT_MESSAGE
+                        else -> THREAD_SURFACE_CHANNEL
+                    }
+            val instanceId = "notification-thread-$threadId-$messageId"
+            val launchPayload =
+                    JSONObject()
+                            .put("instanceId", instanceId)
+                            .put("surfaceKind", surfaceKind)
+                            .put("sourceThreadId", threadId)
+                            .put("streamChannelId", threadId)
+                            .put("focusedMessageId", messageId)
+                            .put("selectedTab", "chat")
+                            .put("navigationLabel", "Back")
+            if (surfaceKind != THREAD_SURFACE_CHANNEL) {
+                launchPayload.put("threadId", threadId)
+            }
+            if (surfaceKind == THREAD_SURFACE_REPLY_THREAD) {
+                launchPayload
+                        .put("parentChannelId", parentChannelId)
+                        .put("parentMessageId", parentMessageId)
+                        .put("originParentMessageId", parentMessageId)
+            }
+            return JSONObject()
+                    .put("payload", launchPayload.toString())
+                    .put("instanceId", instanceId)
+                    .withAndroidHostPageData(PAGE_THREAD)
+        }
+
         private fun JSONObject.withAndroidHostPageData(pageName: String): JSONObject =
                 JSONObject(toString()).apply {
                     putAndroidTimeContextIfMissing()
@@ -772,6 +814,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 put(KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER, BuildConfig.DEBUG)
             }
         }
+
+        private fun JSONObject.optTrimmedString(key: String): String? =
+                optString(key).trim().takeIf { it.isNotBlank() }
     }
 }
 
@@ -1598,6 +1643,25 @@ internal class SlockKuiklyBridgeModule(
                 }
     }
 
+    private fun unreadNotificationContentIntent(request: JSONObject, notificationId: Int): PendingIntent? {
+        val pageData = SlockKuiklyActivity.buildUnreadNotificationThreadPageData(request)
+        val intent =
+                if (pageData != null) {
+                    Intent(appContext, SlockKuiklyActivity::class.java)
+                            .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_THREAD)
+                            .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
+                } else {
+                    appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+                } ?: return null
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(
+                appContext,
+                notificationId,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     private fun postUnreadNotificationCapability(request: JSONObject): Map<String, Any> {
         if (!hasNotificationPermission()) {
             return mapOf("status" to "error", "code" to "permission_denied")
@@ -1617,18 +1681,7 @@ internal class SlockKuiklyBridgeModule(
                 request.optString("notificationKey").takeIf { it.isNotBlank() }
                         ?: "${request.optString("serverId")}:${request.optString("threadId")}:${request.optString("messageId")}"
         val notificationId = stableNotificationId(notificationKey)
-        val contentIntent =
-                appContext.packageManager
-                        .getLaunchIntentForPackage(appContext.packageName)
-                        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        ?.let { intent ->
-                            PendingIntent.getActivity(
-                                    appContext,
-                                    notificationId,
-                                    intent,
-                                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                            )
-                        }
+        val contentIntent = unreadNotificationContentIntent(request, notificationId)
         return runCatching {
                     NotificationManagerCompat.from(appContext)
                             .notify(

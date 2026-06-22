@@ -79,6 +79,8 @@ data class SystemUnreadNotificationRequest(
     val messageId: String,
     val threadId: String,
     val channelId: String?,
+    val parentChannelId: String?,
+    val parentMessageId: String?,
     val category: SystemUnreadNotificationCategory,
     val title: String,
     val body: String,
@@ -156,11 +158,20 @@ fun buildSystemUnreadNotificationRequest(
     val channelId = message.threadChannelId?.value ?: message.channelId?.value
     val threadId = message.threadId.value
     val messageId = message.id.value
+    val parentMessageId = message.parentMessageId?.value
+    val parentChannelId =
+        if (parentMessageId.isNullOrBlank()) {
+            null
+        } else {
+            message.channelId?.value ?: channelId
+        }
     return SystemUnreadNotificationRequest(
         serverId = serverId,
         messageId = messageId,
         threadId = threadId,
         channelId = channelId,
+        parentChannelId = parentChannelId,
+        parentMessageId = parentMessageId,
         category = category,
         title = title,
         body = body,

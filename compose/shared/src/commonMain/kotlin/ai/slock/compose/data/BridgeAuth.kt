@@ -179,6 +179,8 @@ internal class BridgeSettingsPlatformCapabilities(
                 .put("messageId", request.messageId)
                 .put("threadId", request.threadId)
                 .put("channelId", request.channelId.orEmpty())
+                .put("parentChannelId", request.parentChannelId.orEmpty())
+                .put("parentMessageId", request.parentMessageId.orEmpty())
                 .put("category", request.category.wireValue)
                 .put("title", request.title)
                 .put("body", request.body)
