@@ -103,6 +103,36 @@ interface RealtimeBridgeManager {
 `attachConsumer` / `detachConsumer` only affects fan-out. It must not disconnect
 the underlying socket.
 
+## Cross-Platform Contract
+
+The shared contract is the source of truth. Android and OHOS may use different
+socket transports, but they must implement the same owner/consumer semantics.
+
+Common contract concepts:
+
+- `RealtimeSessionIdentity`: `serverId`, auth identity / token generation, and
+  socket base URL.
+- `RealtimeSurfaceId`: a stable id for one Activity/page/render surface while
+  it is attached.
+- `RealtimeRoomDeclaration`: the foreground rooms a surface wants to receive.
+- allowed disconnect reasons: logout, auth invalid, server switch, server
+  membership removed, server deleted, and process teardown.
+- diagnostics names for connect, disconnect, consumer attach/detach, room
+  declare/join/skip, raw event receive, and per-consumer fan-out.
+
+Platform-specific pieces:
+
+- Android uses `SessionRealtimeRepository`, `SocketIoRealtimeClient`, and
+  `SocketIoSocketTransport`.
+- OHOS uses `SlockOhosRealtimeBridge` and `OhosSocketIoClient`.
+- Platform bridge code converts shared commands into the common contract, then
+  delegates to its process/session owner.
+
+A platform may implement the owner with a worker thread, coroutine actor,
+serial dispatcher, or synchronized manager. That is an implementation detail.
+The required property is ownership: route/page lifecycle can only attach or
+detach consumers and declare rooms; it cannot own or disconnect the socket.
+
 ## Room Membership
 
 Room membership is the union of rooms declared by attached consumers plus any

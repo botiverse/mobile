@@ -1248,7 +1248,6 @@ private fun SlockAppShellContent() {
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
-    var skipRealtimeDisposeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
     fun setActiveThreadPayload(payload: KuiklyThreadScreenPayload?) {
@@ -1299,6 +1298,7 @@ private fun SlockAppShellContent() {
                 ?.copy(status = "loading", errorCode = null)
                 ?: pendingAuthReturnThreadPayload
         authGateMessage = "Session expired. Sign in again to continue."
+        bridge.realtimeDisconnect("auth_invalid")
         authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
         resetAppShellSessionState(clearReturnThread = false)
         bridge.toast("Session expired")
@@ -1329,6 +1329,7 @@ private fun SlockAppShellContent() {
     }
     LaunchedEffect(authStore) {
         authStore.sessionInvalidations.collect {
+            bridge.realtimeDisconnect("auth_invalid")
             authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
             resetAppShellSessionState(clearReturnThread = false)
         }
@@ -1362,6 +1363,7 @@ private fun SlockAppShellContent() {
                 },
                 onSignOut = {
                     authGateMessage = null
+                    bridge.realtimeDisconnect("logout")
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                     resetAppShellSessionState(clearReturnThread = true)
                 }
@@ -1379,7 +1381,7 @@ private fun SlockAppShellContent() {
         }
         is SharedAuthGateState.Ready -> Unit
     }
-    DisposableEffect(readySession?.currentServerId, readySession?.accessToken) {
+    LaunchedEffect(readySession?.currentServerId, readySession?.accessToken) {
         val serverId = readySession?.currentServerId
         val accessToken = readySession?.accessToken
         val nextSessionKey =
@@ -1402,15 +1404,6 @@ private fun SlockAppShellContent() {
                 accessToken = accessToken,
                 lastSeq = resumeSeq
             )
-        }
-        onDispose {
-            if (!serverId.isNullOrBlank()) {
-                if (skipRealtimeDisposeSessionKey == nextSessionKey) {
-                    skipRealtimeDisposeSessionKey = null
-                } else {
-                    bridge.realtimeDisconnect("session_changed")
-                }
-            }
         }
     }
 
@@ -1927,7 +1920,6 @@ private fun SlockAppShellContent() {
                         bridge.realtimeAuthRefreshFinished(reason, success = false)
                         return@launch
                     }
-                    skipRealtimeDisposeSessionKey = realtimeSessionKey
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(refreshed))
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
                     bridge.realtimeConnect(
@@ -2319,6 +2311,7 @@ private fun SlockAppShellContent() {
                             timeContext = threadTimeContext,
                             onLogout = {
                                 authGateMessage = null
+                                bridge.realtimeDisconnect("logout")
                                 authGateViewModel.dispatch(SharedAuthGateIntent.SignedOut)
                                 resetAppShellSessionState(clearReturnThread = true)
                             }

@@ -53,7 +53,6 @@ import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
 import ai.slock.android.BuildConfig
 import ai.slock.compose.data.StoredAuthSession as AuthSession
-import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
 import ai.slock.android.core.data.auth.GoogleSocialAuthResult
@@ -66,30 +65,13 @@ import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
-import ai.slock.android.core.data.realtime.SessionRealtimeRepository
-import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
-import ai.slock.android.core.data.realtime.SocketIoSocketTransport
-import ai.slock.compose.data.DataResult
-import ai.slock.compose.data.RealtimeRepository
-import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
-import ai.slock.android.core.model.DirectMessageCreated
-import ai.slock.android.core.model.Heartbeat
+import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MemberKind
-import ai.slock.android.core.model.MemberPresenceUpdated
-import ai.slock.android.core.model.MessageNew
-import ai.slock.android.core.model.MessageReaction
-import ai.slock.android.core.model.MessageUpdated
 import ai.slock.android.core.model.Presence
-import ai.slock.android.core.model.RealtimeEvent
-import ai.slock.android.core.model.RealtimeRefreshRequired
 import ai.slock.android.core.model.ServerId
-import ai.slock.android.core.model.ServerMembershipRemoved
-import ai.slock.android.core.model.SyncResumeResponse
-import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.compose.data.SlockAndroidSqlDatabaseContext
-import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import com.tencent.kuikly.core.render.android.IKuiklyRenderExport
 import com.tencent.kuikly.core.render.android.KuiklyRenderViewContext
 import com.tencent.kuikly.core.render.android.adapter.HRImageLoadOption
@@ -121,7 +103,6 @@ import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -131,17 +112,13 @@ import org.json.JSONObject
 class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDelegate {
 
     private val kuiklyRenderViewDelegator = KuiklyRenderViewBaseDelegator(this)
-    private var realtimeRepository: RealtimeRepository? = null
-    private var realtimeSubscription: RealtimeSubscription? = null
-    private var realtimeRawSubscription: RealtimeSubscription? = null
-    private var realtimeConnectJob: Job? = null
-    private var realtimeServerId: ServerId? = null
-    private var realtimeSessionKey: String? = null
-    private var realtimeLastSeq: Long = 0L
     private var pageSpec: SlockKuiklyPageSpec? = null
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
+    private val realtimeSurfaceId: String by lazy {
+        "$pageName:${System.identityHashCode(this)}"
+    }
     private val kuiklySystemBackCallback =
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
@@ -175,11 +152,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
+        attachRealtimeConsumerIfNeeded()
+        declareForegroundRealtimeRooms()
         startRealtimeBridgeIfNeeded()
     }
 
     override fun onDestroy() {
-        stopRealtimeBridge()
+        detachRealtimeConsumerIfNeeded()
         removeSlockInputFontBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
@@ -187,7 +166,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onPause() {
         super.onPause()
-        stopRealtimeBridge()
         kuiklyRenderViewDelegator.onPause()
     }
 
@@ -196,6 +174,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         suppressVisualKeyboard()
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
+        declareForegroundRealtimeRooms()
         startRealtimeBridgeIfNeeded()
     }
 
@@ -609,172 +588,54 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             intent.getBooleanExtra(KEY_SUPPRESS_SOFT_KEYBOARD, false) ||
                     (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
 
+    private fun attachRealtimeConsumerIfNeeded() {
+        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        AndroidRealtimeBridgeManager.attachConsumer(realtimeSurfaceId) { serverId, eventName, rawPayload ->
+            sendRawRealtimeEvent(serverId, eventName, rawPayload)
+        }
+    }
+
+    private fun detachRealtimeConsumerIfNeeded() {
+        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        AndroidRealtimeBridgeManager.detachConsumer(realtimeSurfaceId)
+    }
+
     private fun startRealtimeBridgeIfNeeded() {
-        if (!pageName.isRealtimeBridgeHostPage()) return
-        val repository = ensureRealtimeRepository()
-        val sessionStore = EncryptedAuthSessionStore(applicationContext)
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob =
-                lifecycleScope.launch {
-                    try {
-                        val session = sessionStore.readSession()
-                        val serverId =
-                                session?.currentServerId?.let(::ServerId)
-                                        ?: run {
-                                            SlockDiagnosticsLogger.w(
-                                                    "SlockKuiklyRealtime",
-                                                    "connect_skip reason=missing_selected_server"
-                                            )
-                                            return@launch
-                                        }
-                        val accessToken = session.accessToken.takeIf { it.isNotBlank() }
-                                ?: run {
-                                    SlockDiagnosticsLogger.w(
-                                            "SlockKuiklyRealtime",
-                                            "connect_skip reason=missing_access_token serverId=${serverId.value}"
-                                    )
-                                    return@launch
-                                }
-                        val result = connectRealtimeRepository(
-                                repository = repository,
-                                serverId = serverId,
-                                accessToken = accessToken,
-                                requestedLastSeq = realtimeLastSeq
-                        )
-                        if (result is DataResult.Content) {
-                            joinForegroundRealtimeRooms(repository)
-                        }
-                    } finally {
-                        realtimeConnectJob = null
-                    }
-                }
+        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        AndroidRealtimeBridgeManager.ensureConnectedFromStoredSession(applicationContext)
     }
 
-    private fun ensureRealtimeRepository(): RealtimeRepository {
-        realtimeRepository?.let { return it }
-        val sessionStore = EncryptedAuthSessionStore(applicationContext)
-        val client =
-                SocketIoRealtimeClient(
-                        transport = SocketIoSocketTransport(),
-                        logger = { message ->
-                            SlockDiagnosticsLogger.d("SlockKuiklyRealtime", message)
-                        }
-                )
-        val repository =
-                SessionRealtimeRepository(
-                        store = sessionStore,
-                        client = client,
-                        tokenRefresher = AuthTokenRefresher(sessionStore)
-                )
-        realtimeRepository = repository
-        realtimeSubscription =
-                repository.observeEvents { event ->
-                    lifecycleScope.launch {
-                        val serverId = realtimeServerId ?: return@launch
-                        realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                        if (event is DirectMessageCreated) {
-                            repository.joinChannel(event.channelId)
-                        }
-                    }
-                }
-        client.observeRawEvents { eventName, rawPayload ->
-            lifecycleScope.launch {
-                val serverId = realtimeServerId ?: return@launch
-                sendRawRealtimeEvent(serverId, eventName, rawPayload)
-            }
-        }.also { realtimeRawSubscription = it }
-        return repository
-    }
-
-    private suspend fun connectRealtimeRepository(
-            repository: RealtimeRepository,
-            serverId: ServerId,
-            accessToken: String,
-            requestedLastSeq: Long
-    ): DataResult<Unit> {
-        val nextSessionKey = "$accessToken|${serverId.value}"
-        val previousSessionKey = realtimeSessionKey
-        val resumeSeq =
-                if (previousSessionKey != null && previousSessionKey != nextSessionKey) {
-                    0L
-                } else {
-                    requestedLastSeq
-                }
-        if (realtimeServerId == serverId && realtimeSessionKey == nextSessionKey) {
-            return DataResult.Content(Unit)
-        }
-        realtimeSessionKey = nextSessionKey
-        realtimeServerId = serverId
-        if (resumeSeq == 0L) {
-            realtimeLastSeq = 0L
-        }
-        val result = repository.connect(serverId, resumeSeq)
-        SlockDiagnosticsLogger.d(
-                "SlockKuiklyRealtime",
-                "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
+    internal fun requestRealtimeConnect(
+        serverId: String,
+        accessToken: String,
+        lastSeq: Long,
+        forceReconnect: Boolean = false
+    ) {
+        if (serverId.isBlank() || accessToken.isBlank()) return
+        AndroidRealtimeBridgeManager.ensureConnected(
+            context = applicationContext,
+            serverId = ServerId(serverId),
+            accessToken = accessToken,
+            requestedLastSeq = lastSeq,
+            forceReconnect = forceReconnect
         )
-        return result
-    }
-
-    internal fun requestRealtimeConnect(serverId: String, accessToken: String, lastSeq: Long) {
-        if (pageName != PAGE_APP_SHELL || serverId.isBlank() || accessToken.isBlank()) return
-        val repository = ensureRealtimeRepository()
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob =
-                lifecycleScope.launch {
-                    try {
-                        connectRealtimeRepository(
-                                repository = repository,
-                                serverId = ServerId(serverId),
-                                accessToken = accessToken,
-                                requestedLastSeq = lastSeq
-                        )
-                    } finally {
-                        realtimeConnectJob = null
-                    }
-                }
     }
 
     internal fun requestRealtimeDisconnect(reason: String) {
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob = null
-        realtimeRepository?.disconnect()
-        realtimeServerId = null
-        realtimeSessionKey = null
-        realtimeLastSeq = 0L
-        SlockDiagnosticsLogger.d(
-                "SlockKuiklyRealtime",
-                "disconnect_requested reason=$reason"
-        )
+        AndroidRealtimeBridgeManager.disconnectForSessionEnd(reason)
     }
 
     internal fun requestRealtimeJoinChannel(channelId: String) {
         if (channelId.isBlank()) return
-        (realtimeRepository ?: return).joinChannel(ai.slock.android.core.model.ChannelId(channelId))
+        AndroidRealtimeBridgeManager.joinChannel(ChannelId(channelId))
     }
 
-    private fun stopRealtimeBridge() {
-        realtimeConnectJob?.cancel()
-        realtimeConnectJob = null
-        realtimeSubscription?.close()
-        realtimeSubscription = null
-        realtimeRawSubscription?.close()
-        realtimeRawSubscription = null
-        realtimeRepository?.disconnect()
-        realtimeRepository = null
-        realtimeServerId = null
-        realtimeSessionKey = null
-    }
-
-    private fun joinForegroundRealtimeRooms(repository: RealtimeRepository) {
-        if (pageName != PAGE_THREAD) return
-        foregroundThreadRealtimeChannelIds().forEach { channelId ->
-            repository.joinChannel(ai.slock.android.core.model.ChannelId(channelId))
-            SlockDiagnosticsLogger.d(
-                    "SlockKuiklyRealtime",
-                    "join_foreground_room page=$pageName channelId=$channelId"
-            )
-        }
+    private fun declareForegroundRealtimeRooms() {
+        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        AndroidRealtimeBridgeManager.declareRooms(
+            surfaceId = realtimeSurfaceId,
+            rooms = foregroundThreadRealtimeChannelIds().map(::ChannelId).toSet()
+        )
     }
 
     private fun foregroundThreadRealtimeChannelIds(): List<String> {
@@ -784,7 +645,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 .distinct()
     }
 
-    private fun String.isRealtimeBridgeHostPage(): Boolean =
+    private fun String.isRealtimeBridgeConsumerPage(): Boolean =
             this == PAGE_APP_SHELL || this == PAGE_THREAD
 
     private fun sendRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
@@ -899,9 +760,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 }
-
-private fun Long.updateFrom(event: RealtimeEvent): Long =
-        RealtimeCursorPolicy.updateAppliedSeq(this, event)
 
 internal object SlockKuiklyAdapters {
     private var initialized = false
@@ -1326,7 +1184,8 @@ internal class SlockKuiklyBridgeModule(
                     (activity as? SlockKuiklyActivity)?.requestRealtimeConnect(
                             serverId = request.optString("serverId"),
                             accessToken = request.optString("accessToken"),
-                            lastSeq = request.optLong("lastSeq", 0L)
+                            lastSeq = request.optLong("lastSeq", 0L),
+                            forceReconnect = request.optBoolean("forceReconnect", false)
                     )
             "disconnect" ->
                     (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(
