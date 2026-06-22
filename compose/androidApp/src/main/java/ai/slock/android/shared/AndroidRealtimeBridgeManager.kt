@@ -16,6 +16,7 @@ import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.realtime.RealtimeAuth
+import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import kotlinx.coroutines.CoroutineScope
@@ -39,6 +40,7 @@ internal object AndroidRealtimeBridgeManager {
     private var realtimeConnectJob: Job? = null
     private var realtimeServerId: ServerId? = null
     private var realtimeSessionKey: String? = null
+    private var realtimeAccessToken: String? = null
     private var realtimeLastSeq: Long = 0L
 
     fun attachConsumer(
@@ -138,6 +140,44 @@ internal object AndroidRealtimeBridgeManager {
             }
     }
 
+    fun handleForeground(context: Context) {
+        val client = realtimeClient
+        val serverId = realtimeServerId
+        val accessToken = realtimeAccessToken
+        if (client == null || serverId == null || accessToken.isNullOrBlank()) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "foreground_reconnect_skip reason=missing_owner_session"
+            )
+            return
+        }
+        if (client.checkHeartbeatSilence()) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "foreground_reconnect reason=heartbeat_silent serverId=${serverId.value}"
+            )
+            joinDeclaredRooms()
+            return
+        }
+        when (val state = client.state) {
+            RealtimeConnectionState.Disconnected,
+            is RealtimeConnectionState.Failed -> reconnectOwnedSession(context, serverId, accessToken, state)
+            RealtimeConnectionState.Connected,
+            RealtimeConnectionState.RoomsJoined -> {
+                SlockDiagnosticsLogger.d(
+                    LOG_TAG,
+                    "foreground_reconnect_skip reason=already_connected state=${state::class.simpleName} serverId=${serverId.value}"
+                )
+                joinDeclaredRooms()
+            }
+            RealtimeConnectionState.Connecting ->
+                SlockDiagnosticsLogger.d(
+                    LOG_TAG,
+                    "foreground_reconnect_skip reason=connecting serverId=${serverId.value}"
+                )
+        }
+    }
+
     fun disconnectForSessionEnd(reason: String) {
         val cleanReason = reason.takeIf { it.isNotBlank() } ?: "shared_disconnect"
         if (!cleanReason.isSessionEndRealtimeDisconnectReason()) {
@@ -152,6 +192,7 @@ internal object AndroidRealtimeBridgeManager {
         realtimeRepository?.disconnect()
         realtimeServerId = null
         realtimeSessionKey = null
+        realtimeAccessToken = null
         realtimeLastSeq = 0L
         surfaceRooms.clear()
         joinedRooms.clear()
@@ -245,6 +286,7 @@ internal object AndroidRealtimeBridgeManager {
         }
         realtimeSessionKey = nextSessionKey
         realtimeServerId = serverId
+        realtimeAccessToken = accessToken
         if (resumeSeq == 0L) {
             realtimeLastSeq = 0L
         }
@@ -263,6 +305,38 @@ internal object AndroidRealtimeBridgeManager {
             "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
         )
         return result
+    }
+
+    private fun reconnectOwnedSession(
+        context: Context,
+        serverId: ServerId,
+        accessToken: String,
+        state: RealtimeConnectionState
+    ) {
+        val repository = ensureRealtimeRepository(context.applicationContext)
+        realtimeConnectJob?.cancel()
+        realtimeConnectJob =
+            scope.launch {
+                try {
+                    val result =
+                        connectRealtimeRepository(
+                            repository = repository,
+                            serverId = serverId,
+                            accessToken = accessToken,
+                            requestedLastSeq = realtimeLastSeq,
+                            forceReconnect = true
+                        )
+                    SlockDiagnosticsLogger.d(
+                        LOG_TAG,
+                        "foreground_reconnect_result state=${state::class.simpleName} serverId=${serverId.value} result=${result::class.simpleName}"
+                    )
+                    if (result is DataResult.Content) {
+                        joinDeclaredRooms()
+                    }
+                } finally {
+                    realtimeConnectJob = null
+                }
+            }
     }
 
     private fun joinDeclaredRooms() {

@@ -175,6 +175,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
         declareForegroundRealtimeRooms()
+        foregroundRealtimeOwnerIfNeeded()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -602,6 +603,11 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun startRealtimeBridgeIfNeeded() {
         if (!pageName.isRealtimeBridgeConsumerPage()) return
         AndroidRealtimeBridgeManager.ensureConnectedFromStoredSession(applicationContext)
+    }
+
+    private fun foregroundRealtimeOwnerIfNeeded() {
+        if (!pageName.isRealtimeBridgeConsumerPage()) return
+        AndroidRealtimeBridgeManager.handleForeground(applicationContext)
     }
 
     internal fun requestRealtimeConnect(
