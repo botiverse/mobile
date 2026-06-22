@@ -190,6 +190,9 @@ Use the Kuikly recomposition analyzer workflow:
      `tab_switch_frame` / route markers.
    - If profiler event time is low but host frame time is high, mark the issue
      as host/container attribution, not shared recomposition.
+   - For Thread first-open, use
+     `docs/thread-first-open-performance-attribution.md` as the current
+     layer model and query reference before assigning ownership.
 
 ## Interpretation Rules
 
