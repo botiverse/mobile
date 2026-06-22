@@ -21,6 +21,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.BeforeClass
 import org.junit.Test
+import kotlin.math.roundToInt
 
 class KmpVisualScreenshotCaptureTest {
     @Test
@@ -664,10 +665,10 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun Bitmap.cropDp(crop: VisualCrop): Bitmap {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val left = (crop.leftDp * density).toInt().coerceIn(0, width - 1)
-        val top = (crop.topDp * density).toInt().coerceIn(0, height - 1)
-        val desiredWidth = (crop.widthDp * density).toInt()
-        val desiredHeight = (crop.heightDp * density).toInt()
+        val left = (crop.leftDp * density).roundToInt().coerceIn(0, width - 1)
+        val top = (crop.topDp * density).roundToInt().coerceIn(0, height - 1)
+        val desiredWidth = (crop.widthDp * density).roundToInt()
+        val desiredHeight = (crop.heightDp * density).roundToInt()
         val cropWidth = desiredWidth.coerceAtMost(width - left)
         val cropHeight = desiredHeight.coerceAtMost(height - top)
         return Bitmap.createBitmap(this, left, top, cropWidth, cropHeight)
@@ -675,18 +676,18 @@ class KmpVisualScreenshotCaptureTest {
 
     private fun Bitmap.normalizeToDpPixels(context: Context): Bitmap {
         val density = context.resources.displayMetrics.density
-        val targetWidth = (width / density).toInt().coerceAtLeast(1)
-        val targetHeight = (height / density).toInt().coerceAtLeast(1)
+        val targetWidth = (width / density).roundToInt().coerceAtLeast(1)
+        val targetHeight = (height / density).roundToInt().coerceAtLeast(1)
         if (targetWidth == width && targetHeight == height) return this
         return Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
     }
 
     private fun validateCropBounds(caseId: String, screenshot: Bitmap, crop: VisualCrop) {
         val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
-        val left = (crop.leftDp * density).toInt()
-        val top = (crop.topDp * density).toInt()
-        val desiredWidth = (crop.widthDp * density).toInt()
-        val desiredHeight = (crop.heightDp * density).toInt()
+        val left = (crop.leftDp * density).roundToInt()
+        val top = (crop.topDp * density).roundToInt()
+        val desiredWidth = (crop.widthDp * density).roundToInt()
+        val desiredHeight = (crop.heightDp * density).roundToInt()
         require(left >= 0 && top >= 0) {
             "$caseId visual crop starts outside screenshot: crop=$crop screenshot=${screenshot.width}x${screenshot.height}"
         }
