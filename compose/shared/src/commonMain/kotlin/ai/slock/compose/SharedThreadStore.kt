@@ -1117,6 +1117,7 @@ internal class SharedThreadDataSource(
                 showModeTabs = false,
                 showReplyActions = false,
                 showOpenInChannelAction = true,
+                focusedMessageId = basePayload.focusedMessageId,
                 originMessage = resolvedOrigin,
                 originParentMessageId = action.parentMessageId?.value ?: parentMessage.id,
                 originStatus = "loaded",
@@ -1144,6 +1145,7 @@ internal class SharedThreadDataSource(
                         streamChannelId = replyBase.streamChannelId,
                         parentChannelId = replyBase.parentChannelId,
                         parentMessageId = replyBase.parentMessageId,
+                        focusedMessageId = loaded.data.focusedMessageId ?: replyBase.focusedMessageId,
                         composer = loaded.data.composer.takeUnless { it.isDefaultThreadComposer() } ?: replyBase.composer,
                         originMessage = loaded.data.originMessage ?: resolvedOrigin,
                         originParentMessageId = loaded.data.originParentMessageId ?: action.parentMessageId?.value ?: parentMessage.id,
@@ -1653,6 +1655,10 @@ internal sealed interface SharedThreadIntent {
         val messageId: String,
         val reactions: List<KuiklyThreadReactionItem>
     ) : SharedThreadIntent
+    data class ApplyReplyThreadRead(
+        val parentMessageId: String,
+        val threadChannelId: String? = null
+    ) : SharedThreadIntent
     data class ApplyMessageMutation(val summary: MessageMutationSummary) : SharedThreadIntent
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
@@ -1716,6 +1722,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
+            is SharedThreadIntent.ApplyReplyThreadRead,
             is SharedThreadIntent.ApplyMessageMutation,
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
@@ -1760,6 +1767,8 @@ internal class SharedThreadStore(
                 applyMessageReactionSelection(intent.messageId, intent.emoji, intent.selected)
             is SharedThreadIntent.ApplyMessageReactions ->
                 applyMessageReactions(intent.messageId, intent.reactions)
+            is SharedThreadIntent.ApplyReplyThreadRead ->
+                applyReplyThreadRead(intent.parentMessageId, intent.threadChannelId)
             is SharedThreadIntent.ApplyMessageMutation -> applyMessageMutation(intent.summary)
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
@@ -2234,6 +2243,12 @@ internal class SharedThreadStore(
     private fun applyMessageReactions(messageId: String, reactions: List<KuiklyThreadReactionItem>) {
         reducePayloadPatch(cachePayload = true) { payload ->
             payload.withMessageReactions(messageId, reactions)
+        }
+    }
+
+    private fun applyReplyThreadRead(parentMessageId: String, threadChannelId: String?) {
+        reducePayloadPatch(cachePayload = true) { payload ->
+            payload.withReplyThreadRead(parentMessageId, threadChannelId)
         }
     }
 
@@ -3182,6 +3197,27 @@ private fun KuiklyThreadScreenPayload.withMessageMutationSummary(
         originMessage = originMessage?.let { message ->
             if (message.id == messageId) message.copy(reactions = reactions) else message
         }
+    )
+}
+
+private fun KuiklyThreadScreenPayload.withReplyThreadRead(
+    parentMessageId: String,
+    threadChannelId: String?
+): KuiklyThreadScreenPayload {
+    val cleanParentMessageId = parentMessageId.trim()
+    if (cleanParentMessageId.isBlank()) return this
+    val cleanThreadChannelId = threadChannelId?.trim()?.takeIf { it.isNotBlank() }
+    fun KuiklyThreadMessageItem.clearIfParent(): KuiklyThreadMessageItem {
+        if (id != cleanParentMessageId) return this
+        return copy(
+            threadChannelId = cleanThreadChannelId ?: this.threadChannelId,
+            unreadReplyCount = 0,
+            firstUnreadReplyMessageId = null
+        )
+    }
+    return copy(
+        messages = messages.map { it.clearIfParent() },
+        originMessage = originMessage?.clearIfParent()
     )
 }
 

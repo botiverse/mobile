@@ -2725,11 +2725,29 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open replies")
                         return@ThreadPageContent
                     }
-                    val loadingPayload = renderedThread.replyThreadLoadingPayload(parentMessage)
+                    val loadingPayload =
+                        renderedThread.replyThreadLoadingPayload(
+                            parentMessage = parentMessage,
+                            focusedMessageId = parentMessage.firstUnreadReplyMessageId
+                        )
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyReplyThreadRead(
+                            parentMessageId = parentMessage.id,
+                            threadChannelId = parentMessage.threadChannelId
+                        )
+                    )
                     onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
                         when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
-                            is DataResult.Content -> onReplaceThreadPayload(result.data)
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.ApplyReplyThreadRead(
+                                        parentMessageId = parentMessage.id,
+                                        threadChannelId = result.data.streamChannelId ?: result.data.sourceThreadId
+                                    )
+                                )
+                                onReplaceThreadPayload(result.data)
+                            }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 onReplaceThreadPayload(
@@ -2882,11 +2900,29 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Unable to open task")
                         return@ThreadPageContent
                     }
-                    val loadingPayload = renderedThread.replyThreadLoadingPayload(parentMessage)
+                    val loadingPayload =
+                        renderedThread.replyThreadLoadingPayload(
+                            parentMessage = parentMessage,
+                            focusedMessageId = parentMessage.firstUnreadReplyMessageId
+                        )
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ApplyReplyThreadRead(
+                            parentMessageId = parentMessage.id,
+                            threadChannelId = parentMessage.threadChannelId
+                        )
+                    )
                     onOpenThreadPayload(loadingPayload)
                     coroutineScope.launch {
                         when (val result = dataSource.createOrOpenReplyThread(renderedThread, parentMessage)) {
-                            is DataResult.Content -> onReplaceThreadPayload(result.data)
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(
+                                    SharedThreadIntent.ApplyReplyThreadRead(
+                                        parentMessageId = parentMessage.id,
+                                        threadChannelId = result.data.streamChannelId ?: result.data.sourceThreadId
+                                    )
+                                )
+                                onReplaceThreadPayload(result.data)
+                            }
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 onReplaceThreadPayload(
@@ -4294,7 +4330,8 @@ private fun ThreadAttachmentNoPreviewOverlay(
 }
 
 internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
-    parentMessage: KuiklyThreadMessageItem
+    parentMessage: KuiklyThreadMessageItem,
+    focusedMessageId: String? = null
 ): KuiklyThreadScreenPayload {
     val composer =
         buildThreadSurfaceComposerPayload(
@@ -4316,6 +4353,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         streamChannelId = null,
         parentChannelId = sourceThreadId,
         parentMessageId = parentMessage.id,
+        focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         navigationLabel = "Close",
         selectedTab = "chat",
         showModeTabs = false,

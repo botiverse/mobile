@@ -2257,6 +2257,68 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun applyReplyThreadReadClearsParentUnreadProjectionAndCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val initial =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "parent",
+                            threadChannelId = "thread-old",
+                            replyCount = 2,
+                            unreadReplyCount = 1,
+                            firstUnreadReplyMessageId = "reply-1"
+                        )
+                    )
+            )
+        dataSource.cachePayload(initial)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.ApplyReplyThreadRead(parentMessageId = "m1", threadChannelId = "thread-new"))
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals(2, message.replyCount)
+        assertEquals(0, message.unreadReplyCount)
+        assertNull(message.firstUnreadReplyMessageId)
+        assertEquals("thread-new", message.threadChannelId)
+        val cached = dataSource.cachedPayload("channel-1")?.messages?.single()
+        assertEquals(0, cached?.unreadReplyCount)
+        assertNull(cached?.firstUnreadReplyMessageId)
+        scope.cancel()
+    }
+
+    @Test
+    fun replyThreadLoadingPayloadCarriesFirstUnreadFocus() {
+        val parent =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "parent",
+                replyCount = 2,
+                unreadReplyCount = 1,
+                firstUnreadReplyMessageId = "reply-1"
+            )
+
+        val loading = basePayload().replyThreadLoadingPayload(parent, focusedMessageId = parent.firstUnreadReplyMessageId)
+
+        assertEquals("reply-1", loading.focusedMessageId)
+        assertEquals("m1", loading.parentMessageId)
+    }
+
+    @Test
     fun visibleReadAllCoalescesInFlightBurstToLatestMarker() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
