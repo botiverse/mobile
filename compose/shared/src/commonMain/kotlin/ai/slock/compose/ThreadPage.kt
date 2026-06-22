@@ -4,6 +4,7 @@ import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
@@ -8608,34 +8609,17 @@ private fun ThreadAttachmentChip(
             }
         }
         if (canOpenComments) {
-            Button(
+            SlockBrutalActionButton(
+                label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
                 onClick = onOpenComments,
-                pressFeedback = false,
-                modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceCream)
-                    .padding(horizontal = SlockSpacing.Xs, vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.MessageCircle,
-                        modifier = Modifier.size(12.dp),
-                        color = "#FF111827"
-                    )
-                    Text(
-                        text = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+                modifier = Modifier.fillMaxWidth(),
+                backgroundColor = SlockColor.SurfaceCream,
+                minWidth = 0.dp,
+                minHeight = 30.dp,
+                leadingIcon = SlockLucideIconName.MessageCircle,
+                shadowOffset = 0.dp,
+                textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack)
+            )
         }
     }
 }
@@ -8780,22 +8764,15 @@ private fun ThreadAttachmentCommentsFilterChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    Button(
+    SlockToolbarChip(
+        label = label,
         onClick = onClick,
-        pressFeedback = false,
-        modifier = Modifier.heightIn(min = 28.dp)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(if (selected) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-            .padding(horizontal = SlockSpacing.Sm, vertical = 5.dp)
-    ) {
-        Text(
-            text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-    }
+        active = selected,
+        uppercase = false,
+        activeBackgroundColor = SlockColor.BrandYellow,
+        inactiveBackgroundColor = SlockColor.SurfaceWhite,
+        borderColor = SlockColor.BorderBlack
+    )
 }
 
 @Composable
