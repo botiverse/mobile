@@ -86,12 +86,13 @@ internal fun SlockAnchoredMetaChip(
     color: Color,
     onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
     modifier: Modifier = Modifier,
-    iconSize: Dp = 10.dp
+    iconSize: Dp = 10.dp,
+    pressFeedback: Boolean = onClick != null
 ) {
     SlockAnchorButton(
         onClick2 = { anchor -> onClick?.invoke(anchor) },
         enabled = onClick != null,
-        pressFeedback = onClick != null,
+        pressFeedback = pressFeedback,
         modifier =
             modifier
                 .heightIn(min = 20.dp)

@@ -7053,6 +7053,7 @@ private fun ThreadMessageFooterMeta(
                 iconSize = 12.dp,
                 color = SlockColor.AccentCyan.copy(alpha = 0.2f),
                 modifier = Modifier.widthIn(max = 220.dp),
+                pressFeedback = false,
                 onClick = if (showReplyAction) { _ -> onOpenThread() } else null
             )
         }
