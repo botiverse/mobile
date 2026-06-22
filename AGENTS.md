@@ -88,7 +88,16 @@ contain a **lightweight** summary:
 
 1. One sentence describing what changed and why.
 2. Commit hash (or list of commit hashes).
-3. (Optional) Anything owner / QA needs to runtime-verify (hilog command, emulator steps, fixture capture path).
+3. Main integration status: explicitly say whether the work is still only on a
+   worktree/branch, has been merged into local `main`, has been pushed/synced
+   to remote `main`, or is not applicable. If it is not merged, name the
+   branch/worktree and the blocker; if it is merged, include the local `main`
+   commit hash.
+4. (Optional) Anything owner / QA needs to runtime-verify (hilog command, emulator steps, fixture capture path).
+
+Any meaningful progress / completion report should include this same main
+integration status line. Do not leave reviewers or the owner guessing whether
+the code they are hearing about is actually present on `main`.
 
 Detailed file lists, full verification command output, and entry/walkthroughs
 are still useful — put them in the commit message body, the worktree's commit
