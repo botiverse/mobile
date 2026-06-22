@@ -193,6 +193,8 @@ class SlockMarkdownTest {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
 
         assertEquals(SlockType.Body.fontFamily, inlineCodeStyle.fontFamily)
+        assertEquals(SlockType.Body.fontSize, inlineCodeStyle.fontSize)
+        assertEquals(SlockType.Body.lineHeight, inlineCodeStyle.lineHeight)
         assertFalse(inlineCodeStyle.fontFamily == FontFamily.Monospace)
     }
 
@@ -351,10 +353,12 @@ class SlockMarkdownTest {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Use `mimo`",
-                inlineCodeWidths = mapOf("slock-code:4" to 44.sp)
+                inlineCodeWidths = mapOf("slock-code:4" to 44.sp),
+                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 19.sp)
             ).inlineContent?.invoke().orEmpty()
 
         assertEquals(44.sp, inlineContent.getValue("slock-code:4").placeholder.width)
+        assertEquals(19.sp, inlineContent.getValue("slock-code:4").placeholder.height)
     }
 
     @Test

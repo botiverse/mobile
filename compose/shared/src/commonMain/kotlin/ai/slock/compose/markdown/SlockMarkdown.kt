@@ -570,6 +570,7 @@ internal fun slockMarkdownAnnotator(
     resolveTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onDiagnostics: ((Int, Int, Long) -> Unit)? = null,
     inlineCodeWidths: Map<String, TextUnit> = emptyMap(),
+    inlineCodeTextStyle: TextStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body.withResolvedSlockFontFamily()),
     tokenPlan: MarkdownInlineTokenPlan =
         SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions, knownChannelNames)
 ): MarkdownAnnotator {
@@ -663,11 +664,11 @@ internal fun slockMarkdownAnnotator(
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
-                        height = SlockMarkdownInlineCodeChipHeight
+                        height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
                     )
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineCodeChip(code)
+                        SlockMarkdownInlineCodeChip(code, inlineCodeTextStyle)
                     }
                 }
             }
@@ -933,6 +934,7 @@ private fun buildSlockMarkdownInlineTextAnnotatedString(
 private fun SlockMarkdownMeasuredInlineCodeBox(
     modifier: Modifier,
     tokenPlan: MarkdownInlineTokenPlan,
+    inlineCodeTextStyle: TextStyle,
     measuredInlineCodeWidths: MutableMap<String, TextUnit>,
     content: @Composable (Modifier) -> Unit
 ) {
@@ -943,12 +945,6 @@ private fun SlockMarkdownMeasuredInlineCodeBox(
     }
 
     val density = LocalDensity.current
-    val codeTextStyle = remember {
-        SlockType.Caption.copy(
-            fontSize = 14.sp,
-            lineHeight = 20.sp
-        ).withResolvedSlockFontFamily()
-    }
     val activeIds = remember(tokenPlan.signature) {
         inlineCodeTokens.mapTo(mutableSetOf()) { it.id }
     }
@@ -965,7 +961,7 @@ private fun SlockMarkdownMeasuredInlineCodeBox(
                                 pagerId = viewRef.pagerId,
                                 nativeRef = viewRef.nativeRef,
                                 code = code,
-                                style = codeTextStyle,
+                                style = inlineCodeTextStyle,
                                 fontScale = fontScale
                             )
                         }
@@ -1112,6 +1108,10 @@ fun SlockMarkdownBody(
     val currentResolveTagLabel by rememberUpdatedState(resolveTagLabel)
     val colors = SlockMarkdownColorsDefault
     val typography = remember(textStyle) { slockMarkdownTypography(textStyle) }
+    val inlineCodeTextStyle =
+        remember(textStyle) {
+            slockMarkdownInlineCodeTextStyle(textStyle.withResolvedSlockFontFamily())
+        }
     val tokenPlan = remember(content, highlightedMentions, knownChannelNames) {
         SlockMarkdownInlineTokenRegistry.plan(content, highlightedMentions, knownChannelNames)
     }
@@ -1119,7 +1119,7 @@ fun SlockMarkdownBody(
         mutableStateMapOf<String, TextUnit>()
     }
     val inlineCodeWidthOverrides = measuredInlineCodeWidths.toMap()
-    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides) {
+    val annotator = remember(content, highlightedMentions, performanceKey, tokenPlan, inlineCodeWidthOverrides, inlineCodeTextStyle) {
         slockMarkdownAnnotator(
             content,
             highlightedMentions = highlightedMentions,
@@ -1139,6 +1139,7 @@ fun SlockMarkdownBody(
                     }
                 },
             inlineCodeWidths = inlineCodeWidthOverrides,
+            inlineCodeTextStyle = inlineCodeTextStyle,
             tokenPlan = tokenPlan
         )
     }
@@ -1166,6 +1167,7 @@ fun SlockMarkdownBody(
             SlockMarkdownMeasuredInlineCodeBox(
                 modifier = markdownModifier,
                 tokenPlan = tokenPlan,
+                inlineCodeTextStyle = inlineCodeTextStyle,
                 measuredInlineCodeWidths = measuredInlineCodeWidths
             ) { contentModifier ->
                 KuiklyText(
@@ -1244,6 +1246,7 @@ fun SlockMarkdownBody(
                 SlockMarkdownMeasuredInlineCodeBox(
                     modifier = markdownModifier,
                     tokenPlan = tokenPlan,
+                    inlineCodeTextStyle = inlineCodeTextStyle,
                     measuredInlineCodeWidths = measuredInlineCodeWidths
                 ) { contentModifier ->
                     Markdown(
@@ -1315,7 +1318,6 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
-private val SlockMarkdownInlineCodeChipHeight = 21.sp
 private val SlockMarkdownReferenceChipBackground = SlockColor.SurfaceCream
 
 internal fun slockMarkdownInlineTagWidthSp(
@@ -1348,11 +1350,16 @@ internal fun slockMarkdownInlineCodePlaceholderWidthSp(code: String, measuredWid
         ?: fallbackWidth
 }
 
+internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit {
+    val lineHeight = textStyle.lineHeight.takeIf { it.isSpecified }?.value
+    val fontSize = textStyle.fontSize.takeIf { it.isSpecified }?.value
+    return (lineHeight ?: fontSize?.plus(SlockMarkdownInlineCodeFallbackVerticalChromeSp) ?: 20f)
+        .coerceAtLeast(SlockMarkdownInlineCodeMinHeightSp)
+        .sp
+}
+
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
-    base.copy(
-        fontSize = 14.sp,
-        lineHeight = 20.sp
-    )
+    base.withResolvedSlockFontFamily()
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
@@ -1360,6 +1367,8 @@ internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private const val SlockMarkdownInlineCodeHorizontalChromeSp = 8f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
+private const val SlockMarkdownInlineCodeMinHeightSp = 18f
+private const val SlockMarkdownInlineCodeFallbackVerticalChromeSp = 6f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 private const val SlockMarkdownMeasuredWidthSafetySp = 6f
 
@@ -1455,7 +1464,7 @@ private fun SlockMarkdownMentionText(label: String) {
 }
 
 @Composable
-private fun SlockMarkdownInlineCodeChip(code: String) {
+private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
     Box(
         modifier =
             Modifier
@@ -1465,13 +1474,9 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
-            code,
+            text = code,
             modifier = Modifier.fillMaxWidth(),
-            style =
-                SlockType.Caption.copy(
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                ),
+            style = textStyle.copy(color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
             maxLines = 1,
