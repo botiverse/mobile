@@ -1621,6 +1621,7 @@ internal fun SharedThreadRouteContent(
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {}
 ) {
+    val pager = LocalActivity.current.getPager() as Pager
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val threadViewModel: SharedThreadViewModel =
         viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
@@ -2369,10 +2370,28 @@ internal fun SharedThreadRouteContent(
     }
     fun openImagePreview(group: ThreadImageAttachmentGroup) {
         if (group.images.isEmpty()) return
-        attachmentNoPreviewState = null
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
-        imagePreviewState = ThreadImagePreviewState(images = group.images, currentIndex = currentIndex)
-        requestImagePreviewUrl(group.images[currentIndex].id)
+        val attachment = group.images[currentIndex]
+        imagePreviewState = null
+        attachmentNoPreviewState = null
+        coroutineScope.launch {
+            val signedImageUrl =
+                when (val response = dataSource.attachmentUrl(attachment.id, disposition = "inline")) {
+                    is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+                    is ThreadApiResult.Failure -> null
+                }
+            val imageUrl =
+                signedImageUrl ?: attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
+            pager.openSlockFilePreviewPage(
+                attachment.toThreadAttachmentPreviewPayload(
+                    kind = "image",
+                    title = "Image preview",
+                    imageUrl = imageUrl,
+                    message = if (imageUrl == null) "Image preview is unavailable." else "",
+                    externalUrl = signedImageUrl
+                )
+            )
+        }
     }
     fun selectImagePreviewIndex(index: Int) {
         val preview = imagePreviewState ?: return
@@ -2403,16 +2422,29 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
+    suspend fun resolveAttachmentExternalUrl(attachment: KuiklyThreadAttachmentItem): String? =
+        when (val response = dataSource.attachmentUrl(attachment.id, disposition = "attachment")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        }
+
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
-        val initialState =
-            ThreadAttachmentNoPreviewState(
-                attachment = attachment,
-                markdownStatus = if (attachment.isMarkdownAttachment()) "loading" else "idle"
-            )
-        attachmentNoPreviewState = initialState
-        if (!attachment.isMarkdownAttachment()) return
+        attachmentNoPreviewState = null
+        if (!attachment.isMarkdownAttachment()) {
+            coroutineScope.launch {
+                pager.openSlockFilePreviewPage(
+                    attachment.toThreadAttachmentPreviewPayload(
+                        kind = "unsupported",
+                        title = "File preview",
+                        message = "No preview is available for this file type.",
+                        externalUrl = resolveAttachmentExternalUrl(attachment)
+                    )
+                )
+            }
+            return
+        }
         coroutineScope.launch {
             val result =
                 loadSharedThreadMarkdownAttachment(
@@ -2420,14 +2452,16 @@ internal fun SharedThreadRouteContent(
                     networkModule = networkModule,
                     attachment = attachment
                 )
-            val current = attachmentNoPreviewState
-            if (current?.attachment?.id != attachment.id) return@launch
-            attachmentNoPreviewState =
-                current.copy(
-                    markdownStatus = if (result.body != null) "content" else "error",
-                    markdownBody = result.body,
-                    markdownError = result.error
+            pager.openSlockFilePreviewPage(
+                attachment.toThreadAttachmentPreviewPayload(
+                    kind = if (result.body != null) "markdown" else "error",
+                    title = if (result.body != null) "Markdown preview" else "Preview unavailable",
+                    content = result.body.orEmpty(),
+                    message = result.error.orEmpty(),
+                    error = result.error,
+                    externalUrl = resolveAttachmentExternalUrl(attachment)
                 )
+            )
         }
     }
     LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
@@ -8173,6 +8207,32 @@ internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     listOf(sizeLabel, mimeType)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
+    kind: String,
+    title: String,
+    content: String = "",
+    imageUrl: String? = null,
+    message: String = "",
+    error: String? = null,
+    externalUrl: String? = null
+): SlockFilePreviewPayload =
+    SlockFilePreviewPayload(
+        kind = kind,
+        title = title,
+        subtitle = name.ifBlank { "Attachment" },
+        name = name.ifBlank { "Attachment" },
+        path = name,
+        meta = genericAttachmentMetaLine(),
+        content = content,
+        markdown = kind == "markdown",
+        imageUrl = imageUrl,
+        message = message,
+        error = error,
+        externalUrl = externalUrl,
+        externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
+        externalMimeType = mimeType
+    )
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount

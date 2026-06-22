@@ -1,10 +1,15 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -24,6 +29,9 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.geometry.Offset
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -37,8 +45,10 @@ import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.launch
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
+private const val SlockFilePreviewOpenWithActionId = "open-with"
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -54,7 +64,10 @@ internal data class SlockFilePreviewPayload(
     val markdown: Boolean = false,
     val imageUrl: String? = null,
     val message: String = "",
-    val error: String? = null
+    val error: String? = null,
+    val externalUrl: String? = null,
+    val externalFileName: String = "",
+    val externalMimeType: String = ""
 )
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -68,6 +81,8 @@ internal class ComposeSlockFilePreviewPage : ai.slock.compose.base.BasePager() {
 @Composable
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val coroutineScope = rememberCoroutineScope()
     val payload = remember(pager.pageData.params.toString()) {
         pager.pageData.params.optString("payload")
             .takeIf { it.isNotBlank() }
@@ -85,7 +100,44 @@ private fun SlockFilePreviewStandalonePageContent() {
         title = payload.title,
         subtitle = payload.subtitle.ifBlank { payload.name.ifBlank { payload.path } },
         iconName = payload.previewIconName(),
-        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+        onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        trailingContent =
+            payload.externalUrl?.takeIf { it.isNotBlank() }?.let { externalUrl ->
+                {
+                    SlockFilePreviewExternalMenuButton(
+                        onOpenWithSystem = {
+                            coroutineScope.launch {
+                                val result =
+                                    bridge.openAttachment(
+                                        url = externalUrl,
+                                        attachmentId = payload.path.ifBlank { payload.name },
+                                        fileName =
+                                            payload.externalFileName
+                                                .ifBlank { payload.name }
+                                                .ifBlank { payload.path }
+                                                .ifBlank { "attachment" },
+                                        mimeType = payload.externalMimeType
+                                    )
+                                when (result?.optString("status").orEmpty()) {
+                                    "opened", "" -> Unit
+                                    "no_app" ->
+                                        bridge.toast(
+                                            result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
+                                        )
+                                    "storage_failed" ->
+                                        bridge.toast(
+                                            result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+                                        )
+                                    else ->
+                                        bridge.toast(
+                                            result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
+                                        )
+                                }
+                            }
+                        }
+                    )
+                }
+            }
     ) {
         SlockFilePreviewPayloadContent(
             payload = payload,
@@ -234,6 +286,50 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
         "error" -> SlockLucideIconName.TriangleAlert
         else -> SlockLucideIconName.File
     }
+
+@Composable
+private fun SlockFilePreviewExternalMenuButton(
+    onOpenWithSystem: () -> Unit
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box {
+        SlockBrutalIconButton(
+            iconName = SlockLucideIconName.Ellipsis,
+            onClick = { menuOpen = true },
+            size = 30.dp,
+            shadowOffset = 2.dp,
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                val pos = coordinates.positionInRoot()
+                menuAnchor =
+                    Offset(
+                        x = pos.x + coordinates.size.width.toFloat() / 2f,
+                        y = pos.y + coordinates.size.height.toFloat() / 2f
+                    )
+            }
+        )
+        if (menuOpen) {
+            SlockBrutalDropdownMenu(
+                anchor = menuAnchor,
+                items =
+                    listOf(
+                        SlockBrutalDropdownMenuItem(
+                            id = SlockFilePreviewOpenWithActionId,
+                            label = "Open with...",
+                            icon = SlockLucideIconName.ExternalLink
+                        )
+                    ),
+                onSelect = { id ->
+                    if (id == SlockFilePreviewOpenWithActionId) {
+                        onOpenWithSystem()
+                    }
+                },
+                onDismiss = { menuOpen = false },
+                widthDp = 180f
+            )
+        }
+    }
+}
 
 private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =
     listOfNotNull(
