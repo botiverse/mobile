@@ -104,6 +104,19 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageRowRichContent() {
+        captureKmpComponentCase(
+            caseId = "components.thread.message-row.rich-content",
+            pageName = "compose_thread_message_row_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-message-row-rich")
+                    .put("visualFixture", "rich_content"),
+            crop = THREAD_MESSAGE_ROW_RICH_CONTENT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",
@@ -964,6 +977,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 100
+            )
+        private val THREAD_MESSAGE_ROW_RICH_CONTENT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 394
             )
 
         @BeforeClass

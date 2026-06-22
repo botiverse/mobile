@@ -1894,7 +1894,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing full channel conversation screen: message list, header, composer, thread context, attachments, loading/empty/error states."
+      "notes": "Pending: needs a real ThreadPage channel route capture with seeded channel messages, attachments, replies, task metadata, and composer state on both React and Android. Do not activate with standalone pageData-only fixtures."
     },
     {
       "id": "screens.thread.dm",
@@ -1930,7 +1930,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing full DM conversation screen variant with member identity/status and reply affordances."
+      "notes": "Pending: needs a real ThreadPage DM route capture with seeded peer identity/status, member-scoped mentions, replies, attachments, and composer state on both React and Android. Do not activate with standalone pageData-only fixtures."
     },
     {
       "id": "screens.thread.task-thread",
@@ -1966,7 +1966,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing task-thread conversation variant with bound task context and status controls."
+      "notes": "Pending: needs a real task-thread route plus seeded task data/status controls before capture. Keep pending until React and Android can launch the same task-bound thread without fake pageData."
     },
     {
       "id": "screens.members.index",
@@ -2553,7 +2553,6 @@
       "captureType": "component-fixture",
       "surface": "thread",
       "category": "app/thread",
-      "baselineStatus": "pending",
       "fixture": "fixtures/components.thread.message-row.rich-content.json",
       "viewport": {
         "width": 390,
@@ -2575,13 +2574,13 @@
         "contract": "component-bounds"
       },
       "reactPathHint": "packages/web/src/components/message/MessageItem.tsx",
-      "androidCaseHint": "pending",
+      "androidCaseHint": "compose_thread_message_row_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing expanded message-row fixture with richer body, mentions, attachments, reply count, and task/link states."
+      "notes": "Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer."
     }
   ],
   "componentMatrix": [
@@ -4579,21 +4578,21 @@
       "category": "app/thread",
       "group": "screens-thread",
       "status": "pending",
-      "notes": "Missing full channel conversation screen: message list, header, composer, thread context, attachments, loading/empty/error states.",
+      "notes": "Pending: needs a real ThreadPage channel route capture with seeded channel messages, attachments, replies, task metadata, and composer state on both React and Android. Do not activate with standalone pageData-only fixtures.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/ThreadPage.tsx",
           "fixture": "fixtures/screens.thread.channel.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React ThreadPage route provider with seeded channel conversation data, not a standalone component fixture."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android ThreadPage route launch capture with seeded repository/store state, not pageData-only visual fixture."
         },
         {
           "id": "harmony",
@@ -4612,21 +4611,21 @@
       "category": "app/thread",
       "group": "screens-thread",
       "status": "pending",
-      "notes": "Missing full DM conversation screen variant with member identity/status and reply affordances.",
+      "notes": "Pending: needs a real ThreadPage DM route capture with seeded peer identity/status, member-scoped mentions, replies, attachments, and composer state on both React and Android. Do not activate with standalone pageData-only fixtures.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/ThreadPage.tsx",
           "fixture": "fixtures/screens.thread.dm.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React ThreadPage DM route provider with seeded direct-message conversation data, not a standalone component fixture."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android ThreadPage DM route launch capture with seeded peer/member state, not pageData-only visual fixture."
         },
         {
           "id": "harmony",
@@ -4645,21 +4644,21 @@
       "category": "app/thread",
       "group": "screens-thread",
       "status": "pending",
-      "notes": "Missing task-thread conversation variant with bound task context and status controls.",
+      "notes": "Pending: needs a real task-thread route plus seeded task data/status controls before capture. Keep pending until React and Android can launch the same task-bound thread without fake pageData.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/ThreadPage.tsx",
           "fixture": "fixtures/screens.thread.task-thread.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React ThreadPage task-thread route provider with seeded task-bound conversation data."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android task-thread route launch plus seeded task data/status controls; pageData-only fixture would not prove the product path."
         },
         {
           "id": "harmony",
@@ -5172,28 +5171,36 @@
       "surface": "thread",
       "category": "app/thread",
       "group": "components-thread",
-      "status": "pending",
-      "notes": "Missing expanded message-row fixture with richer body, mentions, attachments, reply count, and task/link states.",
+      "status": "baseline",
+      "notes": "Real React MessageItem vs Android shared ThreadMessageCard component fixture. Fixture covers long markdown body, @mention, #channel, task #222, URL link, two attachment chips, task footer, reply footer, and reaction footer.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
+          "status": "ready",
+          "components": [
+            "MessageItem"
+          ],
           "path": "packages/web/src/components/message/MessageItem.tsx",
-          "fixture": "fixtures/components.thread.message-row.rich-content.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "fixture": "fixtures/components.thread.message-row.rich-content.json"
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
+          "components": [
+            "ThreadMessageCard"
+          ],
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadMessageRow.kt",
-          "reason": "Needs Android/KMP component fixture capture."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadMessageRowRichContent"
         },
         {
           "id": "harmony",
           "status": "pending",
+          "components": [
+            "ThreadMessageCard"
+          ],
           "source": "kmp-shared-ohos",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadMessageRow.kt",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]

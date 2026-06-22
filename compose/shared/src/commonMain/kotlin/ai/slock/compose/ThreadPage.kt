@@ -4192,6 +4192,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
     }.getOrNull()
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
+private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 
 private fun threadVisualFixture(
     fixture: String,
@@ -4253,6 +4254,106 @@ private fun threadVisualFixture(
                         KuiklyThreadMemberItem(
                             id = "user_artin",
                             displayName = "Artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                filesPayload = "{}",
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#design",
+                subtitle = "Thread rich message fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = true,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = true,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_rich_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "06/22 23:30",
+                            messageType = "Chat",
+                            body =
+                                "Rich fixture for #design: @artin please compare the Android capture " +
+                                    "against task #222 before publishing. Keep https://raft.build/visual-testing " +
+                                    "in the body so markdown links and long wrapping stay covered.",
+                            threadChannelId = "thread-msg-rich-visual",
+                            replyCount = 7,
+                            unreadReplyCount = 2,
+                            firstUnreadReplyMessageId = "reply_rich_2",
+                            taskId = "task_222",
+                            taskNumber = 222,
+                            taskStatus = "in_progress",
+                            taskAssigneeId = "agent-cindy",
+                            taskAssigneeName = "Cindy",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 3, selected = false)
+                                ),
+                            attachments =
+                                listOf(
+                                    KuiklyThreadAttachmentItem(
+                                        id = "att-visual-spec",
+                                        name = "visual-parity-notes.pdf",
+                                        mimeType = "application/pdf",
+                                        sizeLabel = "184 KB",
+                                        commentCount = 3
+                                    ),
+                                    KuiklyThreadAttachmentItem(
+                                        id = "att-thread-preview",
+                                        name = "thread-screen-preview.html",
+                                        mimeType = "text/html",
+                                        sizeLabel = "32 KB"
+                                    )
+                                )
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task_222",
+                            title = "Thread screens + rich message row fixture",
+                            status = "in_progress",
+                            taskNumber = 222,
+                            messageId = "msg_rich_visual",
+                            assigneeId = "agent-cindy",
+                            assigneeName = "Cindy",
+                            updatedAtLabel = "06/22 23:30"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
