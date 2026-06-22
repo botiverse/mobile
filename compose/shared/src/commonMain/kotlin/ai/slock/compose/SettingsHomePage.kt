@@ -11493,7 +11493,7 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is Heartbeat -> "heartbeat"
     }
 
-private fun decodeSharedShellRealtimeEvent(
+internal fun decodeSharedShellRealtimeEvent(
     eventData: JSONObject,
     mapper: RealtimeEventMapper,
     log: (String) -> Unit

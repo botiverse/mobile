@@ -44,6 +44,8 @@ import ai.slock.compose.data.SharedTasksScope
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.realtime.RealtimeEventMapper
+import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.PendingMentionActionExecuteResult
 import ai.slock.compose.data.TaskSnapshot
@@ -156,6 +158,7 @@ import kotlin.time.TimeMark
 import kotlin.time.TimeSource
 
 internal const val THREAD_PAGE = "compose_thread"
+private const val THREAD_REALTIME_EVENT = "slockRealtimeEvent"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
 private const val THREAD_HEADER_VISUAL_PAGE = "compose_thread_header_visual"
@@ -1122,6 +1125,33 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
+    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
+    var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
+    DisposableEffect(pager, realtimeEventMapper) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != THREAD_REALTIME_EVENT) return
+                    if (eventData.optString("action").isNotBlank()) return
+                    val event =
+                        decodeSharedShellRealtimeEvent(
+                            eventData = eventData,
+                            mapper = realtimeEventMapper,
+                            log = { message -> bridge.log("thread_$message") }
+                        ) ?: return
+                    if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return
+                    threadRealtimeEventSequence += 1
+                    threadRealtimeEventSignal =
+                        SharedThreadRealtimeEventSignal(
+                            sequence = threadRealtimeEventSequence,
+                            event = event
+                        )
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
     val threadLocalStore =
@@ -1262,7 +1292,8 @@ private fun ThreadPageScreen() {
             routerModule.closePage()
         },
         onOpenThreadPayload = ::openStandaloneThreadPayload,
-        onReplaceThreadPayload = {}
+        onReplaceThreadPayload = {},
+        realtimeEventSignal = threadRealtimeEventSignal
     )
 }
 
