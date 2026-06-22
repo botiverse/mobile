@@ -27,6 +27,7 @@ import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.SharedAgentDetailIntent
+import ai.slock.compose.data.SharedAgentDetailMenuAnchor
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
@@ -1177,18 +1178,24 @@ private fun MembersDetailContent(
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
+    // Phase 2C: per #56 B-scope, hoist the remaining B-scope state from
+    // composable-local to SharedAgentDetailStore. Pending confirmation,
+    // management menu open/anchor, and selected tab are now read from the
+    // store if provided (else fall back to local var for backward compat with
+    // MembersAgentDetailVisualContent's standalone render path).
+    val storeState = sharedAgentDetailStore?.state?.value
     var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
-    var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
+    var pendingConfirmation by remember(member.id.value) {
+        mutableStateOf<MembersAgentLifecycleAction?>(null)
+    }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
     // Action in-flight: prefer SharedAgentDetailStore if provided (single source of truth
     // for dropdown item enabled state + confirm modal busy flag per task #56), else fall
-    // back to local composable state. Phase 2A: lifecycle + diagnostic actions only;
-    // pendingConfirmation / managementMenu / selectedTab / profile edit follow in
-    // Phase 2B/2C in the same worktree.
-    val storeLifecycleInFlight: String? = sharedAgentDetailStore?.state?.value?.lifecycleActionInFlight
-    val storeDiagnosticInFlight: String? = sharedAgentDetailStore?.state?.value?.diagnosticActionInFlight
+    // back to local composable state.
+    val storeLifecycleInFlight: String? = storeState?.lifecycleActionInFlight
+    val storeDiagnosticInFlight: String? = storeState?.diagnosticActionInFlight
     val lifecycleInFlight: String? = if (sharedAgentDetailStore != null) {
         storeLifecycleInFlight
     } else {
@@ -1199,6 +1206,14 @@ private fun MembersDetailContent(
     } else {
         diagnosticActionState?.takeIf { it.inProgress }?.actionKey
     }
+    // Read pending confirmation, selected tab, management menu open + anchor
+    // from store when available; otherwise keep local state. The store is
+    // authoritative when provided; local state is the legacy fallback for
+    // visual-test renders that don't construct a store.
+    val storePendingConfirmation: MembersAgentLifecycleAction? = storeState?.pendingConfirmation
+    val storeSelectedTab: MembersAgentDetailTab? = storeState?.selectedTab
+    val storeManagementMenuOpen: Boolean? = storeState?.managementMenuOpen
+    val storeManagementMenuAnchor: SharedAgentDetailMenuAnchor? = storeState?.managementMenuAnchor
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
     var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
@@ -1475,15 +1490,29 @@ private fun MembersDetailContent(
             onOpenDirectMessage = onOpenDirectMessage,
             onCopyMemberId = onCopyMemberId,
             onRequestManagementMenu = { anchor ->
-                managementMenuAnchor = anchor
-                managementMenuOpen = true
+                if (sharedAgentDetailStore != null) {
+                    sharedAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.OpenManagementMenu(
+                            SharedAgentDetailMenuAnchor(x = anchor.x, y = anchor.y)
+                        )
+                    )
+                } else {
+                    managementMenuAnchor = anchor
+                    managementMenuOpen = true
+                }
             }
         )
         if (member.kind == MemberKind.Agent) {
             MembersAgentTabBar(
                 tabs = visibleTabs,
-                selectedTab = selectedTab,
-                onSelectedTabChange = { selectedTab = it }
+                selectedTab = storeSelectedTab ?: selectedTab,
+                onSelectedTabChange = {
+                    if (sharedAgentDetailStore != null) {
+                        sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.SelectTab(it))
+                    } else {
+                        selectedTab = it
+                    }
+                }
             )
         }
         LazyColumn(
@@ -1599,8 +1628,11 @@ private fun MembersDetailContent(
                 onDismiss = { showAvatarPicker = false }
             )
         }
-        val dropdownAnchor = managementMenuAnchor
-        if (managementMenuOpen && member.kind == MemberKind.Agent) {
+        val dropdownAnchor: Offset = storeManagementMenuAnchor?.let { Offset(it.x, it.y) }
+            ?: managementMenuAnchor
+            ?: Offset(100f, 100f)
+        val dropdownOpen: Boolean = storeManagementMenuOpen ?: managementMenuOpen
+        if (dropdownOpen && member.kind == MemberKind.Agent) {
             val menuSummary = detail?.summary
             val menuStatus = member.membersResolvedAgentStatus(menuSummary?.status, menuSummary?.activity)
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
@@ -1614,7 +1646,7 @@ private fun MembersDetailContent(
                 inProgress = lifecycleInFlight != null || diagnosticInFlight != null
             )
             SlockBrutalDropdownMenu(
-                anchor = dropdownAnchor ?: Offset(100f, 100f),
+                anchor = dropdownAnchor,
                 items = menuItems,
                 onSelect = { id ->
                     handleMembersManagementMenuSelection(
@@ -1625,18 +1657,28 @@ private fun MembersDetailContent(
                         reportIssue = { reportIssue() }
                     )
                 },
-                onDismiss = { managementMenuOpen = false }
+                onDismiss = {
+                    if (sharedAgentDetailStore != null) {
+                        sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.CloseManagementMenu)
+                    } else {
+                        managementMenuOpen = false
+                    }
+                }
             )
         }
-        pendingConfirmation?.let { action ->
+        val activePendingConfirmation = storePendingConfirmation ?: pendingConfirmation
+        activePendingConfirmation?.let { action ->
             SlockBrutalModalLayer(
                 model = SlockModalShellModel(
                     title = "Confirm ${action.label}",
                     subtitle = "${action.label} ${member.displayName}. This uses the real agent management API."
                 ),
                 onDismiss = {
-                    pendingConfirmation = null
-                    sharedAgentDetailStore?.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                    if (sharedAgentDetailStore != null) {
+                        sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                    } else {
+                        pendingConfirmation = null
+                    }
                 }
             ) {
                 MembersLifecycleConfirmation(
@@ -1645,9 +1687,12 @@ private fun MembersDetailContent(
                     busy = actionState?.inProgress == true,
                     onConfirm = { runLifecycleAction(action, confirmed = true) },
                     onCancel = {
-                        pendingConfirmation = null
-                        actionState = null
-                        sharedAgentDetailStore?.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                        if (sharedAgentDetailStore != null) {
+                            sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                        } else {
+                            pendingConfirmation = null
+                            actionState = null
+                        }
                     }
                 )
             }
