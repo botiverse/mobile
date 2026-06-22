@@ -228,4 +228,10 @@ class SlockAppShellTest {
         assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))
     }
 
+    @Test
+    fun authChooseServerRouteCarriesShellChromeIntentOnlyWhenRequested() {
+        assertEquals(false, authChooseServerPageData().optBoolean("slockChooseServerFromShell", false))
+        assertEquals(true, authChooseServerPageData(fromShell = true).optBoolean("slockChooseServerFromShell", false))
+    }
+
 }

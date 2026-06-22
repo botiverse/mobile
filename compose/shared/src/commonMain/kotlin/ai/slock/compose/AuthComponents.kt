@@ -72,6 +72,7 @@ internal fun AuthScaffold(
     modifier: Modifier = Modifier,
     onDiagnosticsShortcut: (() -> Unit)? = null,
     contentTopPadding: Dp = 136.dp,
+    topLeadingContent: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
@@ -91,7 +92,7 @@ internal fun AuthScaffold(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        AuthTopBar(statusBarHeight, onBrandClick)
+        AuthTopBar(statusBarHeight, onBrandClick, topLeadingContent)
         Box(
             modifier = Modifier.fillMaxWidth().weight(1f).padding(horizontal = 36.dp),
             contentAlignment = Alignment.TopCenter
@@ -110,7 +111,11 @@ internal fun AuthScaffold(
 }
 
 @Composable
-private fun AuthTopBar(statusBarHeight: Float, onBrandClick: (() -> Unit)?) {
+private fun AuthTopBar(
+    statusBarHeight: Float,
+    onBrandClick: (() -> Unit)?,
+    leadingContent: (@Composable () -> Unit)?
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,14 +131,18 @@ private fun AuthTopBar(statusBarHeight: Float, onBrandClick: (() -> Unit)?) {
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            AuthSmallBrand(
-                modifier =
-                    if (onBrandClick != null) {
-                        Modifier.clickable { onBrandClick() }
-                    } else {
-                        Modifier
-                    }
-            )
+            if (leadingContent != null) {
+                leadingContent()
+            } else {
+                AuthSmallBrand(
+                    modifier =
+                        if (onBrandClick != null) {
+                            Modifier.clickable { onBrandClick() }
+                        } else {
+                            Modifier
+                        }
+                )
+            }
         }
     }
 }

@@ -367,6 +367,7 @@ const val AUTH_CHOOSE_SERVER_PAGE = "compose_auth_choose_server"
 private const val AUTH_CHOOSE_SERVER_VISUAL_PAGE = "compose_auth_choose_server_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
+private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private const val HomeDestinationSearch = "search"
@@ -7359,6 +7360,12 @@ private fun AuthChooseServerPageContent() {
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val fromShell = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.optBoolean(AUTH_CHOOSE_SERVER_FROM_SHELL, false)
+    }
+    val closeChooser = remember(pager) {
+        { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
+    }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authDataSource =
         remember {
@@ -7405,7 +7412,8 @@ private fun AuthChooseServerPageContent() {
                         restoreAttempt += 1
                     },
                     onSignIn = { pager.openLoginReplacingCurrentPage() },
-                    onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
+                    onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() },
+                    onBack = closeChooser.takeIf { fromShell }
                 )
             }
         }
@@ -7420,7 +7428,8 @@ private fun AuthChooseServerPageContent() {
                 onSignOut = {
                     bridge.realtimeDisconnect("logout")
                     pager.openLoginReplacingCurrentPage()
-                }
+                },
+                onBack = closeChooser.takeIf { fromShell }
             )
     }
 }
@@ -7538,7 +7547,7 @@ private fun Pager.openAppShellAuthDiagnostics() {
 
 private fun Pager.openAuthChooseServerPage() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(AUTH_CHOOSE_SERVER_PAGE, authChooseServerPageData(replaceCurrent = false))
+        .openPage(AUTH_CHOOSE_SERVER_PAGE, authChooseServerPageData(replaceCurrent = false, fromShell = true))
 }
 
 private fun Pager.openAppShellReplacingCurrentPage() {
@@ -7551,8 +7560,16 @@ private fun Pager.openLoginReplacingCurrentPage() {
         .openPage(LOGIN_PAGE, loginPageData(replaceCurrent = true))
 }
 
-internal fun authChooseServerPageData(replaceCurrent: Boolean = false): JSONObject =
+internal fun authChooseServerPageData(
+    replaceCurrent: Boolean = false,
+    fromShell: Boolean = false
+): JSONObject =
     slockAuthRoutePageData(AUTH_CHOOSE_SERVER_PAGE, replaceCurrent)
+        .apply {
+            if (fromShell) {
+                put(AUTH_CHOOSE_SERVER_FROM_SHELL, true)
+            }
+        }
 
 internal fun appShellPageData(replaceCurrent: Boolean = false): JSONObject =
     slockAuthRoutePageData(SLOCK_APP_SHELL_PAGE, replaceCurrent)
@@ -7573,7 +7590,8 @@ private fun AppShellServerGateContent(
     session: StoredAuthSession,
     authDataSource: SharedAuthDataSource,
     onReady: (StoredAuthSession) -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
     var latestSession by remember(session) { mutableStateOf(session) }
     var mode by remember(session.servers) { mutableStateOf(if (session.servers.isEmpty()) "empty" else "choose") }
@@ -7597,7 +7615,19 @@ private fun AppShellServerGateContent(
         }
     }
 
-    AuthScaffold(contentTopPadding = 72.dp) {
+    AuthScaffold(
+        contentTopPadding = 72.dp,
+        topLeadingContent = onBack?.let { back ->
+            {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = back,
+                    size = 34.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        }
+    ) {
         AuthCenterMark()
         Text(
             text =
@@ -7753,9 +7783,22 @@ private fun AppShellAuthErrorContent(
     message: String,
     onRetry: () -> Unit,
     onSignIn: () -> Unit,
-    onOpenDiagnostics: () -> Unit
+    onOpenDiagnostics: () -> Unit,
+    onBack: (() -> Unit)? = null
 ) {
-    AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
+    AuthScaffold(
+        onDiagnosticsShortcut = onOpenDiagnostics,
+        topLeadingContent = onBack?.let { back ->
+            {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = back,
+                    size = 34.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        }
+    ) {
         AuthLogoBadge("RAFT")
         Text(
             text = "Session error",
