@@ -7686,6 +7686,7 @@ private fun AppShellAuthGateContent(
                         password = effect.password
                     )
             LoginFormEffect.FocusEmail -> Unit
+            LoginFormEffect.FocusPassword -> Unit
             null -> Unit
         }
     }

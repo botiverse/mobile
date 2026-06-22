@@ -201,6 +201,7 @@ private fun LoginScreen() {
                 )
             }
             LoginFormEffect.FocusEmail -> Unit
+            LoginFormEffect.FocusPassword -> Unit
             null -> Unit
         }
     }
@@ -210,6 +211,8 @@ private fun LoginScreen() {
         password = state.password,
         submitting = state.submitting,
         errorMessage = state.errorMessage,
+        emailError = state.emailFormatError,
+        passwordError = state.passwordError,
         socialProviders = socialProviders,
         socialSubmittingProvider = socialSubmittingProvider,
         onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
@@ -254,6 +257,9 @@ private fun RegisterScreen() {
         password = state.password,
         submitting = state.submitting,
         errorMessage = state.errorMessage,
+        nameError = state.nameError,
+        emailError = state.emailFormatError,
+        passwordError = state.passwordError,
         onNameChange = { state = reducer.reduce(state, CreateAccountFormEvent.NameChanged(it)).state },
         onEmailChange = { state = reducer.reduce(state, CreateAccountFormEvent.EmailChanged(it)).state },
         onPasswordChange = { state = reducer.reduce(state, CreateAccountFormEvent.PasswordChanged(it)).state },
@@ -266,6 +272,8 @@ private fun RegisterScreen() {
                     state = state.copy(submitting = false)
                 }
                 CreateAccountFormEffect.FocusName -> Unit
+                CreateAccountFormEffect.FocusEmail -> Unit
+                CreateAccountFormEffect.FocusPassword -> Unit
                 null -> Unit
             }
         },
@@ -285,6 +293,7 @@ private fun ForgotPasswordScreen() {
         sending = state.submitting,
         sent = state.sent,
         errorMessage = state.errorMessage,
+        emailError = state.emailFormatError,
         onEmailChange = { state = reducer.reduce(state, ForgotPasswordFormEvent.EmailChanged(it)).state },
         onSubmit = {
             val update = reducer.reduce(state, ForgotPasswordFormEvent.Submit)
@@ -656,6 +665,8 @@ internal fun LoginContent(
     password: String,
     submitting: Boolean,
     errorMessage: String?,
+    emailError: String? = null,
+    passwordError: String? = null,
     socialProviders: Set<AuthProvider> = emptySet(),
     socialSubmittingProvider: AuthProvider? = null,
     onEmailChange: (String) -> Unit,
@@ -681,7 +692,7 @@ internal fun LoginContent(
         }
     }
     val formBusy = submitting || socialSubmittingProvider != null
-    val canSubmit = canSubmitLoginForm(emailDraft, passwordDraft, formBusy)
+    val canSubmit = canSubmitLoginForm(emailDraft, passwordDraft, formBusy, emailError)
     val submitCurrentDraft = {
         when (val decision = resolveLoginDraftSubmit(emailDraft, passwordDraft, formBusy)) {
             is LoginDraftSubmitDecision.Forward ->
@@ -707,6 +718,8 @@ internal fun LoginContent(
                 label = "Email",
                 required = true,
                 enabled = !formBusy,
+                isError = !emailError.isNullOrBlank(),
+                errorText = emailError,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
             )
@@ -719,6 +732,8 @@ internal fun LoginContent(
                 label = "Password",
                 required = true,
                 enabled = !formBusy,
+                isError = !passwordError.isNullOrBlank(),
+                errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { submitCurrentDraft() })
@@ -770,6 +785,9 @@ internal fun RegisterContent(
     password: String,
     submitting: Boolean,
     errorMessage: String?,
+    nameError: String? = null,
+    emailError: String? = null,
+    passwordError: String? = null,
     onNameChange: (String) -> Unit,
     onEmailChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
@@ -798,6 +816,8 @@ internal fun RegisterContent(
                 placeholder = "Letters, numbers, hyphens, underscores",
                 required = true,
                 enabled = formEnabled,
+                isError = !nameError.isNullOrBlank(),
+                errorText = nameError,
                 forceFocused = forceNameFocused,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { emailFocusRequester.requestFocus() })
@@ -808,6 +828,8 @@ internal fun RegisterContent(
                 "Email",
                 required = true,
                 enabled = formEnabled,
+                isError = !emailError.isNullOrBlank(),
+                errorText = emailError,
                 focusRequester = emailFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                 keyboardActions = KeyboardActions(onNext = { passwordFocusRequester.requestFocus() })
@@ -819,6 +841,8 @@ internal fun RegisterContent(
                 placeholder = "Min 8 characters",
                 required = true,
                 enabled = formEnabled,
+                isError = !passwordError.isNullOrBlank(),
+                errorText = passwordError,
                 focusRequester = passwordFocusRequester,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() })
@@ -829,7 +853,7 @@ internal fun RegisterContent(
                 text = if (submitting) "Creating account..." else "Create Account",
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
-                enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
+                enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && emailError == null,
                 loading = submitting,
                 preserveDisabledVisual = true
             )
@@ -844,6 +868,7 @@ internal fun ForgotPasswordContent(
     sending: Boolean,
     sent: Boolean,
     errorMessage: String?,
+    emailError: String? = null,
     onEmailChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
@@ -870,12 +895,13 @@ internal fun ForgotPasswordContent(
                 onValueChange = onEmailChange,
                 label = "Email",
                 enabled = !sending && !sent,
-                isError = !errorMessage.isNullOrBlank(),
-                errorText = errorMessage,
+                isError = !emailError.isNullOrBlank(),
+                errorText = emailError,
                 forceFocused = !sent,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { onSubmit() })
             )
+            AuthError(errorMessage)
             if (sent) {
                 AuthSuccessNotice(
                     title = "Reset link sent",
@@ -886,7 +912,7 @@ internal fun ForgotPasswordContent(
                 text = if (sending) "Sending link..." else "Send reset link",
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
-                enabled = email.isNotBlank() && !sent,
+                enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
             )
