@@ -2092,6 +2092,92 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun closeDirectMessagePersistsHiddenDmIds() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val initial = SettingsServerSidebarOrderSnapshot()
+        val updateCalls = mutableListOf<SettingsServerSidebarOrderUpdateRequest>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = RecordingHomeApi(),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(
+                            sampleHome(payload.serverId).copy(
+                                directMessages = listOf(directMessage("dm-1", "Artin", "user-1", Presence.Active)),
+                                sidebarOrder = initial
+                            )
+                        )
+                    }
+                ),
+            scope = scope,
+            loadSidebarOrder = { DataResult.Content(initial) },
+            updateSidebarOrder = { request ->
+                updateCalls += request
+                DataResult.Content(initial.copy(hiddenDmIds = request.hiddenDmIds.orEmpty()))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.CloseDirectMessage("dm-1"))
+
+        val after = (store.state.value.content as SharedHomeContentState.Content).snapshot.sidebarOrder
+        assertEquals(listOf("dm-1"), after?.hiddenDmIds)
+        assertEquals(listOf("dm-1"), updateCalls.single().hiddenDmIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun markReadAndUnreadUpdateHomeCountsAndCallReadReceiptRoutes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val readCalls = mutableListOf<ChannelId>()
+        val unreadCalls = mutableListOf<ChannelId>()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = RecordingHomeApi(),
+                    parseHome = { payload, _ ->
+                        DataResult.Content(
+                            sampleHome(payload.serverId).copy(
+                                channels = listOf(channel("channel-1", "general").copy(unreadCount = 3, unreadCountKnown = true)),
+                                unreadTotal = 3,
+                                server = ServerSummary(payload.serverId, "Slock Community", unreadCount = 3)
+                            )
+                        )
+                    }
+                ),
+            scope = scope,
+            markChannelReadAll = { channelId ->
+                readCalls += channelId
+                DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 0))
+            },
+            markChannelUnread = { channelId ->
+                unreadCalls += channelId
+                DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 1))
+            }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        store.accept(SharedHomeIntent.MarkRead("channel-1"))
+
+        val readSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(0, readSnapshot.channels.single().unreadCount)
+        assertEquals(0, readSnapshot.unreadTotal)
+        assertEquals(listOf(ChannelId("channel-1")), readCalls)
+
+        store.accept(SharedHomeIntent.MarkUnread("channel-1"))
+
+        val unreadSnapshot = (store.state.value.content as SharedHomeContentState.Content).snapshot
+        assertEquals(1, unreadSnapshot.channels.single().unreadCount)
+        assertEquals(1, unreadSnapshot.unreadTotal)
+        assertEquals(listOf(ChannelId("channel-1")), unreadCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun pinnedLazyItemCountGrowsWhenPinnedItemsArePresent() {
         val collapsed = homeLazyItemCount(
             channelsCount = 3,

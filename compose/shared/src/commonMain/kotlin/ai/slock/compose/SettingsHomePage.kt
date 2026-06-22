@@ -142,6 +142,7 @@ import ai.slock.compose.data.NetworkSlockThreadApi
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealConversationRepository
 import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.RealSearchRepository
 import ai.slock.compose.data.RealSettingsRepository
@@ -959,6 +960,14 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("shared_channel_repository $message") }
             )
         }
+    val homeReadReceiptRepository =
+        remember {
+            RealReadReceiptRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                warningLogger = { message -> bridge.log("shared_home_read_receipt $message") }
+            )
+        }
     val conversationRepository =
         remember {
             RealConversationRepository(
@@ -1129,6 +1138,9 @@ private fun SlockAppShellContent() {
                 diagnosticsLogger = { message -> bridge.log("shared_home $message") },
                 loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
                 updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
+                markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
+                markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
+                archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
                 pinUpdateFailureCallback = { message -> bridge.toast(message) }
             )
         }
@@ -8628,6 +8640,8 @@ private fun SharedHomeScreen(
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",
+                hiddenDmIds = snapshot.sidebarOrder?.hiddenDmIds.orEmpty(),
+                canArchiveChannels = snapshot.server.permissions.canManageSettings,
                 showBottomBar = false,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
@@ -8678,6 +8692,21 @@ private fun SharedHomeScreen(
                 },
                 onPinToggle = { conversationId ->
                     onIntent(SharedHomeIntent.TogglePinned(conversationId))
+                },
+                onReadToggle = { conversationId, markUnread ->
+                    onIntent(
+                        if (markUnread) {
+                            SharedHomeIntent.MarkUnread(conversationId)
+                        } else {
+                            SharedHomeIntent.MarkRead(conversationId)
+                        }
+                    )
+                },
+                onCloseDirectMessage = { conversationId ->
+                    onIntent(SharedHomeIntent.CloseDirectMessage(conversationId))
+                },
+                onArchiveChannel = { conversationId ->
+                    onIntent(SharedHomeIntent.ArchiveChannel(conversationId))
                 }
             )
         }
@@ -11023,7 +11052,8 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         presence = presence.toSharedPresence(),
         hasDraft = hasDraft,
-        joined = joined && permissions.canRead
+        joined = joined && permissions.canRead,
+        archived = archived
     )
 
 private fun Presence?.toSharedPresence(): SlockPresence? =

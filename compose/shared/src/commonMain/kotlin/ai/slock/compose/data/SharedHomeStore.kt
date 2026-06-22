@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.SlockSidebarSortMode
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.DirectMessageCreated
@@ -11,6 +12,7 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -51,6 +53,15 @@ class SharedHomeStore(
      */
     private val updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    },
+    private val markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+        DataResult.Empty(EmptyReason.NoMessages)
+    },
+    private val markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+        DataResult.Empty(EmptyReason.NoMessages)
+    },
+    private val archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
+        DataResult.Empty(EmptyReason.NoChannels)
     },
     /**
      * #211: callback invoked when a pin/unpin or pinned-sort-mode PATCH
@@ -196,6 +207,14 @@ class SharedHomeStore(
                 togglePinned(intent.conversationId)
             is SharedHomeIntent.SetPinnedSortMode ->
                 setPinnedSortMode(intent.mode)
+            is SharedHomeIntent.MarkRead ->
+                markConversationRead(intent.conversationId)
+            is SharedHomeIntent.MarkUnread ->
+                markConversationUnread(intent.conversationId)
+            is SharedHomeIntent.CloseDirectMessage ->
+                closeDirectMessage(intent.conversationId)
+            is SharedHomeIntent.ArchiveChannel ->
+                archiveConversationChannel(intent.conversationId)
         }
     }
 
@@ -924,6 +943,120 @@ class SharedHomeStore(
         }
     }
 
+    private suspend fun markConversationRead(conversationId: String) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId)
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to mark conversation read: home not loaded")
+            return
+        }
+        if (target.unreadCount <= 0) return
+        val previous = current
+        val channelId = target.messageStreamChannelId()
+        applyHomeSnapshotLocally { it.withConversationUnread(conversationId, 0) }
+        when (markChannelReadAll(channelId)) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                rollbackHomeContent(previous)
+                pinUpdateFailureCallback("Unable to mark conversation read")
+            }
+        }
+    }
+
+    private suspend fun markConversationUnread(conversationId: String) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId)
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to mark conversation unread: home not loaded")
+            return
+        }
+        val previous = current
+        val channelId = target.messageStreamChannelId()
+        val nextUnread = target.unreadCount.takeIf { it > 0 } ?: 1
+        applyHomeSnapshotLocally { it.withConversationUnread(conversationId, nextUnread) }
+        when (markChannelUnread(channelId)) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                rollbackHomeContent(previous)
+                pinUpdateFailureCallback("Unable to mark conversation unread")
+            }
+        }
+    }
+
+    private suspend fun closeDirectMessage(conversationId: String) {
+        val serverId = (_state.value.content as? SharedHomeContentState.Content)?.snapshot?.server?.id
+        if (serverId == null) {
+            pinUpdateFailureCallback("Unable to close chat: home not loaded")
+            return
+        }
+        val previous = ensureSidebarOrderLoaded()
+        if (previous == null) {
+            pinUpdateFailureCallback("Unable to close chat: sidebar order not loaded")
+            return
+        }
+        if (conversationId in previous.hiddenDmIds) return
+        val next = previous.copy(hiddenDmIds = previous.hiddenDmIds + conversationId)
+        val previousState = _state.value
+        applySidebarOrderLocally(serverId = serverId, next = next)
+        if (_state.value.selectedConversationId == conversationId) {
+            reduceState(_state.value.copy(selectedConversationId = null))
+        }
+        when (val result = updateSidebarOrder(SettingsServerSidebarOrderUpdateRequest(hiddenDmIds = next.hiddenDmIds))) {
+            is DataResult.Content -> applySidebarOrderLocally(serverId = serverId, next = result.data)
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                reduceState(previousState)
+                sidebarOrderByServer[serverId] = previous
+                pinUpdateFailureCallback("Unable to close chat")
+            }
+        }
+    }
+
+    private suspend fun archiveConversationChannel(conversationId: String) {
+        val current = _state.value.content as? SharedHomeContentState.Content
+        val target = current?.snapshot?.findHomeConversation(conversationId)
+        if (current == null || target == null) {
+            pinUpdateFailureCallback("Unable to archive channel: home not loaded")
+            return
+        }
+        val channelId = target.messageStreamChannelId()
+        val previousState = _state.value
+        applyHomeSnapshotLocally { it.withoutHomeConversation(conversationId) }
+        if (_state.value.selectedConversationId == conversationId) {
+            reduceState(_state.value.copy(selectedConversationId = null))
+        }
+        when (archiveChannel(channelId)) {
+            is DataResult.Content,
+            is DataResult.Empty -> Unit
+            is DataResult.Error,
+            is DataResult.NoPermission -> {
+                reduceState(previousState)
+                pinUpdateFailureCallback("Unable to archive channel")
+            }
+        }
+    }
+
+    private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot) {
+        val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        reduceState(
+            _state.value.copy(
+                content = current.copy(
+                    snapshot = transform(current.snapshot),
+                    baseSnapshot = transform(current.baseSnapshot)
+                )
+            )
+        )
+    }
+
+    private fun rollbackHomeContent(previous: SharedHomeContentState.Content) {
+        reduceState(_state.value.copy(content = previous))
+    }
+
     private suspend fun dismissNotification(id: String) {
         val previous = _state.value.notifications
         val next = previous.filterNot { it.id == id }
@@ -966,6 +1099,15 @@ class SharedHomeViewModel(
     updateSidebarOrder: suspend (SettingsServerSidebarOrderUpdateRequest) -> DataResult<SettingsServerSidebarOrderSnapshot> = {
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
     },
+    markChannelReadAll: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+        DataResult.Empty(EmptyReason.NoMessages)
+    },
+    markChannelUnread: suspend (ChannelId) -> DataResult<ReadReceiptResult> = {
+        DataResult.Empty(EmptyReason.NoMessages)
+    },
+    archiveChannel: suspend (ChannelId) -> DataResult<ChannelArchiveResult> = {
+        DataResult.Empty(EmptyReason.NoChannels)
+    },
     pinUpdateFailureCallback: (String) -> Unit = {}
 ) : ViewModel() {
     private val storeDelegate =
@@ -977,6 +1119,9 @@ class SharedHomeViewModel(
                 diagnosticsLogger = diagnosticsLogger,
                 loadSidebarOrder = loadSidebarOrder,
                 updateSidebarOrder = updateSidebarOrder,
+                markChannelReadAll = markChannelReadAll,
+                markChannelUnread = markChannelUnread,
+                archiveChannel = archiveChannel,
                 pinUpdateFailureCallback = pinUpdateFailureCallback
             )
         }
@@ -1041,6 +1186,61 @@ internal fun snapshotToBadgeCount(
  */
 internal expect fun defaultNowMillis(): Long
 
+private fun HomeSnapshot.findHomeConversation(conversationId: String): ConversationSummary? =
+    (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
+
+private fun HomeSnapshot.withConversationUnread(
+    conversationId: String,
+    unreadCount: Int
+): HomeSnapshot {
+    var delta = 0
+    fun ConversationSummary.updated(): ConversationSummary {
+        if (!matchesHomeConversation(conversationId)) return this
+        val nextUnread = unreadCount.coerceAtLeast(0)
+        delta += nextUnread - this.unreadCount
+        return copy(
+            unreadCount = nextUnread,
+            unreadCountKnown = true,
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null
+        )
+    }
+    val nextChannels = channels.map { it.updated() }
+    val nextDirectMessages = directMessages.map { it.updated() }
+    if (delta == 0) {
+        return copy(channels = nextChannels, directMessages = nextDirectMessages)
+    }
+    val nextUnreadTotal = (unreadTotal + delta).coerceAtLeast(0)
+    return copy(
+        channels = nextChannels,
+        directMessages = nextDirectMessages,
+        server = server.copy(unreadCount = (server.unreadCount + delta).coerceAtLeast(0)),
+        unreadTotal = nextUnreadTotal
+    )
+}
+
+private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSnapshot {
+    var removedUnread = 0
+    fun shouldRemove(conversation: ConversationSummary): Boolean {
+        val remove = conversation.matchesHomeConversation(conversationId)
+        if (remove) removedUnread += conversation.unreadCount
+        return remove
+    }
+    val nextChannels = channels.filterNot(::shouldRemove)
+    val nextDirectMessages = directMessages.filterNot(::shouldRemove)
+    val nextUnreadTotal = (unreadTotal - removedUnread).coerceAtLeast(0)
+    return copy(
+        channels = nextChannels,
+        directMessages = nextDirectMessages,
+        server = server.copy(unreadCount = (server.unreadCount - removedUnread).coerceAtLeast(0)),
+        unreadTotal = nextUnreadTotal
+    )
+}
+
+private fun ConversationSummary.matchesHomeConversation(conversationId: String): Boolean =
+    threadId.value == conversationId ||
+        channelId?.value == conversationId ||
+        messageStreamChannelId().value == conversationId
+
 data class SharedHomeState(
     val content: SharedHomeContentState = SharedHomeContentState.Loading(),
     val serverSwitchState: HomeServerSwitchState = HomeServerSwitchState(),
@@ -1090,6 +1290,10 @@ sealed interface SharedHomeIntent {
      * Persists through the same sidebar-order PATCH as pin/unpin.
      */
     data class SetPinnedSortMode(val mode: SlockSidebarSortMode) : SharedHomeIntent
+    data class MarkRead(val conversationId: String) : SharedHomeIntent
+    data class MarkUnread(val conversationId: String) : SharedHomeIntent
+    data class CloseDirectMessage(val conversationId: String) : SharedHomeIntent
+    data class ArchiveChannel(val conversationId: String) : SharedHomeIntent
 }
 
 private val SharedHomeIntent.loadsHome: Boolean
@@ -1107,7 +1311,11 @@ private val SharedHomeIntent.loadsHome: Boolean
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
-            is SharedHomeIntent.SetPinnedSortMode -> false
+            is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.MarkRead,
+            is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ArchiveChannel -> false
         }
 
 private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
@@ -1125,7 +1333,11 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
             is SharedHomeIntent.ChannelCreated,
             is SharedHomeIntent.SetSurfaceVisible,
             is SharedHomeIntent.TogglePinned,
-            is SharedHomeIntent.SetPinnedSortMode -> false
+            is SharedHomeIntent.SetPinnedSortMode,
+            is SharedHomeIntent.MarkRead,
+            is SharedHomeIntent.MarkUnread,
+            is SharedHomeIntent.CloseDirectMessage,
+            is SharedHomeIntent.ArchiveChannel -> false
         }
 
 sealed interface SharedHomeContentState {

@@ -162,7 +162,8 @@ data class SlockHomeConversationItem(
     val peerType: String? = null,
     val presence: SlockPresence? = null,
     val hasDraft: Boolean = false,
-    val joined: Boolean = true
+    val joined: Boolean = true,
+    val archived: Boolean = false
 )
 
 @Serializable
@@ -218,6 +219,10 @@ data class SlockHomeShellLabels(
     val pinned: String = "PINNED",
     val pin: String = "Pin",
     val unpin: String = "Unpin",
+    val markAsRead: String = "Mark as Read",
+    val markAsUnread: String = "Mark as Unread",
+    val closeChat: String = "Close Chat",
+    val archive: String = "Archive",
     val addChannel: String = "Add channel",
     val noServersAvailable: String = "No servers available",
     val joinCommunityServer: String = "Join community server",
@@ -252,6 +257,8 @@ internal data class SlockHomePayload(
     val pinnedChannelIds: List<String> = emptyList(),
     val pinnedOrder: List<String> = emptyList(),
     val pinnedSortMode: String = "manual",
+    val hiddenDmIds: List<String> = emptyList(),
+    val canArchiveChannels: Boolean = false,
     val bottomContentPaddingDp: Float = 24f,
     val labels: SlockHomeShellLabels = SlockHomeShellLabels()
 )
@@ -308,6 +315,8 @@ private fun SlockHomePageContent() {
         pinnedChannelIds = payload.pinnedChannelIds,
         pinnedOrder = payload.pinnedOrder,
         pinnedSortMode = payload.pinnedSortMode,
+        hiddenDmIds = payload.hiddenDmIds,
+        canArchiveChannels = payload.canArchiveChannels,
         showBottomBar = false,
         bottomContentPadding = payload.bottomContentPaddingDp.dp,
         outerPadding = 0.dp,
@@ -336,6 +345,15 @@ private fun SlockHomePageContent() {
         },
         onPinToggle = { conversationId ->
             bridge.settingsEvent(payload.instanceId, "togglePinned", conversationId)
+        },
+        onReadToggle = { conversationId, markUnread ->
+            bridge.settingsEvent(payload.instanceId, if (markUnread) "markUnread" else "markRead", conversationId)
+        },
+        onCloseDirectMessage = { conversationId ->
+            bridge.settingsEvent(payload.instanceId, "closeDm", conversationId)
+        },
+        onArchiveChannel = { conversationId ->
+            bridge.settingsEvent(payload.instanceId, "archiveChannel", conversationId)
         }
     )
 }
@@ -474,6 +492,8 @@ fun SlockStructuralHomeShell(
     pinnedChannelIds: List<String> = emptyList(),
     pinnedOrder: List<String> = emptyList(),
     pinnedSortMode: String = "manual",
+    hiddenDmIds: List<String> = emptyList(),
+    canArchiveChannels: Boolean = false,
     selectedTabKey: String = "home",
     showBottomBar: Boolean = true,
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
@@ -498,6 +518,9 @@ fun SlockStructuralHomeShell(
     onChannelClick: (String) -> Unit = {},
     onChannelLongPress: (String, Offset) -> Unit = { _, _ -> },
     onPinToggle: (String) -> Unit = {},
+    onReadToggle: (conversationId: String, markUnread: Boolean) -> Unit = { _, _ -> },
+    onCloseDirectMessage: (String) -> Unit = {},
+    onArchiveChannel: (String) -> Unit = {},
     onPinMenuDismiss: () -> Unit = {}
 ) {
     var channelsExpanded by remember { mutableStateOf(true) }
@@ -528,10 +551,10 @@ fun SlockStructuralHomeShell(
         pinnedSortModeState = SlockSidebarSortMode.fromWireValue(pinnedSortMode)
         activeSortMenu = null
     }
-    LaunchedEffect(currentServerId, pinnedChannelIds) {
-        // If the active pin menu target was just unpinned (or removed), close the menu
+    LaunchedEffect(currentServerId, channels, directMessages) {
+        // If the active row menu target was removed, close the menu.
         val activeId = activePinMenuConversationId
-        if (activeId != null && activeId !in pinnedChannelIds) {
+        if (activeId != null && channels.none { it.id == activeId } && directMessages.none { it.id == activeId }) {
             activePinMenuConversationId = null
         }
     }
@@ -556,8 +579,11 @@ fun SlockStructuralHomeShell(
     val displayedJointChannels = remember(channels, channelSortModeState) {
         channels.filter { it.kind == "joint" }.sortedForSidebar(channelSortModeState) { it.name }
     }
-    val displayedDirectMessages = remember(directMessages, directMessageSortMode) {
-        directMessages.sortedForSidebar(directMessageSortMode) { it.name }
+    val hiddenDmIdSet = remember(hiddenDmIds) { hiddenDmIds.toSet() }
+    val displayedDirectMessages = remember(directMessages, directMessageSortMode, hiddenDmIdSet) {
+        directMessages
+            .filter { dm -> dm.id !in hiddenDmIdSet || dm.unreadCount > 0 }
+            .sortedForSidebar(directMessageSortMode) { it.name }
     }
     val displayedPinned = remember(channels, directMessages, pinnedChannelIds, pinnedOrder, pinnedSortModeState) {
         pinnedItemsForSidebar(
@@ -913,24 +939,62 @@ fun SlockStructuralHomeShell(
                     }
                 )
             }
-            val activePinId = activePinMenuConversationId
-            val pinTargetIsPinned = activePinId != null && activePinId in pinnedIdSet
-            val pinMenuItem = activePinId?.let { id ->
-                val label = if (pinTargetIsPinned) labels.unpin else labels.pin
-                val icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
-                SlockBaseMenuItem(id = "toggle-pin", label = label, icon = icon)
+            val activeConversationId = activePinMenuConversationId
+            val activeConversation =
+                activeConversationId?.let { id ->
+                    channels.firstOrNull { it.id == id } ?: directMessages.firstOrNull { it.id == id }
+                }
+            val activeIsDirectMessage = activeConversation?.kind.equals("directmessage", ignoreCase = true)
+            val activeIsJoint = activeConversation?.homeChannelKind().equals("joint", ignoreCase = true)
+            val activeCanArchive =
+                activeConversation != null &&
+                    !activeIsDirectMessage &&
+                    !activeIsJoint &&
+                    activeConversation.name != "all" &&
+                    !activeConversation.archived &&
+                    canArchiveChannels
+            val pinTargetIsPinned = activeConversationId != null && activeConversationId in pinnedIdSet
+            val pinMenuItems = activeConversation?.let { conversation ->
+                buildList {
+                    val hasUnread = conversation.unreadCount > 0
+                    add(
+                        SlockBaseMenuItem(
+                            id = if (hasUnread) "mark-read" else "mark-unread",
+                            label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
+                            icon = if (hasUnread) SlockLucideIconName.Check else SlockLucideIconName.Mail
+                        )
+                    )
+                    add(
+                        SlockBaseMenuItem(
+                            id = "toggle-pin",
+                            label = if (pinTargetIsPinned) labels.unpin else labels.pin,
+                            icon = if (pinTargetIsPinned) SlockLucideIconName.PinOff else SlockLucideIconName.Pin
+                        )
+                    )
+                    if (activeIsDirectMessage) {
+                        add(SlockBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = SlockLucideIconName.X))
+                    } else if (activeCanArchive) {
+                        add(SlockBaseMenuItem(id = "archive-channel", label = labels.archive, icon = SlockLucideIconName.Archive))
+                    }
+                }
             }
-            if (activePinId != null && pinMenuItem != null) {
+            if (activeConversationId != null && pinMenuItems != null) {
                 SlockBaseMenuOverlay(
                     anchor = pinMenuAnchor,
-                    items = listOf(pinMenuItem),
+                    items = pinMenuItems,
                     selectedId = "",
                     onDismiss = {
                         activePinMenuConversationId = null
                         onPinMenuDismiss()
                     },
-                    onSelect = { _ ->
-                        onPinToggle(activePinId)
+                    onSelect = { actionId ->
+                        when (actionId) {
+                            "mark-read" -> onReadToggle(activeConversationId, false)
+                            "mark-unread" -> onReadToggle(activeConversationId, true)
+                            "toggle-pin" -> onPinToggle(activeConversationId)
+                            "close-dm" -> onCloseDirectMessage(activeConversationId)
+                            "archive-channel" -> onArchiveChannel(activeConversationId)
+                        }
                         activePinMenuConversationId = null
                     }
                 )
