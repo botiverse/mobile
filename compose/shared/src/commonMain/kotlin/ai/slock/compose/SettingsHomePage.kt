@@ -751,6 +751,13 @@ internal fun retainedAppShellComposedTabs(selectedTab: String, mountedTabs: Set<
 internal fun activeOnlyAppShellComposedTabs(selectedTab: String): List<String> =
     listOf(retainedAppShellSelectedTab(selectedTab))
 
+internal fun homeWarmAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return retainedAppShellTabOrder(activeTab).filter { tab ->
+        tab == activeTab || (tab == "home" && "home" in mountedTabs)
+    }
+}
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
@@ -811,14 +818,15 @@ internal fun retainedThreadRouteEntriesAfterPopToMain(
 @Composable
 private fun RetainedAppShellTabs(
     selectedTab: String,
+    mountedTabs: Set<String>,
     content: @Composable (tab: String, active: Boolean) -> Unit
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        activeOnlyAppShellComposedTabs(activeTab).forEach { tab ->
+        homeWarmAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
             key("retained-$tab") {
-                RetainedAppShellTabPane(active = true) {
-                    content(tab, true)
+                RetainedAppShellTabPane(active = tab == activeTab) {
+                    content(tab, tab == activeTab)
                 }
             }
         }
@@ -2264,7 +2272,8 @@ private fun SlockAppShellContent() {
                         )
                     }
                     RetainedAppShellTabs(
-                        selectedTab = selectedTab
+                        selectedTab = selectedTab,
+                        mountedTabs = retainedAppShellTabs
                     ) { tab, active ->
                         when (tab) {
                             "tasks" -> tasksTabContent(active)
@@ -5011,14 +5020,16 @@ private fun SettingsServerDangerZoneCard(
     val normalizedRole = role.lowercase()
     val canLeave = normalizedRole == "admin" || normalizedRole == "member"
     val canDelete = normalizedRole == "owner" || dangerSection?.state?.name == "Available"
+    var showDeleteModal by remember { mutableStateOf(false) }
+    var modalConfirmationSlug by remember { mutableStateOf("") }
     if (!canLeave && !canDelete) {
         return
     }
     val leaveConfirmed = actionState.isServerConfirmation(SERVER_ACTION_LEAVE)
     val deleteBusy = actionState?.action == SERVER_ACTION_DELETE && actionState.inProgress
     val leaveBusy = actionState?.action == SERVER_ACTION_LEAVE && actionState.inProgress
-    val trimmedSlug = confirmationSlug.trim()
-    val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedSlug == expectedServerSlug
+    val trimmedModalSlug = modalConfirmationSlug.trim()
+    val deleteEnabled = canDelete && !deleteBusy && expectedServerSlug.isNotBlank() && trimmedModalSlug == expectedServerSlug
     SettingsFormSectionCard(iconName = SlockLucideIconName.TriangleAlert, title = "Danger Zone") {
         if (canLeave) {
             SettingsServerActionRow(
@@ -5042,22 +5053,40 @@ private fun SettingsServerDangerZoneCard(
             SettingsServerActionRow(
                 title = "Delete Server",
                 detail = "Permanently remove ${serverName.ifBlank { "this server" }} and all of its data. This cannot be undone.",
-                buttonLabel = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
+                buttonLabel = "Delete Server",
                 buttonIcon = SlockLucideIconName.Trash2,
                 buttonColor = SlockColor.AccentRed,
-                enabled = false,
-                onClick = {}
+                enabled = !deleteBusy,
+                onClick = { showDeleteModal = true }
+            )
+        }
+    }
+    if (showDeleteModal) {
+        SlockUnifiedDialog(
+            title = "Delete Server",
+            onDismiss = {
+                if (!deleteBusy) {
+                    showDeleteModal = false
+                    modalConfirmationSlug = ""
+                }
+            },
+            dismissEnabled = !deleteBusy
+        ) {
+            Text(
+                "This action cannot be undone. This will permanently delete ${serverName.ifBlank { "this server" }} and remove all members, channels, and data.",
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack
             )
             Text(
-                "Type ${expectedServerSlug.ifBlank { "the server slug" }} to confirm:",
+                "Please type ${expectedServerSlug.ifBlank { "the server slug" }} to confirm.",
                 style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
                 color = SlockColor.TextMutedGray
             )
-            SlockBrutalTextField(
-                label = "Confirm server slug",
-                value = confirmationSlug,
+            SlockModalTextField(
+                label = "Server slug",
+                value = modalConfirmationSlug,
                 placeholder = expectedServerSlug.ifBlank { "server-slug" },
-                onValueChange = onConfirmationSlugChange,
+                onValueChange = { modalConfirmationSlug = it },
                 required = true,
                 enabled = !deleteBusy
             )
@@ -5068,12 +5097,19 @@ private fun SettingsServerDangerZoneCard(
                     color = SlockColor.AccentRed
                 )
             }
-            SlockBrutalActionButton(
+            SlockModalFullWidthActionButton(
                 label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
-                onClick = onDelete,
+                icon = SlockLucideIconName.Trash2,
+                onClick = {
+                    onConfirmationSlugChange(modalConfirmationSlug)
+                    onDelete()
+                    if (actionState?.action != SERVER_ACTION_DELETE || actionState.errorCode == null) {
+                        showDeleteModal = false
+                        modalConfirmationSlug = ""
+                    }
+                },
                 enabled = deleteEnabled,
-                leadingIcon = SlockLucideIconName.Trash2,
-                backgroundColor = SlockColor.AccentRed
+                color = SlockColor.AccentRed
             )
         }
     }
