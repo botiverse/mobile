@@ -176,17 +176,16 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun markdownReferenceTagsUseSingleReactChipColor() {
-        val referenceColor = slockMarkdownTagColor(ThreadMarkdownTagKind.Channel)
+    fun markdownReferenceTagsUseReactChipColors() {
+        assertEquals(SlockColor.AccentPink, slockMarkdownTagColor(ThreadMarkdownTagKind.Channel))
+        assertEquals(SlockColor.AccentCyan, slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
+        assertEquals(SlockColor.SurfaceCream, slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
+        assertEquals(SlockColor.SurfaceCream, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
 
-        assertEquals(SlockColor.SurfaceCream, referenceColor)
-        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
-        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
-        assertEquals(referenceColor, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
-        assertFalse(referenceColor == SlockColor.BrandYellow)
-        assertFalse(referenceColor == SlockColor.AccentCyan)
-        assertFalse(referenceColor == SlockColor.AccentOrange)
-        assertFalse(referenceColor == SlockColor.AccentLavender)
+        assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.BrandYellow)
+        assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.AccentCyan)
+        assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread) == SlockColor.AccentPink)
+        assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Task) == SlockColor.AccentLavender)
     }
 
     @Test
@@ -383,6 +382,29 @@ class SlockMarkdownTest {
         val inlineContent = slockMarkdownAnnotator("See #markdown专修:7933cf78 and #general:abc123 in chat").inlineContent?.invoke().orEmpty()
         assertTrue(inlineContent.containsKey("slock:4"))
         assertTrue(inlineContent.containsKey("slock:29"))
+    }
+
+    @Test
+    fun inlineReferencesMatchTask25Boundaries() {
+        val body =
+            "我已补发日报到 #raft-mobile，消息是 #raft-mobile:4752266f。也已确认主 reminder " +
+                "#a67dddad 存在并确实触发过；backup reminder #3adea0d5 和 #34xxx 都不是引用。"
+
+        val matches = body.threadInlineTagMatches()
+
+        assertEquals(listOf("#raft-mobile", "#raft-mobile:4752266f"), matches.map { it.tag.label })
+        assertEquals(ThreadMarkdownTagKind.Channel, matches[0].tag.kind)
+        assertEquals(ThreadMarkdownTagKind.ChannelThread, matches[1].tag.kind)
+        assertEquals("raft-mobile", matches[1].tag.channelName)
+        assertEquals("4752266f", matches[1].tag.threadShortId)
+    }
+
+    @Test
+    fun numericTaskReferencesDoNotMatchInsideShortIds() {
+        assertEquals(listOf("#3", "#382", "#383"), "Tasks #3 and #382-#383".threadInlineTagMatches().map { it.tag.label })
+        assertTrue("#3adea0d5".threadInlineTagMatches().isEmpty())
+        assertTrue("#34xxx".threadInlineTagMatches().isEmpty())
+        assertTrue("#a67dddad".threadInlineTagMatches().isEmpty())
     }
 
     @Test

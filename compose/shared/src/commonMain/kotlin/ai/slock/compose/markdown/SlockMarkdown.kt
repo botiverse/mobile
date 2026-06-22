@@ -391,6 +391,7 @@ private fun String.toThreadMarkdownTagOrNull(): ThreadMarkdownTag? =
                 threadShortId = shortId
             )
         }
+        startsWith('#') && drop(1).isBareThreadShortIdLikeReference() -> null
         startsWith('#') -> ThreadMarkdownTag(this, ThreadMarkdownTagKind.Channel)
         else -> null
     }
@@ -458,6 +459,7 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
     if (this[valueStart].isDigit()) {
         var endExclusive = valueStart + 1
         while (endExclusive < length && this[endExclusive].isDigit()) endExclusive++
+        if (endExclusive < length && this[endExclusive].isThreadTaskTrailingPart()) return null
         return start until endExclusive
     }
     if (!this[valueStart].isLetter()) return null
@@ -481,6 +483,7 @@ private fun String.scanThreadHashRange(start: Int): IntRange? {
         if (shortLength in 6..8 && (shortEndExclusive >= length || !this[shortEndExclusive].isThreadShortIdPart())) {
             return start until shortEndExclusive
         }
+        return null
     }
     return start until nameEndExclusive
 }
@@ -493,6 +496,15 @@ private fun Char.isThreadChannelPart(): Boolean =
 
 private fun Char.isThreadShortIdPart(): Boolean =
     isDigit() || this in 'a'..'f' || this in 'A'..'F'
+
+private fun Char.isThreadTaskTrailingPart(): Boolean =
+    isLetterOrDigit() || this == '_'
+
+private fun String.isBareThreadShortIdLikeReference(): Boolean =
+    length in 6..8 &&
+        any { it.isDigit() } &&
+        any { it in 'a'..'f' || it in 'A'..'F' } &&
+        all { it.isThreadShortIdPart() }
 
 private fun String.isThreadInlineTagBoundary(index: Int): Boolean =
     index < 0 || !(this[index].isLetterOrDigit() || this[index] == '_')
@@ -1355,7 +1367,12 @@ private fun Char.slockInlineCodeWidthSp(): Float =
     }
 
 internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
-    SlockMarkdownReferenceChipBackground
+    when (kind) {
+        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
+        ThreadMarkdownTagKind.Channel -> SlockColor.AccentPink
+        ThreadMarkdownTagKind.Task,
+        ThreadMarkdownTagKind.UserMention -> SlockMarkdownReferenceChipBackground
+    }
 
 @Composable
 private fun SlockMarkdownInlineChip(label: String, color: Color) {
