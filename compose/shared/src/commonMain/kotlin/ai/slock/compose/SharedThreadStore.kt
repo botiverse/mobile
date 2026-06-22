@@ -516,7 +516,14 @@ internal class SharedThreadDataSource(
         val payload =
             when (payloadResult) {
                 is DataResult.Content -> payloadResult.data.withSavedStatus(session)
-                is DataResult.Empty -> return payloadResult
+                is DataResult.Empty ->
+                    if (resolvedBasePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                        payloadResult.reason == EmptyReason.NoMessages
+                    ) {
+                        resolvedBasePayload.toEmptyReplyThreadPayload()
+                    } else {
+                        return payloadResult
+                    }
                 is DataResult.Error -> return payloadResult
                 is DataResult.NoPermission -> return payloadResult
             }

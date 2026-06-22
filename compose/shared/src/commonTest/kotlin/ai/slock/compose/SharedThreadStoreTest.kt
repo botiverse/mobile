@@ -35,6 +35,7 @@ import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.CreateChannelResult
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.DirectMessageSnapshot
+import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.HomeNetworkResponse
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.InMemoryComposeLocalDataStore
@@ -1535,6 +1536,76 @@ class SharedThreadStoreTest {
         assertEquals("#general", payload.subtitle)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        scope.cancel()
+    }
+
+    @Test
+    fun startWithUnresolvedEmptyReplyThreadKeepsFirstReplyPanelOpen() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository =
+            FakeConversationRepository(
+                threadResult = DataResult.Empty(EmptyReason.NoMessages),
+                createThreadResult =
+                    DataResult.Content(
+                        ThreadActionResult(
+                            threadChannelId = ChannelId("thread-m1"),
+                            changed = false,
+                            parentMessageId = MessageId("m1"),
+                            replyCount = 0
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val initialPayload =
+            basePayload().copy(
+                instanceId = "shared-shell-thread-pending-m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = null,
+                streamChannelId = null,
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                title = ThreadReplyPageTitle,
+                showModeTabs = false,
+                originMessage = contentPayload("parent body").messages.single(),
+                originStatus = "loaded",
+                messages = emptyList(),
+                composer =
+                    buildThreadSurfaceComposerPayload(
+                        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                        displayName = ThreadReplyPageTitle,
+                        fallbackId = "m1",
+                        enabled = true,
+                        mentionChannelId = "channel-1",
+                        parentMessageId = "m1",
+                        streamChannelId = null
+                    )
+            )
+
+        store.accept(SharedThreadIntent.Start(initialPayload))
+
+        val payload = store.state.value.payload
+        assertEquals("empty", payload.status)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("thread-m1", payload.resolveThreadComposer().streamChannelId)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("parent body", payload.originMessage?.body)
+        assertEquals("loaded", payload.originStatus)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
+        assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
+        assertEquals(null, payload.errorCode)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
         scope.cancel()
     }
 
