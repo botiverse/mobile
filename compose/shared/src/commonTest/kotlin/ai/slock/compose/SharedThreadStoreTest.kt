@@ -76,6 +76,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
+import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageNew
@@ -102,6 +103,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -344,6 +346,64 @@ class SharedThreadStoreTest {
         assertEquals(1, messages.count { it.id == "server-1" })
         assertEquals(ThreadMessageDeliverySent, messages.first { it.id == "server-1" }.deliveryState)
         scope.cancel()
+    }
+
+    @Test
+    fun localSendSuccessPersistsCanonicalMessageWithoutTempSendingBubble() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage("local-1", "sent body")))
+        store.accept(SharedThreadIntent.ReplaceLocalSendWithSentPage("local-1", sentPage("server-1", "sent body")))
+
+        val persistedMessages = localStore.readThread(ThreadId("channel-1"))?.messages.orEmpty()
+        assertFalse(persistedMessages.any { it.id.value == "local-1" })
+        assertFalse(persistedMessages.any { it.deliveryState == MessageDeliveryState.Sending })
+        assertEquals(MessageDeliveryState.Sent, persistedMessages.first { it.id.value == "server-1" }.deliveryState)
+        scope.cancel()
+    }
+
+    @Test
+    fun readCachedPayloadDropsTransientLocalSendingBubble() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            threadSnapshot(
+                messages =
+                    listOf(
+                        message(
+                            id = "local-send-channel-1-1",
+                            seq = 11,
+                            body = "sent body"
+                        ).copy(deliveryState = MessageDeliveryState.Sending),
+                        message(
+                            id = "server-1",
+                            seq = 12,
+                            body = "sent body"
+                        )
+                    )
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+
+        val cachedPayload = dataSource.readCachedPayload(basePayload())
+
+        assertNotNull(cachedPayload)
+        assertFalse(cachedPayload.messages.any { it.id == "local-send-channel-1-1" })
+        assertFalse(cachedPayload.messages.any { it.deliveryState == ThreadMessageDeliverySending })
+        assertEquals(listOf("server-1"), cachedPayload.messages.map { it.id })
     }
 
     @Test

@@ -163,8 +163,9 @@ internal class SharedThreadDataSource(
 
     fun cachePayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return
-        if (payload.hasRenderableThreadContent()) {
-            payloadCache[threadId] = payload.copy(status = "content", errorCode = null)
+        val cacheablePayload = payload.withoutTransientLocalSendingMessages()
+        if (cacheablePayload.hasRenderableThreadContent()) {
+            payloadCache[threadId] = cacheablePayload.copy(status = "content", errorCode = null)
         }
     }
 
@@ -184,6 +185,7 @@ internal class SharedThreadDataSource(
         return snapshot
             .toKuiklyThreadPayload(basePayload, session?.user?.id)
             .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
+            .withoutTransientLocalSendingMessages()
             .let { payload ->
                 if (session == null) payload else payload.withKnownMarkdownChannelNames(session)
             }
@@ -200,11 +202,12 @@ internal class SharedThreadDataSource(
     }
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
-        val snapshot = payload.toThreadSnapshot() ?: return
+        val cacheablePayload = payload.withoutTransientLocalSendingMessages()
+        val snapshot = cacheablePayload.toThreadSnapshot() ?: return
         localWriteThrough?.writeThreadResult(
             result = DataResult.Content(snapshot),
             source = "shared_thread_data_source",
-            fallbackThreadId = payload.cacheThreadId()?.let(::ThreadId),
+            fallbackThreadId = cacheablePayload.cacheThreadId()?.let(::ThreadId),
             fallbackHeader = snapshot.conversation,
             fallbackParentMessage = snapshot.parentMessage
         )
@@ -1806,7 +1809,7 @@ internal class SharedThreadStore(
         val headerResolvedInitialPayload =
             dataSource.withKnownMarkdownChannelNames(
                 dataSource.withConversationHeaderFallback(initialPayload)
-            )
+            ).withoutTransientLocalSendingMessages()
         dataSource.cachePayload(headerResolvedInitialPayload)
         val threadId = headerResolvedInitialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached =
@@ -2904,6 +2907,17 @@ private fun KuiklyThreadScreenPayload.withLocalSendFailure(
 
 private fun KuiklyThreadScreenPayload.withoutLocalSendMessage(messageId: String): KuiklyThreadScreenPayload =
     copy(messages = messages.filterNot { it.id == messageId && it.pendingSendContext != null })
+
+private const val ThreadTransientLocalSendIdPrefix = "local-send-"
+
+private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): KuiklyThreadScreenPayload {
+    val retainedMessages = messages.filterNot { it.isTransientLocalSendingMessage() }
+    return if (retainedMessages.size == messages.size) this else copy(messages = retainedMessages)
+}
+
+private fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
+    id.startsWith(ThreadTransientLocalSendIdPrefix) &&
+        deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
 
 private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
     if (limit <= 0 || messages.isEmpty()) return this
