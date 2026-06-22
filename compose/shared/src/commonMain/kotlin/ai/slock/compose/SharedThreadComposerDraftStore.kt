@@ -46,6 +46,9 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val attachments: List<SharedThreadComposerAttachment>,
         val replacedAttachmentIds: Set<String> = emptySet()
     ) : SharedThreadComposerDraftIntent
+    data class AddLocalAttachments(
+        val attachments: List<SharedThreadComposerAttachment>
+    ) : SharedThreadComposerDraftIntent
     data class RemoveAttachment(val id: String) : SharedThreadComposerDraftIntent
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
 }
@@ -162,6 +165,14 @@ internal class SharedThreadComposerDraftStore {
                                 .distinctBy { attachment -> attachment.id }
                     )
                 }
+                is SharedThreadComposerDraftIntent.AddLocalAttachments ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        failureLabel = null,
+                        uploadedAttachments =
+                            (current.uploadedAttachments + intent.attachments)
+                                .distinctBy { attachment -> attachment.id }
+                    )
                 is SharedThreadComposerDraftIntent.RemoveAttachment ->
                     current.copy(
                         syncNonce = current.syncNonce + 1,

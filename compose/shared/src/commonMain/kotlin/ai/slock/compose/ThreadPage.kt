@@ -23,6 +23,7 @@ import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
+import ai.slock.compose.data.formatAttachmentSizeLabel
 import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.ThreadAttachmentCommentItem
@@ -3276,6 +3277,23 @@ internal fun SharedThreadRouteContent(
                                     bridge.toast("Attachment picker unavailable")
                             }
                             return@launch
+                        }
+                        val localAttachments =
+                            files
+                                .filter { file -> file.id.isNotBlank() }
+                                .map { file ->
+                                    SharedThreadComposerAttachment(
+                                        id = file.id,
+                                        fileName = file.fileName,
+                                        sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
+                                        mimeType = file.mimeType?.takeIf { it.isNotBlank() },
+                                        status = "uploading"
+                                    )
+                                }
+                        if (localAttachments.isNotEmpty()) {
+                            composerDraftViewModel.dispatch(
+                                SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
+                            )
                         }
                         when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
                             is DataResult.Content -> {

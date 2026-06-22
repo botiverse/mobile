@@ -69,6 +69,14 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun uploadedAttachmentsCanReplaceLocalPendingAttachmentIds() {
         val store = SharedThreadComposerDraftStore()
+        val local =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "image.png",
+                sizeLabel = "24 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
         val uploaded =
             SharedThreadComposerAttachment(
                 id = "remote-file-1",
@@ -78,6 +86,9 @@ class SharedThreadComposerDraftStoreTest {
                 status = "ready"
             )
 
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
+        assertEquals(listOf(local), store.state.value.uploadedAttachments)
+
         store.dispatch(
             SharedThreadComposerDraftIntent.AddUploadedAttachments(
                 attachments = listOf(uploaded),
@@ -85,7 +96,7 @@ class SharedThreadComposerDraftStoreTest {
             )
         )
 
-        assertEquals(listOf(uploaded), store.state.value.uploadedAttachments)
+        assertEquals(listOf(local, uploaded), store.state.value.uploadedAttachments)
         assertEquals(setOf("picked-local-1"), store.state.value.removedAttachmentIds)
     }
 
