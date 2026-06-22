@@ -1337,6 +1337,7 @@ internal class SharedThreadDataSource(
                 !initialData.data.parentPairMatchesRoute(basePayload) ->
                 fetchResolvedReplyThreadSnapshot(basePayload).map { (resolvedBase, snapshot) ->
                     snapshot
+                        ?.withReplyParentMessageFromContext(resolvedBase)
                         ?.withConversationHeaderFallback(headerFallback)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?.withCachedSenderProfiles(session)
@@ -1345,12 +1346,43 @@ internal class SharedThreadDataSource(
             initialData != null ->
                 DataResult.Content(
                     initialData.data
+                        .withReplyParentMessageFromContext(basePayload)
                         .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                         .withCachedSenderProfiles(session)
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
         }
+    }
+
+    private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
+        basePayload: KuiklyThreadScreenPayload
+    ): ThreadSnapshot {
+        val isReplyThread =
+            basePayload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
+                conversation.kind == ConversationKind.Thread ||
+                conversation.thread != null
+        if (!isReplyThread) return this
+        val parentMessageId =
+            basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+                ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
+                ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
+                ?: return this
+        if (basePayload.originStatus == "loaded" && basePayload.originMessage?.id == parentMessageId) {
+            return this
+        }
+        if (parentMessage?.id?.value == parentMessageId) return this
+        if (messages.any { message -> message.id.value == parentMessageId }) return this
+        val contextResult =
+            fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
+                repository.getMessageContext(MessageId(parentMessageId))
+            }
+        val context = (contextResult as? DataResult.Content)?.data ?: return this
+        val parent =
+            context.parentMessage?.takeIf { message -> message.id.value == parentMessageId }
+                ?: context.messages.firstOrNull { message -> message.id.value == parentMessageId }
+                ?: return this
+        return copy(parentMessage = parent)
     }
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
