@@ -27,7 +27,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureTokenPalette() {
         captureKmpComponentCase(
-            caseId = "tokens.palette",
+            caseId = "components.tokens.palette",
             pageName = "compose_tokens_palette_visual",
             crop = TOKEN_PALETTE_CROP
         )
@@ -36,7 +36,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeServerSwitcherOpen() {
         captureKmpHomeCase(
-            caseId = "home.server-switcher.open",
+            caseId = "components.home.server-switcher.open",
             pageData = homeServerSwitcherPageData(),
             crop = FULL_VIEWPORT_CROP
         )
@@ -45,7 +45,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureNavigationTabbarStates() {
         captureKmpComponentCase(
-            caseId = "navigation.tabbar.states",
+            caseId = "components.navigation.tabbar.states",
             pageName = "compose_bottom_tabbar_visual",
             crop = FULL_VIEWPORT_CROP
         )
@@ -54,7 +54,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureThreadComposerEmpty() {
         captureKmpComponentCase(
-            caseId = "thread.composer.empty",
+            caseId = "components.thread.composer.empty",
             pageName = "compose_thread_composer_visual",
             pageData =
                 JSONObject()
@@ -67,7 +67,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureThreadComposerStates() {
         captureKmpComponentCase(
-            caseId = "thread.composer.states",
+            caseId = "components.thread.composer.states",
             pageName = "compose_thread_composer_visual",
             pageData =
                 JSONObject()
@@ -80,7 +80,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureThreadComposerAsTaskSelected() {
         captureKmpComponentCase(
-            caseId = "thread.composer.as-task-selected",
+            caseId = "components.thread.composer.as-task-selected",
             pageName = "compose_thread_composer_visual",
             pageData =
                 JSONObject()
@@ -93,7 +93,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureThreadMessageRow() {
         captureKmpComponentCase(
-            caseId = "thread.message.row",
+            caseId = "components.thread.message.row",
             pageName = "compose_thread_message_row_visual",
             pageData =
                 JSONObject()
@@ -104,9 +104,18 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadHeaderStates() {
+        captureKmpComponentCase(
+            caseId = "components.thread.header.states",
+            pageName = "compose_thread_header_visual",
+            crop = THREAD_HEADER_COMPONENT_CROP
+        )
+    }
+
+    @Test
     fun captureHomeTitlebarStates() {
         captureKmpComponentCase(
-            caseId = "home.titlebar.states",
+            caseId = "components.home.titlebar.states",
             pageName = "compose_home_titlebar_visual",
             crop = FULL_VIEWPORT_CROP
         )
@@ -115,7 +124,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeNotificationCenterStates() {
         captureKmpComponentCase(
-            caseId = "home.notification-center.states",
+            caseId = "components.home.notification-center.states",
             pageName = "compose_home_notification_center_visual",
             crop = FULL_VIEWPORT_CROP
         )
@@ -124,7 +133,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeSearchResults() {
         captureKmpComponentCase(
-            caseId = "home.search.results",
+            caseId = "components.home.search.results",
             pageName = "compose_home_search_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
@@ -134,7 +143,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeSearchChannelDropdown() {
         captureKmpComponentCase(
-            caseId = "home.search.channel-dropdown",
+            caseId = "components.home.search.channel-dropdown",
             pageName = "compose_home_search_channel_dropdown_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
@@ -144,7 +153,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeSavedResults() {
         captureKmpComponentCase(
-            caseId = "home.saved.results",
+            caseId = "components.home.saved.results",
             pageName = "compose_home_saved_visual",
             crop = HOME_SAVED_RESULTS_CROP,
             settleMs = 4_500
@@ -154,7 +163,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeActivityResults() {
         captureKmpComponentCase(
-            caseId = "home.activity.results",
+            caseId = "components.home.activity.results",
             pageName = "compose_home_activity_visual",
             crop = HOME_ACTIVITY_RESULTS_CROP,
             settleMs = 4_500
@@ -164,7 +173,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureHomeCreateChannelDialog() {
         captureKmpComponentCase(
-            caseId = "home.create-channel.dialog",
+            caseId = "components.home.create-channel.dialog",
             pageName = "compose_home_create_channel_dialog_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
@@ -174,7 +183,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureMembersCreateAgentCodexDialog() {
         captureKmpComponentCase(
-            caseId = "members.create-agent.dialog",
+            caseId = "components.members.create-agent.dialog",
             pageName = "compose_create_agent_dialog_visual",
             pageData = createAgentDialogPageData(runtime = "codex"),
             crop = FULL_VIEWPORT_CROP,
@@ -185,7 +194,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureMembersCreateAgentClaudeDialog() {
         captureKmpComponentCase(
-            caseId = "members.create-agent.claude-dialog",
+            caseId = "components.members.create-agent.claude-dialog",
             pageName = "compose_create_agent_dialog_visual",
             pageData = createAgentDialogPageData(runtime = "claude"),
             crop = FULL_VIEWPORT_CROP,
@@ -196,7 +205,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureMembersCreateAgentClaudeCustomProviderDialog() {
         captureKmpComponentCase(
-            caseId = "members.create-agent.claude-custom-provider-dialog",
+            caseId = "components.members.create-agent.claude-custom-provider-dialog",
             pageName = "compose_create_agent_dialog_visual",
             pageData =
                 createAgentDialogPageData(
@@ -215,7 +224,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureMembersAgentDetailProfile() {
         captureKmpComponentCase(
-            caseId = "members.agent-detail.profile",
+            caseId = "components.members.agent-detail.profile",
             pageName = "compose_members_agent_detail_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
@@ -225,7 +234,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
-            caseId = "channel.members.panel",
+            caseId = "components.channel.members.panel",
             pageName = "compose_channel_members_panel_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
@@ -235,7 +244,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureChannelSettingsPanel() {
         captureKmpComponentCase(
-            caseId = "channel.settings.panel",
+            caseId = "components.channel.settings.panel",
             pageName = "compose_channel_settings_panel_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
@@ -245,7 +254,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureChannelAddMemberPanel() {
         captureKmpComponentCase(
-            caseId = "channel.members.add-panel",
+            caseId = "components.channel.members.add-panel",
             pageName = "compose_channel_add_member_panel_visual",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 2_500
@@ -264,7 +273,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureSettingsPageStates() {
         captureKmpComponentCase(
-            caseId = "settings.page.states",
+            caseId = "components.settings.page.states",
             pageName = "compose_settings_page_visual",
             crop = FULL_VIEWPORT_CROP
         )
@@ -272,27 +281,27 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureSettingsAccountPage() {
-        captureKmpSettingsPageCase("settings.account.page", "account")
+        captureKmpSettingsPageCase("components.settings.account.page", "account")
     }
 
     @Test
     fun captureSettingsAccountProviderLinked() {
-        captureKmpSettingsPageCase("settings.account.provider-linked", "account-provider-linked")
+        captureKmpSettingsPageCase("components.settings.account.provider-linked", "account-provider-linked")
     }
 
     @Test
     fun captureSettingsAccountPasswordExpanded() {
-        captureKmpSettingsPageCase("settings.account.password-expanded", "account-password-expanded")
+        captureKmpSettingsPageCase("components.settings.account.password-expanded", "account-password-expanded")
     }
 
     @Test
     fun captureSettingsAccountErrorState() {
-        captureKmpSettingsPageCase("settings.account.error-state", "account-error")
+        captureKmpSettingsPageCase("components.settings.account.error-state", "account-error")
     }
 
     @Test
     fun captureSettingsServerProfile() {
-        captureKmpSettingsPageCase("settings.server.profile", "server-profile")
+        captureKmpSettingsPageCase("components.settings.server.profile", "server-profile")
     }
 
     @Test
@@ -302,94 +311,117 @@ class KmpVisualScreenshotCaptureTest {
 
     @Test
     fun captureSettingsAdministrationAdmins() {
-        captureKmpSettingsPageCase("settings.administration.admins", "administration-admins")
+        captureKmpSettingsPageCase("components.settings.administration.admins", "administration-admins")
     }
 
     @Test
     fun captureSettingsAdministrationInvites() {
-        captureKmpSettingsPageCase("settings.administration.invites", "administration-invites")
+        captureKmpSettingsPageCase("components.settings.administration.invites", "administration-invites")
     }
 
     @Test
     fun captureSettingsAdministrationJoinLinks() {
-        captureKmpSettingsPageCase("settings.administration.join-links", "administration-join-links")
+        captureKmpSettingsPageCase("components.settings.administration.join-links", "administration-join-links")
     }
 
     @Test
     fun captureSettingsAdministrationPreJoinAgreement() {
-        captureKmpSettingsPageCase("settings.administration.pre-join-agreement", "administration-pre-join-agreement")
+        captureKmpSettingsPageCase("components.settings.administration.pre-join-agreement", "administration-pre-join-agreement")
     }
 
     @Test
     fun captureSettingsAdministrationOnboarding() {
-        captureKmpSettingsPageCase("settings.administration.onboarding", "administration-onboarding")
+        captureKmpSettingsPageCase("components.settings.administration.onboarding", "administration-onboarding")
     }
 
     @Test
     fun captureSettingsAdministrationMemberPermissions() {
-        captureKmpSettingsPageCase("settings.administration.member-permissions", "administration-member-permissions")
+        captureKmpSettingsPageCase("components.settings.administration.member-permissions", "administration-member-permissions")
     }
 
     @Test
     fun captureSettingsAdministrationTranslation() {
-        captureKmpSettingsPageCase("settings.administration.translation", "administration-translation")
+        captureKmpSettingsPageCase("components.settings.administration.translation", "administration-translation")
     }
 
     @Test
     fun captureSettingsBillingPage() {
-        captureKmpSettingsPageCase("settings.billing.page", "billing")
+        captureKmpSettingsPageCase("components.settings.billing.page", "billing")
     }
 
     @Test
     fun captureSettingsBillingLoading() {
-        captureKmpSettingsPageCase("settings.billing.loading", "billing-loading")
+        captureKmpSettingsPageCase("components.settings.billing.loading", "billing-loading")
     }
 
     @Test
     fun captureSettingsBillingNoPermission() {
-        captureKmpSettingsPageCase("settings.billing.no-permission", "billing-no-permission")
+        captureKmpSettingsPageCase("components.settings.billing.no-permission", "billing-no-permission")
     }
 
     @Test
     fun captureSettingsBillingTrial() {
-        captureKmpSettingsPageCase("settings.billing.trial", "billing-trial")
+        captureKmpSettingsPageCase("components.settings.billing.trial", "billing-trial")
     }
 
     @Test
     fun captureSettingsBillingFounder() {
-        captureKmpSettingsPageCase("settings.billing.founder", "billing-founder")
+        captureKmpSettingsPageCase("components.settings.billing.founder", "billing-founder")
     }
 
     @Test
     fun captureSettingsBillingDowngrade() {
-        captureKmpSettingsPageCase("settings.billing.downgrade", "billing-downgrade")
+        captureKmpSettingsPageCase("components.settings.billing.downgrade", "billing-downgrade")
     }
 
     @Test
     fun captureSettingsLanguageRegionPage() {
-        captureKmpSettingsPageCase("settings.language-region.page", "language-region")
+        captureKmpSettingsPageCase("components.settings.language-region.page", "language-region")
     }
 
     @Test
     fun captureSettingsAppearancePage() {
-        captureKmpSettingsPageCase("settings.appearance.page", "appearance")
+        captureKmpSettingsPageCase("components.settings.appearance.page", "appearance")
     }
 
     @Test
     fun captureSettingsNotificationsPage() {
-        captureKmpSettingsPageCase("settings.notifications.page", "notifications")
+        captureKmpSettingsPageCase("components.settings.notifications.page", "notifications")
     }
 
     @Test
     fun captureSettingsConnectedAppsPage() {
-        captureKmpSettingsPageCase("settings.connected-apps.page", "connected-apps")
+        captureKmpSettingsPageCase("components.settings.connected-apps.page", "connected-apps")
     }
 
     @Test
-    fun captureAuthLoginInputs() {
+    fun captureAuthLoginInputsEmpty() {
         captureKmpComponentCase(
-            caseId = "auth.login.inputs",
+            caseId = "auth.login.inputs.empty",
             pageName = "compose_auth_login_inputs",
+            pageData = JSONObject().put("visualFixture", "empty"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureAuthLoginInputsFilled() {
+        captureKmpComponentCase(
+            caseId = "auth.login.inputs.filled",
+            pageName = "compose_auth_login_inputs",
+            pageData = JSONObject().put("visualFixture", "filled"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
+    fun captureAuthLoginInputsInvalid() {
+        captureKmpComponentCase(
+            caseId = "auth.login.inputs.invalid",
+            pageName = "compose_auth_login_inputs",
+            pageData = JSONObject().put("visualFixture", "invalid"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
@@ -398,7 +430,7 @@ class KmpVisualScreenshotCaptureTest {
     @Test
     fun captureAuthRegisterInputs() {
         captureKmpComponentCase(
-            caseId = "auth.register.inputs",
+            caseId = "components.auth.register.inputs",
             pageName = "compose_auth_register_inputs",
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
@@ -874,6 +906,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 620
+            )
+        private val THREAD_HEADER_COMPONENT_CROP =
+            VisualCrop(
+                leftDp = 0,
+                topDp = 0,
+                widthDp = 390,
+                heightDp = 62
             )
         private val HOME_ACTIVITY_RESULTS_CROP =
             VisualCrop(

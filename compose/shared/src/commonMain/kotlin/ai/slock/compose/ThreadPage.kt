@@ -156,6 +156,7 @@ import kotlin.time.TimeSource
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
+private const val THREAD_HEADER_VISUAL_PAGE = "compose_thread_header_visual"
 private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_panel_visual"
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
@@ -251,6 +252,14 @@ internal class ComposeThreadMessageRowVisualPage : ai.slock.compose.base.BasePag
     override fun willInit() {
         super.willInit()
         setContent { ThreadMessageVisualScreen() }
+    }
+}
+
+@Page(THREAD_HEADER_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadHeaderVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadHeaderVisualScreen() }
     }
 }
 
@@ -1230,6 +1239,34 @@ private fun ThreadMessageVisualScreen() {
                 outerPadding = 0.dp
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadHeaderVisualScreen() {
+    val payload = remember {
+        KuiklyThreadScreenPayload(
+            instanceId = "visual-thread-header",
+            title = "#首页专修",
+            subtitle = "Home shell, server badge, and bottom dock polish",
+            status = "content",
+            surfaceKind = KuiklyThreadSurfaceKind.Channel,
+            selectedTab = "chat",
+            showModeTabs = true,
+            showSettingsAction = true,
+            showMembersAction = true,
+            membersCount = 4,
+            showOpenInChannelAction = false
+        )
+    }
+    Box(modifier = Modifier.width(390.dp).background(SlockColor.SurfaceWhite)) {
+        ThreadPageHeader(
+            payload = payload,
+            onBack = {},
+            onOpenInChannel = {},
+            onShowMembers = {},
+            onShowSettings = {}
+        )
     }
 }
 

@@ -3,10 +3,10 @@
   "name": "Slock Visual Testing",
   "cases": [
     {
-      "id": "tokens.palette",
+      "id": "components.tokens.palette",
       "title": "Shared Tokens",
       "surface": "tokens",
-      "fixture": "fixtures/tokens.palette.json",
+      "fixture": "fixtures/components.tokens.palette.json",
       "skip": {
         "reason": "Temporarily hidden: palette screenshot is not a valid parity gate; use token-audit for machine validation."
       },
@@ -25,7 +25,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='tokens.palette']",
+        "selector": "[data-visual-case='components.tokens.palette']",
         "crop": "element",
         "contract": "shell-canvas"
       },
@@ -36,10 +36,10 @@
       }
     },
     {
-      "id": "auth.register.inputs",
+      "id": "components.auth.register.inputs",
       "title": "Auth Register Inputs",
       "surface": "auth",
-      "fixture": "fixtures/auth.register.inputs.json",
+      "fixture": "fixtures/components.auth.register.inputs.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -55,7 +55,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='auth.register.inputs']",
+        "selector": "[data-visual-case='components.auth.register.inputs']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
@@ -85,10 +85,10 @@
       }
     },
     {
-      "id": "navigation.tabbar.states",
+      "id": "components.navigation.tabbar.states",
       "title": "Navigation Tabbar States",
       "surface": "navigation",
-      "fixture": "fixtures/navigation.tabbar.states.json",
+      "fixture": "fixtures/components.navigation.tabbar.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -106,7 +106,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='navigation.tabbar.states']",
+        "selector": "[data-visual-case='components.navigation.tabbar.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -119,10 +119,10 @@
       }
     },
     {
-      "id": "thread.composer.empty",
+      "id": "components.thread.composer.empty",
       "title": "Thread Composer Empty",
       "surface": "thread",
-      "fixture": "fixtures/thread.composer.empty.json",
+      "fixture": "fixtures/components.thread.composer.empty.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -142,7 +142,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='thread.composer.empty']",
+        "selector": "[data-visual-case='components.thread.composer.empty']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -155,10 +155,10 @@
       }
     },
     {
-      "id": "thread.composer.states",
+      "id": "components.thread.composer.states",
       "title": "Thread Composer States",
       "surface": "thread",
-      "fixture": "fixtures/thread.composer.states.json",
+      "fixture": "fixtures/components.thread.composer.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -178,7 +178,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='thread.composer.states']",
+        "selector": "[data-visual-case='components.thread.composer.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -191,10 +191,10 @@
       }
     },
     {
-      "id": "thread.composer.as-task-selected",
+      "id": "components.thread.composer.as-task-selected",
       "title": "Thread Composer As Task Selected",
       "surface": "thread",
-      "fixture": "fixtures/thread.composer.as-task-selected.json",
+      "fixture": "fixtures/components.thread.composer.as-task-selected.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -215,7 +215,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='thread.composer.states']",
+        "selector": "[data-visual-case='components.thread.composer.states']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
@@ -238,10 +238,10 @@
       }
     },
     {
-      "id": "thread.header.states",
+      "id": "components.thread.header.states",
       "title": "Thread Header States",
       "surface": "thread",
-      "fixture": "fixtures/thread.header.states.json",
+      "fixture": "fixtures/components.thread.header.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -261,7 +261,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='thread.header.states']",
+        "selector": "[data-visual-case='components.thread.header.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -274,10 +274,10 @@
       }
     },
     {
-      "id": "thread.message.row",
+      "id": "components.thread.message.row",
       "title": "Thread Message Row",
       "surface": "thread",
-      "fixture": "fixtures/thread.message.row.json",
+      "fixture": "fixtures/components.thread.message.row.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -297,7 +297,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='thread.message.row']",
+        "selector": "[data-visual-case='components.thread.message.row']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -310,11 +310,11 @@
       }
     },
     {
-      "id": "home.server-switcher.open",
+      "id": "components.home.server-switcher.open",
       "title": "Home Server Switcher Open",
       "surface": "home",
       "baselineStatus": "pending",
-      "fixture": "fixtures/home.server-switcher.open.json",
+      "fixture": "fixtures/components.home.server-switcher.open.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -333,7 +333,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.server-switcher.open']",
+        "selector": "[data-visual-case='components.home.server-switcher.open']",
         "crop": "element",
         "contract": "component-bounds",
         "outset": {
@@ -350,10 +350,10 @@
       }
     },
     {
-      "id": "home.titlebar.states",
+      "id": "components.home.titlebar.states",
       "title": "Home Titlebar States",
       "surface": "home",
-      "fixture": "fixtures/home.titlebar.states.json",
+      "fixture": "fixtures/components.home.titlebar.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -373,7 +373,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.titlebar.states']",
+        "selector": "[data-visual-case='components.home.titlebar.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -386,10 +386,10 @@
       }
     },
     {
-      "id": "home.notification-center.states",
+      "id": "components.home.notification-center.states",
       "title": "Home Notification Center States",
       "surface": "home",
-      "fixture": "fixtures/home.notification-center.states.json",
+      "fixture": "fixtures/components.home.notification-center.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -407,7 +407,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.notification-center.states']",
+        "selector": "[data-visual-case='components.home.notification-center.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -420,10 +420,10 @@
       }
     },
     {
-      "id": "home.search.results",
+      "id": "components.home.search.results",
       "title": "Home Search Results",
       "surface": "home",
-      "fixture": "fixtures/home.search.results.json",
+      "fixture": "fixtures/components.home.search.results.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -445,13 +445,13 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.search.results']",
+        "selector": "[data-visual-case='components.home.search.results']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
           {
             "type": "fill",
-            "target": "[data-visual-case='home.search.results'] input",
+            "target": "[data-visual-case='components.home.search.results'] input",
             "value": "android"
           },
           {
@@ -469,10 +469,10 @@
       }
     },
     {
-      "id": "home.search.channel-dropdown",
+      "id": "components.home.search.channel-dropdown",
       "title": "Home Search Channel Dropdown",
       "surface": "home",
-      "fixture": "fixtures/home.search.results.json",
+      "fixture": "fixtures/components.home.search.results.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -490,13 +490,13 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.search.channel-dropdown']",
+        "selector": "[data-visual-case='components.home.search.channel-dropdown']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
           {
             "type": "fill",
-            "target": "[data-visual-case='home.search.channel-dropdown'] input",
+            "target": "[data-visual-case='components.home.search.channel-dropdown'] input",
             "value": "android"
           },
           {
@@ -505,7 +505,7 @@
           },
           {
             "type": "click",
-            "target": "[data-visual-case='home.search.channel-dropdown'] [data-search-filter='channel']"
+            "target": "[data-visual-case='components.home.search.channel-dropdown'] [data-search-filter='channel']"
           },
           {
             "type": "wait",
@@ -522,10 +522,10 @@
       }
     },
     {
-      "id": "home.saved.results",
+      "id": "components.home.saved.results",
       "title": "Home Saved Results",
       "surface": "home",
-      "fixture": "fixtures/home.saved.results.json",
+      "fixture": "fixtures/components.home.saved.results.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -544,7 +544,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.saved.results']",
+        "selector": "[data-visual-case='components.home.saved.results']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
@@ -563,10 +563,10 @@
       }
     },
     {
-      "id": "home.activity.results",
+      "id": "components.home.activity.results",
       "title": "Home Activity Results",
       "surface": "home",
-      "fixture": "fixtures/home.activity.results.json",
+      "fixture": "fixtures/components.home.activity.results.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -586,7 +586,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='home.activity.results']",
+        "selector": "[data-visual-case='components.home.activity.results']",
         "crop": "element",
         "contract": "component-bounds",
         "interactions": [
@@ -605,10 +605,10 @@
       }
     },
     {
-      "id": "home.create-channel.dialog",
+      "id": "components.home.create-channel.dialog",
       "title": "Home Create Channel Dialog",
       "surface": "home",
-      "fixture": "fixtures/home.create-channel.dialog.json",
+      "fixture": "fixtures/components.home.create-channel.dialog.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -641,10 +641,10 @@
       }
     },
     {
-      "id": "members.create-agent.dialog",
+      "id": "components.members.create-agent.dialog",
       "title": "Members Create Agent Dialog - Codex CLI",
       "surface": "members",
-      "fixture": "fixtures/members.create-agent.dialog.json",
+      "fixture": "fixtures/components.members.create-agent.dialog.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -678,10 +678,10 @@
       }
     },
     {
-      "id": "members.create-agent.claude-dialog",
+      "id": "components.members.create-agent.claude-dialog",
       "title": "Members Create Agent Dialog - Claude Code",
       "surface": "members",
-      "fixture": "fixtures/members.create-agent.claude-dialog.json",
+      "fixture": "fixtures/components.members.create-agent.claude-dialog.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -715,10 +715,10 @@
       }
     },
     {
-      "id": "members.create-agent.claude-custom-provider-dialog",
+      "id": "components.members.create-agent.claude-custom-provider-dialog",
       "title": "Members Create Agent Dialog - Claude Custom Provider",
       "surface": "members",
-      "fixture": "fixtures/members.create-agent.claude-custom-provider-dialog.json",
+      "fixture": "fixtures/components.members.create-agent.claude-custom-provider-dialog.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -754,10 +754,10 @@
       }
     },
     {
-      "id": "members.agent-detail.profile",
+      "id": "components.members.agent-detail.profile",
       "title": "Members Agent Detail Profile",
       "surface": "members",
-      "fixture": "fixtures/members.agent-detail.profile.json",
+      "fixture": "fixtures/components.members.agent-detail.profile.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -778,7 +778,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='members.agent-detail.profile']",
+        "selector": "[data-visual-case='components.members.agent-detail.profile']",
         "crop": "element",
         "contract": "page-viewport"
       },
@@ -791,10 +791,10 @@
       }
     },
     {
-      "id": "channel.members.panel",
+      "id": "components.channel.members.panel",
       "title": "Channel Members Panel",
       "surface": "channel",
-      "fixture": "fixtures/channel.members.panel.json",
+      "fixture": "fixtures/components.channel.members.panel.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -835,10 +835,10 @@
       }
     },
     {
-      "id": "channel.settings.panel",
+      "id": "components.channel.settings.panel",
       "title": "Channel Settings Panel",
       "surface": "channel",
-      "fixture": "fixtures/channel.settings.panel.json",
+      "fixture": "fixtures/components.channel.settings.panel.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -869,10 +869,10 @@
       }
     },
     {
-      "id": "channel.members.add-panel",
+      "id": "components.channel.members.add-panel",
       "title": "Channel Add Member Panel",
       "surface": "channel",
-      "fixture": "fixtures/channel.members.add-panel.json",
+      "fixture": "fixtures/components.channel.members.add-panel.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -917,10 +917,10 @@
       }
     },
     {
-      "id": "settings.page.states",
+      "id": "components.settings.page.states",
       "title": "Settings Page States",
       "surface": "settings",
-      "fixture": "fixtures/settings.page.states.json",
+      "fixture": "fixtures/components.settings.page.states.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -938,7 +938,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.page.states']",
+        "selector": "[data-visual-case='components.settings.page.states']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -951,10 +951,10 @@
       }
     },
     {
-      "id": "settings.account.page",
+      "id": "components.settings.account.page",
       "title": "Settings Account Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.account.page.json",
+      "fixture": "fixtures/components.settings.account.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -972,7 +972,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.account.page']",
+        "selector": "[data-visual-case='components.settings.account.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -985,10 +985,10 @@
       }
     },
     {
-      "id": "settings.account.provider-linked",
+      "id": "components.settings.account.provider-linked",
       "title": "Settings Account Provider Linked",
       "surface": "settings",
-      "fixture": "fixtures/settings.account.provider-linked.json",
+      "fixture": "fixtures/components.settings.account.provider-linked.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1007,7 +1007,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.account.provider-linked']",
+        "selector": "[data-visual-case='components.settings.account.provider-linked']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1020,10 +1020,10 @@
       }
     },
     {
-      "id": "settings.account.password-expanded",
+      "id": "components.settings.account.password-expanded",
       "title": "Settings Account Password Expanded",
       "surface": "settings",
-      "fixture": "fixtures/settings.account.password-expanded.json",
+      "fixture": "fixtures/components.settings.account.password-expanded.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1042,7 +1042,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.account.password-expanded']",
+        "selector": "[data-visual-case='components.settings.account.password-expanded']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1055,10 +1055,10 @@
       }
     },
     {
-      "id": "settings.account.error-state",
+      "id": "components.settings.account.error-state",
       "title": "Settings Account Error State",
       "surface": "settings",
-      "fixture": "fixtures/settings.account.error-state.json",
+      "fixture": "fixtures/components.settings.account.error-state.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1077,7 +1077,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.account.error-state']",
+        "selector": "[data-visual-case='components.settings.account.error-state']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1090,10 +1090,10 @@
       }
     },
     {
-      "id": "settings.server.profile",
+      "id": "components.settings.server.profile",
       "title": "Settings Server Profile",
       "surface": "settings",
-      "fixture": "fixtures/settings.server.profile.json",
+      "fixture": "fixtures/components.settings.server.profile.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1112,7 +1112,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.server.profile']",
+        "selector": "[data-visual-case='components.settings.server.profile']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1125,10 +1125,10 @@
       }
     },
     {
-      "id": "settings.administration.admins",
+      "id": "components.settings.administration.admins",
       "title": "Settings Administration Admins",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.admins.json",
+      "fixture": "fixtures/components.settings.administration.admins.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1147,7 +1147,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.admins']",
+        "selector": "[data-visual-case='components.settings.administration.admins']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1160,10 +1160,10 @@
       }
     },
     {
-      "id": "settings.administration.invites",
+      "id": "components.settings.administration.invites",
       "title": "Settings Administration Invites",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.invites.json",
+      "fixture": "fixtures/components.settings.administration.invites.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1182,7 +1182,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.invites']",
+        "selector": "[data-visual-case='components.settings.administration.invites']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1195,10 +1195,10 @@
       }
     },
     {
-      "id": "settings.administration.join-links",
+      "id": "components.settings.administration.join-links",
       "title": "Settings Administration Join Links",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.join-links.json",
+      "fixture": "fixtures/components.settings.administration.join-links.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1217,7 +1217,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.join-links']",
+        "selector": "[data-visual-case='components.settings.administration.join-links']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1230,10 +1230,10 @@
       }
     },
     {
-      "id": "settings.administration.pre-join-agreement",
+      "id": "components.settings.administration.pre-join-agreement",
       "title": "Settings Administration Pre-join Agreement",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.pre-join-agreement.json",
+      "fixture": "fixtures/components.settings.administration.pre-join-agreement.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1252,7 +1252,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.pre-join-agreement']",
+        "selector": "[data-visual-case='components.settings.administration.pre-join-agreement']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1265,10 +1265,10 @@
       }
     },
     {
-      "id": "settings.administration.onboarding",
+      "id": "components.settings.administration.onboarding",
       "title": "Settings Administration Onboarding",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.onboarding.json",
+      "fixture": "fixtures/components.settings.administration.onboarding.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1287,7 +1287,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.onboarding']",
+        "selector": "[data-visual-case='components.settings.administration.onboarding']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1300,10 +1300,10 @@
       }
     },
     {
-      "id": "settings.administration.member-permissions",
+      "id": "components.settings.administration.member-permissions",
       "title": "Settings Administration Member Permissions",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.member-permissions.json",
+      "fixture": "fixtures/components.settings.administration.member-permissions.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1322,7 +1322,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.member-permissions']",
+        "selector": "[data-visual-case='components.settings.administration.member-permissions']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1335,10 +1335,10 @@
       }
     },
     {
-      "id": "settings.administration.translation",
+      "id": "components.settings.administration.translation",
       "title": "Settings Administration Translation",
       "surface": "settings",
-      "fixture": "fixtures/settings.administration.translation.json",
+      "fixture": "fixtures/components.settings.administration.translation.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1357,7 +1357,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.administration.translation']",
+        "selector": "[data-visual-case='components.settings.administration.translation']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1370,10 +1370,10 @@
       }
     },
     {
-      "id": "settings.billing.page",
+      "id": "components.settings.billing.page",
       "title": "Settings Billing Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.page.json",
+      "fixture": "fixtures/components.settings.billing.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1391,7 +1391,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.page']",
+        "selector": "[data-visual-case='components.settings.billing.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1404,10 +1404,10 @@
       }
     },
     {
-      "id": "settings.billing.loading",
+      "id": "components.settings.billing.loading",
       "title": "Settings Billing Loading",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.loading.json",
+      "fixture": "fixtures/components.settings.billing.loading.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1426,7 +1426,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.loading']",
+        "selector": "[data-visual-case='components.settings.billing.loading']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1439,10 +1439,10 @@
       }
     },
     {
-      "id": "settings.billing.no-permission",
+      "id": "components.settings.billing.no-permission",
       "title": "Settings Billing No Permission",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.no-permission.json",
+      "fixture": "fixtures/components.settings.billing.no-permission.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1461,7 +1461,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.no-permission']",
+        "selector": "[data-visual-case='components.settings.billing.no-permission']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1474,10 +1474,10 @@
       }
     },
     {
-      "id": "settings.billing.trial",
+      "id": "components.settings.billing.trial",
       "title": "Settings Billing Trial Notice",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.trial.json",
+      "fixture": "fixtures/components.settings.billing.trial.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1496,7 +1496,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.trial']",
+        "selector": "[data-visual-case='components.settings.billing.trial']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1509,10 +1509,10 @@
       }
     },
     {
-      "id": "settings.billing.founder",
+      "id": "components.settings.billing.founder",
       "title": "Settings Billing Founder Notice",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.founder.json",
+      "fixture": "fixtures/components.settings.billing.founder.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1531,7 +1531,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.founder']",
+        "selector": "[data-visual-case='components.settings.billing.founder']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1544,10 +1544,10 @@
       }
     },
     {
-      "id": "settings.billing.downgrade",
+      "id": "components.settings.billing.downgrade",
       "title": "Settings Billing Downgrade Warning",
       "surface": "settings",
-      "fixture": "fixtures/settings.billing.downgrade.json",
+      "fixture": "fixtures/components.settings.billing.downgrade.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1566,7 +1566,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.billing.downgrade']",
+        "selector": "[data-visual-case='components.settings.billing.downgrade']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1579,10 +1579,10 @@
       }
     },
     {
-      "id": "settings.language-region.page",
+      "id": "components.settings.language-region.page",
       "title": "Settings Language & Region Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.language-region.page.json",
+      "fixture": "fixtures/components.settings.language-region.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1600,7 +1600,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.language-region.page']",
+        "selector": "[data-visual-case='components.settings.language-region.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1613,10 +1613,10 @@
       }
     },
     {
-      "id": "settings.appearance.page",
+      "id": "components.settings.appearance.page",
       "title": "Settings Appearance Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.appearance.page.json",
+      "fixture": "fixtures/components.settings.appearance.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1634,7 +1634,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.appearance.page']",
+        "selector": "[data-visual-case='components.settings.appearance.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1647,10 +1647,10 @@
       }
     },
     {
-      "id": "settings.notifications.page",
+      "id": "components.settings.notifications.page",
       "title": "Settings Notifications Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.notifications.page.json",
+      "fixture": "fixtures/components.settings.notifications.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1668,7 +1668,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.notifications.page']",
+        "selector": "[data-visual-case='components.settings.notifications.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -1681,10 +1681,10 @@
       }
     },
     {
-      "id": "settings.connected-apps.page",
+      "id": "components.settings.connected-apps.page",
       "title": "Settings Connected Apps Page",
       "surface": "settings",
-      "fixture": "fixtures/settings.connected-apps.page.json",
+      "fixture": "fixtures/components.settings.connected-apps.page.json",
       "viewport": {
         "width": 390,
         "height": 844,
@@ -1702,7 +1702,7 @@
         }
       ],
       "capture": {
-        "selector": "[data-visual-case='settings.connected-apps.page']",
+        "selector": "[data-visual-case='components.settings.connected-apps.page']",
         "crop": "element",
         "contract": "component-bounds"
       },
@@ -2288,7 +2288,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Existing settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route."
+      "notes": "Existing components.settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route."
     },
     {
       "id": "screens.settings.server-danger-modal",
@@ -2432,7 +2432,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Existing home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture."
+      "notes": "Existing components.home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture."
     },
     {
       "id": "screens.home.activity",
@@ -2468,7 +2468,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Existing home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture."
+      "notes": "Existing components.home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture."
     },
     {
       "id": "components.thread.message-row.rich-content",
@@ -2509,7 +2509,7 @@
   ],
   "componentMatrix": [
     {
-      "id": "auth.register.inputs",
+      "id": "components.auth.register.inputs",
       "title": "Auth Register Inputs",
       "surface": "auth",
       "group": "product-auth",
@@ -2524,7 +2524,7 @@
             "FormField"
           ],
           "path": "packages/web/src/components/auth/RegisterPage.tsx",
-          "fixture": "fixtures/auth.register.inputs.json"
+          "fixture": "fixtures/components.auth.register.inputs.json"
         },
         {
           "id": "android",
@@ -2546,7 +2546,7 @@
       ]
     },
     {
-      "id": "tokens.palette",
+      "id": "components.tokens.palette",
       "title": "Shared Tokens",
       "surface": "tokens",
       "group": "tokens",
@@ -2594,7 +2594,7 @@
       }
     },
     {
-      "id": "home.server-switcher.open",
+      "id": "components.home.server-switcher.open",
       "title": "Home Server Switcher Open",
       "surface": "home",
       "group": "product",
@@ -2607,7 +2607,7 @@
             "ServerSwitcherMenu"
           ],
           "path": "packages/web/src/components/ui/ServerSwitcherMenu.tsx",
-          "fixture": "fixtures/home.server-switcher.open.json"
+          "fixture": "fixtures/components.home.server-switcher.open.json"
         },
         "android": {
           "status": "active",
@@ -2632,7 +2632,7 @@
       }
     },
     {
-      "id": "thread.message.row",
+      "id": "components.thread.message.row",
       "title": "Thread Message Row",
       "surface": "thread",
       "group": "product",
@@ -2646,7 +2646,7 @@
             "MessageItem"
           ],
           "path": "packages/web/src/components/message/MessageItem.tsx",
-          "fixture": "fixtures/thread.message.row.json"
+          "fixture": "fixtures/components.thread.message.row.json"
         },
         {
           "id": "android",
@@ -2671,7 +2671,7 @@
       ]
     },
     {
-      "id": "thread.composer.empty",
+      "id": "components.thread.composer.empty",
       "title": "Thread Composer Empty",
       "surface": "thread",
       "group": "product",
@@ -2685,7 +2685,7 @@
             "MessageInput"
           ],
           "path": "packages/web/src/components/message/MessageInput.tsx",
-          "fixture": "fixtures/thread.composer.empty.json"
+          "fixture": "fixtures/components.thread.composer.empty.json"
         },
         {
           "id": "android",
@@ -2710,7 +2710,7 @@
       ]
     },
     {
-      "id": "thread.composer.states",
+      "id": "components.thread.composer.states",
       "title": "Thread Composer States",
       "surface": "thread",
       "group": "product",
@@ -2724,7 +2724,7 @@
             "MessageInput"
           ],
           "path": "packages/web/src/components/message/MessageInput.tsx",
-          "fixture": "fixtures/thread.composer.states.json"
+          "fixture": "fixtures/components.thread.composer.states.json"
         },
         {
           "id": "android",
@@ -2749,7 +2749,7 @@
       ]
     },
     {
-      "id": "thread.composer.as-task-selected",
+      "id": "components.thread.composer.as-task-selected",
       "title": "Thread Composer As Task Selected",
       "surface": "thread",
       "group": "product",
@@ -2763,7 +2763,7 @@
             "MessageInput"
           ],
           "path": "packages/web/src/components/message/MessageInput.tsx",
-          "fixture": "thread.composer.states route plus As Task click interaction"
+          "fixture": "components.thread.composer.states route plus As Task click interaction"
         },
         {
           "id": "android",
@@ -2788,7 +2788,7 @@
       ]
     },
     {
-      "id": "thread.header.states",
+      "id": "components.thread.header.states",
       "title": "Thread Header States",
       "surface": "thread",
       "group": "product-thread",
@@ -2803,7 +2803,7 @@
             "ReorderablePanelTabs"
           ],
           "path": "packages/web/src/components/message/ChatPanel.tsx",
-          "fixture": "fixtures/thread.header.states.json"
+          "fixture": "fixtures/components.thread.header.states.json"
         },
         {
           "id": "android",
@@ -2867,7 +2867,7 @@
       }
     },
     {
-      "id": "navigation.tabbar.states",
+      "id": "components.navigation.tabbar.states",
       "title": "Navigation Tabbar States",
       "surface": "navigation",
       "group": "product-navigation",
@@ -2881,7 +2881,7 @@
             "MobileTabBarSurface"
           ],
           "path": "packages/web/src/components/layout/MainLayout.tsx",
-          "fixture": "fixtures/navigation.tabbar.states.json"
+          "fixture": "fixtures/components.navigation.tabbar.states.json"
         },
         {
           "id": "android",
@@ -2902,7 +2902,7 @@
       ]
     },
     {
-      "id": "home.titlebar.states",
+      "id": "components.home.titlebar.states",
       "title": "Home Titlebar States",
       "surface": "home",
       "group": "product-home",
@@ -2917,7 +2917,7 @@
             "NotificationTrigger"
           ],
           "path": "packages/web/src/components/layout/Sidebar.tsx",
-          "fixture": "fixtures/home.titlebar.states.json"
+          "fixture": "fixtures/components.home.titlebar.states.json"
         },
         {
           "id": "android",
@@ -2944,7 +2944,7 @@
       ]
     },
     {
-      "id": "home.notification-center.states",
+      "id": "components.home.notification-center.states",
       "title": "Home Notification Center States",
       "surface": "home",
       "group": "product-home",
@@ -2958,7 +2958,7 @@
             "NotificationCenter"
           ],
           "path": "packages/web/src/components/layout/NotificationCenter.tsx",
-          "fixture": "fixtures/home.notification-center.states.json"
+          "fixture": "fixtures/components.home.notification-center.states.json"
         },
         {
           "id": "android",
@@ -2983,7 +2983,7 @@
       ]
     },
     {
-      "id": "home.search.results",
+      "id": "components.home.search.results",
       "title": "Home Search Results",
       "surface": "home",
       "group": "product-home",
@@ -2999,7 +2999,7 @@
             "SegmentedControl"
           ],
           "path": "packages/web/src/components/search/MessageSearchPage.tsx",
-          "fixture": "fixtures/home.search.results.json"
+          "fixture": "fixtures/components.home.search.results.json"
         },
         {
           "id": "android",
@@ -3028,7 +3028,7 @@
       ]
     },
     {
-      "id": "home.search.channel-dropdown",
+      "id": "components.home.search.channel-dropdown",
       "title": "Home Search Channel Dropdown",
       "surface": "home",
       "group": "product-home",
@@ -3043,7 +3043,7 @@
             "SearchableFilterPopover"
           ],
           "path": "packages/web/src/components/search/MessageSearchPage.tsx",
-          "fixture": "fixtures/home.search.results.json"
+          "fixture": "fixtures/components.home.search.results.json"
         },
         {
           "id": "android",
@@ -3070,7 +3070,7 @@
       ]
     },
     {
-      "id": "home.saved.results",
+      "id": "components.home.saved.results",
       "title": "Home Saved Results",
       "surface": "home",
       "group": "product-home",
@@ -3086,7 +3086,7 @@
             "PanelHeader"
           ],
           "path": "packages/web/src/components/saved/SavedPanel.tsx",
-          "fixture": "fixtures/home.saved.results.json"
+          "fixture": "fixtures/components.home.saved.results.json"
         },
         {
           "id": "android",
@@ -3115,7 +3115,7 @@
       ]
     },
     {
-      "id": "home.activity.results",
+      "id": "components.home.activity.results",
       "title": "Home Activity Results",
       "surface": "home",
       "group": "product-home",
@@ -3132,7 +3132,7 @@
             "ConversationPreviewCard"
           ],
           "path": "packages/web/src/components/thread/ThreadsInbox.tsx",
-          "fixture": "fixtures/home.activity.results.json"
+          "fixture": "fixtures/components.home.activity.results.json"
         },
         {
           "id": "android",
@@ -3160,7 +3160,7 @@
       ]
     },
     {
-      "id": "home.create-channel.dialog",
+      "id": "components.home.create-channel.dialog",
       "title": "Home Create Channel Dialog",
       "surface": "home",
       "group": "product-home",
@@ -3176,7 +3176,7 @@
             "SegmentedControl"
           ],
           "path": "packages/web/src/components/channel/CreateChannelDialog.tsx",
-          "fixture": "fixtures/home.create-channel.dialog.json"
+          "fixture": "fixtures/components.home.create-channel.dialog.json"
         },
         {
           "id": "android",
@@ -3203,16 +3203,16 @@
       ]
     },
     {
-      "id": "members.create-agent.dialog",
+      "id": "components.members.create-agent.dialog",
       "title": "Members Create Agent Dialog - Runtime Matrix",
       "surface": "members",
       "group": "product-members",
       "status": "baseline",
       "notes": "Real React CreateAgentDialog vs Android rendering of the shared SharedCreateAgentDialog/SlockUnifiedDialog visual route. Matrix covers Codex CLI default, Claude Code default, and Claude custom-provider/advanced configuration because each runtime exposes different selectable fields.",
       "caseIds": [
-        "members.create-agent.dialog",
-        "members.create-agent.claude-dialog",
-        "members.create-agent.claude-custom-provider-dialog"
+        "components.members.create-agent.dialog",
+        "components.members.create-agent.claude-dialog",
+        "components.members.create-agent.claude-custom-provider-dialog"
       ],
       "providers": [
         {
@@ -3253,7 +3253,7 @@
       ]
     },
     {
-      "id": "channel.members.panel",
+      "id": "components.channel.members.panel",
       "title": "Channel Members Panel",
       "surface": "channel",
       "group": "product-channel",
@@ -3269,7 +3269,7 @@
             "ChannelMemberRow"
           ],
           "path": "packages/web/src/components/agent/ChannelMembers.tsx",
-          "fixture": "fixtures/channel.members.panel.json"
+          "fixture": "fixtures/components.channel.members.panel.json"
         },
         {
           "id": "android",
@@ -3295,7 +3295,7 @@
       ]
     },
     {
-      "id": "members.agent-detail.profile",
+      "id": "components.members.agent-detail.profile",
       "title": "Members Agent Detail Profile",
       "surface": "members",
       "group": "product-members",
@@ -3340,7 +3340,7 @@
       ]
     },
     {
-      "id": "channel.settings.panel",
+      "id": "components.channel.settings.panel",
       "title": "Channel Settings Panel",
       "surface": "channel",
       "group": "product-channel",
@@ -3355,7 +3355,7 @@
             "FormField"
           ],
           "path": "packages/web/src/components/channel/EditChannelDialog.tsx",
-          "fixture": "fixtures/channel.settings.panel.json"
+          "fixture": "fixtures/components.channel.settings.panel.json"
         },
         {
           "id": "android",
@@ -3381,7 +3381,7 @@
       ]
     },
     {
-      "id": "channel.members.add-panel",
+      "id": "components.channel.members.add-panel",
       "title": "Channel Add Member Panel",
       "surface": "channel",
       "group": "product-channel",
@@ -3397,7 +3397,7 @@
             "ChannelMemberRow"
           ],
           "path": "packages/web/src/components/agent/ChannelMembers.tsx",
-          "fixture": "fixtures/channel.members.add-panel.json"
+          "fixture": "fixtures/components.channel.members.add-panel.json"
         },
         {
           "id": "android",
@@ -3423,7 +3423,7 @@
       ]
     },
     {
-      "id": "settings.page.states",
+      "id": "components.settings.page.states",
       "title": "Settings Page States",
       "surface": "settings",
       "group": "product-settings",
@@ -3437,7 +3437,7 @@
             "SettingsPanel"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.page.states.json"
+          "fixture": "fixtures/components.settings.page.states.json"
         },
         {
           "id": "android",
@@ -3464,7 +3464,7 @@
       ]
     },
     {
-      "id": "settings.account.page",
+      "id": "components.settings.account.page",
       "title": "Settings Account Page",
       "surface": "settings",
       "group": "product-settings",
@@ -3478,7 +3478,7 @@
             "AccountSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.account.page.json"
+          "fixture": "fixtures/components.settings.account.page.json"
         },
         {
           "id": "android",
@@ -3506,7 +3506,7 @@
       ]
     },
     {
-      "id": "settings.account.provider-linked",
+      "id": "components.settings.account.provider-linked",
       "title": "Settings Account Provider Linked",
       "surface": "settings",
       "group": "product-settings",
@@ -3520,7 +3520,7 @@
             "AccountSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.account.provider-linked.json"
+          "fixture": "fixtures/components.settings.account.provider-linked.json"
         },
         {
           "id": "android",
@@ -3548,7 +3548,7 @@
       ]
     },
     {
-      "id": "settings.account.password-expanded",
+      "id": "components.settings.account.password-expanded",
       "title": "Settings Account Password Expanded",
       "surface": "settings",
       "group": "product-settings",
@@ -3562,7 +3562,7 @@
             "AccountSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.account.password-expanded.json"
+          "fixture": "fixtures/components.settings.account.password-expanded.json"
         },
         {
           "id": "android",
@@ -3590,7 +3590,7 @@
       ]
     },
     {
-      "id": "settings.account.error-state",
+      "id": "components.settings.account.error-state",
       "title": "Settings Account Error State",
       "surface": "settings",
       "group": "product-settings",
@@ -3604,7 +3604,7 @@
             "AccountSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.account.error-state.json"
+          "fixture": "fixtures/components.settings.account.error-state.json"
         },
         {
           "id": "android",
@@ -3632,7 +3632,7 @@
       ]
     },
     {
-      "id": "settings.server.profile",
+      "id": "components.settings.server.profile",
       "title": "Settings Server Profile",
       "surface": "settings",
       "group": "product-settings",
@@ -3646,7 +3646,7 @@
             "ProfileSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.server.profile.json"
+          "fixture": "fixtures/components.settings.server.profile.json"
         },
         {
           "id": "android",
@@ -3674,7 +3674,7 @@
       ]
     },
     {
-      "id": "settings.administration.admins",
+      "id": "components.settings.administration.admins",
       "title": "Settings Administration Admins",
       "surface": "settings",
       "group": "product-settings",
@@ -3688,7 +3688,7 @@
             "AdminsSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.admins.json"
+          "fixture": "fixtures/components.settings.administration.admins.json"
         },
         {
           "id": "android",
@@ -3716,7 +3716,7 @@
       ]
     },
     {
-      "id": "settings.administration.invites",
+      "id": "components.settings.administration.invites",
       "title": "Settings Administration Invites",
       "surface": "settings",
       "group": "product-settings",
@@ -3730,7 +3730,7 @@
             "InvitesSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.invites.json"
+          "fixture": "fixtures/components.settings.administration.invites.json"
         },
         {
           "id": "android",
@@ -3758,7 +3758,7 @@
       ]
     },
     {
-      "id": "settings.administration.join-links",
+      "id": "components.settings.administration.join-links",
       "title": "Settings Administration Join Links",
       "surface": "settings",
       "group": "product-settings",
@@ -3772,7 +3772,7 @@
             "JoinLinksSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.join-links.json"
+          "fixture": "fixtures/components.settings.administration.join-links.json"
         },
         {
           "id": "android",
@@ -3800,7 +3800,7 @@
       ]
     },
     {
-      "id": "settings.administration.pre-join-agreement",
+      "id": "components.settings.administration.pre-join-agreement",
       "title": "Settings Administration Pre-join Agreement",
       "surface": "settings",
       "group": "product-settings",
@@ -3814,7 +3814,7 @@
             "PreJoinAgreementSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.pre-join-agreement.json"
+          "fixture": "fixtures/components.settings.administration.pre-join-agreement.json"
         },
         {
           "id": "android",
@@ -3842,7 +3842,7 @@
       ]
     },
     {
-      "id": "settings.administration.onboarding",
+      "id": "components.settings.administration.onboarding",
       "title": "Settings Administration Onboarding",
       "surface": "settings",
       "group": "product-settings",
@@ -3856,7 +3856,7 @@
             "OnboardingAgentSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.onboarding.json"
+          "fixture": "fixtures/components.settings.administration.onboarding.json"
         },
         {
           "id": "android",
@@ -3884,7 +3884,7 @@
       ]
     },
     {
-      "id": "settings.administration.member-permissions",
+      "id": "components.settings.administration.member-permissions",
       "title": "Settings Administration Member Permissions",
       "surface": "settings",
       "group": "product-settings",
@@ -3898,7 +3898,7 @@
             "MemberPermissionsSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.member-permissions.json"
+          "fixture": "fixtures/components.settings.administration.member-permissions.json"
         },
         {
           "id": "android",
@@ -3926,7 +3926,7 @@
       ]
     },
     {
-      "id": "settings.administration.translation",
+      "id": "components.settings.administration.translation",
       "title": "Settings Administration Translation",
       "surface": "settings",
       "group": "product-settings",
@@ -3940,7 +3940,7 @@
             "ServerTranslationSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.administration.translation.json"
+          "fixture": "fixtures/components.settings.administration.translation.json"
         },
         {
           "id": "android",
@@ -3968,7 +3968,7 @@
       ]
     },
     {
-      "id": "settings.billing.page",
+      "id": "components.settings.billing.page",
       "title": "Settings Billing Page",
       "surface": "settings",
       "group": "product-settings",
@@ -3982,7 +3982,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.page.json"
+          "fixture": "fixtures/components.settings.billing.page.json"
         },
         {
           "id": "android",
@@ -4010,7 +4010,7 @@
       ]
     },
     {
-      "id": "settings.billing.loading",
+      "id": "components.settings.billing.loading",
       "title": "Settings Billing Loading",
       "surface": "settings",
       "group": "product-settings",
@@ -4024,7 +4024,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.loading.json"
+          "fixture": "fixtures/components.settings.billing.loading.json"
         },
         {
           "id": "android",
@@ -4054,7 +4054,7 @@
       ]
     },
     {
-      "id": "settings.billing.no-permission",
+      "id": "components.settings.billing.no-permission",
       "title": "Settings Billing No Permission",
       "surface": "settings",
       "group": "product-settings",
@@ -4068,7 +4068,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.no-permission.json"
+          "fixture": "fixtures/components.settings.billing.no-permission.json"
         },
         {
           "id": "android",
@@ -4098,7 +4098,7 @@
       ]
     },
     {
-      "id": "settings.billing.trial",
+      "id": "components.settings.billing.trial",
       "title": "Settings Billing Trial Notice",
       "surface": "settings",
       "group": "product-settings",
@@ -4112,7 +4112,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.trial.json"
+          "fixture": "fixtures/components.settings.billing.trial.json"
         },
         {
           "id": "android",
@@ -4142,7 +4142,7 @@
       ]
     },
     {
-      "id": "settings.billing.founder",
+      "id": "components.settings.billing.founder",
       "title": "Settings Billing Founder Notice",
       "surface": "settings",
       "group": "product-settings",
@@ -4156,7 +4156,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.founder.json"
+          "fixture": "fixtures/components.settings.billing.founder.json"
         },
         {
           "id": "android",
@@ -4186,7 +4186,7 @@
       ]
     },
     {
-      "id": "settings.billing.downgrade",
+      "id": "components.settings.billing.downgrade",
       "title": "Settings Billing Downgrade Warning",
       "surface": "settings",
       "group": "product-settings",
@@ -4200,7 +4200,7 @@
             "BillingTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.billing.downgrade.json"
+          "fixture": "fixtures/components.settings.billing.downgrade.json"
         },
         {
           "id": "android",
@@ -4230,7 +4230,7 @@
       ]
     },
     {
-      "id": "settings.language-region.page",
+      "id": "components.settings.language-region.page",
       "title": "Settings Language & Region Page",
       "surface": "settings",
       "group": "product-settings",
@@ -4244,7 +4244,7 @@
             "LanguageRegionSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.language-region.page.json"
+          "fixture": "fixtures/components.settings.language-region.page.json"
         },
         {
           "id": "android",
@@ -4272,7 +4272,7 @@
       ]
     },
     {
-      "id": "settings.appearance.page",
+      "id": "components.settings.appearance.page",
       "title": "Settings Appearance Page",
       "surface": "settings",
       "group": "product-settings",
@@ -4286,7 +4286,7 @@
             "AppearanceSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.appearance.page.json"
+          "fixture": "fixtures/components.settings.appearance.page.json"
         },
         {
           "id": "android",
@@ -4312,7 +4312,7 @@
       ]
     },
     {
-      "id": "settings.notifications.page",
+      "id": "components.settings.notifications.page",
       "title": "Settings Notifications Page",
       "surface": "settings",
       "group": "product-settings",
@@ -4326,7 +4326,7 @@
             "NotificationsTabContent"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.notifications.page.json"
+          "fixture": "fixtures/components.settings.notifications.page.json"
         },
         {
           "id": "android",
@@ -4354,7 +4354,7 @@
       ]
     },
     {
-      "id": "settings.connected-apps.page",
+      "id": "components.settings.connected-apps.page",
       "title": "Settings Connected Apps Page",
       "surface": "settings",
       "group": "product-settings",
@@ -4368,7 +4368,7 @@
             "IntegrationsSection"
           ],
           "path": "packages/web/src/components/settings/SettingsPanel.tsx",
-          "fixture": "fixtures/settings.connected-apps.page.json"
+          "fixture": "fixtures/components.settings.connected-apps.page.json"
         },
         {
           "id": "android",
@@ -4898,7 +4898,7 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Existing settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route.",
+      "notes": "Existing components.settings.appearance.page is pending fixture coverage; this tracks the real Settings Appearance screen route.",
       "providers": [
         {
           "id": "react",
@@ -5030,7 +5030,7 @@
       "category": "app/home",
       "group": "screens-home",
       "status": "pending",
-      "notes": "Existing home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.",
+      "notes": "Existing components.home.saved.results is a connected visual fixture; this tracks the real Home Saved route/screen capture.",
       "providers": [
         {
           "id": "react",
@@ -5063,7 +5063,7 @@
       "category": "app/home",
       "group": "screens-home",
       "status": "pending",
-      "notes": "Existing home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.",
+      "notes": "Existing components.home.activity.results is a connected visual fixture; this tracks the real Home Activity route/screen capture.",
       "providers": [
         {
           "id": "react",

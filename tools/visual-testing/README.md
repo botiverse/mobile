@@ -77,7 +77,7 @@ Visual testing is split into two explicit suites:
 
 The CLI infers `real-screen` for ids prefixed with `screens.` and
 `component-fixture` otherwise. Existing legacy case ids such as
-`home.activity.results` are therefore treated as component fixture captures
+`components.home.activity.results` are therefore treated as component fixture captures
 until they are deliberately renamed or replaced. New cases should use the
 taxonomy prefix from the start:
 
@@ -167,10 +167,10 @@ Copy both files into the visual-testing result tree before diffing:
 
 ```bash
 adb -s emulator-5560 pull \
-  /sdcard/Download/slock-visual-testing/android/thread.message.row.png \
+  /sdcard/Download/slock-visual-testing/android/components.thread.message.row.png \
   ../visual-testing-results/android/
 adb -s emulator-5560 pull \
-  /sdcard/Download/slock-visual-testing/android/thread.message.row.metadata.json \
+  /sdcard/Download/slock-visual-testing/android/components.thread.message.row.metadata.json \
   ../visual-testing-results/android/
 ```
 
@@ -178,53 +178,53 @@ Use the built-in KMP visual-page path first for these surfaces:
 
 | Case | Connected test method | KMP visual page |
 | --- | --- | --- |
-| `tokens.palette` | `captureTokenPalette` | `compose_tokens_palette_visual` |
-| `navigation.tabbar.states` | `captureNavigationTabbarStates` | `compose_bottom_tabbar_visual` |
+| `components.tokens.palette` | `captureTokenPalette` | `compose_tokens_palette_visual` |
+| `components.navigation.tabbar.states` | `captureNavigationTabbarStates` | `compose_bottom_tabbar_visual` |
 | `auth.login.inputs.empty` | `captureAuthLoginInputsEmpty` | `compose_auth_login_inputs` |
 | `auth.login.inputs.filled` | `captureAuthLoginInputsFilled` | `compose_auth_login_inputs` |
 | `auth.login.inputs.invalid` | `captureAuthLoginInputsInvalid` | `compose_auth_login_inputs` |
-| `auth.register.inputs` | `captureAuthRegisterInputs` | `compose_auth_register_inputs` |
-| `thread.message.row` | `captureThreadMessageRow` | `compose_thread_message_row_visual` |
-| `thread.composer.empty` | `captureThreadComposerEmpty` | `compose_thread_composer_visual` |
-| `thread.composer.states` | `captureThreadComposerStates` | `compose_thread_composer_visual` |
-| `thread.composer.as-task-selected` | `captureThreadComposerAsTaskSelected` | `compose_thread_composer_visual` |
-| `home.titlebar.states` | `captureHomeTitlebarStates` | `compose_home_titlebar_visual` |
-| `home.notification-center.states` | `captureHomeNotificationCenterStates` | `compose_home_notification_center_visual` |
-| `home.search.results` | `captureHomeSearchResults` | `compose_home_search_visual` |
-| `home.search.channel-dropdown` | `captureHomeSearchChannelDropdown` | `compose_home_search_channel_dropdown_visual` |
-| `home.saved.results` | `captureHomeSavedResults` | `compose_home_saved_visual` |
-| `home.activity.results` | `captureHomeActivityResults` | `compose_home_activity_visual` |
-| `home.create-channel.dialog` | `captureHomeCreateChannelDialog` | `compose_home_create_channel_dialog_visual` |
-| `members.create-agent.dialog` | `captureMembersCreateAgentCodexDialog` | `compose_create_agent_dialog_visual` |
-| `members.create-agent.claude-dialog` | `captureMembersCreateAgentClaudeDialog` | `compose_create_agent_dialog_visual` |
-| `members.create-agent.claude-custom-provider-dialog` | `captureMembersCreateAgentClaudeCustomProviderDialog` | `compose_create_agent_dialog_visual` |
-| `members.agent-detail.profile` | `captureMembersAgentDetailProfile` | `compose_members_agent_detail_visual` |
-| `channel.members.panel` | `captureChannelMembersPanel` | `compose_channel_members_panel_visual` |
-| `channel.settings.panel` | `captureChannelSettingsPanel` | `compose_channel_settings_panel_visual` |
-| `channel.members.add-panel` | `captureChannelAddMemberPanel` | `compose_channel_add_member_panel_visual` |
-| `settings.page.states` | `captureSettingsPageStates` | `compose_settings_page_visual` |
-| `settings.account.page` | `captureSettingsAccountPage` | `compose_settings_page_visual` |
-| `settings.account.provider-linked` | `captureSettingsAccountProviderLinked` | `compose_settings_page_visual` |
-| `settings.account.password-expanded` | `captureSettingsAccountPasswordExpanded` | `compose_settings_page_visual` |
-| `settings.account.error-state` | `captureSettingsAccountErrorState` | `compose_settings_page_visual` |
-| `settings.server.profile` | `captureSettingsServerProfile` | `compose_settings_page_visual` |
-| `settings.administration.admins` | `captureSettingsAdministrationAdmins` | `compose_settings_page_visual` |
-| `settings.administration.invites` | `captureSettingsAdministrationInvites` | `compose_settings_page_visual` |
-| `settings.administration.join-links` | `captureSettingsAdministrationJoinLinks` | `compose_settings_page_visual` |
-| `settings.administration.pre-join-agreement` | `captureSettingsAdministrationPreJoinAgreement` | `compose_settings_page_visual` |
-| `settings.administration.onboarding` | `captureSettingsAdministrationOnboarding` | `compose_settings_page_visual` |
-| `settings.administration.member-permissions` | `captureSettingsAdministrationMemberPermissions` | `compose_settings_page_visual` |
-| `settings.administration.translation` | `captureSettingsAdministrationTranslation` | `compose_settings_page_visual` |
-| `settings.billing.page` | `captureSettingsBillingPage` | `compose_settings_page_visual` |
-| `settings.billing.loading` | `captureSettingsBillingLoading` | `compose_settings_page_visual` |
-| `settings.billing.no-permission` | `captureSettingsBillingNoPermission` | `compose_settings_page_visual` |
-| `settings.billing.trial` | `captureSettingsBillingTrial` | `compose_settings_page_visual` |
-| `settings.billing.founder` | `captureSettingsBillingFounder` | `compose_settings_page_visual` |
-| `settings.billing.downgrade` | `captureSettingsBillingDowngrade` | `compose_settings_page_visual` |
-| `settings.language-region.page` | `captureSettingsLanguageRegionPage` | `compose_settings_page_visual` |
-| `settings.appearance.page` | `captureSettingsAppearancePage` | `compose_settings_page_visual` |
-| `settings.notifications.page` | `captureSettingsNotificationsPage` | `compose_settings_page_visual` |
-| `settings.connected-apps.page` | `captureSettingsConnectedAppsPage` | `compose_settings_page_visual` |
+| `components.auth.register.inputs` | `captureAuthRegisterInputs` | `compose_auth_register_inputs` |
+| `components.thread.message.row` | `captureThreadMessageRow` | `compose_thread_message_row_visual` |
+| `components.thread.composer.empty` | `captureThreadComposerEmpty` | `compose_thread_composer_visual` |
+| `components.thread.composer.states` | `captureThreadComposerStates` | `compose_thread_composer_visual` |
+| `components.thread.composer.as-task-selected` | `captureThreadComposerAsTaskSelected` | `compose_thread_composer_visual` |
+| `components.home.titlebar.states` | `captureHomeTitlebarStates` | `compose_home_titlebar_visual` |
+| `components.home.notification-center.states` | `captureHomeNotificationCenterStates` | `compose_home_notification_center_visual` |
+| `components.home.search.results` | `captureHomeSearchResults` | `compose_home_search_visual` |
+| `components.home.search.channel-dropdown` | `captureHomeSearchChannelDropdown` | `compose_home_search_channel_dropdown_visual` |
+| `components.home.saved.results` | `captureHomeSavedResults` | `compose_home_saved_visual` |
+| `components.home.activity.results` | `captureHomeActivityResults` | `compose_home_activity_visual` |
+| `components.home.create-channel.dialog` | `captureHomeCreateChannelDialog` | `compose_home_create_channel_dialog_visual` |
+| `components.members.create-agent.dialog` | `captureMembersCreateAgentCodexDialog` | `compose_create_agent_dialog_visual` |
+| `components.members.create-agent.claude-dialog` | `captureMembersCreateAgentClaudeDialog` | `compose_create_agent_dialog_visual` |
+| `components.members.create-agent.claude-custom-provider-dialog` | `captureMembersCreateAgentClaudeCustomProviderDialog` | `compose_create_agent_dialog_visual` |
+| `components.members.agent-detail.profile` | `captureMembersAgentDetailProfile` | `compose_members_agent_detail_visual` |
+| `components.channel.members.panel` | `captureChannelMembersPanel` | `compose_channel_members_panel_visual` |
+| `components.channel.settings.panel` | `captureChannelSettingsPanel` | `compose_channel_settings_panel_visual` |
+| `components.channel.members.add-panel` | `captureChannelAddMemberPanel` | `compose_channel_add_member_panel_visual` |
+| `components.settings.page.states` | `captureSettingsPageStates` | `compose_settings_page_visual` |
+| `components.settings.account.page` | `captureSettingsAccountPage` | `compose_settings_page_visual` |
+| `components.settings.account.provider-linked` | `captureSettingsAccountProviderLinked` | `compose_settings_page_visual` |
+| `components.settings.account.password-expanded` | `captureSettingsAccountPasswordExpanded` | `compose_settings_page_visual` |
+| `components.settings.account.error-state` | `captureSettingsAccountErrorState` | `compose_settings_page_visual` |
+| `components.settings.server.profile` | `captureSettingsServerProfile` | `compose_settings_page_visual` |
+| `components.settings.administration.admins` | `captureSettingsAdministrationAdmins` | `compose_settings_page_visual` |
+| `components.settings.administration.invites` | `captureSettingsAdministrationInvites` | `compose_settings_page_visual` |
+| `components.settings.administration.join-links` | `captureSettingsAdministrationJoinLinks` | `compose_settings_page_visual` |
+| `components.settings.administration.pre-join-agreement` | `captureSettingsAdministrationPreJoinAgreement` | `compose_settings_page_visual` |
+| `components.settings.administration.onboarding` | `captureSettingsAdministrationOnboarding` | `compose_settings_page_visual` |
+| `components.settings.administration.member-permissions` | `captureSettingsAdministrationMemberPermissions` | `compose_settings_page_visual` |
+| `components.settings.administration.translation` | `captureSettingsAdministrationTranslation` | `compose_settings_page_visual` |
+| `components.settings.billing.page` | `captureSettingsBillingPage` | `compose_settings_page_visual` |
+| `components.settings.billing.loading` | `captureSettingsBillingLoading` | `compose_settings_page_visual` |
+| `components.settings.billing.no-permission` | `captureSettingsBillingNoPermission` | `compose_settings_page_visual` |
+| `components.settings.billing.trial` | `captureSettingsBillingTrial` | `compose_settings_page_visual` |
+| `components.settings.billing.founder` | `captureSettingsBillingFounder` | `compose_settings_page_visual` |
+| `components.settings.billing.downgrade` | `captureSettingsBillingDowngrade` | `compose_settings_page_visual` |
+| `components.settings.language-region.page` | `captureSettingsLanguageRegionPage` | `compose_settings_page_visual` |
+| `components.settings.appearance.page` | `captureSettingsAppearancePage` | `compose_settings_page_visual` |
+| `components.settings.notifications.page` | `captureSettingsNotificationsPage` | `compose_settings_page_visual` |
+| `components.settings.connected-apps.page` | `captureSettingsConnectedAppsPage` | `compose_settings_page_visual` |
 
 Only fall back to manual device navigation when a case has no KMP visual page,
 or when the goal is explicitly to validate a full end-to-end interaction. If a
@@ -277,7 +277,7 @@ The dry run must include `shared/sharedCases.json`,
 
 ## Token Audit
 
-`tokens.palette` is useful only when it is backed by a machine gate. Run:
+`components.tokens.palette` is useful only when it is backed by a machine gate. Run:
 
 ```bash
 node tools/visual-testing/src/cli.mjs token-audit
@@ -314,7 +314,7 @@ Each case may declare variants:
 
 ```json
 {
-  "id": "thread.message.row",
+  "id": "components.thread.message.row",
   "variants": [
     {
       "id": "own-right",
