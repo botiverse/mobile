@@ -2773,8 +2773,7 @@ internal fun SharedThreadRouteContent(
                                 dataSource.unsaveMessage(itemId)
                             }
                         when (result) {
-                            is DataResult.Content ->
-                                bridge.toast(if (nextSaved) "Saved" else "Removed from saved")
+                            is DataResult.Content -> Unit
                             is DataResult.Empty,
                             is DataResult.Error -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyMessageSaved(itemId, previousSaved))
