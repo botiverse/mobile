@@ -1241,12 +1241,12 @@ class SharedSettingsStoreTest {
         assertEquals("Running", diagnostics.profiler.statusLabel)
         assertEquals(true, diagnostics.profiler.defaults.enableOverlay)
         assertEquals(true, engine.enableOverlay)
-        assertEquals(false, engine.enableLog)
+        assertEquals(true, engine.enableLog)
         assertEquals(true, engine.enableFile)
         assertEquals(true, diagnostics.profiler.enabled)
         assertEquals(false, preferences.enabled)
         assertEquals(
-            "Profiler started with file and overlay enabled. Per-frame logcat output is disabled to keep the Kuikly bridge stable.",
+            "Profiler started with file, logcat, and overlay enabled.",
             diagnostics.profiler.actionFeedback
         )
         assertNull(store.state.value.effect)

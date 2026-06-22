@@ -186,7 +186,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         applyDefaultConfig()
         return if (engine.isEnabled) {
             SharedSettingsRecompositionProfilerActionResult(
-                feedback = "Profiler is already running. The shared default debug policy was refreshed with file and overlay enabled."
+                feedback = "Profiler is already running. The shared default debug policy was refreshed with file, logcat, and overlay enabled."
             )
         } else {
             runCatching {
@@ -194,7 +194,7 @@ class SharedSettingsRecompositionProfilerController internal constructor(
             }.fold(
                 onSuccess = {
                     SharedSettingsRecompositionProfilerActionResult(
-                        feedback = "Profiler started with file and overlay enabled. Per-frame logcat output is disabled to keep the Kuikly bridge stable."
+                        feedback = "Profiler started with file, logcat, and overlay enabled."
                     )
                 },
                 onFailure = { throwable ->
@@ -301,13 +301,13 @@ class SharedSettingsRecompositionProfilerController internal constructor(
         private const val DEFAULT_HOTSPOT_THRESHOLD = 10
         private const val DEFAULT_MAX_EVENT_BUFFER_SIZE = 100_000
         private const val DEFAULT_ENABLE_FILE = true
-        private const val DEFAULT_ENABLE_LOG = false
+        private const val DEFAULT_ENABLE_LOG = true
         private const val DEFAULT_ENABLE_OVERLAY = true
         private const val PROFILER_REPORT_FILE_NAME = "profiler_report.json"
         private const val PROFILER_FRAMES_FILE_NAME = "profiler_frames.jsonl"
 
         private const val OVERLAY_GUIDE =
-            "Shared diagnostics applies the Kuikly enableOverlay=true flow before start(). A draggable FAB appears at the bottom-right and expands into the hotspot panel."
+            "Shared diagnostics applies the Kuikly enableLog=true and enableOverlay=true flow before start(). RCProfiler logcat output stays enabled, and a draggable FAB appears at the bottom-right."
 
         private const val FILTER_STRATEGY =
             "Keep Kuikly built-in framework filters enabled. Start without custom business filters; if shared shell chrome dominates the hotspots, rerun with exclusions such as ai.slock.compose.components. or ai.slock.compose.base.."
