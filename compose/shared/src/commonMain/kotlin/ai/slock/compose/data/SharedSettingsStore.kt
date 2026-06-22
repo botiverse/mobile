@@ -1563,13 +1563,21 @@ class SharedSettingsStore(
         machineId: String
     ) {
         when (this) {
-            is DataResult.Content ->
+            is DataResult.Content -> {
+                val computers = dataSource.loadComputers(forceComputers = true).toScreenLoadState()
                 _state.value =
                     _state.value.copy(
+                        computers =
+                            when (computers) {
+                                is ScreenLoadState.Content -> computers
+                                else -> _state.value.computers
+                            },
                         computerDetail = ScreenLoadState.Loading,
                         route = SharedSettingsRoute(SharedSettingsDestination.Computers),
-                        actionState = SharedSettingsActionState(action, itemId = machineId, inProgress = false)
-                    ).also { dataSource.loadComputers(forceComputers = true) }
+                        actionState = SharedSettingsActionState(action, itemId = machineId, inProgress = false),
+                        routeErrorCode = computers.routeErrorCode()
+                    )
+            }
             is DataResult.Empty ->
                 DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
             is DataResult.Error ->
