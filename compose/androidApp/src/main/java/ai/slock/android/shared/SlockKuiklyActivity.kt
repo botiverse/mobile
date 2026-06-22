@@ -1532,9 +1532,7 @@ internal class SlockKuiklyBridgeModule(
             }
         }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val activity = appContext as? Activity
-            if (activity != null) {
-                activity.requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQUEST_NOTIFICATIONS_CODE)
+            if (requestPostNotificationsPermission()) {
                 mapOf("status" to "pending", "code" to "permission_requested")
             } else {
                 mapOf("status" to "error", "code" to "permission_denied")
@@ -1546,7 +1544,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun sendTestNotificationCapability(): Map<String, Any> {
         if (!hasNotificationPermission()) {
-            return mapOf("status" to "error", "code" to "permission_denied")
+            return requestNotificationPermissionCapability()
         }
         ensureSharedNotificationChannels()
         if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
@@ -1669,6 +1667,19 @@ internal class SlockKuiklyBridgeModule(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                     ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) ==
                             PackageManager.PERMISSION_GRANTED
+
+    private fun requestPostNotificationsPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        val hostActivity = activity ?: appContext as? Activity ?: return false
+        hostActivity.runOnUiThread {
+            hostActivity.requestPermissions(
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_NOTIFICATIONS_CODE
+            )
+        }
+        SlockDiagnosticsLogger.record("SlockSettingsNotification", "permission_request_dialog_opened")
+        return true
+    }
 
     private fun ensureSharedNotificationChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
