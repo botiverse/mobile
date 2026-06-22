@@ -2045,15 +2045,11 @@ internal fun SharedThreadRouteContent(
                     },
                 composerMode =
                     when {
-                        composerDraftState.sending -> "sending"
-                        composerDraftState.failureLabel != null -> "failed"
                         renderedComposerState.composerMode == "failed" -> "failed"
                         else -> renderedComposerState.composerMode
                     },
                 statusLabel =
                     when {
-                        composerDraftState.sending -> "Sending..."
-                        composerDraftState.failureLabel != null -> composerDraftState.failureLabel
                         renderedComposerState.composerMode == "failed" -> renderedComposerState.statusLabel
                         else -> renderedComposerState.statusLabel
                     },
@@ -2061,7 +2057,7 @@ internal fun SharedThreadRouteContent(
                 mentionActionNotice = composerDraftState.mentionActionNotice,
                 executingMentionActionIds = composerDraftState.executingMentionActionIds.toList(),
                 streamChannelId = resolvedAuxiliaryThreadId,
-                enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null && !composerDraftState.sending,
+                enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null,
                 memberSuggestions =
                     loadedMemberSuggestions.takeIf { it.isNotEmpty() }
                         ?: renderedComposerState.memberSuggestions,
@@ -2642,11 +2638,9 @@ internal fun SharedThreadRouteContent(
     }
     LaunchedEffect(
         deferredAttachmentSend?.localMessageId,
-        renderedComposer.pendingAttachments,
-        composerDraftState.sending
+        renderedComposer.pendingAttachments
     ) {
         val pending = deferredAttachmentSend ?: return@LaunchedEffect
-        if (!composerDraftState.sending) return@LaunchedEffect
         if (renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
             return@LaunchedEffect
         }
@@ -3224,9 +3218,6 @@ internal fun SharedThreadRouteContent(
                 val composerInstanceId = renderedComposer.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
-                    if (composerDraftState.sending) {
-                        return@ThreadPageContent
-                    }
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.Change(
                             seedText = value,
@@ -3235,9 +3226,6 @@ internal fun SharedThreadRouteContent(
                     )
                 }
                 "toggleAsTask" -> {
-                    if (composerDraftState.sending) {
-                        return@ThreadPageContent
-                    }
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
                     )
@@ -3247,7 +3235,7 @@ internal fun SharedThreadRouteContent(
                     val draftText = composerDraftState.seedText.trim()
                     val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
                     val hasBlockingAttachmentUpload = renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
-                    if (!payload.canSend || composerDraftState.sending || threadId == null ||
+                    if (!payload.canSend || threadId == null ||
                         (draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload)
                     ) {
                         return@ThreadPageContent

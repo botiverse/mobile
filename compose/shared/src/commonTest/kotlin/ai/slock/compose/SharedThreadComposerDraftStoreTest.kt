@@ -188,6 +188,20 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun sendCompletionDoesNotClearDraftEnteredAfterSubmit() {
+        val store = SharedThreadComposerDraftStore()
+
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "first"))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "second", seedAsTask = true))
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+
+        assertFalse(store.state.value.sending)
+        assertEquals("second", store.state.value.seedText)
+        assertEquals(true, store.state.value.seedAsTask)
+    }
+
+    @Test
     fun deliveredMentionActionRemovesRowAndFailureKeepsRow() {
         val store = SharedThreadComposerDraftStore()
         val pending =

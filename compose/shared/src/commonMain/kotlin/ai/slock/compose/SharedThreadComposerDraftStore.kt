@@ -69,15 +69,12 @@ internal class SharedThreadComposerDraftStore {
                         syncNonce = intent.composer.syncNonce
                     )
                 is SharedThreadComposerDraftIntent.Change -> {
-                    if (current.sending) {
-                        current
-                    } else {
-                        current.copy(
-                            seedText = intent.seedText ?: current.seedText,
-                            seedAsTask = intent.seedAsTask ?: current.seedAsTask,
-                            failureLabel = null
-                        )
-                    }
+                    current.copy(
+                        seedText = intent.seedText ?: current.seedText,
+                        seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                        sending = false,
+                        failureLabel = null
+                    )
                 }
                 SharedThreadComposerDraftIntent.BeginSend ->
                     current.copy(
@@ -86,6 +83,8 @@ internal class SharedThreadComposerDraftStore {
                         syncNonce = current.syncNonce + 1,
                         sending = true,
                         failureLabel = null,
+                        removedAttachmentIds = emptySet(),
+                        uploadedAttachments = emptyList(),
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()
                     )
@@ -97,31 +96,35 @@ internal class SharedThreadComposerDraftStore {
                         sending = false,
                         failureLabel = intent.failureLabel
                     )
-                SharedThreadComposerDraftIntent.CompleteInlineSendFailure ->
+                SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> {
+                    val shouldClearComposer = current.sending
                     current.copy(
-                        seedText = "",
-                        seedAsTask = false,
+                        seedText = if (shouldClearComposer) "" else current.seedText,
+                        seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
                         syncNonce = current.syncNonce + 1,
                         sending = false,
                         failureLabel = null,
-                        removedAttachmentIds = emptySet(),
-                        uploadedAttachments = emptyList(),
+                        removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
+                        uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()
                     )
-                is SharedThreadComposerDraftIntent.CompleteSend ->
+                }
+                is SharedThreadComposerDraftIntent.CompleteSend -> {
+                    val shouldClearComposer = current.sending
                     current.copy(
-                        seedText = "",
-                        seedAsTask = false,
+                        seedText = if (shouldClearComposer) "" else current.seedText,
+                        seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
                         syncNonce = current.syncNonce + 1,
                         sending = false,
                         failureLabel = null,
-                        removedAttachmentIds = emptySet(),
-                        uploadedAttachments = emptyList(),
+                        removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
+                        uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
                         pendingMentionActions = intent.pendingMentionActions,
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()
                     )
+                }
                 is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
                     current.copy(
                         syncNonce = current.syncNonce + 1,
@@ -168,6 +171,7 @@ internal class SharedThreadComposerDraftStore {
                 is SharedThreadComposerDraftIntent.AddLocalAttachments ->
                     current.copy(
                         syncNonce = current.syncNonce + 1,
+                        sending = false,
                         failureLabel = null,
                         uploadedAttachments =
                             (current.uploadedAttachments + intent.attachments)
@@ -176,11 +180,13 @@ internal class SharedThreadComposerDraftStore {
                 is SharedThreadComposerDraftIntent.RemoveAttachment ->
                     current.copy(
                         syncNonce = current.syncNonce + 1,
+                        sending = false,
                         removedAttachmentIds = current.removedAttachmentIds + intent.id
                     )
                 is SharedThreadComposerDraftIntent.RetryAttachment ->
                     current.copy(
                         syncNonce = current.syncNonce + 1,
+                        sending = false,
                         removedAttachmentIds = current.removedAttachmentIds - intent.id
                     )
             }
