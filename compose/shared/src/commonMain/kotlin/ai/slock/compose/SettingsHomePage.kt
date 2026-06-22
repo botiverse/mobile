@@ -8648,7 +8648,7 @@ private fun SharedDiagnosticsFeedbackChannelPage(
                 ) {
                     Text(
                         text = "No sendable channels found.",
-                        style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
                         color = SlockColor.TextBlack
                     )
                     Text(
@@ -8716,7 +8716,7 @@ private fun DiagnosticsFeedbackChannelRow(
             ) {
                 Text(
                     text = channel.name.removePrefix("#"),
-                    style = SlockType.Body.copy(fontWeight = FontWeight.Bold),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

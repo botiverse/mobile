@@ -56,11 +56,10 @@ internal enum class AuthButtonTone {
 
 private val AuthInputTextStyle =
     SlockType.Input.copy(
-        fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp,
         color = SlockColor.TextBlack
-    )
+    ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 
@@ -413,12 +412,11 @@ internal fun AuthInlineAction(leading: String, action: String, onClick: () -> Un
         Text(
             text = action,
             style = SlockType.Body.copy(
-                fontWeight = FontWeight.SemiBold,
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 color = SlockColor.AccentPink,
                 textDecoration = TextDecoration.Underline
-            ),
+            ).withSlockFontWeight(FontWeight.SemiBold),
             color = SlockColor.AccentPink,
             modifier = Modifier.clickable(onClick = onClick)
         )

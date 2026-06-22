@@ -2116,9 +2116,9 @@ private fun MembersAgentAvatarPicker(
             }
             Text(
                 text = "Choose",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
-                fontWeight = FontWeight.Bold
             )
             val rows = PixelAvatarPickerKeys.chunked(4)
             Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
@@ -2143,9 +2143,9 @@ private fun MembersAgentAvatarPicker(
             }
             Text(
                 text = "Actions",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
-                fontWeight = FontWeight.Bold
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),

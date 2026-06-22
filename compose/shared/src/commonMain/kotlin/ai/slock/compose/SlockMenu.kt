@@ -151,9 +151,8 @@ private fun SlockBaseMenuRow(
                 style = SlockType.Caption.copy(
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
-                    fontWeight = FontWeight.SemiBold,
                     letterSpacing = 0.8.sp
-                ),
+                ).withSlockFontWeight(FontWeight.SemiBold),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
