@@ -631,7 +631,7 @@ internal fun slockMarkdownAnnotator(
                 val code = token.code.orEmpty()
                 InlineTextContent(
                     Placeholder(
-                        width = inlineCodeWidths[token.id] ?: slockMarkdownInlineCodeWidthSp(code),
+                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
                         height = SlockMarkdownInlineCodeChipHeight
                     )
                 ) {
@@ -975,7 +975,8 @@ private fun measureSlockMarkdownInlineCodeWidthSp(
         shadow.setProp(TextConst.TEXT_USE_DP_FONT_SIZE_DIM, 1)
         val measuredWidth = shadow.calculateRenderViewSize(100000f, 100000f).width
         if (measuredWidth.isFinite() && measuredWidth > 0f) {
-            (measuredWidth + SlockMarkdownInlineCodeHorizontalChromeSp)
+            (measuredWidth + SlockMarkdownInlineCodeHorizontalChromeSp + SlockMarkdownMeasuredWidthSafetySp)
+                .coerceAtLeast(fallbackWidth.value)
                 .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
                 .sp
         } else {
@@ -1306,6 +1307,14 @@ internal fun slockMarkdownInlineCodeWidthSp(code: String) =
         .coerceAtLeast(SlockMarkdownInlineCodeMinWidthSp)
         .sp
 
+internal fun slockMarkdownInlineCodePlaceholderWidthSp(code: String, measuredWidth: TextUnit? = null): TextUnit {
+    val fallbackWidth = slockMarkdownInlineCodeWidthSp(code)
+    return measuredWidth?.value
+        ?.coerceAtLeast(fallbackWidth.value)
+        ?.sp
+        ?: fallbackWidth
+}
+
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.copy(
         fontSize = 14.sp,
@@ -1319,6 +1328,7 @@ private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private const val SlockMarkdownInlineCodeHorizontalChromeSp = 8f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
+private const val SlockMarkdownMeasuredWidthSafetySp = 6f
 
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->

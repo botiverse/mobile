@@ -352,10 +352,22 @@ class SlockMarkdownTest {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Use `mimo`",
-                inlineCodeWidths = mapOf("slock-code:4" to 31.sp)
+                inlineCodeWidths = mapOf("slock-code:4" to 44.sp)
             ).inlineContent?.invoke().orEmpty()
 
-        assertEquals(31.sp, inlineContent.getValue("slock-code:4").placeholder.width)
+        assertEquals(44.sp, inlineContent.getValue("slock-code:4").placeholder.width)
+    }
+
+    @Test
+    fun inlineCodeMeasuredWidthCannotShrinkBelowFallbackWidth() {
+        val fallbackWidth = slockMarkdownInlineCodeWidthSp("SlockColor.BorderBlack")
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = "Use `SlockColor.BorderBlack`",
+                inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
+            ).inlineContent?.invoke().orEmpty()
+
+        assertEquals(fallbackWidth, inlineContent.getValue("slock-code:4").placeholder.width)
     }
 
     @Test
