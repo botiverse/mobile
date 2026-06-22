@@ -1,22 +1,10 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.MembersAgentDetailTab
 import ai.slock.compose.MembersAgentLifecycleAction
 import ai.slock.compose.model.MemberId
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-
-/**
- * Screen-relative anchor of a 3-dot button, captured at click time and used to
- * position the dropdown overlay. Stored in a data class to keep this file
- * free of `androidx.compose.ui.geometry.Offset` (the data package must not
- * depend on Compose runtime types — see `SharedThreadStore`).
- */
-internal data class SharedAgentDetailMenuAnchor(
-    val x: Float,
-    val y: Float
-)
 
 /**
  * Shared store for Members agent detail page transient state.
@@ -30,11 +18,11 @@ internal data class SharedAgentDetailMenuAnchor(
  * `MembersDetailContent` local state.
  *
  * Phase 1 (this commit) covers: agent detail snapshot + load status,
- * selected tab, management menu open/anchor, lifecycle action in-flight,
- * diagnostic action in-flight, pending confirmation, last action result,
- * profile edit (displayName + role draft/saving/error). Tab-specific state
- * (workspace tree / file / diagnostics tabs / activity / reminders / apps /
- * permissions) deliberately left local for Phase 2 / follow-up.
+ * lifecycle action in-flight, diagnostic action in-flight, pending confirmation,
+ * last action result, profile edit (displayName + role draft/saving/error).
+ * UI-only state (selected tab, dropdown open/anchor, avatar picker) and
+ * tab-specific state (workspace tree / file / diagnostics tabs / activity /
+ * reminders / apps / permissions) deliberately stay local.
  *
  * The store is state-only (no API orchestration); the composable still
  * invokes the host callback (e.g. `onAgentLifecycleAction`) and dispatches
@@ -46,9 +34,6 @@ internal data class SharedAgentDetailState(
     val detail: AgentDetailSnapshot? = null,
     val detailLoadStatus: SharedAgentDetailLoadStatus = SharedAgentDetailLoadStatus.Idle,
     val detailErrorCode: String? = null,
-    val selectedTab: MembersAgentDetailTab = MembersAgentDetailTab.Profile,
-    val managementMenuOpen: Boolean = false,
-    val managementMenuAnchor: SharedAgentDetailMenuAnchor? = null,
     val lifecycleActionInFlight: String? = null,
     val diagnosticActionInFlight: String? = null,
     val pendingConfirmation: MembersAgentLifecycleAction? = null,
@@ -87,11 +72,6 @@ internal sealed interface SharedAgentDetailIntent {
     data class SetDetailNoPermission(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailError(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailEmpty(val agentId: MemberId) : SharedAgentDetailIntent
-
-    data class SelectTab(val tab: MembersAgentDetailTab) : SharedAgentDetailIntent
-
-    data class OpenManagementMenu(val anchor: SharedAgentDetailMenuAnchor) : SharedAgentDetailIntent
-    data object CloseManagementMenu : SharedAgentDetailIntent
 
     data class StartLifecycleAction(val actionKey: String) : SharedAgentDetailIntent
     data class FinishLifecycleAction(
@@ -164,17 +144,6 @@ internal class SharedAgentDetailStore(
                 agentId = intent.agentId,
                 detailLoadStatus = SharedAgentDetailLoadStatus.Empty,
                 detailErrorCode = null
-            )
-
-            is SharedAgentDetailIntent.SelectTab -> current.copy(selectedTab = intent.tab)
-
-            is SharedAgentDetailIntent.OpenManagementMenu -> current.copy(
-                managementMenuOpen = true,
-                managementMenuAnchor = intent.anchor
-            )
-            SharedAgentDetailIntent.CloseManagementMenu -> current.copy(
-                managementMenuOpen = false,
-                managementMenuAnchor = null
             )
 
             is SharedAgentDetailIntent.StartLifecycleAction -> current.copy(

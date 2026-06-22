@@ -1,12 +1,7 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.MembersAgentDetailTab
 import ai.slock.compose.MembersAgentLifecycleAction
-import ai.slock.compose.model.AgentDetailSnapshot
 import ai.slock.compose.model.MemberId
-import ai.slock.compose.model.Presence
-import ai.slock.compose.model.ServerId
-import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,30 +12,11 @@ class SharedAgentDetailStoreTest {
     private fun store() = SharedAgentDetailStore(logger = {})
 
     private val testMemberId = MemberId("agent-1")
-    private val testServerId = ServerId("server-1")
     private val testDetail = AgentDetailSnapshot(
-        serverId = testServerId,
         agentId = testMemberId,
-        name = "Cindy",
-        handle = "cindy",
-        status = null,
-        activity = null,
-        activityDetail = null,
-        creatorId = "artin",
-        creatorLabel = "artin",
-        creatorType = "human",
-        machineId = "machine-1",
-        machineName = "machine-1",
-        machineAssignment = null,
-        daemonVersion = null,
-        runtime = null,
-        model = null,
-        reasoning = null,
-        executionMode = null,
-        envVarNames = emptyList(),
-        skills = emptyList(),
-        deletedAt = null,
-        summary = null
+        directMessages = emptyList(),
+        reminders = emptyList(),
+        activity = emptyList()
     )
 
     @Test
@@ -49,9 +25,6 @@ class SharedAgentDetailStoreTest {
         assertNull(state.agentId)
         assertNull(state.detail)
         assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
-        assertEquals(MembersAgentDetailTab.Profile, state.selectedTab)
-        assertFalse(state.managementMenuOpen)
-        assertNull(state.managementMenuAnchor)
         assertNull(state.lifecycleActionInFlight)
         assertNull(state.diagnosticActionInFlight)
         assertNull(state.pendingConfirmation)
@@ -60,29 +33,27 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun selectMemberSetsAgentId() = runTest {
+    fun selectMemberSetsAgentId() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
         assertEquals(testMemberId, s.state.value.agentId)
     }
 
     @Test
-    fun deselectMemberResetsState() = runTest {
+    fun deselectMemberResetsState() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
         s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
         s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
-        s.dispatch(SharedAgentDetailIntent.SelectTab(MembersAgentDetailTab.Permissions))
         s.dispatch(SharedAgentDetailIntent.DeselectMember)
         val state = s.state.value
         assertNull(state.agentId)
         assertNull(state.detail)
         assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
-        assertEquals(MembersAgentDetailTab.Profile, state.selectedTab)
     }
 
     @Test
-    fun detailLoadingTransitionsAreTracked() = runTest {
+    fun detailLoadingTransitionsAreTracked() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
         assertEquals(SharedAgentDetailLoadStatus.Loading, s.state.value.detailLoadStatus)
@@ -99,28 +70,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun tabSelectionSwitches() = runTest {
-        val s = store()
-        s.dispatch(SharedAgentDetailIntent.SelectTab(MembersAgentDetailTab.Permissions))
-        assertEquals(MembersAgentDetailTab.Permissions, s.state.value.selectedTab)
-        s.dispatch(SharedAgentDetailIntent.SelectTab(MembersAgentDetailTab.Activity))
-        assertEquals(MembersAgentDetailTab.Activity, s.state.value.selectedTab)
-    }
-
-    @Test
-    fun managementMenuLifecycle() = runTest {
-        val s = store()
-        val anchor = SharedAgentDetailMenuAnchor(x = 100f, y = 200f)
-        s.dispatch(SharedAgentDetailIntent.OpenManagementMenu(anchor))
-        assertTrue(s.state.value.managementMenuOpen)
-        assertEquals(anchor, s.state.value.managementMenuAnchor)
-        s.dispatch(SharedAgentDetailIntent.CloseManagementMenu)
-        assertFalse(s.state.value.managementMenuOpen)
-        assertNull(s.state.value.managementMenuAnchor)
-    }
-
-    @Test
-    fun lifecycleActionInFlightTransitions() = runTest {
+    fun lifecycleActionInFlightTransitions() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:start"))
         assertEquals("lifecycle:start", s.state.value.lifecycleActionInFlight)
@@ -136,7 +86,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun lifecycleActionErrorRecordsErrorCode() = runTest {
+    fun lifecycleActionErrorRecordsErrorCode() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.StartLifecycleAction("lifecycle:start"))
         s.dispatch(
@@ -150,7 +100,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun startLifecycleClearsPendingConfirmation() = runTest {
+    fun startLifecycleClearsPendingConfirmation() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.ShowConfirmation(MembersAgentLifecycleAction.ResetFull))
         assertEquals(MembersAgentLifecycleAction.ResetFull, s.state.value.pendingConfirmation)
@@ -159,7 +109,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun diagnosticActionInFlightTransitions() = runTest {
+    fun diagnosticActionInFlightTransitions() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.StartDiagnosticAction("diagnostic:copy"))
         assertEquals("diagnostic:copy", s.state.value.diagnosticActionInFlight)
@@ -174,7 +124,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun displayNameEditLifecycle() = runTest {
+    fun displayNameEditLifecycle() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.BeginEditDisplayName("Cindy"))
         assertTrue(s.state.value.displayNameEditing)
@@ -194,7 +144,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun roleEditLifecycle() = runTest {
+    fun roleEditLifecycle() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.BeginEditRole("description one"))
         assertTrue(s.state.value.roleEditing)
@@ -209,7 +159,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun confirmationLifecycle() = runTest {
+    fun confirmationLifecycle() {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.ShowConfirmation(MembersAgentLifecycleAction.Delete))
         assertEquals(MembersAgentLifecycleAction.Delete, s.state.value.pendingConfirmation)
@@ -218,7 +168,7 @@ class SharedAgentDetailStoreTest {
     }
 
     @Test
-    fun actionResultReportingAndClearing() = runTest {
+    fun actionResultReportingAndClearing() {
         val s = store()
         s.dispatch(
             SharedAgentDetailIntent.ReportActionResult(
