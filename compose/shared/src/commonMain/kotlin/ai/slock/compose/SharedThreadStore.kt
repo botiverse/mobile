@@ -3068,10 +3068,16 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
         title = patch.title,
         subtitle = patch.subtitle,
-        sourceThreadId = if (patchResolvesReplyThreadStream) patch.sourceThreadId else sourceThreadId,
-        streamChannelId = if (patchResolvesReplyThreadStream) patch.streamChannelId else streamChannelId,
-        parentChannelId = patch.parentChannelId ?: parentChannelId,
-        parentMessageId = patch.parentMessageId ?: parentMessageId,
+        surfaceKind = patch.surfaceKind,
+        channelKind = patch.channelKind,
+        sourceThreadId = patch.sourceThreadId,
+        streamChannelId = patch.streamChannelId,
+        parentChannelId = patch.parentChannelId,
+        parentMessageId = patch.parentMessageId,
+        memberScopedMentions = patch.memberScopedMentions,
+        selectedTab = patch.selectedTab,
+        showModeTabs = patch.showModeTabs,
+        showReplyActions = patch.showReplyActions,
         status = patch.status,
         messages = patch.messages,
         originMessage = patch.originMessage,
@@ -3110,7 +3116,11 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showMessageSaveAction = patch.showMessageSaveAction,
         showTaskOpenActions = patch.showTaskOpenActions,
         showTaskStatusActions = patch.showTaskStatusActions,
-        joinLabel = patch.joinLabel
+        joinLabel = patch.joinLabel,
+        dmPeerName = patch.dmPeerName,
+        dmPeerAvatarUrl = patch.dmPeerAvatarUrl,
+        dmPeerAvatarLabel = patch.dmPeerAvatarLabel,
+        dmPeerGravatarUrl = patch.dmPeerGravatarUrl
     )
 }
 

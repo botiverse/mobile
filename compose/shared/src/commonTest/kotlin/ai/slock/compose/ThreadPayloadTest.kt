@@ -926,6 +926,93 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun contentPatchReplacesThreadChromeWhenRouteChangesToChannel() {
+        val current =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-reply-stream-1",
+                title = ThreadReplyPageTitle,
+                subtitle = "#general",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-stream-1",
+                streamChannelId = "reply-stream-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "parent-message-1",
+                originParentMessageId = "parent-message-1",
+                showModeTabs = false,
+                showReplyActions = false,
+                showMembersAction = false,
+                showSettingsAction = false,
+                showOpenInChannelAction = true,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "reply-1",
+                            authorId = "agent-1",
+                            authorName = "Agent",
+                            body = "reply"
+                        )
+                    ),
+                originStatus = "loaded",
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "parent-message-1",
+                        authorId = "user-1",
+                        authorName = "Artin",
+                        body = "parent"
+                    )
+            )
+        val patch =
+            KuiklyThreadScreenPayload(
+                instanceId = "shared-shell-thread-channel-1",
+                title = "general",
+                subtitle = null,
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "public",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                parentChannelId = null,
+                parentMessageId = null,
+                originParentMessageId = null,
+                showModeTabs = true,
+                showReplyActions = true,
+                showMembersAction = true,
+                showSettingsAction = true,
+                showOpenInChannelAction = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "channel-message-1",
+                            authorId = "user-1",
+                            authorName = "Artin",
+                            body = "channel message"
+                        )
+                    ),
+                originStatus = "none",
+                originMessage = null
+            )
+
+        val payload = current.withContentPatchFrom(patch)
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("public", payload.channelKind)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
+        assertEquals(null, payload.originParentMessageId)
+        assertEquals(true, payload.showModeTabs)
+        assertEquals(true, payload.showReplyActions)
+        assertEquals(true, payload.showMembersAction)
+        assertEquals(true, payload.showSettingsAction)
+        assertEquals(false, payload.showOpenInChannelAction)
+        assertEquals("none", payload.originStatus)
+        assertEquals(null, payload.originMessage)
+        assertEquals(listOf("channel-message-1"), payload.messages.map { it.id })
+    }
+
+    @Test
     fun refreshPatchPreservesLoadedOriginWhenNetworkSnapshotOnlyProvesSameParent() {
         val origin =
             KuiklyThreadMessageItem(
