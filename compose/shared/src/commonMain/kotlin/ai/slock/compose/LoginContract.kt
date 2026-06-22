@@ -73,6 +73,14 @@ sealed class LoginFormEffect {
     data object FocusPassword : LoginFormEffect()
 }
 
+internal fun LoginFormEffect?.loginEffectName(): String =
+    when (this) {
+        is LoginFormEffect.SubmitLogin -> "submit_login"
+        LoginFormEffect.FocusEmail -> "focus_email"
+        LoginFormEffect.FocusPassword -> "focus_password"
+        null -> "none"
+    }
+
 data class LoginFormUpdate(
     val state: LoginFormState,
     val effect: LoginFormEffect? = null

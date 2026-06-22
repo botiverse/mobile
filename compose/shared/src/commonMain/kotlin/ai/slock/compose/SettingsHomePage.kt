@@ -7666,6 +7666,10 @@ private fun AppShellAuthGateContent(
     }
 
     fun submitLogin(emailValue: String = state.email, passwordValue: String = state.password) {
+        slockLogDebug(
+            "SlockAuth",
+            "login_submit_entry surface=app_shell emailLength=${emailValue.length} passwordPresent=${passwordValue.isNotBlank()}"
+        )
         if (
             isLoginSubmitInFlight(
                 submitting = state.submitting,
@@ -7673,9 +7677,14 @@ private fun AppShellAuthGateContent(
                 socialSubmitting = socialSubmittingProvider != null
             )
         ) {
+            slockLogDebug("SlockAuth", "login_submit_skip surface=app_shell reason=in_flight")
             return
         }
         val update = reducer.reduce(state.copy(email = emailValue, password = passwordValue), LoginFormEvent.Submit)
+        slockLogDebug(
+            "SlockAuth",
+            "login_submit_reduce surface=app_shell emailError=${update.state.emailFormatError != null} passwordError=${update.state.passwordError != null} effect=${update.effect.loginEffectName()}"
+        )
         state = update.state
         when (val effect = update.effect) {
             is LoginFormEffect.SubmitLogin ->
@@ -7723,6 +7732,8 @@ private fun AppShellAuthGateContent(
                 password = state.password,
                 submitting = state.submitting,
                 errorMessage = state.errorMessage ?: message,
+                emailError = state.emailFormatError,
+                passwordError = state.passwordError,
                 socialProviders = socialProviders,
                 socialSubmittingProvider = socialSubmittingProvider,
                 onEmailChange = { state = reducer.reduce(state, LoginFormEvent.EmailChanged(it)).state },
