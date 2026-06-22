@@ -4930,10 +4930,6 @@ private fun SettingsServerProfileFormCard(
             label = "Slug",
             value = currentSlug.ifBlank { "Not provided" }
         )
-        SettingsReadonlyField(
-            label = "Your role",
-            value = role.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
-        )
         if (actionState?.action == SERVER_ACTION_PROFILE_SAVE && actionState.errorCode != null) {
             Text(
                 actionState.errorCode,
@@ -4947,7 +4943,7 @@ private fun SettingsServerProfileFormCard(
                 onClick = onSubmit,
                 enabled = enabled,
                 leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.BrandYellow
+                backgroundColor = SlockColor.AccentPink
             )
         }
     }
@@ -11602,7 +11598,7 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
     ) {
         item { SharedSettingsHero(serverPayload.copy(sections = emptyList())) }
         when (variant) {
-            "server-profile" ->
+            "server-profile" -> {
                 item {
                     SettingsServerProfileFormCard(
                         profile = snapshot.profile,
@@ -11615,6 +11611,20 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
                         onSubmit = {}
                     )
                 }
+                item {
+                    SettingsServerDangerZoneCard(
+                        serverName = snapshot.profile.name,
+                        expectedServerSlug = snapshot.profile.slug,
+                        role = "owner",
+                        dangerSection = sectionsByKey["danger"],
+                        confirmationSlug = deleteConfirmationSlug,
+                        actionState = null,
+                        onConfirmationSlugChange = { deleteConfirmationSlug = it },
+                        onLeave = {},
+                        onDelete = {}
+                    )
+                }
+            }
             "server-danger" ->
                 item {
                     SettingsServerDangerZoneCard(
