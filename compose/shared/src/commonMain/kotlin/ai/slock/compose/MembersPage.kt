@@ -1465,12 +1465,20 @@ private fun MembersDetailContent(
     fun selectWorkspaceFile(path: String) {
         val callback = agentWorkspaceFileLoader
         if (callback == null) {
-            workspaceFileState = MembersAgentWorkspaceFileState.Error(path, "workspace_file_unavailable")
+            pager.openSlockFilePreviewPage(
+                SlockFilePreviewPayload(
+                    kind = "error",
+                    title = "Preview unavailable",
+                    subtitle = path,
+                    name = path,
+                    path = path,
+                    message = "Failed to load: workspace_file_unavailable",
+                    error = "workspace_file_unavailable"
+                )
+            )
             return
         }
-        workspaceViewMode = MembersWorkspaceViewMode.Preview
         scope.launch {
-            workspaceFileState = MembersAgentWorkspaceFileState.Loading(path)
             val nextState =
                 try {
                     callback(member.id, path).toMembersWorkspaceFileState(path)
@@ -1479,7 +1487,6 @@ private fun MembersDetailContent(
                 } catch (_: Throwable) {
                     MembersAgentWorkspaceFileState.Error(path, "workspace_file_failed")
                 }
-            workspaceFileState = nextState
             val previewPayload =
                 when (nextState) {
                     is MembersAgentWorkspaceFileState.Content ->
@@ -1517,10 +1524,7 @@ private fun MembersDetailContent(
                     MembersAgentWorkspaceFileState.None,
                     is MembersAgentWorkspaceFileState.Loading -> null
                 }
-            previewPayload?.let {
-                pager.openSlockFilePreviewPage(it)
-                workspaceFileState = MembersAgentWorkspaceFileState.None
-            }
+            previewPayload?.let { pager.openSlockFilePreviewPage(it) }
         }
     }
     LaunchedEffect(member.id.value, selectedTab, canViewPrivate, agentWorkspaceTreeLoader) {
@@ -3203,7 +3207,19 @@ private fun MembersAgentWorkspaceTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MembersDetailSection(title = "WORKSPACE", modifier = modifier) {
+    MembersDetailSection(
+        title = "WORKSPACE",
+        modifier = modifier,
+        framed = false,
+        trailingContent = {
+            SlockBrutalIconButton(
+                iconName = SlockLucideIconName.RefreshCw,
+                onClick = onRefresh,
+                size = 30.dp,
+                shadowOffset = 2.dp
+            )
+        }
+    ) {
         when (treeState) {
             MembersAgentWorkspaceTreeState.Idle,
             MembersAgentWorkspaceTreeState.Loading ->
@@ -3227,12 +3243,10 @@ private fun MembersAgentWorkspaceTab(
                 } else {
                     MembersWorkspaceTreeView(
                         root = treeState.snapshot.root,
-                        rootPath = treeState.snapshot.rootPath,
                         expandedDirs = expandedDirs,
                         loadedDirs = loadedDirs,
                         loadingDirs = loadingDirs,
                         dirErrors = dirErrors,
-                        onRefresh = onRefresh,
                         onToggleDirectory = onToggleDirectory,
                         onSelectFile = onSelectFile
                     )
@@ -3245,38 +3259,15 @@ private fun MembersAgentWorkspaceTab(
 @Composable
 private fun MembersWorkspaceTreeView(
     root: SlockWorkspaceNode,
-    rootPath: String,
     expandedDirs: Set<String>,
     loadedDirs: Map<String, List<SlockWorkspaceNode>>,
     loadingDirs: Set<String>,
     dirErrors: Map<String, String>,
-    onRefresh: () -> Unit,
     onToggleDirectory: (String) -> Unit,
     onSelectFile: (String) -> Unit
 ) {
     val rows = remember(root, expandedDirs, loadedDirs) {
         membersWorkspaceRows(root.children, expandedDirs, loadedDirs)
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = rootPath,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-        SlockBrutalActionButton(
-            label = "Refresh",
-            leadingIcon = SlockLucideIconName.RefreshCw,
-            enabled = true,
-            modifier = Modifier.width(92.dp),
-            onClick = onRefresh
-        )
     }
     if (rows.isEmpty()) {
         MembersDetailField("Files", "No files yet.")
@@ -3796,22 +3787,38 @@ private fun MembersDetailActionButton(
 private fun MembersDetailSection(
     title: String,
     modifier: Modifier = Modifier,
+    framed: Boolean = true,
+    trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
-        Text(
-            text = title,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            Text(
+                text = title,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            trailingContent?.invoke()
+        }
+        val contentModifier =
+            if (framed) {
+                Modifier
+                    .fillMaxWidth()
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(SlockColor.SurfaceWhite)
+                    .padding(SlockSpacing.Md)
+            } else {
+                Modifier.fillMaxWidth()
+            }
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(SlockColor.SurfaceWhite)
-                .padding(SlockSpacing.Md),
+            modifier = contentModifier,
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             content()
