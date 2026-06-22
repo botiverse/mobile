@@ -623,7 +623,7 @@ internal fun slockMarkdownAnnotator(
                 InlineTextContent(
                     Placeholder(
                         width = slockMarkdownInlineCodeWidthSp(code),
-                        height = SlockMarkdownInlineChipHeight
+                        height = SlockMarkdownInlineCodeChipHeight
                     )
                 ) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1153,6 +1153,7 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
+private val SlockMarkdownInlineCodeChipHeight = 18.sp
 private val SlockMarkdownReferenceChipBackground = SlockColor.SurfaceCream
 
 internal fun slockMarkdownInlineTagWidthSp(
@@ -1172,13 +1173,13 @@ private fun slockMarkdownPlainMentionWidthSp(label: String) =
 internal fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
 
-private fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.slockInlineTextWidthUnits() * 8.2f + 14f).coerceAtLeast(40f).sp
+internal fun slockMarkdownInlineCodeWidthSp(code: String) =
+    (code.slockInlineTextWidthUnits() * 7.1f + 8f).coerceAtLeast(22f).sp
 
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.copy(
         fontSize = 14.sp,
-        lineHeight = 20.sp
+        lineHeight = 18.sp
     )
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
@@ -1248,7 +1249,7 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
             Modifier
                 .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(start = 4.dp, end = 4.dp, top = 0.dp, bottom = 1.dp),
+                .padding(horizontal = 2.dp, vertical = 0.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
@@ -1257,7 +1258,7 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
             style =
                 SlockType.Caption.copy(
                     fontSize = 14.sp,
-                    lineHeight = 21.sp
+                    lineHeight = 18.sp
                 ),
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
