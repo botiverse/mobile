@@ -305,8 +305,8 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureSettingsServerDanger() {
-        captureKmpSettingsPageCase("settings.server.danger", "server-danger")
+    fun captureSettingsServerDangerModal() {
+        captureKmpSettingsPageCase("screens.settings.server-danger-modal", "server-danger-modal")
     }
 
     @Test
