@@ -32,6 +32,7 @@ import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextDecoration
@@ -341,7 +342,7 @@ internal fun AuthActionButton(
                 .fillMaxSize()
                 .background(buttonBackground)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .clickable(enabled = enabled && !loading, onClick = onClick)
+                .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center
         ) {

@@ -52,6 +52,7 @@ import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -628,7 +629,7 @@ internal fun SlockBrutalActionButton(
                     .heightIn(min = minHeight)
                     .background(if (enabled) backgroundColor else disabledBackgroundColor)
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .clickable(enabled = enabled, onClick = onClick)
+                    .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center
         ) {
