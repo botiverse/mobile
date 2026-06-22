@@ -1787,6 +1787,42 @@
       "notes": "Missing true login route parity; old auth.login inputs are not active in the canonical manifest."
     },
     {
+      "id": "screens.auth.choose-server",
+      "title": "Auth Choose Server Screen",
+      "captureType": "real-screen",
+      "surface": "auth",
+      "category": "auth",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.auth.choose-server.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.auth.choose-server']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/auth/ServerSelector.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing post-login choose-server gate parity; this is distinct from the Home top-bar server switcher opened inside the app shell."
+    },
+    {
       "id": "screens.auth.forgot-password",
       "title": "Forgot Password Screen",
       "captureType": "real-screen",
@@ -2397,6 +2433,42 @@
         "ignoreAntialiasing": true
       },
       "notes": "Missing true Home channel/thread list screen parity with realistic server/channel data."
+    },
+    {
+      "id": "screens.home.choose-server",
+      "title": "Home Choose Server Screen",
+      "captureType": "real-screen",
+      "surface": "home",
+      "category": "app/home",
+      "baselineStatus": "pending",
+      "fixture": "fixtures/screens.home.choose-server.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {}
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.home.choose-server']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/ui/ServerSwitcherMenu.tsx",
+      "androidCaseHint": "pending",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Missing true Home top-bar choose-server capture after opening the server selector from the app shell; distinct from the post-login auth choose-server gate."
     },
     {
       "id": "screens.home.saved",
