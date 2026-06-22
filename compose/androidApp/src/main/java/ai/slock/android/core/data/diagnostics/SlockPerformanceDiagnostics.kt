@@ -14,12 +14,17 @@ object SlockPerformanceDiagnostics {
     private const val SlowOperationThresholdMs = 250L
     private const val TabSwitchOperationTtlMs = 700L
     private const val TabSwitchFrameTraceCount = 8
+    private const val ThreadHostFrameTraceTtlMs = 1200L
+    private const val ThreadHostFrameTraceCount = 10
+    private const val ThreadHostTraversalTraceCount = 40
     private const val TraceNameLimit = 120
 
     private val route = AtomicReference("unknown")
     private val operation = AtomicReference("idle")
     private val pendingTabSwitchOperation = AtomicReference<TabSwitchOperation?>(null)
     private val pendingTabSwitchFrameTrace = AtomicReference<TabSwitchFrameTrace?>(null)
+    private val pendingThreadHostFrameTrace = AtomicReference<ThreadHostFrameTrace?>(null)
+    private val pendingThreadHostTraversalTrace = AtomicReference<ThreadHostTraversalTrace?>(null)
     private val jankFrameCount = AtomicInteger(0)
     private val longestFrameMs = AtomicLong(0L)
     private var jankStats: JankStats? = null
@@ -31,6 +36,11 @@ object SlockPerformanceDiagnostics {
                 JankStats.createAndTrack(window) { frameData ->
                     val durationMs = frameData.frameDurationUiNanos / 1_000_000L
                     recordTabSwitchFrame(
+                            durationMs = durationMs,
+                            isJank = frameData.isJank,
+                            states = frameData.states.joinToString(separator = "|")
+                    )
+                    recordThreadHostFrame(
                             durationMs = durationMs,
                             isJank = frameData.isJank,
                             states = frameData.states.joinToString(separator = "|")
@@ -105,6 +115,23 @@ object SlockPerformanceDiagnostics {
                     )
             )
         }
+        if (sanitizedRoute == "kuikly_thread" && sanitizedPhase.startsWith("thread_")) {
+            val now = System.currentTimeMillis()
+            pendingThreadHostFrameTrace.set(
+                    ThreadHostFrameTrace(
+                            markerPhase = sanitizedPhase,
+                            remainingFrames = ThreadHostFrameTraceCount,
+                            expiresAtMs = now + ThreadHostFrameTraceTtlMs
+                    )
+            )
+            pendingThreadHostTraversalTrace.set(
+                    ThreadHostTraversalTrace(
+                            markerPhase = sanitizedPhase,
+                            remainingEvents = ThreadHostTraversalTraceCount,
+                            expiresAtMs = now + ThreadHostFrameTraceTtlMs
+                    )
+            )
+        }
         updateRoute(view, sanitizedRoute)
         updateOperation(view, sanitizedPhase)
         SlockDiagnosticsLogger.d(
@@ -171,6 +198,35 @@ object SlockPerformanceDiagnostics {
         )
     }
 
+    fun recordHostTraversal(
+            stage: String,
+            durationNanos: Long,
+            width: Int,
+            height: Int,
+            childCount: Int
+    ) {
+        val durationMicros = durationNanos / 1_000L
+        while (true) {
+            val pending = pendingThreadHostTraversalTrace.get() ?: return
+            if (pending.expiresAtMs < System.currentTimeMillis() || pending.remainingEvents <= 0) {
+                pendingThreadHostTraversalTrace.compareAndSet(pending, null)
+                return
+            }
+            val eventIndex = ThreadHostTraversalTraceCount - pending.remainingEvents + 1
+            SlockDiagnosticsLogger.d(
+                    Tag,
+                    "thread_host_traversal marker=${pending.markerPhase} event=$eventIndex " +
+                            "stage=$stage durationUs=$durationMicros width=$width height=$height " +
+                            "childCount=$childCount route=${route.get()} operation=${operation.get()}"
+            )
+            val next = pending.copy(remainingEvents = pending.remainingEvents - 1)
+            val replacement = if (next.remainingEvents > 0) next else null
+            if (pendingThreadHostTraversalTrace.compareAndSet(pending, replacement)) {
+                return
+            }
+        }
+    }
+
     private fun updateLongestFrame(durationMs: Long) {
         while (true) {
             val current = longestFrameMs.get()
@@ -216,6 +272,32 @@ object SlockPerformanceDiagnostics {
         }
     }
 
+    private fun recordThreadHostFrame(
+            durationMs: Long,
+            isJank: Boolean,
+            states: String
+    ) {
+        while (true) {
+            val pending = pendingThreadHostFrameTrace.get() ?: return
+            if (pending.expiresAtMs < System.currentTimeMillis() || pending.remainingFrames <= 0) {
+                pendingThreadHostFrameTrace.compareAndSet(pending, null)
+                return
+            }
+            val frameIndex = ThreadHostFrameTraceCount - pending.remainingFrames + 1
+            SlockDiagnosticsLogger.d(
+                    Tag,
+                    "thread_host_frame marker=${pending.markerPhase} frame=$frameIndex " +
+                            "durationMs=$durationMs isJank=$isJank states=$states " +
+                            "route=${route.get()} operation=${operation.get()}"
+            )
+            val next = pending.copy(remainingFrames = pending.remainingFrames - 1)
+            val replacement = if (next.remainingFrames > 0) next else null
+            if (pendingThreadHostFrameTrace.compareAndSet(pending, replacement)) {
+                return
+            }
+        }
+    }
+
     private data class TabSwitchOperation(
             val operation: String,
             val expiresAtMs: Long
@@ -225,6 +307,18 @@ object SlockPerformanceDiagnostics {
             val route: String,
             val operation: String,
             val remainingFrames: Int,
+            val expiresAtMs: Long
+    )
+
+    private data class ThreadHostFrameTrace(
+            val markerPhase: String,
+            val remainingFrames: Int,
+            val expiresAtMs: Long
+    )
+
+    private data class ThreadHostTraversalTrace(
+            val markerPhase: String,
+            val remainingEvents: Int,
             val expiresAtMs: Long
     )
 }
