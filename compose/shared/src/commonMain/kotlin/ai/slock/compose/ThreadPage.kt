@@ -6213,7 +6213,7 @@ private fun ThreadBackToBottomButton(
         label = "Back to bottom",
         onClick = onClick,
         modifier = modifier,
-        backgroundColor = SlockColor.AccentCyan,
+        backgroundColor = SlockColor.SurfaceWhite,
         minWidth = 0.dp,
         minHeight = 30.dp,
         shadowOffset = 4.dp,
