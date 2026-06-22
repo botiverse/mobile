@@ -785,7 +785,7 @@ internal fun RegisterContent(
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
-            text = "Create account",
+            text = "Create Account",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
@@ -826,7 +826,7 @@ internal fun RegisterContent(
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Creating account..." else "Create account",
+                text = if (submitting) "Creating account..." else "Create Account",
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
                 enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank(),
@@ -917,14 +917,14 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                 Text(
                     "I agree to the ",
                     style = AuthTermsTextStyle,
-                    color = SlockColor.TextMutedGray,
+                    color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
                 Text("Terms of Service", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
                 Text(
                     " and",
                     style = AuthTermsTextStyle,
-                    color = SlockColor.TextMutedGray,
+                    color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
             }
@@ -932,7 +932,7 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                 Text(
                     "acknowledge the ",
                     style = AuthTermsTextStyle,
-                    color = SlockColor.TextMutedGray,
+                    color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
                 Text("Privacy Policy.", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
@@ -941,8 +941,9 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
     }
 }
 
-private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray)
-private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
+private val AuthTermsTextColor = SlockColor.TextBlack.copy(alpha = 0.70f)
+private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
+private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 
 @Composable
 private fun LoginContentPreview() {
