@@ -245,6 +245,9 @@
       "title": "Thread Header States",
       "surface": "thread",
       "fixture": "fixtures/components.thread.header.states.json",
+      "skip": {
+        "reason": "React baseline invalid: current provider renders a hand-built PanelHeader wrapper instead of the real ChatPanel/thread header route."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -357,6 +360,9 @@
       "title": "Home Titlebar States",
       "surface": "home",
       "fixture": "fixtures/components.home.titlebar.states.json",
+      "skip": {
+        "reason": "React baseline invalid: current provider renders a hand-built titlebar instead of the real mobile Home/Sidebar titlebar route."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -393,6 +399,9 @@
       "title": "Home Notification Center States",
       "surface": "home",
       "fixture": "fixtures/components.home.notification-center.states.json",
+      "skip": {
+        "reason": "Fixture data is not aligned between React and Android providers, so pixel diff compares different notification text/content."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -2870,12 +2879,13 @@
       "title": "Thread Header States",
       "surface": "thread",
       "group": "product-thread",
-      "status": "baseline",
-      "notes": "Real React ChatPanel top header/tabs with channel description vs Android rendering of shared ThreadPageHeader and ThreadPageTabs. Covers the subtitle rule: show channel description when present and omit the subtitle line when absent.",
+      "status": "skipped",
+      "notes": "Skipped until React renders the real ChatPanel/thread header route. The previous React provider was a hand-built PanelHeader wrapper and is not a valid parity baseline.",
       "providers": [
         {
           "id": "react",
-          "status": "ready",
+          "status": "pending",
+          "reason": "Needs real ChatPanel/thread header capture; current visual-testing provider is an approximation.",
           "components": [
             "PanelHeader",
             "ReorderablePanelTabs"
@@ -2985,12 +2995,13 @@
       "title": "Home Titlebar States",
       "surface": "home",
       "group": "product-home",
-      "status": "baseline",
-      "notes": "Real React mobile Chat titlebar vs Android rendering of shared HomeWorkspaceHeader plus notification trigger. This replaces the narrower home.server-badge.states case.",
+      "status": "skipped",
+      "notes": "Skipped until React renders the real mobile Home/Sidebar titlebar route. The previous React provider was hand-built header markup and is not a valid parity baseline.",
       "providers": [
         {
           "id": "react",
-          "status": "ready",
+          "status": "pending",
+          "reason": "Needs real mobile Home/Sidebar titlebar capture; current visual-testing provider is an approximation.",
           "components": [
             "HomeTitlebarSurface",
             "NotificationTrigger"
@@ -3027,12 +3038,13 @@
       "title": "Home Notification Center States",
       "surface": "home",
       "group": "product-home",
-      "status": "baseline",
-      "notes": "Real React notification-center adapter vs Android rendering of shared HomeNotificationPopover with warning/info entries.",
+      "status": "skipped",
+      "notes": "Skipped until React and Android providers use the same notification fixture text/content. Current screenshots compare different notification messages, so visual diff is meaningless.",
       "providers": [
         {
           "id": "react",
-          "status": "ready",
+          "status": "pending",
+          "reason": "Needs fixture-aligned notification-center capture.",
           "components": [
             "NotificationCenter"
           ],
