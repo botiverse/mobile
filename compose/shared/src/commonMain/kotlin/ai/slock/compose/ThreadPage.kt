@@ -5260,6 +5260,16 @@ private fun ThreadMessagesList(
     ) {
         payload.latestMessageLayoutKey()
     }
+    val latestLocalSendBottomAnchorKey = remember(
+        payload.messages.size,
+        payload.messages.lastOrNull()?.id,
+        payload.messages.lastOrNull()?.deliveryState,
+        payload.messages.lastOrNull()?.body?.length,
+        payload.messages.lastOrNull()?.attachments?.size,
+        payload.messages.lastOrNull()?.pendingSendContext?.attachmentIds?.size
+    ) {
+        payload.latestLocalSendBottomAnchorKey()
+    }
     val density = LocalDensity.current
     val initialContentLayoutKey = remember(
         payload.originStatus,
@@ -5388,6 +5398,21 @@ private fun ThreadMessagesList(
             }
         }
         previousOlderMessagesStatus = payload.olderMessagesStatus
+    }
+    LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
+        if (latestLocalSendBottomAnchorKey == null || latestItemIndex < 0) return@LaunchedEffect
+        allowBottomAutoAnchor = true
+        listState.awaitThreadMessagesLayoutFrame()
+        listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+        repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
+            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                listState.isLatestItemAtRenderedBottom(latestItemIndex)
+            ) {
+                return@LaunchedEffect
+            }
+        }
     }
     LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
         if (latestItemIndex < 0) return@LaunchedEffect
@@ -5938,6 +5963,24 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
         append(latest.unreadReplyCount)
         append(':')
         append(latest.threadReactionLayoutSignature())
+    }
+}
+
+private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
+    val latest = messages.lastOrNull() ?: return null
+    if (!latest.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
+        latest.pendingSendContext == null
+    ) {
+        return null
+    }
+    return buildString {
+        append(latest.id)
+        append(':')
+        append(latest.body.length)
+        append(':')
+        append(latest.attachments.size)
+        append(':')
+        append(latest.pendingSendContext.attachmentIds.size)
     }
 }
 
