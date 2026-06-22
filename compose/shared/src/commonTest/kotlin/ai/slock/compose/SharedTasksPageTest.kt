@@ -97,19 +97,4 @@ class SharedTasksPageTest {
         assertEquals(4, sharedTasksBeyondBoundsItemCount(40))
         assertEquals(4, sharedTasksBeyondBoundsItemCount(1752))
     }
-
-    @Test
-    fun tasksLoadedContentRendersOnlyAfterActivationStage() {
-        assertEquals(false, sharedTasksLoadedContentShouldRender(false))
-        assertEquals(true, sharedTasksLoadedContentShouldRender(true))
-    }
-
-    @Test
-    fun tasksLoadedContentActivationStagingDelayIsRoutePolicy() {
-        assertEquals(0L, sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent = false))
-        assertEquals(
-            TasksRouteActivationLoadedContentStagingDelayMs,
-            sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent = true)
-        )
-    }
 }

@@ -2222,7 +2222,6 @@ private fun SlockAppShellContent() {
                             state = tasksState,
                             onIntent = tasksViewModel::dispatch,
                             bottomContentPadding = appShellBottomContentInset,
-                            stageLoadedContent = false,
                             onOpenTask = { task ->
                                 pager.openStandaloneTaskThreadPage(
                                     task = task,
