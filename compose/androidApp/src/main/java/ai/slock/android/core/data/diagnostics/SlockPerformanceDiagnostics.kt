@@ -13,11 +13,13 @@ object SlockPerformanceDiagnostics {
     private const val Tag = "SlockPerf"
     private const val SlowOperationThresholdMs = 250L
     private const val TabSwitchOperationTtlMs = 700L
+    private const val TabSwitchFrameTraceCount = 8
     private const val TraceNameLimit = 120
 
     private val route = AtomicReference("unknown")
     private val operation = AtomicReference("idle")
     private val pendingTabSwitchOperation = AtomicReference<TabSwitchOperation?>(null)
+    private val pendingTabSwitchFrameTrace = AtomicReference<TabSwitchFrameTrace?>(null)
     private val jankFrameCount = AtomicInteger(0)
     private val longestFrameMs = AtomicLong(0L)
     private var jankStats: JankStats? = null
@@ -27,8 +29,13 @@ object SlockPerformanceDiagnostics {
         if (jankStats != null) return
         jankStats =
                 JankStats.createAndTrack(window) { frameData ->
-                    if (!frameData.isJank) return@createAndTrack
                     val durationMs = frameData.frameDurationUiNanos / 1_000_000L
+                    recordTabSwitchFrame(
+                            durationMs = durationMs,
+                            isJank = frameData.isJank,
+                            states = frameData.states.joinToString(separator = "|")
+                    )
+                    if (!frameData.isJank) return@createAndTrack
                     val total = jankFrameCount.incrementAndGet()
                     updateLongestFrame(durationMs)
                     SlockDiagnosticsLogger.w(
@@ -82,10 +89,19 @@ object SlockPerformanceDiagnostics {
         val sanitizedEvent = event.takeIf { it.isNotBlank() } ?: "instant"
         val sanitizedSceneId = sceneId.takeIf { it.isNotBlank() } ?: sanitizedRoute
         if (sanitizedPhase.startsWith("bottom_tab_")) {
+            val now = System.currentTimeMillis()
             pendingTabSwitchOperation.set(
                     TabSwitchOperation(
                             operation = sanitizedPhase,
-                            expiresAtMs = System.currentTimeMillis() + TabSwitchOperationTtlMs
+                            expiresAtMs = now + TabSwitchOperationTtlMs
+                    )
+            )
+            pendingTabSwitchFrameTrace.set(
+                    TabSwitchFrameTrace(
+                            route = sanitizedRoute,
+                            operation = sanitizedPhase,
+                            remainingFrames = TabSwitchFrameTraceCount,
+                            expiresAtMs = now + TabSwitchOperationTtlMs
                     )
             )
         }
@@ -175,8 +191,40 @@ object SlockPerformanceDiagnostics {
         }
     }
 
+    private fun recordTabSwitchFrame(
+            durationMs: Long,
+            isJank: Boolean,
+            states: String
+    ) {
+        while (true) {
+            val pending = pendingTabSwitchFrameTrace.get() ?: return
+            if (pending.expiresAtMs < System.currentTimeMillis() || pending.remainingFrames <= 0) {
+                pendingTabSwitchFrameTrace.compareAndSet(pending, null)
+                return
+            }
+            val frameIndex = TabSwitchFrameTraceCount - pending.remainingFrames + 1
+            SlockDiagnosticsLogger.d(
+                    Tag,
+                    "tab_switch_frame route=${pending.route} operation=${pending.operation} " +
+                            "frame=$frameIndex durationMs=$durationMs isJank=$isJank states=$states"
+            )
+            val next = pending.copy(remainingFrames = pending.remainingFrames - 1)
+            val replacement = if (next.remainingFrames > 0) next else null
+            if (pendingTabSwitchFrameTrace.compareAndSet(pending, replacement)) {
+                return
+            }
+        }
+    }
+
     private data class TabSwitchOperation(
             val operation: String,
+            val expiresAtMs: Long
+    )
+
+    private data class TabSwitchFrameTrace(
+            val route: String,
+            val operation: String,
+            val remainingFrames: Int,
             val expiresAtMs: Long
     )
 }

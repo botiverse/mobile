@@ -616,45 +616,48 @@ fun SlockStructuralHomeShell(
     ) {
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)) {
             Column(modifier = Modifier.fillMaxSize()) {
-                HomeTitlebar(
-                    serverName = currentServerName,
-                    serverUnreadCount = serverUnreadCount,
-                    notifications = notifications,
-                    topSafeArea = topSafeArea,
-                    onServerBadgeClick = onServerBadgeClick,
-                    onView = onNotificationView,
-                    onDismiss = onNotificationDismiss
-                )
+                traceMarkdownSection(SlockHomeTraceNames.TITLEBAR_RENDER, notifications.size) {
+                    HomeTitlebar(
+                        serverName = currentServerName,
+                        serverUnreadCount = serverUnreadCount,
+                        notifications = notifications,
+                        topSafeArea = topSafeArea,
+                        onServerBadgeClick = onServerBadgeClick,
+                        onView = onNotificationView,
+                        onDismiss = onNotificationDismiss
+                    )
+                }
                 Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize().bouncesEnable(false),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                        beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
-                    ) {
-                        if (contentRefreshEnabled) {
-                            if (indicatorRefreshing) {
-                                item(key = "slock_refresh_indicator") {
-                                    HomePullRefreshIndicator(
-                                        pullProgress = 1f,
-                                        refreshing = true
-                                    )
+                    traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize().bouncesEnable(false),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                            beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
+                        ) {
+                            if (contentRefreshEnabled) {
+                                if (indicatorRefreshing) {
+                                    item(key = "slock_refresh_indicator") {
+                                        HomePullRefreshIndicator(
+                                            pullProgress = 1f,
+                                            refreshing = true
+                                        )
+                                    }
                                 }
                             }
-                        }
-                        item { Spacer(Modifier.height(SlockSpacing.Md)) }
-                        item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
-                        item {
-                            SidebarActivityRow(
-                                labels.inbox,
-                                inboxUnreadCount.takeIf { it > 0 }?.toString(),
-                                selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
-                                modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
-                                onClick = if (sidebarInteractionsEnabled) onInboxClick else null
-                            )
-                        }
-                        item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
-                        if (displayedPinned.isNotEmpty()) {
+                            item { Spacer(Modifier.height(SlockSpacing.Md)) }
+                            item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
+                            item {
+                                SidebarActivityRow(
+                                    labels.inbox,
+                                    inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                    selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
+                                    modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
+                                    onClick = if (sidebarInteractionsEnabled) onInboxClick else null
+                                )
+                            }
+                            item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                            if (displayedPinned.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
                                 SlockCollapsibleSectionHeader(
@@ -871,6 +874,7 @@ fun SlockStructuralHomeShell(
                         item { Spacer(Modifier.height(effectiveBottomContentPadding)) }
                     }
                 }
+            }
             }
             if (serverSwitcherExpanded) {
                 HomeServerSwitcherDismissLayer(onServerSwitcherDismiss)
@@ -1736,7 +1740,8 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
             Modifier
         }
     }
-    Box(
+    traceMarkdownSection(SlockHomeTraceNames.CHANNEL_ROW_RENDER, name.length) {
+        Box(
         modifier =
             modifier
                 .fillMaxWidth()
@@ -1747,7 +1752,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
                 .then(hoverableModifier)
-    ) {
+        ) {
         if (selected || pressed) {
             Box(
                 modifier =
@@ -1794,6 +1799,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 if (hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 if (joined) CountPill(badge, SlockColor.AccentPink) else DimmedUnreadCount(badge)
             }
+        }
         }
     }
 }
@@ -1874,7 +1880,8 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
             Modifier
         }
     }
-    Box(
+    traceMarkdownSection(SlockHomeTraceNames.DIRECT_MESSAGE_ROW_RENDER, name.length) {
+        Box(
         modifier =
             modifier
                 .fillMaxWidth()
@@ -1885,7 +1892,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
                 .then(hoverableModifier)
-    ) {
+        ) {
         if (selected || pressed) {
             Box(
                 modifier =
@@ -1955,6 +1962,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 if (isAgent || hasDraft) Spacer(Modifier.width(SlockSpacing.Xs))
                 CountPill(badge, SlockColor.AccentPink)
             }
+        }
         }
     }
 }
