@@ -56,6 +56,14 @@ private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
+private val ThreadComposerToolbarMinHeight = 28.dp
+private val ThreadComposerToolbarEndInset = 18.dp
+private val ThreadComposerIconButtonSize = 26.dp
+private val ThreadComposerIconSize = 14.dp
+private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
+private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
+private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
+private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
 private val ComposerSuggestionRowMinHeight = 46.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
@@ -775,7 +783,7 @@ internal fun ThreadComposerContent(
                     modifier = Modifier.matchParentSize().offset(x = 2f, y = 2f).background(SlockColor.ShadowBlack)
                 )
                 Column(
-                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(start = 8.dp, top = 8.dp, end = 8.dp, bottom = 6.dp),
+                    modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TextField(
@@ -831,14 +839,14 @@ internal fun ThreadComposerContent(
                         )
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 30.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight).padding(end = ThreadComposerToolbarEndInset),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
-                            modifier = Modifier.weight(1f).heightIn(min = 30.dp),
+                            modifier = Modifier.heightIn(min = ThreadComposerToolbarMinHeight),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             if (state.attachmentActionsEnabled) {
                                 ComposerIconButton(SlockLucideIconName.ImagePlus, composerEnabled) {
@@ -849,22 +857,27 @@ internal fun ThreadComposerContent(
                                 }
                             }
                         }
-                        if (surface.showTaskButton) {
-                            ComposerAsTaskToggle(
-                                checked = asTask,
-                                enabled = composerEnabled
-                            ) { checked ->
-                                asTask = checked
-                                onEvent("toggleAsTask", null, checked, null)
-                            }
-                        }
-                        ComposerSendButton(
-                            enabled = canSend,
-                            sending = state.composerMode == "sending" || state.composerMode == "uploading"
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            onEvent("send", null, null, null)
-                            fieldValue = ""
-                            asTask = false
+                            if (surface.showTaskButton) {
+                                ComposerAsTaskToggle(
+                                    checked = asTask,
+                                    enabled = composerEnabled
+                                ) { checked ->
+                                    asTask = checked
+                                    onEvent("toggleAsTask", null, checked, null)
+                                }
+                            }
+                            ComposerSendButton(
+                                enabled = canSend,
+                                sending = state.composerMode == "sending" || state.composerMode == "uploading"
+                            ) {
+                                onEvent("send", null, null, null)
+                                fieldValue = ""
+                                asTask = false
+                            }
                         }
                     }
                 }
@@ -1222,8 +1235,9 @@ private fun ComposerIconButton(
         disabledBorderColor = SlockColor.BorderBlack,
         disabledShadowColor = SlockColor.ShadowBlack,
         disabledIconColor = disabledIconColor,
-        size = 28.dp,
-        shadowOffset = 2.dp
+        size = ThreadComposerIconButtonSize,
+        shadowOffset = 2.dp,
+        iconSize = ThreadComposerIconSize
     )
 }
 
@@ -1263,15 +1277,32 @@ private fun ComposerSendButton(
     sending: Boolean,
     onClick: () -> Unit
 ) {
-    val disabledAlpha = if (sending) 1f else 0.3f
-    ComposerIconButton(
-        icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send,
+    val icon = if (sending) SlockLucideIconName.RefreshCw else SlockLucideIconName.Send
+    if (sending) {
+        ComposerIconButton(
+            icon = icon,
+            enabled = enabled,
+            backgroundColor = SlockColor.AccentPink,
+            disabledBackgroundColor = SlockColor.AccentPink,
+            disabledAlpha = 1f,
+            disabledIconColor = "#FF000000",
+            onClick = onClick
+        )
+        return
+    }
+    SlockBrutalIconButton(
+        iconName = icon,
+        onClick = onClick,
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink,
-        disabledBackgroundColor = SlockColor.AccentPink,
-        disabledAlpha = disabledAlpha,
-        disabledIconColor = if (sending) "#FF000000" else "#4D000000",
-        onClick = onClick
+        disabledBackgroundColor = ThreadComposerDisabledSendBackground,
+        disabledAlpha = 1f,
+        disabledBorderColor = ThreadComposerDisabledSendBorder,
+        disabledShadowColor = ThreadComposerDisabledSendShadow,
+        disabledIconColor = ThreadComposerDisabledSendIconArgb,
+        size = ThreadComposerIconButtonSize,
+        shadowOffset = 2.dp,
+        iconSize = ThreadComposerIconSize
     )
 }
 

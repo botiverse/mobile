@@ -839,7 +839,8 @@ internal fun SlockBrutalIconButton(
     iconColor: String = "#FF000000",
     disabledIconColor: String = "#FF000000",
     size: Dp = 32.dp,
-    shadowOffset: Dp = 3.dp
+    shadowOffset: Dp = 3.dp,
+    iconSize: Dp = (size.value * 0.5f).dp
 ) {
     val resolvedBackground = if (enabled) backgroundColor else disabledBackgroundColor.copy(alpha = disabledAlpha)
     val resolvedBorder = if (enabled) borderColor else disabledBorderColor.copy(alpha = disabledAlpha)
@@ -866,7 +867,7 @@ internal fun SlockBrutalIconButton(
                     .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size((size.value * 0.5f).dp))
+            SlockLucideIcon(iconName, color = resolvedIconColor, modifier = Modifier.size(iconSize))
         }
     }
 }
