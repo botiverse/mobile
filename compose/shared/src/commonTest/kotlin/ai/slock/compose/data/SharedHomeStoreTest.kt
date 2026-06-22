@@ -56,6 +56,33 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun surfaceVisibilityChangeStaysOutOfHomeUiState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi()),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        var emissions = 0
+        val collectJob = launch {
+            store.state.collect { emissions += 1 }
+        }
+        yield()
+        assertEquals(1, emissions)
+
+        store.accept(SharedHomeIntent.SetSurfaceVisible(false))
+        yield()
+        store.accept(SharedHomeIntent.SetSurfaceVisible(true))
+        yield()
+
+        assertEquals(1, emissions)
+        collectJob.cancel()
+        scope.cancel()
+    }
+
+    @Test
     fun selectServerPersistsSelectionAndClearsPendingAfterLoad() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val sessionStore = InMemorySlockAuthSessionStore(sampleSession())

@@ -83,6 +83,7 @@ class SharedHomeStore(
     private var pendingPresenceServerId: ServerId? = null
     private val pendingPresenceEvents = linkedMapOf<MemberId, MemberPresenceUpdated>()
     private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
+    private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private var lastHomeNetworkRefreshServerId: ServerId? = null
     private var lastHomeNetworkRefreshAtMillis: Long = 0L
@@ -231,7 +232,7 @@ class SharedHomeStore(
         if (visibleServerId != null && visibleServerId != serverId) {
             return
         }
-        if (!_state.value.homeSurfaceVisible) {
+        if (!homeSurfaceVisible) {
             applyRealtimeEventWhileHomeHidden(serverId, event)
             return
         }
@@ -319,7 +320,9 @@ class SharedHomeStore(
 
     private suspend fun setHomeSurfaceVisible(visible: Boolean) {
         val current = _state.value
-        if (current.homeSurfaceVisible == visible) return
+        if (homeSurfaceVisible == visible) return
+        homeSurfaceVisible = visible
+        if (!visible) return
         if (visible && current.homeRealtimeDirty) {
             val currentContent = current.content as? SharedHomeContentState.Content
             if (hiddenHomeSnapshotDirty) {
@@ -327,7 +330,6 @@ class SharedHomeStore(
                 val nextSwitch = current.serverSwitchState.refresh()
                 reduceState(
                     current.copy(
-                        homeSurfaceVisible = true,
                         homeRealtimeDirty = false,
                         serverSwitchState = nextSwitch
                     )
@@ -346,14 +348,12 @@ class SharedHomeStore(
                 } ?: current.content
             reduceState(
                 current.copy(
-                    homeSurfaceVisible = true,
                     homeRealtimeDirty = false,
                     content = nextContent
                 )
             )
             return
         }
-        reduceState(current.copy(homeSurfaceVisible = visible))
     }
 
     private fun markHomeRealtimeDirty(serverId: ServerId, reason: String) {
@@ -678,7 +678,7 @@ class SharedHomeStore(
         if (events.isEmpty()) return
         val changedFacts = recordPresenceFacts(serverId, events)
         if (changedFacts == 0) return
-        if (!_state.value.homeSurfaceVisible) {
+        if (!homeSurfaceVisible) {
             markHomeRealtimeDirty(serverId, "presence")
             return
         }
@@ -1048,7 +1048,6 @@ data class SharedHomeState(
     val selectedConversationId: String? = null,
     val selectedTopAction: SharedHomeTopAction? = null,
     val notifications: List<SharedHomeNotification> = emptyList(),
-    val homeSurfaceVisible: Boolean = true,
     val homeRealtimeDirty: Boolean = false,
     /**
      * #81: typed projection of the selected-server app badge. Derived from
