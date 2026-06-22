@@ -175,7 +175,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
         declareForegroundRealtimeRooms()
-        startRealtimeBridgeIfNeeded()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
