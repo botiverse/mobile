@@ -1000,14 +1000,22 @@ private fun KuiklyThreadScreenPayload.threadRenderDiagnosticsSource(): String =
         status == "loading" -> "loading"
         status == "content" && messages.isNotEmpty() -> "content"
         status == "content" -> "empty_content"
+        isRenderableEmptyReplyThread() -> "empty_reply"
         errorCode != null -> "error"
         else -> status.ifBlank { "unknown" }
     }
 
+private fun KuiklyThreadScreenPayload.isRenderableEmptyReplyThread(): Boolean =
+    status == "empty" && surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+
+private fun KuiklyThreadScreenPayload.isReadyForThreadPerformanceGate(): Boolean =
+    status == "content" || isRenderableEmptyReplyThread()
+
 private fun requestKuiklyThreadPerformanceSnapshot(
     bridge: ai.slock.compose.base.BridgeModule,
     threadId: String,
-    reason: String
+    reason: String,
+    status: String
 ) {
     runCatching {
         PagerManager.getCurrentPager()
@@ -1028,7 +1036,7 @@ private fun requestKuiklyThreadPerformanceSnapshot(
                     metadata =
                         mapOf(
                             "reason" to reason,
-                            "status" to "content"
+                            "status" to status
                         )
                 )
                 bridge.log("kuikly_perf_snapshot $summary")
@@ -1710,7 +1718,7 @@ internal fun SharedThreadRouteContent(
                     "messages=${payload.messages.size} source=${payload.threadRenderDiagnosticsSource()}"
             )
         }
-        if (payload.status == "content" && firstContentLoggedThreadId != threadRouteKey) {
+        if (payload.isReadyForThreadPerformanceGate() && firstContentLoggedThreadId != threadRouteKey) {
             firstContentLoggedThreadId = threadRouteKey
             bridge.performanceMarker(
                 phase = "thread_payload_ready",
@@ -1719,20 +1727,31 @@ internal fun SharedThreadRouteContent(
                 threadId = threadRouteKey,
                 metadata =
                     mapOf(
+                        "status" to payload.status.ifBlank { "unknown" },
+                        "source" to payload.threadRenderDiagnosticsSource(),
                         "messages" to payload.messages.size.toString(),
                         "tasks" to payload.tasks.size.toString()
                     )
             )
             bridge.log(
-                "thread_content_gate threadId=${threadRouteKey.orEmpty()} messages=${payload.messages.size}"
+                "thread_payload_ready_gate threadId=${threadRouteKey.orEmpty()} " +
+                    "status=${payload.status} messages=${payload.messages.size} " +
+                    "source=${payload.threadRenderDiagnosticsSource()}"
             )
             if (performanceSnapshotLoggedThreadId != threadRouteKey) {
                 performanceSnapshotLoggedThreadId = threadRouteKey
                 delay(ThreadFirstContentTaskJoinDelayMs)
+                val firstFrameReason =
+                    if (payload.isRenderableEmptyReplyThread()) {
+                        "thread_first_empty_reply"
+                    } else {
+                        "thread_first_content"
+                    }
                 requestKuiklyThreadPerformanceSnapshot(
                     bridge = bridge,
                     threadId = threadRouteKey.orEmpty(),
-                    reason = "thread_first_content"
+                    reason = firstFrameReason,
+                    status = payload.status.ifBlank { "unknown" }
                 )
             }
         }
