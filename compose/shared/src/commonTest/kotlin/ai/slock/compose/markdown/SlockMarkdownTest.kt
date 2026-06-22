@@ -177,10 +177,10 @@ class SlockMarkdownTest {
 
     @Test
     fun markdownReferenceTagsUseReactChipColors() {
-        assertEquals(SlockColor.AccentPink, slockMarkdownTagColor(ThreadMarkdownTagKind.Channel))
-        assertEquals(SlockColor.AccentCyan, slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
-        assertEquals(SlockColor.SurfaceCream, slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
-        assertEquals(SlockColor.SurfaceCream, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
+        assertEquals(SlockColor.AccentPink.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.Channel))
+        assertEquals(SlockColor.AccentCyan.copy(alpha = 0.3f), slockMarkdownTagColor(ThreadMarkdownTagKind.ChannelThread))
+        assertEquals(SlockColor.BrandYellow.copy(alpha = 0.4f), slockMarkdownTagColor(ThreadMarkdownTagKind.Task))
+        assertEquals(SlockColor.BrandYellow, slockMarkdownTagColor(ThreadMarkdownTagKind.UserMention, highlighted = true))
 
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.BrandYellow)
         assertFalse(slockMarkdownTagColor(ThreadMarkdownTagKind.Channel) == SlockColor.AccentCyan)

@@ -1318,7 +1318,9 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
-private val SlockMarkdownReferenceChipBackground = SlockColor.SurfaceCream
+private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alpha = 0.3f)
+private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
+private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
 
 internal fun slockMarkdownInlineTagWidthSp(
     label: String,
@@ -1398,10 +1400,10 @@ private fun Char.slockInlineCodeWidthSp(): Float =
 
 internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
     when (kind) {
-        ThreadMarkdownTagKind.ChannelThread -> SlockColor.AccentCyan
-        ThreadMarkdownTagKind.Channel -> SlockColor.AccentPink
-        ThreadMarkdownTagKind.Task,
-        ThreadMarkdownTagKind.UserMention -> SlockMarkdownReferenceChipBackground
+        ThreadMarkdownTagKind.ChannelThread -> SlockMarkdownThreadChipBackground
+        ThreadMarkdownTagKind.Channel -> SlockMarkdownChannelChipBackground
+        ThreadMarkdownTagKind.Task -> SlockMarkdownTaskChipBackground
+        ThreadMarkdownTagKind.UserMention -> if (highlighted) SlockColor.BrandYellow else SlockMarkdownTaskChipBackground
     }
 
 @Composable
