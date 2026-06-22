@@ -72,13 +72,14 @@ class SharedActivityStore(
                         loading = refresh && previous.snapshot == null,
                         refreshing = refresh && previous.snapshot != null,
                         loadingMore = !refresh,
-                        errorCode = null
+                        errorCode = null,
+                        loadMoreErrorCode = null
                     )
                 try {
-                    val session = authStore.readSession() ?: return@launch setLoadError("unauthenticated")
-                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setLoadError("server_missing")
+                    val session = authStore.readSession() ?: return@launch setLoadError("unauthenticated", append = !refresh)
+                    val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setLoadError("server_missing", append = !refresh)
                     val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
-                        ?: return@launch setLoadError("server_missing")
+                        ?: return@launch setLoadError("server_missing", append = !refresh)
                     val result =
                         if (refresh) {
                             inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
@@ -100,7 +101,7 @@ class SharedActivityStore(
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
-                    setLoadError("activity_network")
+                    setLoadError("activity_network", append = !refresh)
                 }
             }
     }
@@ -135,7 +136,8 @@ class SharedActivityStore(
                         loading = false,
                         refreshing = false,
                         loadingMore = false,
-                        errorCode = null
+                        errorCode = null,
+                        loadMoreErrorCode = null
                     )
                 }
                 is DataResult.Empty -> {
@@ -152,7 +154,8 @@ class SharedActivityStore(
                         loading = false,
                         refreshing = false,
                         loadingMore = false,
-                        errorCode = null
+                        errorCode = null,
+                        loadMoreErrorCode = null
                     )
                 }
                 is DataResult.Error ->
@@ -160,14 +163,16 @@ class SharedActivityStore(
                         loading = false,
                         refreshing = false,
                         loadingMore = false,
-                        errorCode = result.error.code
+                        errorCode = if (append) null else result.error.code,
+                        loadMoreErrorCode = if (append) result.error.code else null
                     )
                 is DataResult.NoPermission ->
                     current.copy(
                         loading = false,
                         refreshing = false,
                         loadingMore = false,
-                        errorCode = result.blocker.code
+                        errorCode = if (append) null else result.blocker.code,
+                        loadMoreErrorCode = if (append) result.blocker.code else null
                     )
             }
     }
@@ -331,8 +336,15 @@ class SharedActivityStore(
         load(refresh = true)
     }
 
-    private fun setLoadError(code: String) {
-        _state.value = _state.value.copy(loading = false, refreshing = false, loadingMore = false, errorCode = code)
+    private fun setLoadError(code: String, append: Boolean = false) {
+        _state.value =
+            _state.value.copy(
+                loading = false,
+                refreshing = false,
+                loadingMore = false,
+                errorCode = if (append) null else code,
+                loadMoreErrorCode = if (append) code else null
+            )
     }
 
     private suspend fun currentServerId(): ServerId? =
@@ -365,7 +377,8 @@ data class SharedActivityState(
     val loading: Boolean = false,
     val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
-    val errorCode: String? = null
+    val errorCode: String? = null,
+    val loadMoreErrorCode: String? = null
 ) {
     val items: List<InboxItem>
         get() = snapshot?.items.orEmpty()

@@ -258,6 +258,7 @@ private fun SharedActivityPanelContent(
                 SharedActivityList(
                     snapshot = snapshot,
                     loadingMore = state.loadingMore,
+                    loadMoreErrorCode = state.loadMoreErrorCode,
                     onOpenMessage = onOpenMessage,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
@@ -358,6 +359,7 @@ private fun SharedActivityFilterBar(
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
     loadingMore: Boolean,
+    loadMoreErrorCode: String?,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
@@ -400,12 +402,16 @@ private fun SharedActivityList(
                     }
                 )
             }
-            if (snapshot.hasMore || loadingMore) {
-                item(key = "activity_load_more") {
-                    SharedActivityLoadMoreRow(
-                        loading = loadingMore,
-                        onClick = { onIntent(SharedActivityIntent.LoadMore) }
-                    )
+            when {
+                loadingMore -> {
+                    item(key = "activity_load_more") {
+                        SharedActivityLoadingMoreRow()
+                    }
+                }
+                snapshot.hasMore && loadMoreErrorCode != null -> {
+                    item(key = "activity_load_more_error") {
+                        SharedActivityLoadMoreRetryRow(onClick = { onIntent(SharedActivityIntent.LoadMore) })
+                    }
                 }
             }
             item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -651,10 +657,7 @@ private fun SharedActivitySmallButton(
 }
 
 @Composable
-private fun SharedActivityLoadMoreRow(
-    loading: Boolean,
-    onClick: () -> Unit
-) {
+private fun SharedActivityLoadingMoreRow() {
     Box(
         modifier =
             Modifier
@@ -663,9 +666,33 @@ private fun SharedActivityLoadMoreRow(
                 .padding(top = 2.dp, bottom = 8.dp),
         contentAlignment = Alignment.Center
     ) {
+        Text(
+            text = "Loading more...",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+    }
+}
+
+@Composable
+private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .padding(top = 2.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "Could not load more.",
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.padding(end = 8.dp)
+        )
         SlockBrutalActionButton(
-            label = if (loading) "Loading..." else "Load more",
-            enabled = !loading,
+            label = "Retry",
             minHeight = 30.dp,
             minWidth = 0.dp,
             shadowOffset = 2.dp,
