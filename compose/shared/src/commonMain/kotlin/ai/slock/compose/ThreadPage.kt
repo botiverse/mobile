@@ -895,10 +895,9 @@ internal fun KuiklyThreadScreenPayload.resolveMarkdownTagDisplayLabel(tag: Threa
         else -> threadMarkdownTagDisplayLabel(tag.label)
     }
 
-private fun List<String>.toKnownMarkdownChannelNameSet(): Set<String>? =
+private fun List<String>.toKnownMarkdownChannelNameSet(): Set<String> =
     mapNotNull { it.trim().takeIf { name -> name.isNotBlank() }?.lowercase() }
         .toSet()
-        .takeIf { it.isNotEmpty() }
 
 internal fun KuiklyThreadScreenPayload.resolveTaskAssigneeDisplayName(
     value: String?,

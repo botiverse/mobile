@@ -415,6 +415,19 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun emptyKnownChannelSetSuppressesAllChannelReferences() {
+        val body = "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25"
+
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body, knownChannelNames = emptySet())
+
+        assertEquals(listOf("@artin", "#25"), plan.tagTokens().map { it.label })
+        assertEquals(
+            listOf(MarkdownInlineTokenKind.UserMention, MarkdownInlineTokenKind.Task),
+            plan.tagTokens().map { it.kind }
+        )
+    }
+
+    @Test
     fun numericTaskReferencesDoNotMatchInsideShortIds() {
         assertEquals(listOf("#3", "#382", "#383"), "Tasks #3 and #382-#383".threadInlineTagMatches().map { it.tag.label })
         assertTrue("#3adea0d5".threadInlineTagMatches().isEmpty())
