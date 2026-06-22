@@ -32,6 +32,10 @@ import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
 import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockComputersNetworkApi
+import ai.slock.compose.data.SharedComputersIntent
+import ai.slock.compose.data.SharedComputersLoadStatus
+import ai.slock.compose.data.SharedComputersPickerSlice
+import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -48,6 +52,7 @@ import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampClockWithSeconds
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -482,6 +487,14 @@ internal fun MembersPageContent() {
             ai.slock.compose.data.SlockComputersNetworkApi(networkClient)
         )
     }
+    val scope = rememberCoroutineScope()
+    val computersStore = remember(computersApiClient, scope) {
+        SharedComputersStore(
+            computersApiClient = computersApiClient,
+            scope = scope,
+            logger = { message -> bridge.log("members_$message") }
+        )
+    }
     val createAgentCoordinator = remember(agentsApiClient, computersApiClient) {
         ai.slock.compose.data.SharedCreateAgentCoordinator(
             agentsApiClient = agentsApiClient,
@@ -503,8 +516,6 @@ internal fun MembersPageContent() {
             )
         )
     }
-    var machines by remember { mutableStateOf<List<SharedCreateAgentMachineOption>>(emptyList()) }
-    var machinesLoading by remember { mutableStateOf(false) }
     var currentAgentCount by remember { mutableStateOf(payload.members.count { it.kind == MemberKind.Agent }) }
     var maxAgents by remember { mutableStateOf(-1) }
     var localMembers by remember { mutableStateOf(payload.members) }
@@ -521,7 +532,9 @@ internal fun MembersPageContent() {
         activeServerId = authStore.readSession()?.currentServerId
     }
     val serverId = activeServerId ?: ""
-    val scope = rememberCoroutineScope()
+    val computersSlice by computersStore
+        .computerPickerSliceFlow(serverId)
+        .collectAsState(SharedComputersPickerSlice())
     val createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? =
         remember(createAgentCoordinator) {
             { submit ->
@@ -548,17 +561,10 @@ internal fun MembersPageContent() {
             }
         }
     // Load machines lazily when the dialog opens; see MembersListContent state.
-    val loadMachines: () -> Unit = remember(createAgentCoordinator, serverId) {
+    val loadMachines: () -> Unit = remember(computersStore, serverId) {
         {
-            if (machines.isEmpty() && !machinesLoading && serverId.isNotBlank()) {
-                machinesLoading = true
-                scope.launch {
-                    val result = createAgentCoordinator.loadMachines(serverId)
-                    machinesLoading = false
-                    if (result is DataResult.Content) {
-                        machines = result.data
-                    }
-                }
+            if (serverId.isNotBlank()) {
+                computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
             }
         }
     }
@@ -634,8 +640,8 @@ internal fun MembersPageContent() {
         onOpenUrl = { bridge.openUrl(it) },
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
-        createAgentMachines = machines,
-        createAgentMachinesLoading = machinesLoading,
+        createAgentMachines = computersSlice.machines,
+        createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
         createAgentCurrentAgentCount = currentAgentCount,
         createAgentMaxAgents = maxAgents,
         createAgentLoadMachines = loadMachines,

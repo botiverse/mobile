@@ -77,6 +77,9 @@ import ai.slock.compose.data.SharedAuthGateIntent
 import ai.slock.compose.data.SharedAuthGateState
 import ai.slock.compose.data.SharedAuthGateViewModel
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedComputersIntent
+import ai.slock.compose.data.SharedComputersLoadStatus
+import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
@@ -1042,7 +1045,7 @@ private fun SlockAppShellContent() {
                 logger = { message -> bridge.log("app_shell_$message") }
             )
         }
-    val threadComputersStore =
+    val appShellComputersStore =
         remember(computersApiClient, appShellCoroutineScope) {
             SharedComputersStore(
                 computersApiClient = computersApiClient,
@@ -2190,6 +2193,7 @@ private fun SlockAppShellContent() {
                             authStore = authStore,
                             memberRepository = memberRepository,
                             createAgentCoordinator = createAgentCoordinator,
+                            computersStore = appShellComputersStore,
                             settingsCapabilities = settingsCapabilities,
                             agentDetailRefreshKey = membersAgentDetailRefreshKey,
                             timeContext = threadTimeContext,
@@ -2338,7 +2342,7 @@ private fun SlockAppShellContent() {
                         dataSource = threadDataSource,
                         authStore = authStore,
                         tasksDataSource = tasksDataSource,
-                        computersStore = threadComputersStore,
+                        computersStore = appShellComputersStore,
                         membersStore = threadMembersStore,
                         conversationHeaderState = conversationHeaderState,
                         onBack = { popThreadRoute() },
@@ -7955,6 +7959,7 @@ private fun SharedMembersScreen(
     authStore: SlockAuthSessionStore,
     memberRepository: MemberRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
+    computersStore: SharedComputersStore,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
     agentDetailRefreshKey: Int,
     timeContext: AppShellTimeContext?,
@@ -7962,9 +7967,6 @@ private fun SharedMembersScreen(
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
-    var createAgentMachines by remember { mutableStateOf<List<SharedCreateAgentMachineOption>>(emptyList()) }
-    var createAgentMachinesLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         state = SharedMembersUiState.Loading
@@ -8016,16 +8018,12 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Content -> {
             val membersPayload = buildHostMembersPayload(current.server, current.members, timeContext)
             val serverId = current.server.id.value
+            val computersSlice by computersStore
+                .computerPickerSliceFlow(serverId)
+                .collectAsState(SharedComputersPickerSlice())
             val loadMachines: () -> Unit = {
-                if (serverId.isNotBlank() && createAgentMachines.isEmpty() && !createAgentMachinesLoading) {
-                    createAgentMachinesLoading = true
-                    scope.launch {
-                        val result = createAgentCoordinator.loadMachines(serverId)
-                        createAgentMachinesLoading = false
-                        if (result is DataResult.Content) {
-                            createAgentMachines = result.data
-                        }
-                    }
+                if (serverId.isNotBlank()) {
+                    computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
                 }
             }
             val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
@@ -8183,8 +8181,8 @@ private fun SharedMembersScreen(
                 onUnavailableAction = { bridge.toast(it) },
                 canCreateAgents = membersPayload.canCreateAgents,
                 createAgentSubmit = createAgentSubmit,
-                createAgentMachines = createAgentMachines,
-                createAgentMachinesLoading = createAgentMachinesLoading,
+                createAgentMachines = computersSlice.machines,
+                createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                 createAgentLoadMachines = loadMachines,
                 bottomContentPadding = bottomContentPadding
