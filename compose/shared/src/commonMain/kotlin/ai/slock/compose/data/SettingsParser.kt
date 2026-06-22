@@ -36,6 +36,7 @@ private data class WireAccountUser(
     val preferredTimeFormat: String? = null,
     val timeFormat: String? = null,
     val preferredMessageBodyFontSize: String? = null,
+    val preferredTranslationDisplay: String? = null,
 )
 
 @Serializable
@@ -153,7 +154,8 @@ fun parseSharedLanguageRegionAccountPreferences(
         preferredLanguage = normalizeSharedLanguageRegionLanguage(user.preferredLanguage ?: user.targetLanguage),
         preferredTimezone = normalizeSharedLanguageRegionTimezone(user.preferredTimezone ?: user.timezone),
         autoTranslationEnabled = user.autoTranslationEnabled ?: true,
-        preferredTimeFormat = normalizeSharedLanguageRegionTimeFormat(user.preferredTimeFormat ?: user.timeFormat)
+        preferredTimeFormat = normalizeSharedLanguageRegionTimeFormat(user.preferredTimeFormat ?: user.timeFormat),
+        preferredTranslationDisplay = user.preferredTranslationDisplay ?: "translated"
     )
 }.getOrNull()
 

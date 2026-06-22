@@ -819,14 +819,27 @@ data class SettingsLanguageRegionSnapshot(
     val autoTranslation: SettingsMobileToggleSnapshot,
     val browserLanguage: SettingsMobileSelectionSnapshot,
     val timezone: SettingsMobileSelectionSnapshot,
-    val timeFormat: SettingsMobileSelectionSnapshot
+    val timeFormat: SettingsMobileSelectionSnapshot,
+    val translationDisplay: SettingsMobileSelectionSnapshot =
+        SettingsMobileSelectionSnapshot(
+            selectedKey = "translated",
+            selectedLabel = "Translated",
+            statusLabel = "Translated",
+            detail = "Messages display translated text when this server supports it.",
+            options =
+                listOf(
+                    SettingsMobileSelectionOptionSnapshot("translated", "Translated"),
+                    SettingsMobileSelectionOptionSnapshot("original", "Original")
+                )
+        )
 )
 
 data class SettingsLanguageRegionAccountPreferences(
     val preferredLanguage: String? = null,
     val preferredTimezone: String? = null,
     val autoTranslationEnabled: Boolean = true,
-    val preferredTimeFormat: String? = null
+    val preferredTimeFormat: String? = null,
+    val preferredTranslationDisplay: String? = null
 )
 
 data class SettingsLanguageRegionPreferenceUpdateRequest(
@@ -836,7 +849,8 @@ data class SettingsLanguageRegionPreferenceUpdateRequest(
     val clearPreferredTimezone: Boolean = false,
     val autoTranslationEnabled: Boolean? = null,
     val preferredTimeFormat: String? = null,
-    val clearPreferredTimeFormat: Boolean = false
+    val clearPreferredTimeFormat: Boolean = false,
+    val preferredTranslationDisplay: String? = null
 )
 
 data class SettingsAppearanceSnapshot(

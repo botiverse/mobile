@@ -38,6 +38,7 @@ import ai.slock.compose.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIME_FORMAT
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TIMEZONE
+import ai.slock.compose.data.LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
 import ai.slock.compose.data.MyMessageAlignmentPreference
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_DELETE
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_INSTALL
@@ -2636,7 +2637,7 @@ private fun SettingsAppShellContent(
     ) {
         currentLanguageRegionSnapshot?.let { snapshot ->
             languageRegionLanguageDraft = snapshot.browserLanguage.selectedKey
-            languageRegionDisplayDraft = if (snapshot.autoTranslation.enabled) "translated" else "original"
+            languageRegionDisplayDraft = snapshot.translationDisplay.selectedKey
             languageRegionTimezoneDraft = snapshot.timezone.selectedKey
             languageRegionTimeFormatDraft = snapshot.timeFormat.selectedKey
         }
@@ -2864,20 +2865,20 @@ private fun SettingsAppShellContent(
                     },
                     onSaveLanguage = {
                         val selected = languageRegionLanguageDraft.takeIf { it.isNotBlank() }
+                        val request =
+                            if (selected == null || selected == "other") {
+                                SettingsLanguageRegionPreferenceUpdateRequest(
+                                    clearPreferredLanguage = true,
+                                    preferredTranslationDisplay = languageRegionDisplayDraft.takeIf { it.isNotBlank() }
+                                )
+                            } else {
+                                SettingsLanguageRegionPreferenceUpdateRequest(
+                                    preferredLanguage = selected,
+                                    preferredTranslationDisplay = languageRegionDisplayDraft.takeIf { it.isNotBlank() }
+                                )
+                            }
                         onSettingsIntent(
-                            SharedSettingsIntent.UpdateLanguageRegionPreference(
-                                if (selected == null || selected == "other") {
-                                    SettingsLanguageRegionPreferenceUpdateRequest(
-                                        clearPreferredLanguage = true,
-                                        autoTranslationEnabled = languageRegionDisplayDraft == "translated"
-                                    )
-                                } else {
-                                    SettingsLanguageRegionPreferenceUpdateRequest(
-                                        preferredLanguage = selected,
-                                        autoTranslationEnabled = languageRegionDisplayDraft == "translated"
-                                    )
-                                }
-                            )
+                            SharedSettingsIntent.UpdateLanguageRegionPreference(request)
                         )
                     },
                     onSaveTime = {
@@ -3754,9 +3755,9 @@ private fun SettingsLanguagePreferenceCard(
     onSubmit: () -> Unit
 ) {
     val languageBusy = actionState?.action == LANGUAGE_REGION_ACTION_LANGUAGE && actionState.inProgress
-    val displayBusy = actionState?.action == LANGUAGE_REGION_ACTION_AUTO_TRANSLATION && actionState.inProgress
+    val displayBusy = actionState?.action == LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY && actionState.inProgress
     val busy = languageBusy || displayBusy
-    val currentDisplay = if (snapshot.autoTranslation.enabled) "translated" else "original"
+    val currentDisplay = snapshot.translationDisplay.selectedKey
     val dirty = languageDraft != snapshot.browserLanguage.selectedKey || displayDraft != currentDisplay
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
         SettingsFormDetailText("Choose your preferred language and whether messages display translated or original text.")
@@ -3782,7 +3783,7 @@ private fun SettingsLanguagePreferenceCard(
         if (!snapshot.autoTranslation.available) {
             SettingsFormDetailText(snapshot.autoTranslation.detail)
         }
-        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION) && it.errorCode != null } == true) {
+        if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
         SlockBrutalActionButton(

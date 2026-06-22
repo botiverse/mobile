@@ -2907,6 +2907,7 @@ fun buildSharedLanguageRegionPreferenceUpdateBody(
         } else {
             request.preferredTimeFormat?.let { put("preferredTimeFormat", JsonPrimitive(it)) }
         }
+        request.preferredTranslationDisplay?.let { put("preferredTranslationDisplay", JsonPrimitive(it)) }
     }.toString()
 
 private fun SettingsLanguageRegionPreferenceUpdateRequest.hasAtLeastOneField(): Boolean =
@@ -2916,7 +2917,8 @@ private fun SettingsLanguageRegionPreferenceUpdateRequest.hasAtLeastOneField(): 
         clearPreferredTimezone ||
         autoTranslationEnabled != null ||
         preferredTimeFormat != null ||
-        clearPreferredTimeFormat
+        clearPreferredTimeFormat ||
+        preferredTranslationDisplay != null
 
 private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
     translationResult: DataResult<SettingsServerTranslationSnapshot>,
@@ -3012,6 +3014,19 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
                 detail = "Controls whether times render with 12-hour or 24-hour clocks.",
                 options = languageRegionTimeFormatOptions,
                 available = true
+            ),
+        translationDisplay =
+            SettingsMobileSelectionSnapshot(
+                selectedKey = preferredTranslationDisplay ?: "translated",
+                selectedLabel = if (preferredTranslationDisplay == "original") "Original" else "Translated",
+                statusLabel = if (preferredTranslationDisplay == "original") "Original" else "Translated",
+                detail = "Choose whether messages display translated or original text in servers that support translation.",
+                options =
+                    listOf(
+                        SettingsMobileSelectionOptionSnapshot("translated", "Translated"),
+                        SettingsMobileSelectionOptionSnapshot("original", "Original")
+                    ),
+                available = translationEnabled
             )
     )
 }

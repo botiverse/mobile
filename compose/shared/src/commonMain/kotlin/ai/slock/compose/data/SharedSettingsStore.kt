@@ -1813,6 +1813,7 @@ internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAuto
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
 internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"
 internal const val LANGUAGE_REGION_ACTION_TIME_FORMAT = "languageRegionTimeFormat"
+internal const val LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY = "languageRegionTranslationDisplay"
 internal const val APPEARANCE_ACTION_MESSAGE_FONT_SIZE = "appearanceMessageFontSize"
 internal const val CONNECTED_APPS_ACTION_REGISTER = "connectedAppsRegister"
 internal const val CONNECTED_APPS_ACTION_UPDATE = "connectedAppsUpdate"
@@ -1855,6 +1856,7 @@ private fun SettingsLanguageRegionPreferenceUpdateRequest.toLanguageRegionAction
         preferredTimezone != null || clearPreferredTimezone -> LANGUAGE_REGION_ACTION_TIMEZONE
         preferredTimeFormat != null || clearPreferredTimeFormat -> LANGUAGE_REGION_ACTION_TIME_FORMAT
         autoTranslationEnabled != null -> LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
+        preferredTranslationDisplay != null -> LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY
         else -> "languageRegionPreference"
     }
 
