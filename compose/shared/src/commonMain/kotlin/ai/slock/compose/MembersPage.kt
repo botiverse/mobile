@@ -27,6 +27,8 @@ import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.SharedAgentDetailIntent
+import ai.slock.compose.data.SharedAgentDetailLoadStatus
+import ai.slock.compose.data.SharedAgentDetailState
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
@@ -149,6 +151,20 @@ private sealed interface MembersAgentDetailLoadState {
     data class Error(val code: String) : MembersAgentDetailLoadState
     data object Empty : MembersAgentDetailLoadState
 }
+
+private fun SharedAgentDetailState.toMembersAgentDetailLoadState(): MembersAgentDetailLoadState =
+    when (detailLoadStatus) {
+        SharedAgentDetailLoadStatus.Idle -> MembersAgentDetailLoadState.Idle
+        SharedAgentDetailLoadStatus.Loading -> detail?.let(MembersAgentDetailLoadState::Content)
+            ?: MembersAgentDetailLoadState.Loading
+        SharedAgentDetailLoadStatus.Content -> detail?.let(MembersAgentDetailLoadState::Content)
+            ?: MembersAgentDetailLoadState.Empty
+        SharedAgentDetailLoadStatus.NoPermission ->
+            MembersAgentDetailLoadState.NoPermission(detailErrorCode.orEmpty())
+        SharedAgentDetailLoadStatus.Error ->
+            MembersAgentDetailLoadState.Error(detailErrorCode.orEmpty())
+        SharedAgentDetailLoadStatus.Empty -> MembersAgentDetailLoadState.Empty
+    }
 
 private sealed interface MembersAgentWorkspaceTreeState {
     data object Idle : MembersAgentWorkspaceTreeState
@@ -828,31 +844,75 @@ internal fun MembersRouteContent(
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
     val timeContext = payload.toSlockTimeContext()
-    var agentDetailState by remember(selectedMember?.id?.value) {
+    val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
+    val effectiveAgentDetailStore = sharedAgentDetailStore ?: fallbackAgentDetailStore
+    val agentDetailStoreState by effectiveAgentDetailStore.state.collectAsState()
+    var localAgentDetailState by remember(selectedMember?.id?.value) {
         mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
     }
+    val storeBackedAgentDetail = sharedAgentDetailStore != null
+    val agentDetailState =
+        if (storeBackedAgentDetail) {
+            agentDetailStoreState.toMembersAgentDetailLoadState()
+        } else {
+            localAgentDetailState
+        }
     LaunchedEffect(selectedMemberId, selectedMember?.id?.value) {
         if (selectedMemberId != null && selectedMember == null) {
             selectedMemberId = null
         }
     }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey) {
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey, storeBackedAgentDetail) {
         val member = selectedMember
         if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
-            agentDetailState = MembersAgentDetailLoadState.Idle
+            if (storeBackedAgentDetail) {
+                effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+            } else {
+                localAgentDetailState = MembersAgentDetailLoadState.Idle
+            }
             return@LaunchedEffect
         }
-        if (agentDetailState !is MembersAgentDetailLoadState.Content) {
-            agentDetailState = MembersAgentDetailLoadState.Loading
+        if (storeBackedAgentDetail) {
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
+        } else if (localAgentDetailState !is MembersAgentDetailLoadState.Content) {
+            localAgentDetailState = MembersAgentDetailLoadState.Loading
         }
-        val nextState =
-            when (val result = agentDetailLoader(member.id)) {
-                is DataResult.Content -> MembersAgentDetailLoadState.Content(result.data)
-                is DataResult.Empty -> MembersAgentDetailLoadState.Empty
-                is DataResult.NoPermission -> MembersAgentDetailLoadState.NoPermission(result.blocker.code)
-                is DataResult.Error -> MembersAgentDetailLoadState.Error(result.error.code)
-            }
-        agentDetailState = nextState
+        when (val result = agentDetailLoader(member.id)) {
+            is DataResult.Content ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Content(result.data)
+                }
+            is DataResult.Empty ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Empty
+                }
+            is DataResult.NoPermission ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
+                    )
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.NoPermission(result.blocker.code)
+                }
+            is DataResult.Error ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
+                    )
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Error(result.error.code)
+                }
+        }
+    }
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, storeBackedAgentDetail) {
+        if (storeBackedAgentDetail && (selectedMember == null || selectedMember.kind != MemberKind.Agent)) {
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+        }
     }
     SlockBackHandler(enabled = selectedMember != null) {
         selectedMemberId = null

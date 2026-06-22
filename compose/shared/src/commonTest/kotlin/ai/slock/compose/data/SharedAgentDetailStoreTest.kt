@@ -55,6 +55,7 @@ class SharedAgentDetailStoreTest {
     @Test
     fun detailLoadingTransitionsAreTracked() {
         val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
         s.dispatch(SharedAgentDetailIntent.SetDetailLoading(testMemberId))
         assertEquals(SharedAgentDetailLoadStatus.Loading, s.state.value.detailLoadStatus)
         s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
@@ -67,6 +68,36 @@ class SharedAgentDetailStoreTest {
         assertEquals("forbidden", s.state.value.detailErrorCode)
         s.dispatch(SharedAgentDetailIntent.SetDetailEmpty(testMemberId))
         assertEquals(SharedAgentDetailLoadStatus.Empty, s.state.value.detailLoadStatus)
+    }
+
+    @Test
+    fun selectMemberResetsTransientState() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
+        s.dispatch(SharedAgentDetailIntent.ShowConfirmation(MembersAgentLifecycleAction.Delete))
+        s.dispatch(SharedAgentDetailIntent.BeginEditDisplayName("Cindy"))
+
+        s.dispatch(SharedAgentDetailIntent.SelectMember(MemberId("agent-2")))
+
+        val state = s.state.value
+        assertEquals(MemberId("agent-2"), state.agentId)
+        assertNull(state.detail)
+        assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
+        assertNull(state.pendingConfirmation)
+        assertFalse(state.displayNameEditing)
+    }
+
+    @Test
+    fun staleDetailResultIsIgnoredAfterDeselect() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.DeselectMember)
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, testDetail))
+
+        assertNull(s.state.value.agentId)
+        assertNull(s.state.value.detail)
+        assertEquals(SharedAgentDetailLoadStatus.Idle, s.state.value.detailLoadStatus)
     }
 
     @Test

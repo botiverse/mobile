@@ -116,35 +116,60 @@ internal class SharedAgentDetailStore(
     fun dispatch(intent: SharedAgentDetailIntent) {
         val current = _state.value
         val next = when (intent) {
-            is SharedAgentDetailIntent.SelectMember -> current.copy(agentId = intent.memberId)
+            is SharedAgentDetailIntent.SelectMember ->
+                if (current.agentId == intent.memberId) {
+                    current
+                } else {
+                    SharedAgentDetailState(agentId = intent.memberId)
+                }
             SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState()
 
-            is SharedAgentDetailIntent.SetDetailLoading -> current.copy(
-                agentId = intent.agentId,
-                detailLoadStatus = SharedAgentDetailLoadStatus.Loading,
-                detailErrorCode = null
-            )
-            is SharedAgentDetailIntent.SetDetail -> current.copy(
-                agentId = intent.agentId,
-                detail = intent.detail,
-                detailLoadStatus = SharedAgentDetailLoadStatus.Content,
-                detailErrorCode = null
-            )
-            is SharedAgentDetailIntent.SetDetailNoPermission -> current.copy(
-                agentId = intent.agentId,
-                detailLoadStatus = SharedAgentDetailLoadStatus.NoPermission,
-                detailErrorCode = intent.code
-            )
-            is SharedAgentDetailIntent.SetDetailError -> current.copy(
-                agentId = intent.agentId,
-                detailLoadStatus = SharedAgentDetailLoadStatus.Error,
-                detailErrorCode = intent.code
-            )
-            is SharedAgentDetailIntent.SetDetailEmpty -> current.copy(
-                agentId = intent.agentId,
-                detailLoadStatus = SharedAgentDetailLoadStatus.Empty,
-                detailErrorCode = null
-            )
+            is SharedAgentDetailIntent.SetDetailLoading ->
+                if (current.agentId == intent.agentId) {
+                    current.copy(
+                        detailLoadStatus = SharedAgentDetailLoadStatus.Loading,
+                        detailErrorCode = null
+                    )
+                } else {
+                    current
+                }
+            is SharedAgentDetailIntent.SetDetail ->
+                if (current.agentId == intent.agentId) {
+                    current.copy(
+                        detail = intent.detail,
+                        detailLoadStatus = SharedAgentDetailLoadStatus.Content,
+                        detailErrorCode = null
+                    )
+                } else {
+                    current
+                }
+            is SharedAgentDetailIntent.SetDetailNoPermission ->
+                if (current.agentId == intent.agentId) {
+                    current.copy(
+                        detailLoadStatus = SharedAgentDetailLoadStatus.NoPermission,
+                        detailErrorCode = intent.code
+                    )
+                } else {
+                    current
+                }
+            is SharedAgentDetailIntent.SetDetailError ->
+                if (current.agentId == intent.agentId) {
+                    current.copy(
+                        detailLoadStatus = SharedAgentDetailLoadStatus.Error,
+                        detailErrorCode = intent.code
+                    )
+                } else {
+                    current
+                }
+            is SharedAgentDetailIntent.SetDetailEmpty ->
+                if (current.agentId == intent.agentId) {
+                    current.copy(
+                        detailLoadStatus = SharedAgentDetailLoadStatus.Empty,
+                        detailErrorCode = null
+                    )
+                } else {
+                    current
+                }
 
             is SharedAgentDetailIntent.StartLifecycleAction -> current.copy(
                 lifecycleActionInFlight = intent.actionKey,
