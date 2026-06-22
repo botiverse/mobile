@@ -26,6 +26,8 @@ import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.SharedAgentDetailIntent
+import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SlockAgentsApiClient
@@ -1165,7 +1167,8 @@ private fun MembersDetailContent(
     onCopyAgentDiagnostics: (String) -> Unit,
     onReportAgentIssue: (suspend (String) -> Boolean)?,
     onUnavailableAction: (String) -> Unit,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -1177,6 +1180,23 @@ private fun MembersDetailContent(
     var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
+    // Action in-flight: prefer SharedAgentDetailStore if provided (single source of truth
+    // for dropdown item enabled state + confirm modal busy flag per task #56), else fall
+    // back to local composable state. Phase 2A: lifecycle + diagnostic actions only;
+    // pendingConfirmation / managementMenu / selectedTab / profile edit follow in
+    // Phase 2B/2C in the same worktree.
+    val storeLifecycleInFlight: String? = sharedAgentDetailStore?.state?.value?.lifecycleActionInFlight
+    val storeDiagnosticInFlight: String? = sharedAgentDetailStore?.state?.value?.diagnosticActionInFlight
+    val lifecycleInFlight: String? = if (sharedAgentDetailStore != null) {
+        storeLifecycleInFlight
+    } else {
+        actionState?.takeIf { it.inProgress }?.action?.actionKey
+    }
+    val diagnosticInFlight: String? = if (sharedAgentDetailStore != null) {
+        storeDiagnosticInFlight
+    } else {
+        diagnosticActionState?.takeIf { it.inProgress }?.actionKey
+    }
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
     var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
@@ -1294,7 +1314,7 @@ private fun MembersDetailContent(
         }
     }
     fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
-        if (actionState?.inProgress == true) return
+        if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
         if (!canManage || callback == null) {
             onUnavailableAction("Agent management is not available.")
@@ -1303,8 +1323,14 @@ private fun MembersDetailContent(
         if (action.requiresConfirmation && !confirmed) {
             pendingConfirmation = action
             actionState = null
+            sharedAgentDetailStore?.dispatch(
+                SharedAgentDetailIntent.ShowConfirmation(action)
+            )
             return
         }
+        sharedAgentDetailStore?.dispatch(
+            SharedAgentDetailIntent.StartLifecycleAction(action.actionKey)
+        )
         scope.launch {
             pendingConfirmation = null
             actionState = MembersAgentActionState(action, inProgress = true)
@@ -1324,9 +1350,19 @@ private fun MembersDetailContent(
                     errorCode = errorCode,
                     successLabel = action.successLabel.takeIf { errorCode == null }
                 )
+            sharedAgentDetailStore?.dispatch(
+                SharedAgentDetailIntent.FinishLifecycleAction(
+                    actionKey = action.actionKey,
+                    successLabel = actionState?.successLabel,
+                    errorCode = errorCode
+                )
+            )
         }
     }
     fun copyDiagnostics() {
+        sharedAgentDetailStore?.dispatch(
+            SharedAgentDetailIntent.StartDiagnosticAction("copy")
+        )
         onCopyAgentDiagnostics(buildMembersAgentDiagnostics(member, detail))
         diagnosticActionState =
             MembersAgentDiagnosticActionState(
@@ -1334,14 +1370,23 @@ private fun MembersDetailContent(
                 inProgress = false,
                 successLabel = "Diagnostics copied"
             )
+        sharedAgentDetailStore?.dispatch(
+            SharedAgentDetailIntent.FinishDiagnosticAction(
+                actionKey = "copy",
+                successLabel = "Diagnostics copied"
+            )
+        )
     }
     fun reportIssue() {
         val callback = onReportAgentIssue
-        if (diagnosticActionState?.inProgress == true) return
+        if (diagnosticInFlight != null) return
         if (callback == null) {
             onUnavailableAction("Agent issue reporting is not available.")
             return
         }
+        sharedAgentDetailStore?.dispatch(
+            SharedAgentDetailIntent.StartDiagnosticAction("report")
+        )
         scope.launch {
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
@@ -1361,6 +1406,13 @@ private fun MembersDetailContent(
                     errorCode = if (reported) null else "agent_issue_report_failed",
                     successLabel = "Issue reported".takeIf { reported }
                 )
+            sharedAgentDetailStore?.dispatch(
+                SharedAgentDetailIntent.FinishDiagnosticAction(
+                    actionKey = "report",
+                    successLabel = diagnosticActionState?.successLabel,
+                    errorCode = diagnosticActionState?.errorCode
+                )
+            )
         }
     }
     fun saveAvatar(avatarUrl: String?) {
@@ -1557,7 +1609,7 @@ private fun MembersDetailContent(
                 canManage = canManage,
                 deleted = deleted,
                 hasReportIssue = onReportAgentIssue != null,
-                inProgress = actionState?.inProgress == true || diagnosticActionState?.inProgress == true
+                inProgress = lifecycleInFlight != null || diagnosticInFlight != null
             )
             SlockBrutalDropdownMenu(
                 anchor = dropdownAnchor ?: Offset(100f, 100f),
@@ -1582,6 +1634,7 @@ private fun MembersDetailContent(
                 ),
                 onDismiss = {
                     pendingConfirmation = null
+                    sharedAgentDetailStore?.dispatch(SharedAgentDetailIntent.DismissConfirmation)
                 }
             ) {
                 MembersLifecycleConfirmation(
@@ -1592,6 +1645,7 @@ private fun MembersDetailContent(
                     onCancel = {
                         pendingConfirmation = null
                         actionState = null
+                        sharedAgentDetailStore?.dispatch(SharedAgentDetailIntent.DismissConfirmation)
                     }
                 )
             }
