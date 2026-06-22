@@ -24,13 +24,31 @@ internal data class SharedComputersPickerSlice(
     val errorCode: String? = null
 )
 
-internal data class SharedComputersState(
-    val pickerSlices: Map<String, SharedComputersPickerSlice> = emptyMap()
+internal data class SharedComputersServerSlice(
+    val machines: List<ComputerSummary> = emptyList(),
+    val machineCount: Int = 0,
+    val onlineCount: Int = 0,
+    val latestDaemonVersion: String? = null,
+    val status: SharedComputersLoadStatus = SharedComputersLoadStatus.Idle,
+    val errorCode: String? = null
 )
 
+internal data class SharedComputersState(
+    val serverSlices: Map<String, SharedComputersServerSlice> = emptyMap()
+)
+
+internal fun SharedComputersState.selectComputerServerSlice(serverId: String?): SharedComputersServerSlice {
+    val normalizedServerId = serverId.normalizedComputerServerId() ?: return SharedComputersServerSlice()
+    return serverSlices[normalizedServerId] ?: SharedComputersServerSlice()
+}
+
 internal fun SharedComputersState.selectComputerPickerSlice(serverId: String?): SharedComputersPickerSlice {
-    val normalizedServerId = serverId.normalizedComputerServerId() ?: return SharedComputersPickerSlice()
-    return pickerSlices[normalizedServerId] ?: SharedComputersPickerSlice()
+    val slice = selectComputerServerSlice(serverId)
+    return SharedComputersPickerSlice(
+        machines = slice.machines.toCreateAgentMachineOptions(),
+        status = slice.status,
+        errorCode = slice.errorCode
+    )
 }
 
 internal sealed interface SharedComputersIntent {
@@ -69,20 +87,48 @@ internal class SharedComputersStore(
     }
 
     internal suspend fun ensureComputerPickerForServer(serverId: String, force: Boolean = false) {
+        ensureComputersForServer(serverId = serverId, force = force)
+    }
+
+    internal suspend fun ensureSettingsComputersForServer(serverId: String, force: Boolean = false): DataResult<SettingsComputersSnapshot> {
+        val normalizedServerId =
+            serverId.normalizedComputerServerId()
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        ensureComputersForServer(serverId = normalizedServerId, force = force)
+        return _state.value.selectComputerServerSlice(normalizedServerId).toSettingsComputersResult()
+    }
+
+    internal suspend fun loadSettingsComputerSnapshotForServer(
+        serverId: String,
+        machineId: String,
+        force: Boolean = false
+    ): DataResult<SettingsComputerSnapshot> {
+        val normalizedServerId =
+            serverId.normalizedComputerServerId()
+                ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val normalizedMachineId = machineId.trim()
+        if (normalizedMachineId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        ensureComputersForServer(serverId = normalizedServerId, force = force)
+        return _state.value
+            .selectComputerServerSlice(normalizedServerId)
+            .toSettingsComputerSnapshotResult(normalizedMachineId)
+    }
+
+    private suspend fun ensureComputersForServer(serverId: String, force: Boolean = false) {
         val normalizedServerId = serverId.normalizedComputerServerId()
         if (normalizedServerId == null) {
-            logger("shared_computers_picker_skip reason=server_id_missing")
+            logger("shared_computers_skip reason=server_id_missing")
             return
         }
-        val current = _state.value.selectComputerPickerSlice(normalizedServerId)
+        val current = _state.value.selectComputerServerSlice(normalizedServerId)
         if (!force &&
             (current.status == SharedComputersLoadStatus.Loaded ||
                 current.status == SharedComputersLoadStatus.InFlight)
         ) {
-            logger("shared_computers_picker_skip serverId=$normalizedServerId reason=loaded_or_inflight")
+            logger("shared_computers_skip serverId=$normalizedServerId reason=loaded_or_inflight")
             return
         }
-        setPickerSlice(
+        setServerSlice(
             serverId = normalizedServerId,
             slice = current.copy(status = SharedComputersLoadStatus.InFlight, errorCode = null)
         )
@@ -90,49 +136,52 @@ internal class SharedComputersStore(
             runCatchingPreservingCancellation {
                 computersApiClient.machines(ServerId(normalizedServerId))
             }.getOrElse { throwable ->
-                logger("shared_computers_picker_result serverId=$normalizedServerId result=exception message=${throwable.message.orEmpty()}")
-                setPickerSlice(
+                logger("shared_computers_result serverId=$normalizedServerId result=exception message=${throwable.message.orEmpty()}")
+                setServerSlice(
                     serverId = normalizedServerId,
-                    slice = SharedComputersPickerSlice(status = SharedComputersLoadStatus.Error, errorCode = "computers_exception")
+                    slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = "computers_exception")
                 )
                 return
             }
         when (result) {
             is DataResult.Content -> {
-                setPickerSlice(
+                setServerSlice(
                     serverId = normalizedServerId,
                     slice =
-                        SharedComputersPickerSlice(
-                            machines = result.data.machines.toCreateAgentMachineOptions(),
-                            status = SharedComputersLoadStatus.Loaded
+                        SharedComputersServerSlice(
+                            machines = result.data.machines,
+                            machineCount = result.data.machineCount,
+                            onlineCount = result.data.onlineCount,
+                            latestDaemonVersion = result.data.latestDaemonVersion,
+                            status = SharedComputersLoadStatus.Loaded,
                         )
                 )
             }
             is DataResult.Empty -> {
-                setPickerSlice(
+                setServerSlice(
                     serverId = normalizedServerId,
-                    slice = SharedComputersPickerSlice(status = SharedComputersLoadStatus.Loaded)
+                    slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Loaded)
                 )
             }
             is DataResult.Error -> {
-                logger("shared_computers_picker_result serverId=$normalizedServerId result=error code=${result.error.code}")
-                setPickerSlice(
+                logger("shared_computers_result serverId=$normalizedServerId result=error code=${result.error.code}")
+                setServerSlice(
                     serverId = normalizedServerId,
-                    slice = SharedComputersPickerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.error.code)
+                    slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.error.code)
                 )
             }
             is DataResult.NoPermission -> {
-                logger("shared_computers_picker_result serverId=$normalizedServerId result=no_permission code=${result.blocker.code}")
-                setPickerSlice(
+                logger("shared_computers_result serverId=$normalizedServerId result=no_permission code=${result.blocker.code}")
+                setServerSlice(
                     serverId = normalizedServerId,
-                    slice = SharedComputersPickerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.blocker.code)
+                    slice = SharedComputersServerSlice(status = SharedComputersLoadStatus.Error, errorCode = result.blocker.code)
                 )
             }
         }
     }
 
-    private fun setPickerSlice(serverId: String, slice: SharedComputersPickerSlice) {
-        _state.value = _state.value.copy(pickerSlices = _state.value.pickerSlices + (serverId to slice))
+    private fun setServerSlice(serverId: String, slice: SharedComputersServerSlice) {
+        _state.value = _state.value.copy(serverSlices = _state.value.serverSlices + (serverId to slice))
     }
 }
 
@@ -153,3 +202,51 @@ private fun List<ComputerSummary>.toCreateAgentMachineOptions(): List<SharedCrea
             runtimes = machine.runtimes
         )
     }
+
+private fun SharedComputersServerSlice.toSettingsComputersResult(): DataResult<SettingsComputersSnapshot> =
+    when (status) {
+        SharedComputersLoadStatus.Loaded ->
+            if (machines.isEmpty()) {
+                DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            } else {
+                DataResult.Content(
+                    SettingsComputersSnapshot(
+                        computers = machines.map { it.toSettingsComputerSnapshot() },
+                        canAddComputer = false,
+                        addComputerUnavailableReason = null,
+                        latestDaemonVersion = latestDaemonVersion
+                    )
+                )
+            }
+        SharedComputersLoadStatus.Error ->
+            DataResult.Error(ScreenError(errorCode ?: "computers_unavailable", retryable = true))
+        SharedComputersLoadStatus.Idle, SharedComputersLoadStatus.InFlight ->
+            DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    }
+
+private fun SharedComputersServerSlice.toSettingsComputerSnapshotResult(machineId: String): DataResult<SettingsComputerSnapshot> =
+    when (val result = toSettingsComputersResult()) {
+        is DataResult.Content ->
+            result.data.computers.firstOrNull { it.id == machineId }
+                ?.let { DataResult.Content(it) }
+                ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        is DataResult.Empty -> DataResult.Empty(result.reason)
+        is DataResult.Error -> DataResult.Error(result.error)
+        is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+    }
+
+private fun ComputerSummary.toSettingsComputerSnapshot(): SettingsComputerSnapshot =
+    SettingsComputerSnapshot(
+        id = id,
+        name = name,
+        daemonVersion = daemonVersion.orEmpty(),
+        online = status == ComputerStatus.Online,
+        hostname = hostname,
+        platform = os,
+        lastSeenLabel = lastHeartbeat,
+        runtimes = runtimes,
+        createdAt = createdAt,
+        lastHeartbeat = lastHeartbeat,
+        apiKeyPrefix = apiKeyPrefix,
+        statusVersion = statusVersion
+    )

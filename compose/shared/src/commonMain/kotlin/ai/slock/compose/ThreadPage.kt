@@ -78,6 +78,7 @@ import ai.slock.compose.model.ServerId
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -180,6 +181,66 @@ private object ThreadRowProbeNextSessionId {
         return "threadRowProbeSession-${counter}"
     }
 }
+
+/**
+ * One-shot first-viewport probe for #202.
+ *
+ * This deliberately keeps mutable counters outside Compose state: the values are
+ * diagnostic-only and must not invalidate row composition while measuring it.
+ */
+private class ThreadFirstViewportProbe(
+    val sessionMarker: String
+) {
+    private val composedMessageKeys = mutableSetOf<String>()
+    private val placedMessageKeys = mutableSetOf<String>()
+    private var firstComposedMessageIndex: Int = Int.MAX_VALUE
+    private var lastComposedMessageIndex: Int = -1
+    private var firstPlacedMessageIndex: Int = Int.MAX_VALUE
+    private var lastPlacedMessageIndex: Int = -1
+    private var logged: Boolean = false
+
+    fun recordComposedMessage(messageId: String, index: Int) {
+        if (composedMessageKeys.add(messageId)) {
+            firstComposedMessageIndex = minOf(firstComposedMessageIndex, index)
+            lastComposedMessageIndex = maxOf(lastComposedMessageIndex, index)
+        }
+    }
+
+    fun recordPlacedMessage(messageId: String, index: Int) {
+        if (placedMessageKeys.add(messageId)) {
+            firstPlacedMessageIndex = minOf(firstPlacedMessageIndex, index)
+            lastPlacedMessageIndex = maxOf(lastPlacedMessageIndex, index)
+        }
+    }
+
+    fun markLogged(): Boolean {
+        if (logged) return false
+        logged = true
+        return true
+    }
+
+    fun toDiagnosticsString(
+        result: String,
+        payload: KuiklyThreadScreenPayload,
+        lazyItemCount: Int,
+        stats: ThreadLazyWindowStats
+    ): String =
+        "thread_first_viewport_probe result=$result sessionMarker=$sessionMarker " +
+            "threadId=${payload.sourceThreadId.orEmpty()} instanceId=${payload.instanceId} " +
+            "originStatus=${payload.originStatus} hasOrigin=${payload.originMessage != null} " +
+            "messagesTotal=${payload.messages.size} totalItems=$lazyItemCount " +
+            "beyondBounds=${threadMessagesBeyondBoundsItemCount(lazyItemCount)} " +
+            "composedMessageRows=${composedMessageKeys.size} " +
+            "composedMessageRange=${firstComposedMessageIndex.asThreadProbeRangeStart()}..$lastComposedMessageIndex " +
+            "placedMessageRows=${placedMessageKeys.size} " +
+            "placedMessageRange=${firstPlacedMessageIndex.asThreadProbeRangeStart()}..$lastPlacedMessageIndex " +
+            "visibleItems=${stats.visibleItems} visibleItemRange=${stats.firstVisibleItem}..${stats.lastVisibleItem} " +
+            "visibleMessages=${stats.visibleMessages} " +
+            "visibleMessageRange=${stats.firstVisibleMessage}..${stats.lastVisibleMessage}"
+}
+
+private fun Int.asThreadProbeRangeStart(): Int =
+    if (this == Int.MAX_VALUE) -1 else this
 
 private object ThreadLocalSendNextId {
     private var counter: Int = 0
@@ -4663,6 +4724,9 @@ private fun ThreadMessagesList(
     val threadRowProbeSessionMarker = remember(payload.sourceThreadId, payload.instanceId) {
         ThreadRowProbeNextSessionId.value()
     }
+    val firstViewportProbe = remember(payload.sourceThreadId, payload.instanceId) {
+        ThreadFirstViewportProbe(threadRowProbeSessionMarker)
+    }
     var actionMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
@@ -4709,10 +4773,30 @@ private fun ThreadMessagesList(
             val stats = listState.threadLazyWindowStats(payload, lazyItemCount)
             if (stats.visibleItems > 0) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "laid_out"))
+                if (firstViewportProbe.markLogged()) {
+                    diagnosticsLogger(
+                        firstViewportProbe.toDiagnosticsString(
+                            result = "laid_out",
+                            payload = payload,
+                            lazyItemCount = lazyItemCount,
+                            stats = stats
+                        )
+                    )
+                }
                 return@LaunchedEffect
             }
             if (attempt >= ThreadBottomAnchorMinimumAttempts) {
                 diagnosticsLogger(stats.toDiagnosticsString(result = "missing_layout"))
+                if (firstViewportProbe.markLogged()) {
+                    diagnosticsLogger(
+                        firstViewportProbe.toDiagnosticsString(
+                            result = "missing_layout",
+                            payload = payload,
+                            lazyItemCount = lazyItemCount,
+                            stats = stats
+                        )
+                    )
+                }
             }
             delay(ThreadLayoutStabilityFrameDelayMs)
         }
@@ -4910,6 +4994,9 @@ private fun ThreadMessagesList(
             }
             items(payload.messages.size, key = { payload.messages[it].messageListItemKey() }) { index ->
                 val message = payload.messages[index]
+                SideEffect {
+                    firstViewportProbe.recordComposedMessage(message.id, index)
+                }
                 val messagePerformanceKey = threadMessagePerformanceKey(message.id, index)
                 val isSystemMessage = remember(message.messageType) { message.isSystemMessage() }
                 val actionCardSignature =
@@ -4961,72 +5048,78 @@ private fun ThreadMessagesList(
                             }
                     }
                 val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
-                if (isSystemMessage && actionCard == null) {
-                    ThreadSystemMessageRow(
-                        message = displayMessage,
-                        highlightedMentions = highlightedMentions,
-                        showReplyAction = payload.showReplyActions,
-                        timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                        resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                        resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                        taskOpenEnabled = payload.showTaskOpenActions,
-                        taskStatusActionsEnabled = payload.showTaskStatusActions,
-                        onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
-                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                        onOpenTaskStatusMenu = { anchor ->
-                            taskStatusMenuMessageId = message.id
-                            taskStatusMenuAnchor = anchor
-                        },
-                        onOpenMarkdownTag = onOpenMarkdownTag,
-                        onOpenMarkdownUrl = onOpenMarkdownUrl
-                    )
-                } else {
-                    ThreadMessageCard(
-                        message = displayMessage,
-                        actionCard = actionCard,
-                        messageIndex = index,
-                        diagnosticsLogger = diagnosticsLogger,
-                        highlightedMentions = highlightedMentions,
-                        alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
-                        showReplyAction = payload.showReplyActions,
-                        resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                        resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                        taskOpenEnabled = payload.showTaskOpenActions,
-                        taskStatusActionsEnabled = payload.showTaskStatusActions,
-                        onShowActions = { anchor ->
-                            if (!message.hasLocalSendState()) {
-                                actionMenuAnchor = anchor
-                                actionMessageId = message.id
-                                diagnosticsLogger(
-                                    "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                                )
-                            }
-                        },
-                        onOpenMember = { onThreadEvent("openMember", it, null, null) },
-                        onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
-                        onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                        onOpenTaskStatusMenu = { anchor ->
-                            taskStatusMenuMessageId = message.id
-                            taskStatusMenuAnchor = anchor
-                        },
-                        onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
-                        onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
-                        onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
-                        timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                        onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
-                        attachmentCommentsEnabled = attachmentCommentsEnabled,
-                        onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
-                        onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
-                        attachmentOpenStates = attachmentOpenStates,
-                        pendingActionCardIds = pendingActionCardIds,
-                        onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
-                        currentServerSlug = currentServerSlug,
-                        quotedPreviewState = displayMessage.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates),
-                        onEnsureQuotedPreview = onEnsureQuotedPreview,
-                        onOpenQuotedPermalink = onOpenQuotedPermalink,
-                        onOpenMarkdownTag = onOpenMarkdownTag,
-                        onOpenMarkdownUrl = onOpenMarkdownUrl
-                    )
+                Box(
+                    modifier = Modifier.onGloballyPositioned {
+                        firstViewportProbe.recordPlacedMessage(message.id, index)
+                    }
+                ) {
+                    if (isSystemMessage && actionCard == null) {
+                        ThreadSystemMessageRow(
+                            message = displayMessage,
+                            highlightedMentions = highlightedMentions,
+                            showReplyAction = payload.showReplyActions,
+                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                            resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            taskOpenEnabled = payload.showTaskOpenActions,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onOpenTaskStatusMenu = { anchor ->
+                                taskStatusMenuMessageId = message.id
+                                taskStatusMenuAnchor = anchor
+                            },
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                        )
+                    } else {
+                        ThreadMessageCard(
+                            message = displayMessage,
+                            actionCard = actionCard,
+                            messageIndex = index,
+                            diagnosticsLogger = diagnosticsLogger,
+                            highlightedMentions = highlightedMentions,
+                            alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
+                            showReplyAction = payload.showReplyActions,
+                            resolvedTaskAssigneeName = linkedTaskAssigneeName,
+                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            taskOpenEnabled = payload.showTaskOpenActions,
+                            taskStatusActionsEnabled = payload.showTaskStatusActions,
+                            onShowActions = { anchor ->
+                                if (!message.hasLocalSendState()) {
+                                    actionMenuAnchor = anchor
+                                    actionMessageId = message.id
+                                    diagnosticsLogger(
+                                        "thread_message_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                                    )
+                                }
+                            },
+                            onOpenMember = { onThreadEvent("openMember", it, null, null) },
+                            onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
+                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
+                            onOpenTaskStatusMenu = { anchor ->
+                                taskStatusMenuMessageId = message.id
+                                taskStatusMenuAnchor = anchor
+                            },
+                            onToggleReaction = { emoji -> onThreadEvent("toggleReaction", message.id, null, emoji) },
+                            onToggleSaved = { onThreadEvent("toggleMessageSaved", message.id, null, null) },
+                            onOpenCommentHost = { onThreadEvent("openCommentHost", message.id, null, null) },
+                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
+                            onOpenAttachment = { onThreadEvent("openAttachment", null, it, null) },
+                            attachmentCommentsEnabled = attachmentCommentsEnabled,
+                            onOpenAttachmentComments = { onThreadEvent("openAttachmentComments", message.id, it, null) },
+                            onRetryLocalSend = { onThreadEvent("retryLocalSend", message.id, null, null) },
+                            attachmentOpenStates = attachmentOpenStates,
+                            pendingActionCardIds = pendingActionCardIds,
+                            onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
+                            currentServerSlug = currentServerSlug,
+                            quotedPreviewState = displayMessage.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates),
+                            onEnsureQuotedPreview = onEnsureQuotedPreview,
+                            onOpenQuotedPermalink = onOpenQuotedPermalink,
+                            onOpenMarkdownTag = onOpenMarkdownTag,
+                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                        )
+                    }
                 }
             }
             if (payload.canLoadMoreAfter) {
