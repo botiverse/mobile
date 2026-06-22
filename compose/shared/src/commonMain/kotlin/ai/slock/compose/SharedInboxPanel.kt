@@ -46,6 +46,8 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.ExperimentalLayoutApi
+import com.tencent.kuikly.compose.foundation.layout.FlowRow
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -527,11 +529,12 @@ private fun SharedActivityRow(
 }
 
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 private fun SharedActivityFooter(item: InboxItem) {
-    Row(
-        modifier = Modifier.padding(top = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (item.taskNumber != null && item.taskStatus != null) {
             SharedActivityTaskBadge(item)
