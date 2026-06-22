@@ -3763,35 +3763,15 @@ private fun SettingsPushStatusCard(
             onValueSelected = { onNotificationPreferenceChange(it == "enabled") },
             enabled = snapshot.pushNotifications.available && !preferenceBusy
         )
-        SettingsFormDetailText("Current status: ${actionState.statusFor(MOBILE_ACTION_NOTIFICATION_PREFERENCE, snapshot.pushNotifications.statusLabel)}")
         SettingsFormDivider()
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SlockBrutalActionButton(
-                label = actionState.statusFor(MOBILE_ACTION_PERMISSION, "Enable"),
-                onClick = onPermission,
-                enabled = snapshot.notificationPermission.available && actionState?.inProgress != true,
-                leadingIcon = SlockLucideIconName.Bell,
-                backgroundColor = SlockColor.BrandYellow,
-                minWidth = 0.dp
-            )
-            SlockBrutalActionButton(
-                label = actionState.statusFor(MOBILE_ACTION_SETTINGS, "Settings"),
-                onClick = onSettings,
-                enabled = snapshot.notificationSettings.available && actionState?.inProgress != true,
-                leadingIcon = SlockLucideIconName.Settings,
-                backgroundColor = SlockColor.SurfaceWhite,
-                minWidth = 0.dp
-            )
-            SlockBrutalActionButton(
-                label = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, "Test"),
-                onClick = onTest,
-                enabled = snapshot.testNotification.available && actionState?.inProgress != true,
-                leadingIcon = SlockLucideIconName.Send,
-                backgroundColor = SlockColor.AccentPink,
-                minWidth = 0.dp
-            )
-        }
-        if (actionState?.let { it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_PERMISSION, MOBILE_ACTION_SETTINGS, MOBILE_ACTION_TEST_NOTIFICATION) && it.errorCode != null } == true) {
+        SlockBrutalActionButton(
+            label = actionState.statusFor(MOBILE_ACTION_SETTINGS, "Manage notifications"),
+            onClick = onSettings,
+            enabled = snapshot.notificationSettings.available && actionState?.inProgress != true,
+            leadingIcon = SlockLucideIconName.Settings,
+            backgroundColor = SlockColor.SurfaceWhite
+        )
+        if (actionState?.let { it.action in setOf(MOBILE_ACTION_NOTIFICATION_PREFERENCE, MOBILE_ACTION_SETTINGS) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
