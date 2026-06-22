@@ -773,6 +773,8 @@ private data class ThreadAttachmentMarkdownLoadResult(
     val error: String? = null
 )
 
+private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
+
 private data class ThreadAttachmentCommentsDialogState(
     val attachment: KuiklyThreadAttachmentItem,
     val parentMessage: KuiklyThreadMessageItem,
@@ -3924,13 +3926,8 @@ private fun ThreadImagePreviewOverlay(
                 )
             },
             trailingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ExternalLink,
-                    enabled = displayUrl != null,
-                    onClick = { onOpenExternally(current) },
-                    size = 30.dp,
-                    shadowOffset = 2.dp,
-                    disabledAlpha = 0.42f
+                ThreadAttachmentPreviewMoreMenuButton(
+                    onOpenWithSystem = { onOpenExternally(current) }
                 )
             }
         )
@@ -4035,19 +4032,48 @@ private fun ThreadImagePreviewOverlay(
 }
 
 @Composable
-private fun ThreadImagePreviewIconButton(
-    icon: SlockLucideIconName,
-    enabled: Boolean = true,
-    onClick: () -> Unit
+private fun ThreadAttachmentPreviewMoreMenuButton(
+    isOpening: Boolean = false,
+    onOpenWithSystem: () -> Unit
 ) {
-    SlockBrutalIconButton(
-        iconName = icon,
-        onClick = onClick,
-        enabled = enabled,
-        size = 36.dp,
-        shadowOffset = 3.dp,
-        disabledAlpha = 0.42f
-    )
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box {
+        SlockBrutalIconButton(
+            iconName = SlockLucideIconName.Ellipsis,
+            onClick = { menuOpen = true },
+            size = 30.dp,
+            shadowOffset = 2.dp,
+            modifier = Modifier.onGloballyPositioned { coordinates ->
+                val pos = coordinates.positionInRoot()
+                menuAnchor = Offset(
+                    x = pos.x + coordinates.size.width.toFloat() / 2f,
+                    y = pos.y + coordinates.size.height.toFloat() / 2f
+                )
+            }
+        )
+        if (menuOpen) {
+            SlockBrutalDropdownMenu(
+                anchor = menuAnchor,
+                items =
+                    listOf(
+                        SlockBrutalDropdownMenuItem(
+                            id = ThreadAttachmentPreviewOpenWithActionId,
+                            label = if (isOpening) "Preparing..." else "Open with...",
+                            icon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink,
+                            enabled = !isOpening
+                        )
+                    ),
+                onSelect = { id ->
+                    if (id == ThreadAttachmentPreviewOpenWithActionId) {
+                        onOpenWithSystem()
+                    }
+                },
+                onDismiss = { menuOpen = false },
+                widthDp = 180f
+            )
+        }
+    }
 }
 
 @Composable
@@ -4209,6 +4235,12 @@ private fun ThreadAttachmentNoPreviewOverlay(
                     size = 30.dp,
                     shadowOffset = 2.dp
                 )
+            },
+            trailingContent = {
+                ThreadAttachmentPreviewMoreMenuButton(
+                    isOpening = isOpening,
+                    onOpenWithSystem = onOpenWithSystem
+                )
             }
         )
         Column(
@@ -4229,14 +4261,6 @@ private fun ThreadAttachmentNoPreviewOverlay(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            SlockBrutalActionButton(
-                label = if (isOpening) "Preparing..." else "Open with...",
-                onClick = onOpenWithSystem,
-                enabled = !isOpening,
-                backgroundColor = SlockColor.BrandYellow,
-                minWidth = 180.dp,
-                leadingIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink
-            )
         }
     }
 }
