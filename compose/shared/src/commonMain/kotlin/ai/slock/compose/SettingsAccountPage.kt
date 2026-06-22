@@ -626,7 +626,7 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                         backgroundColor = SlockColor.SurfaceWhite,
                         minWidth = 0.dp,
                         minHeight = 44.dp,
-                        shadowOffset = 2.dp
+                        shadowOffset = 0.dp
                     )
                     SlockBrutalActionButton(
                         label = payload.logoutConfirmLabel,
@@ -635,7 +635,7 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                         backgroundColor = SlockColor.AccentRed,
                         minWidth = 0.dp,
                         minHeight = 44.dp,
-                        shadowOffset = 2.dp,
+                        shadowOffset = 0.dp,
                         textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
                     )
                 }
@@ -647,7 +647,7 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                     backgroundColor = SlockColor.AccentRed,
                     minWidth = 0.dp,
                     minHeight = 48.dp,
-                    shadowOffset = 3.dp,
+                    shadowOffset = 0.dp,
                     textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
                 )
             }
