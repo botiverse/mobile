@@ -28,7 +28,7 @@ import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -38,12 +38,14 @@ internal data class SlockBaseMenuItem(
     val icon: SlockLucideIconName? = null
 )
 
-private val SlockBaseMenuWidth = 136.dp
+private val SlockBaseMenuMinWidth = 136.dp
+private val SlockBaseMenuMaxWidth = 280.dp
 private val SlockBaseMenuRowHeight = 34.dp
 private val SlockBaseMenuShadowOffset = 4.dp
 private val SlockBaseMenuHorizontalOffset = (-8).dp
 private val SlockBaseMenuVerticalOffset = 8.dp
 private val SlockBaseMenuViewportGap = 8.dp
+private const val SlockBaseMenuChromeWidthValue = 84
 
 @Composable
 internal fun SlockBaseMenuOverlay(
@@ -66,9 +68,10 @@ internal fun SlockBaseMenuOverlay(
     if (items.isEmpty()) return
     val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else SlockBaseMenuShadowOffset
+    val menuWidth = slockBaseMenuWidth(items, uppercaseLabels)
     val menuSize = with(density) {
         Size(
-            width = (SlockBaseMenuWidth + shadowOffset).toPx(),
+            width = (menuWidth + shadowOffset).toPx(),
             height = SlockBaseMenuRowHeight.toPx() * items.size + shadowOffset.toPx()
         )
     }
@@ -100,7 +103,7 @@ internal fun SlockBaseMenuOverlay(
             }
             Column(
                 modifier = Modifier
-                    .width(SlockBaseMenuWidth)
+                    .width(menuWidth)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, surfaceBorderColor)
                     .slockFloatingContentClickTarget()
@@ -118,6 +121,17 @@ internal fun SlockBaseMenuOverlay(
             }
         }
     }
+}
+
+private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: Boolean): Dp {
+    val widestLabelWidth =
+        items.maxOfOrNull { item ->
+            val label = if (uppercaseLabels) item.label.uppercase() else item.label
+            label.sumOf { char -> if (char.code > 127) 14 else 8 }
+        } ?: 0
+    return (widestLabelWidth + SlockBaseMenuChromeWidthValue)
+        .coerceIn(SlockBaseMenuMinWidth.value.toInt(), SlockBaseMenuMaxWidth.value.toInt())
+        .dp
 }
 
 @Composable
@@ -155,7 +169,6 @@ private fun SlockBaseMenuRow(
                 ).withSlockFontWeight(FontWeight.SemiBold),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             item.icon?.let { icon ->
