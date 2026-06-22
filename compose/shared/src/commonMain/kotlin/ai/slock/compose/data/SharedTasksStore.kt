@@ -208,7 +208,6 @@ class SharedTasksViewModel(
                 else -> state.value.selectedFilter
             }
         val request = TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
-        observeTasks(request, selectedFilter)
         val currentState = state.value
         val hasSnapshot = currentState.hasCompletedTasksSnapshot()
         val reason = intent.tasksRefreshReason()
@@ -218,7 +217,7 @@ class SharedTasksViewModel(
                 "snapshotAgeMs=${snapshotAgeMs ?: -1L} filter=${selectedFilter?.name.orEmpty()}"
         )
         val forceRefresh = intent == SharedTasksRouteIntent.Refresh
-        when (
+        val skipReason =
             tasksRefreshSkipReason(
                 inFlight = loadJob?.isActive == true,
                 hasSnapshot = hasSnapshot,
@@ -226,19 +225,18 @@ class SharedTasksViewModel(
                 staleWindowMs = staleWindowMs,
                 forceRefresh = forceRefresh
             )
-        ) {
+        if (intent == SharedTasksRouteIntent.Start && skipReason != null) {
+            logTasksRefreshSkip(reason, skipReason, hasSnapshot, snapshotAgeMs, selectedFilter)
+            return
+        }
+        observeTasks(request, selectedFilter)
+        when (skipReason) {
             TasksRefreshSkipReason.InFlight -> {
-                diagnosticsLogger(
-                    "tasks_refresh_skip reason=$reason skip=in_flight hasSnapshot=$hasSnapshot " +
-                        "filter=${selectedFilter?.name.orEmpty()}"
-                )
+                logTasksRefreshSkip(reason, skipReason, hasSnapshot, snapshotAgeMs, selectedFilter)
                 return
             }
             TasksRefreshSkipReason.FreshSnapshot -> {
-                diagnosticsLogger(
-                    "tasks_refresh_skip reason=$reason skip=fresh_snapshot hasSnapshot=true " +
-                        "snapshotAgeMs=$snapshotAgeMs filter=${selectedFilter?.name.orEmpty()}"
-                )
+                logTasksRefreshSkip(reason, skipReason, hasSnapshot, snapshotAgeMs, selectedFilter)
                 return
             }
             null -> Unit
@@ -295,6 +293,27 @@ class SharedTasksViewModel(
             diagnosticsLogger("tasks_refresh_result reason=$reason result=exception code=tasks_network")
             events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
+        }
+    }
+
+    private fun logTasksRefreshSkip(
+        reason: String,
+        skipReason: TasksRefreshSkipReason,
+        hasSnapshot: Boolean,
+        snapshotAgeMs: Long?,
+        selectedFilter: TaskStatus?
+    ) {
+        when (skipReason) {
+            TasksRefreshSkipReason.InFlight ->
+                diagnosticsLogger(
+                    "tasks_refresh_skip reason=$reason skip=in_flight hasSnapshot=$hasSnapshot " +
+                        "filter=${selectedFilter?.name.orEmpty()}"
+                )
+            TasksRefreshSkipReason.FreshSnapshot ->
+                diagnosticsLogger(
+                    "tasks_refresh_skip reason=$reason skip=fresh_snapshot hasSnapshot=true " +
+                        "snapshotAgeMs=$snapshotAgeMs filter=${selectedFilter?.name.orEmpty()}"
+                )
         }
     }
 

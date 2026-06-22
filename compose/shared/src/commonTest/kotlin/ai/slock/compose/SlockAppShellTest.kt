@@ -82,6 +82,33 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun warmPrimaryAppShellComposedTabsKeepsVisitedTasksWarm() {
+        assertEquals(
+            listOf("home", "tasks"),
+            warmPrimaryAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("tasks", "home"),
+            warmPrimaryAppShellComposedTabs("home", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("home", "tasks", "settings"),
+            warmPrimaryAppShellComposedTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
+        )
+        assertEquals(
+            listOf("tasks", "home"),
+            warmPrimaryAppShellComposedTabs("thread", mountedTabs = setOf("home", "tasks"))
+        )
+    }
+
+    @Test
+    fun retainedAppShellInactivePaneKeepsFullLayoutOnlyForHome() {
+        assertEquals(true, retainedAppShellInactivePaneKeepsLayout("home"))
+        assertEquals(false, retainedAppShellInactivePaneKeepsLayout("tasks"))
+        assertEquals(false, retainedAppShellInactivePaneKeepsLayout("settings"))
+    }
+
+    @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("thread"))
     }

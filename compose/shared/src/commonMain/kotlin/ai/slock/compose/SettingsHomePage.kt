@@ -784,8 +784,20 @@ internal fun homeWarmAppShellComposedTabs(selectedTab: String, mountedTabs: Set<
     }
 }
 
+internal fun warmPrimaryAppShellComposedTabs(selectedTab: String, mountedTabs: Set<String>): List<String> {
+    val activeTab = retainedAppShellSelectedTab(selectedTab)
+    return retainedAppShellTabOrder(activeTab).filter { tab ->
+        tab == activeTab ||
+            (tab == "home" && "home" in mountedTabs) ||
+            (tab == "tasks" && "tasks" in mountedTabs)
+    }
+}
+
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
+
+internal fun retainedAppShellInactivePaneKeepsLayout(tab: String): Boolean =
+    retainedAppShellSelectedTab(tab) == "home"
 
 internal fun appShellBottomTabPerformanceRoute(tab: String): String =
     when (retainedAppShellSelectedTab(tab)) {
@@ -849,9 +861,12 @@ private fun RetainedAppShellTabs(
 ) {
     val activeTab = retainedAppShellSelectedTab(selectedTab)
     Box(modifier = Modifier.fillMaxSize()) {
-        homeWarmAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
+        warmPrimaryAppShellComposedTabs(activeTab, mountedTabs).forEach { tab ->
             key("retained-$tab") {
-                RetainedAppShellTabPane(active = tab == activeTab) {
+                RetainedAppShellTabPane(
+                    active = tab == activeTab,
+                    keepLayoutWhenInactive = retainedAppShellInactivePaneKeepsLayout(tab)
+                ) {
                     content(tab, tab == activeTab)
                 }
             }
@@ -862,10 +877,11 @@ private fun RetainedAppShellTabs(
 @Composable
 private fun RetainedAppShellTabPane(
     active: Boolean,
+    keepLayoutWhenInactive: Boolean,
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier = retainedAppShellPaneModifier(active)
+        modifier = retainedAppShellPaneModifier(active, keepLayoutWhenInactive)
     ) {
         content()
     }
@@ -877,15 +893,20 @@ private fun RetainedAppShellRoutePane(
     content: @Composable () -> Unit
 ) {
     Box(
-        modifier = retainedAppShellPaneModifier(active)
+        modifier = retainedAppShellPaneModifier(active, keepLayoutWhenInactive = true)
     ) {
         content()
     }
 }
 
-private fun retainedAppShellPaneModifier(active: Boolean): Modifier =
+private fun retainedAppShellPaneModifier(active: Boolean, keepLayoutWhenInactive: Boolean): Modifier =
     if (active) {
         Modifier.fillMaxSize().alpha(1f)
+    } else if (!keepLayoutWhenInactive) {
+        // Keep already-visited secondary tabs composed so their remember state
+        // and first-use class paths survive tab switches, but do not make Home
+        // pay full hidden-tree layout on every frame.
+        Modifier.size(0.dp).graphicsLayer(alpha = 0f)
     } else {
         // Keep the retained tab/route composed so remember/LazyListState survive
         // tab switches, but hide it via a layer transform instead of a layout
