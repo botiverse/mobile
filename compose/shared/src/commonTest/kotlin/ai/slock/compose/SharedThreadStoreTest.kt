@@ -151,6 +151,34 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentPatchKeepsLoadedMembersWhenNetworkPayloadOmitsMembers() {
+        val loadedMember = KuiklyThreadMemberItem(id = "u1", displayName = "Artin")
+        val loadedCandidate = KuiklyThreadMemberItem(id = "agent-1", displayName = "Cindy", kind = "agent")
+        val current =
+            contentPayload("cached body").copy(
+                membersCount = 2,
+                members = listOf(loadedMember),
+                memberCandidates = listOf(loadedCandidate),
+                canAddMembers = false,
+                addMemberStatus = "submitting",
+                removeMemberStatus = "removing",
+                removingMemberId = "u1"
+            )
+        val networkPatch = contentPayload("network body")
+
+        val payload = current.withContentPatchFrom(networkPatch)
+
+        assertEquals("network body", payload.messages.single().body)
+        assertEquals(2, payload.membersCount)
+        assertEquals(listOf(loadedMember), payload.members)
+        assertEquals(listOf(loadedCandidate), payload.memberCandidates)
+        assertFalse(payload.canAddMembers)
+        assertEquals("submitting", payload.addMemberStatus)
+        assertEquals("removing", payload.removeMemberStatus)
+        assertEquals("u1", payload.removingMemberId)
+    }
+
+    @Test
     fun startUsesHomeHeaderForImmediateLoadingPayloadWhenTitleIsIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

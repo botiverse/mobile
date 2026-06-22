@@ -2952,6 +2952,10 @@ private fun List<String>.cleanActionCardIds(): List<String> =
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
+    val hasMembersPatch =
+        patch.membersCount > 0 ||
+            patch.members.isNotEmpty() ||
+            patch.memberCandidates.isNotEmpty()
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
         title = patch.title,
@@ -2980,15 +2984,15 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         canSend = patch.canSend,
         emptyTitle = patch.emptyTitle,
         emptyDetail = patch.emptyDetail,
-        membersCount = patch.membersCount,
-        members = patch.members,
-        memberCandidates = patch.memberCandidates,
-        canAddMembers = patch.canAddMembers,
-        addMemberStatus = patch.addMemberStatus,
-        addMemberErrorCode = patch.addMemberErrorCode,
-        removeMemberStatus = patch.removeMemberStatus,
-        removingMemberId = patch.removingMemberId,
-        removeMemberErrorCode = patch.removeMemberErrorCode,
+        membersCount = if (hasMembersPatch) patch.membersCount else membersCount,
+        members = if (hasMembersPatch) patch.members else members,
+        memberCandidates = if (hasMembersPatch) patch.memberCandidates else memberCandidates,
+        canAddMembers = if (hasMembersPatch) patch.canAddMembers else canAddMembers,
+        addMemberStatus = if (hasMembersPatch) patch.addMemberStatus else addMemberStatus,
+        addMemberErrorCode = if (hasMembersPatch) patch.addMemberErrorCode else addMemberErrorCode,
+        removeMemberStatus = if (hasMembersPatch) patch.removeMemberStatus else removeMemberStatus,
+        removingMemberId = if (hasMembersPatch) patch.removingMemberId else removingMemberId,
+        removeMemberErrorCode = if (hasMembersPatch) patch.removeMemberErrorCode else removeMemberErrorCode,
         settingsActions = patch.settingsActions,
         showMembersAction = patch.showMembersAction,
         showSettingsAction = patch.showSettingsAction,
