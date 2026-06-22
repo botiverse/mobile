@@ -26,6 +26,11 @@ import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.SharedAgentDetailActions
+import ai.slock.compose.data.SharedAgentDetailIntent
+import ai.slock.compose.data.SharedAgentDetailLoadStatus
+import ai.slock.compose.data.SharedAgentDetailState
+import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SlockAgentsApiClient
@@ -147,6 +152,20 @@ private sealed interface MembersAgentDetailLoadState {
     data class Error(val code: String) : MembersAgentDetailLoadState
     data object Empty : MembersAgentDetailLoadState
 }
+
+private fun SharedAgentDetailState.toMembersAgentDetailLoadState(): MembersAgentDetailLoadState =
+    when (detailLoadStatus) {
+        SharedAgentDetailLoadStatus.Idle -> MembersAgentDetailLoadState.Idle
+        SharedAgentDetailLoadStatus.Loading -> detail?.let(MembersAgentDetailLoadState::Content)
+            ?: MembersAgentDetailLoadState.Loading
+        SharedAgentDetailLoadStatus.Content -> detail?.let(MembersAgentDetailLoadState::Content)
+            ?: MembersAgentDetailLoadState.Empty
+        SharedAgentDetailLoadStatus.NoPermission ->
+            MembersAgentDetailLoadState.NoPermission(detailErrorCode.orEmpty())
+        SharedAgentDetailLoadStatus.Error ->
+            MembersAgentDetailLoadState.Error(detailErrorCode.orEmpty())
+        SharedAgentDetailLoadStatus.Empty -> MembersAgentDetailLoadState.Empty
+    }
 
 private sealed interface MembersAgentWorkspaceTreeState {
     data object Idle : MembersAgentWorkspaceTreeState
@@ -774,10 +793,12 @@ private fun JSONObject.optNullableString(key: String): String? =
 @Composable
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
     onAddHuman: () -> Unit,
     onOpenDirectMessage: (MemberProfile) -> Unit,
     onCopyMemberId: (MemberProfile) -> Unit,
     onOpenUrl: (String) -> Unit = {},
+    agentDetailActions: SharedAgentDetailActions? = null,
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
     agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
@@ -825,31 +846,75 @@ internal fun MembersRouteContent(
     var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
     val timeContext = payload.toSlockTimeContext()
-    var agentDetailState by remember(selectedMember?.id?.value) {
+    val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
+    val effectiveAgentDetailStore = sharedAgentDetailStore ?: fallbackAgentDetailStore
+    val agentDetailStoreState by effectiveAgentDetailStore.state.collectAsState()
+    var localAgentDetailState by remember(selectedMember?.id?.value) {
         mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
     }
+    val storeBackedAgentDetail = sharedAgentDetailStore != null
+    val agentDetailState =
+        if (storeBackedAgentDetail) {
+            agentDetailStoreState.toMembersAgentDetailLoadState()
+        } else {
+            localAgentDetailState
+        }
     LaunchedEffect(selectedMemberId, selectedMember?.id?.value) {
         if (selectedMemberId != null && selectedMember == null) {
             selectedMemberId = null
         }
     }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey) {
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey, storeBackedAgentDetail) {
         val member = selectedMember
         if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
-            agentDetailState = MembersAgentDetailLoadState.Idle
+            if (storeBackedAgentDetail) {
+                effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+            } else {
+                localAgentDetailState = MembersAgentDetailLoadState.Idle
+            }
             return@LaunchedEffect
         }
-        if (agentDetailState !is MembersAgentDetailLoadState.Content) {
-            agentDetailState = MembersAgentDetailLoadState.Loading
+        if (storeBackedAgentDetail) {
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
+        } else if (localAgentDetailState !is MembersAgentDetailLoadState.Content) {
+            localAgentDetailState = MembersAgentDetailLoadState.Loading
         }
-        val nextState =
-            when (val result = agentDetailLoader(member.id)) {
-                is DataResult.Content -> MembersAgentDetailLoadState.Content(result.data)
-                is DataResult.Empty -> MembersAgentDetailLoadState.Empty
-                is DataResult.NoPermission -> MembersAgentDetailLoadState.NoPermission(result.blocker.code)
-                is DataResult.Error -> MembersAgentDetailLoadState.Error(result.error.code)
-            }
-        agentDetailState = nextState
+        when (val result = agentDetailLoader(member.id)) {
+            is DataResult.Content ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Content(result.data)
+                }
+            is DataResult.Empty ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Empty
+                }
+            is DataResult.NoPermission ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
+                    )
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.NoPermission(result.blocker.code)
+                }
+            is DataResult.Error ->
+                if (storeBackedAgentDetail) {
+                    effectiveAgentDetailStore.dispatch(
+                        SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
+                    )
+                } else {
+                    localAgentDetailState = MembersAgentDetailLoadState.Error(result.error.code)
+                }
+        }
+    }
+    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, storeBackedAgentDetail) {
+        if (storeBackedAgentDetail && (selectedMember == null || selectedMember.kind != MemberKind.Agent)) {
+            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+        }
     }
     SlockBackHandler(enabled = selectedMember != null) {
         selectedMemberId = null
@@ -864,6 +929,7 @@ internal fun MembersRouteContent(
             onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
             onCopyMemberId = { onCopyMemberId(selectedMember) },
             onOpenUrl = onOpenUrl,
+            agentDetailActions = agentDetailActions,
             onUpdateAgentProfile = onUpdateAgentProfile,
             onUploadAgentAvatar = onUploadAgentAvatar,
             onPickAgentAvatarFile = onPickAgentAvatarFile,
@@ -874,7 +940,8 @@ internal fun MembersRouteContent(
             onCopyAgentDiagnostics = onCopyAgentDiagnostics,
             onReportAgentIssue = onReportAgentIssue,
             onUnavailableAction = onUnavailableAction,
-            timeContext = timeContext
+            timeContext = timeContext,
+            sharedAgentDetailStore = sharedAgentDetailStore
         )
     } else {
         MembersListContent(
@@ -1155,6 +1222,7 @@ private fun MembersDetailContent(
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
     onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
@@ -1165,18 +1233,54 @@ private fun MembersDetailContent(
     onCopyAgentDiagnostics: (String) -> Unit,
     onReportAgentIssue: (suspend (String) -> Boolean)?,
     onUnavailableAction: (String) -> Unit,
-    timeContext: SlockTimeContext
+    timeContext: SlockTimeContext,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
     val canViewPrivate = member.kind == MemberKind.Agent && canViewPrivateAgentSurfaces(member, detail)
     val canManage = member.kind == MemberKind.Agent && !deleted && canManageAgent(member, detail)
     val scope = rememberCoroutineScope()
+    val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
+    val storeState by (sharedAgentDetailStore ?: fallbackAgentDetailStore).state.collectAsState()
     var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
-    var pendingConfirmation by remember(member.id.value) { mutableStateOf<MembersAgentLifecycleAction?>(null) }
+    var pendingConfirmation by remember(member.id.value) {
+        mutableStateOf<MembersAgentLifecycleAction?>(null)
+    }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
+    val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
+    val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
+    val lifecycleInFlight: String? = if (sharedAgentDetailStore != null) {
+        storeLifecycleInFlight
+    } else {
+        actionState?.takeIf { it.inProgress }?.action?.actionKey
+    }
+    val diagnosticInFlight: String? = if (sharedAgentDetailStore != null) {
+        storeDiagnosticInFlight
+    } else {
+        diagnosticActionState?.takeIf { it.inProgress }?.actionKey
+    }
+    val storePendingConfirmation: MembersAgentLifecycleAction? =
+        storeState.pendingConfirmation.takeIf { sharedAgentDetailStore != null }
+    val effectiveDiagnosticActionState =
+        if (sharedAgentDetailStore != null) {
+            storeState.diagnosticActionInFlight?.let {
+                MembersAgentDiagnosticActionState(actionKey = it, inProgress = true)
+            } ?: storeState.lastActionResult
+                ?.takeIf { it.actionKey == "copy" || it.actionKey == "report" }
+                ?.let {
+                    MembersAgentDiagnosticActionState(
+                        actionKey = it.actionKey,
+                        inProgress = false,
+                        errorCode = it.errorCode,
+                        successLabel = it.successLabel
+                    )
+                }
+        } else {
+            diagnosticActionState
+        }
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
     var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
@@ -1294,27 +1398,35 @@ private fun MembersDetailContent(
         }
     }
     fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
-        if (actionState?.inProgress == true) return
+        if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
-        if (!canManage || callback == null) {
+        if (!canManage || (agentDetailActions == null && callback == null)) {
             onUnavailableAction("Agent management is not available.")
             return
         }
         if (action.requiresConfirmation && !confirmed) {
-            pendingConfirmation = action
             actionState = null
+            if (sharedAgentDetailStore != null) {
+                sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.ShowConfirmation(action))
+            } else {
+                pendingConfirmation = action
+            }
             return
         }
         scope.launch {
             pendingConfirmation = null
             actionState = MembersAgentActionState(action, inProgress = true)
             val result =
-                try {
-                    callback(member.id, action)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions)
+                } else {
+                    try {
+                        requireNotNull(callback).invoke(member.id, action)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                    }
                 }
             val errorCode = result.membersLifecycleErrorCode(action)
             actionState =
@@ -1327,18 +1439,23 @@ private fun MembersDetailContent(
         }
     }
     fun copyDiagnostics() {
-        onCopyAgentDiagnostics(buildMembersAgentDiagnostics(member, detail))
-        diagnosticActionState =
-            MembersAgentDiagnosticActionState(
-                actionKey = "copy",
-                inProgress = false,
-                successLabel = "Diagnostics copied"
-            )
+        val diagnostics = buildMembersAgentDiagnostics(member, detail)
+        if (sharedAgentDetailStore != null && agentDetailActions != null) {
+            sharedAgentDetailStore.copyDiagnostics(diagnostics, agentDetailActions)
+        } else {
+            onCopyAgentDiagnostics(diagnostics)
+            diagnosticActionState =
+                MembersAgentDiagnosticActionState(
+                    actionKey = "copy",
+                    inProgress = false,
+                    successLabel = "Diagnostics copied"
+                )
+        }
     }
     fun reportIssue() {
         val callback = onReportAgentIssue
-        if (diagnosticActionState?.inProgress == true) return
-        if (callback == null) {
+        if (diagnosticInFlight != null) return
+        if (agentDetailActions == null && callback == null) {
             onUnavailableAction("Agent issue reporting is not available.")
             return
         }
@@ -1347,12 +1464,16 @@ private fun MembersDetailContent(
                 MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
             val diagnostics = buildMembersAgentDiagnostics(member, detail)
             val reported =
-                try {
-                    callback(diagnostics)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    false
+                if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                    sharedAgentDetailStore.reportIssue(diagnostics, agentDetailActions)
+                } else {
+                    try {
+                        requireNotNull(callback).invoke(diagnostics)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        false
+                    }
                 }
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(
@@ -1453,6 +1574,9 @@ private fun MembersDetailContent(
                                 member = member,
                                 detail = detail,
                                 canManage = canManage,
+                                sharedAgentDetailStore = sharedAgentDetailStore,
+                                storeState = storeState.takeIf { sharedAgentDetailStore != null },
+                                agentDetailActions = agentDetailActions,
                                 onUpdateAgentProfile = onUpdateAgentProfile,
                                 onUnavailableAction = onUnavailableAction,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
@@ -1499,7 +1623,7 @@ private fun MembersDetailContent(
                             MembersAgentActivityTab(
                                 member = member,
                                 detail = detail,
-                                diagnosticActionState = diagnosticActionState,
+                                diagnosticActionState = effectiveDiagnosticActionState,
                                 onCopyDiagnostics = { copyDiagnostics() },
                                 timeContext = timeContext,
                                 onOpenUrl = onOpenUrl,
@@ -1545,7 +1669,8 @@ private fun MembersDetailContent(
                 onDismiss = { showAvatarPicker = false }
             )
         }
-        val dropdownAnchor = managementMenuAnchor
+        val dropdownAnchor: Offset = managementMenuAnchor
+            ?: Offset(100f, 100f)
         if (managementMenuOpen && member.kind == MemberKind.Agent) {
             val menuSummary = detail?.summary
             val menuStatus = member.membersResolvedAgentStatus(menuSummary?.status, menuSummary?.activity)
@@ -1556,11 +1681,11 @@ private fun MembersDetailContent(
                 machineAssigned = menuMachineAssigned,
                 canManage = canManage,
                 deleted = deleted,
-                hasReportIssue = onReportAgentIssue != null,
-                inProgress = actionState?.inProgress == true || diagnosticActionState?.inProgress == true
+                hasReportIssue = agentDetailActions != null || onReportAgentIssue != null,
+                inProgress = lifecycleInFlight != null || diagnosticInFlight != null
             )
             SlockBrutalDropdownMenu(
-                anchor = dropdownAnchor ?: Offset(100f, 100f),
+                anchor = dropdownAnchor,
                 items = menuItems,
                 onSelect = { id ->
                     handleMembersManagementMenuSelection(
@@ -1571,27 +1696,39 @@ private fun MembersDetailContent(
                         reportIssue = { reportIssue() }
                     )
                 },
-                onDismiss = { managementMenuOpen = false }
+                onDismiss = {
+                    managementMenuOpen = false
+                }
             )
         }
-        pendingConfirmation?.let { action ->
+        val activePendingConfirmation =
+            if (sharedAgentDetailStore != null) storePendingConfirmation else pendingConfirmation
+        activePendingConfirmation?.let { action ->
             SlockBrutalModalLayer(
                 model = SlockModalShellModel(
                     title = "Confirm ${action.label}",
                     subtitle = "${action.label} ${member.displayName}. This uses the real agent management API."
                 ),
                 onDismiss = {
-                    pendingConfirmation = null
+                    if (sharedAgentDetailStore != null) {
+                        sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                    } else {
+                        pendingConfirmation = null
+                    }
                 }
             ) {
                 MembersLifecycleConfirmation(
                     action = action,
                     agentName = member.displayName,
-                    busy = actionState?.inProgress == true,
+                    busy = lifecycleInFlight == action.actionKey,
                     onConfirm = { runLifecycleAction(action, confirmed = true) },
                     onCancel = {
-                        pendingConfirmation = null
-                        actionState = null
+                        if (sharedAgentDetailStore != null) {
+                            sharedAgentDetailStore.dispatch(SharedAgentDetailIntent.DismissConfirmation)
+                        } else {
+                            pendingConfirmation = null
+                            actionState = null
+                        }
                     }
                 )
             }
@@ -2205,6 +2342,9 @@ private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
+    storeState: SharedAgentDetailState? = null,
+    agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUnavailableAction: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -2217,40 +2357,73 @@ private fun MembersAgentProfileTab(
     // Display Name: independent edit state machine, mirrors React `editingDisplayName`
     // (AgentDetailPanel.tsx ~L1073). Pencil icon toggles edit mode; inline Save/Cancel
     // dispatch the update; Enter submits, Escape cancels.
-    var editingDisplayName by remember(member.id.value) { mutableStateOf(false) }
-    var draftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
-    var savingDisplayName by remember(member.id.value) { mutableStateOf(false) }
-    var displayNameError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    val profileStore = sharedAgentDetailStore
+    val profileState = storeState
+    val storeBackedProfileEdit = profileStore != null && profileState != null
+    var localEditingDisplayName by remember(member.id.value) { mutableStateOf(false) }
+    var localDraftDisplayName by remember(member.id.value, member.displayName) { mutableStateOf(member.displayName) }
+    var localSavingDisplayName by remember(member.id.value) { mutableStateOf(false) }
+    var localDisplayNameError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    val editingDisplayName =
+        if (storeBackedProfileEdit) profileState.displayNameEditing else localEditingDisplayName
+    val draftDisplayName =
+        if (storeBackedProfileEdit) profileState.displayNameDraft ?: member.displayName else localDraftDisplayName
+    val savingDisplayName =
+        if (storeBackedProfileEdit) profileState.displayNameSaving else localSavingDisplayName
+    val displayNameError =
+        if (storeBackedProfileEdit) profileState.displayNameError else localDisplayNameError
 
     // Description: independent edit state machine, mirrors React `editingRole`
     // (~L1180). Same shape as display name but uses textarea + char counter.
-    var editingRole by remember(member.id.value) { mutableStateOf(false) }
-    var draftRole by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
-    var savingRole by remember(member.id.value) { mutableStateOf(false) }
-    var roleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    var localEditingRole by remember(member.id.value) { mutableStateOf(false) }
+    var localDraftRole by remember(member.id.value, member.description) { mutableStateOf(member.description.orEmpty()) }
+    var localSavingRole by remember(member.id.value) { mutableStateOf(false) }
+    var localRoleError by remember(member.id.value) { mutableStateOf<String?>(null) }
+    val editingRole =
+        if (storeBackedProfileEdit) profileState.roleEditing else localEditingRole
+    val draftRole =
+        if (storeBackedProfileEdit) profileState.roleDraft ?: member.description.orEmpty() else localDraftRole
+    val savingRole =
+        if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
+    val roleError =
+        if (storeBackedProfileEdit) profileState.roleError else localRoleError
 
     fun saveDisplayName() {
-        if (!canEdit || onUpdateAgentProfile == null || savingDisplayName) {
+        val callback = onUpdateAgentProfile
+        if (!canEdit || (agentDetailActions == null && callback == null) || savingDisplayName) {
             onUnavailableAction("Agent profile editing is not available.")
             return
         }
         val next = draftDisplayName.trim()
         if (next.isBlank()) {
-            displayNameError = "Display name is required"
+            if (storeBackedProfileEdit) {
+                profileStore.dispatch(
+                    SharedAgentDetailIntent.SetDisplayNameError("Display name is required")
+                )
+            } else {
+                localDisplayNameError = "Display name is required"
+            }
             return
         }
         scope.launch {
-            savingDisplayName = true
-            displayNameError = null
+            if (storeBackedProfileEdit) {
+                profileStore.dispatch(SharedAgentDetailIntent.StartSaveDisplayName(next))
+            } else {
+                localSavingDisplayName = true
+                localDisplayNameError = null
+            }
             val result =
                 try {
-                    onUpdateAgentProfile(
-                        AgentProfileUpdateRequest(
-                            agentId = member.id,
-                            displayName = next,
-                            description = member.description?.takeIf { it.isNotBlank() }
-                        )
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = next,
+                        description = member.description?.takeIf { it.isNotBlank() }
                     )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -2258,44 +2431,77 @@ private fun MembersAgentProfileTab(
                 }
             when (result) {
                 is DataResult.Content -> {
-                    editingDisplayName = false
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.FinishSaveDisplayName)
+                    } else {
+                        localEditingDisplayName = false
+                    }
                 }
                 is DataResult.Empty -> {
-                    editingDisplayName = false
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.FinishSaveDisplayName)
+                    } else {
+                        localEditingDisplayName = false
+                    }
                 }
                 is DataResult.NoPermission -> {
-                    displayNameError = "No permission: ${result.blocker.code}"
+                    val error = "No permission: ${result.blocker.code}"
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
+                    } else {
+                        localDisplayNameError = error
+                    }
                 }
                 is DataResult.Error -> {
-                    displayNameError = "Save failed: ${result.error.code}"
+                    val error = "Save failed: ${result.error.code}"
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.SetDisplayNameError(error))
+                    } else {
+                        localDisplayNameError = error
+                    }
                 }
             }
-            savingDisplayName = false
+            if (!storeBackedProfileEdit) {
+                localSavingDisplayName = false
+            }
         }
     }
 
     fun saveRole() {
-        if (!canEdit || onUpdateAgentProfile == null || savingRole) {
+        val callback = onUpdateAgentProfile
+        if (!canEdit || (agentDetailActions == null && callback == null) || savingRole) {
             onUnavailableAction("Agent profile editing is not available.")
             return
         }
         val next = draftRole.trim()
         if (next.length > MembersAgentProfileDescriptionMaxLength) {
-            roleError = "Description must be at most $MembersAgentProfileDescriptionMaxLength characters"
+            val error = "Description must be at most $MembersAgentProfileDescriptionMaxLength characters"
+            if (storeBackedProfileEdit) {
+                profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
+            } else {
+                localRoleError = error
+            }
             return
         }
         scope.launch {
-            savingRole = true
-            roleError = null
+            if (storeBackedProfileEdit) {
+                profileStore.dispatch(SharedAgentDetailIntent.StartSaveRole(next))
+            } else {
+                localSavingRole = true
+                localRoleError = null
+            }
             val result =
                 try {
-                    onUpdateAgentProfile(
-                        AgentProfileUpdateRequest(
-                            agentId = member.id,
-                            displayName = member.displayName,
-                            description = next.takeIf { it.isNotBlank() }
-                        )
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = member.displayName,
+                        description = next.takeIf { it.isNotBlank() }
                     )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -2303,19 +2509,39 @@ private fun MembersAgentProfileTab(
                 }
             when (result) {
                 is DataResult.Content -> {
-                    editingRole = false
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.FinishSaveRole)
+                    } else {
+                        localEditingRole = false
+                    }
                 }
                 is DataResult.Empty -> {
-                    editingRole = false
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.FinishSaveRole)
+                    } else {
+                        localEditingRole = false
+                    }
                 }
                 is DataResult.NoPermission -> {
-                    roleError = "No permission: ${result.blocker.code}"
+                    val error = "No permission: ${result.blocker.code}"
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
+                    } else {
+                        localRoleError = error
+                    }
                 }
                 is DataResult.Error -> {
-                    roleError = "Save failed: ${result.error.code}"
+                    val error = "Save failed: ${result.error.code}"
+                    if (storeBackedProfileEdit) {
+                        profileStore.dispatch(SharedAgentDetailIntent.SetRoleError(error))
+                    } else {
+                        localRoleError = error
+                    }
                 }
             }
-            savingRole = false
+            if (!storeBackedProfileEdit) {
+                localSavingRole = false
+            }
         }
     }
 
@@ -2351,9 +2577,15 @@ private fun MembersAgentProfileTab(
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.Pencil,
                         onClick = {
-                            draftDisplayName = member.displayName
-                            displayNameError = null
-                            editingDisplayName = true
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
+                                )
+                            } else {
+                                localDraftDisplayName = member.displayName
+                                localDisplayNameError = null
+                                localEditingDisplayName = true
+                            }
                         },
                         size = MembersActionSize
                     )
@@ -2369,8 +2601,14 @@ private fun MembersAgentProfileTab(
                         value = draftDisplayName,
                         placeholder = "Display name",
                         onValueChange = {
-                            draftDisplayName = it
-                            if (displayNameError != null) displayNameError = null
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateDisplayNameDraft(it)
+                                )
+                            } else {
+                                localDraftDisplayName = it
+                                if (localDisplayNameError != null) localDisplayNameError = null
+                            }
                         },
                         enabled = !savingDisplayName,
                         autoFocus = true
@@ -2385,9 +2623,15 @@ private fun MembersAgentProfileTab(
                         SlockBrutalActionButton(
                             label = "Cancel",
                             onClick = {
-                                draftDisplayName = member.displayName
-                                displayNameError = null
-                                editingDisplayName = false
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.CancelEditDisplayName
+                                    )
+                                } else {
+                                    localDraftDisplayName = member.displayName
+                                    localDisplayNameError = null
+                                    localEditingDisplayName = false
+                                }
                             },
                             enabled = !savingDisplayName,
                             backgroundColor = SlockColor.SurfaceWhite
@@ -2427,9 +2671,15 @@ private fun MembersAgentProfileTab(
                     SlockBrutalIconButton(
                         iconName = SlockLucideIconName.Pencil,
                         onClick = {
-                            draftRole = member.description.orEmpty()
-                            roleError = null
-                            editingRole = true
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
+                                )
+                            } else {
+                                localDraftRole = member.description.orEmpty()
+                                localRoleError = null
+                                localEditingRole = true
+                            }
                         },
                         size = MembersActionSize
                     )
@@ -2445,8 +2695,14 @@ private fun MembersAgentProfileTab(
                         value = draftRole,
                         placeholder = "Describe this agent",
                         onValueChange = {
-                            draftRole = it
-                            if (roleError != null) roleError = null
+                            if (storeBackedProfileEdit) {
+                                profileStore.dispatch(
+                                    SharedAgentDetailIntent.UpdateRoleDraft(it)
+                                )
+                            } else {
+                                localDraftRole = it
+                                if (localRoleError != null) localRoleError = null
+                            }
                         },
                         enabled = !savingRole,
                         autoFocus = true,
@@ -2467,9 +2723,15 @@ private fun MembersAgentProfileTab(
                         SlockBrutalActionButton(
                             label = "Cancel",
                             onClick = {
-                                draftRole = member.description.orEmpty()
-                                roleError = null
-                                editingRole = false
+                                if (storeBackedProfileEdit) {
+                                    profileStore.dispatch(
+                                        SharedAgentDetailIntent.CancelEditRole
+                                    )
+                                } else {
+                                    localDraftRole = member.description.orEmpty()
+                                    localRoleError = null
+                                    localEditingRole = false
+                                }
                             },
                             enabled = !savingRole,
                             backgroundColor = SlockColor.SurfaceWhite

@@ -134,6 +134,7 @@ import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.AgentLifecycleActionResult
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.KuiklySlockAuthTransport
 import ai.slock.compose.data.KuiklySlockNetworkClient
@@ -157,6 +158,8 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
+import ai.slock.compose.data.SharedAgentDetailActions
+import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
@@ -172,6 +175,7 @@ import ai.slock.compose.data.ACCOUNT_ACTION_PROFILE_SAVE
 import ai.slock.compose.data.ACCOUNT_ACTION_PROVIDER_CONNECT
 import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentMachineAssignmentRequest
+import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentResetRequest
 import ai.slock.compose.data.AttachmentUploadFile
@@ -8092,6 +8096,11 @@ private fun SharedMembersScreen(
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    val sharedAgentDetailStore = remember {
+        SharedAgentDetailStore(
+            logger = { message -> bridge.log("shared_members_screen $message") }
+        )
+    }
 
     LaunchedEffect(Unit) {
         state = SharedMembersUiState.Loading
@@ -8178,8 +8187,83 @@ private fun SharedMembersScreen(
                     is DataResult.NoPermission -> result
                 }
             }
+            val agentDetailActions =
+                remember(memberRepository, settingsCapabilities, bridge) {
+                    object : SharedAgentDetailActions {
+                        override suspend fun runLifecycleAction(
+                            agentId: MemberId,
+                            action: MembersAgentLifecycleAction
+                        ): DataResult<AgentLifecycleActionResult> {
+                            val result =
+                                when (action) {
+                                    MembersAgentLifecycleAction.Start ->
+                                        memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.Stop ->
+                                        memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.Restart,
+                                    MembersAgentLifecycleAction.ResetSession,
+                                    MembersAgentLifecycleAction.ResetFull ->
+                                        memberRepository.resetAgent(
+                                            DataRequestPriority.Foreground,
+                                            AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
+                                        )
+                                    MembersAgentLifecycleAction.Delete ->
+                                        memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.UnassignMachine ->
+                                        memberRepository.assignAgentMachine(
+                                            DataRequestPriority.Foreground,
+                                            AgentMachineAssignmentRequest(agentId, machineId = null)
+                                        )
+                                }
+                            if (result is DataResult.Content && result.data.success) {
+                                if (
+                                    action == MembersAgentLifecycleAction.ResetSession ||
+                                    action == MembersAgentLifecycleAction.ResetFull
+                                ) {
+                                    memberRepository.clearAgentActivityCache(agentId)
+                                }
+                                state = state.withMembersLifecycleResult(action, agentId)
+                                localAgentDetailRefreshKey += 1
+                            }
+                            return result
+                        }
+
+                        override fun copyDiagnostics(diagnostics: String) {
+                            bridge.copyToPasteboard(diagnostics)
+                            bridge.toast("Copied agent diagnostics")
+                        }
+
+                        override suspend fun reportIssue(diagnostics: String): Boolean {
+                            bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
+                            val ok = settingsCapabilities.sendFeedback()
+                            bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
+                            return ok
+                        }
+
+                        override suspend fun updateAgentProfile(
+                            request: AgentProfileUpdateRequest
+                        ): DataResult<MemberProfile> {
+                            val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+                            if (result is DataResult.Content) {
+                                state =
+                                    when (val latest = state) {
+                                        is SharedMembersUiState.Content ->
+                                            latest.copy(
+                                                members =
+                                                    latest.members.map { member ->
+                                                        if (member.id == result.data.id) result.data else member
+                                                    }
+                                            )
+                                        else -> latest
+                                    }
+                            }
+                            return result
+                        }
+                    }
+                }
             MembersRouteContent(
                 payload = membersPayload,
+                sharedAgentDetailStore = sharedAgentDetailStore,
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
                 onCopyMemberId = {
@@ -8187,27 +8271,11 @@ private fun SharedMembersScreen(
                     bridge.toast("Copied member id")
                 },
                 onOpenUrl = { bridge.openUrl(it) },
+                agentDetailActions = agentDetailActions,
                 agentDetailLoader = { agentId ->
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },
                 agentDetailRefreshKey = "$agentDetailRefreshKey:$localAgentDetailRefreshKey",
-                onUpdateAgentProfile = { request ->
-                    val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
-                    if (result is DataResult.Content) {
-                        state =
-                            when (val latest = state) {
-                                is SharedMembersUiState.Content ->
-                                    latest.copy(
-                                        members =
-                                            latest.members.map { member ->
-                                                if (member.id == result.data.id) result.data else member
-                                            }
-                                    )
-                                else -> latest
-                            }
-                    }
-                    result
-                },
                 onPickAgentAvatarFile = {
                     val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
                     val code = response?.optInt("code", 0) ?: 0
@@ -8242,40 +8310,6 @@ private fun SharedMembersScreen(
                     }
                     result
                 },
-                onAgentLifecycleAction = { agentId, action ->
-                    val result =
-                        when (action) {
-                            MembersAgentLifecycleAction.Start ->
-                                memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.Stop ->
-                                memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.Restart,
-                            MembersAgentLifecycleAction.ResetSession,
-                            MembersAgentLifecycleAction.ResetFull ->
-                                memberRepository.resetAgent(
-                                    DataRequestPriority.Foreground,
-                                    AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
-                                )
-                            MembersAgentLifecycleAction.Delete ->
-                                memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.UnassignMachine ->
-                                memberRepository.assignAgentMachine(
-                                    DataRequestPriority.Foreground,
-                                    AgentMachineAssignmentRequest(agentId, machineId = null)
-                                )
-                        }
-                    if (result is DataResult.Content && result.data.success) {
-                        if (
-                            action == MembersAgentLifecycleAction.ResetSession ||
-                            action == MembersAgentLifecycleAction.ResetFull
-                        ) {
-                            memberRepository.clearAgentActivityCache(agentId)
-                        }
-                        state = state.withMembersLifecycleResult(action, agentId)
-                        localAgentDetailRefreshKey += 1
-                    }
-                    result
-                },
                 agentWorkspaceTreeLoader = { agentId ->
                     memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
                 },
@@ -8284,16 +8318,6 @@ private fun SharedMembersScreen(
                 },
                 agentWorkspaceFileLoader = { agentId, path ->
                     memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, agentId, path)
-                },
-                onCopyAgentDiagnostics = { diagnostics ->
-                    bridge.copyToPasteboard(diagnostics)
-                    bridge.toast("Copied agent diagnostics")
-                },
-                onReportAgentIssue = { diagnostics ->
-                    bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
-                    val ok = settingsCapabilities.sendFeedback()
-                    bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
-                    ok
                 },
                 canViewPrivateAgentSurfaces = { _, detail ->
                     current.server.permissions.canManageSettings ||
