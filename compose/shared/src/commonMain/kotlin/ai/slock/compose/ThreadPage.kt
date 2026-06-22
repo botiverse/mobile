@@ -5955,7 +5955,7 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
 ): Int {
     if (itemSize <= 0 || viewportHeight <= 0) return 0
     val rawOffset = itemSize - viewportHeight
-    if (rawOffset >= 0) return rawOffset
+    if (rawOffset >= 0 || visibleItemCount < totalItemCount) return rawOffset
     return 0
 }
 

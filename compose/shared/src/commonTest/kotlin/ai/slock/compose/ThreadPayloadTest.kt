@@ -116,7 +116,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadBottomAnchorOffsetDoesNotOverscrollFullyMeasuredShortLists() {
+    fun threadBottomAnchorOffsetBottomAlignsShortLatestItemInLongLists() {
         assertEquals(
             0,
             threadLatestItemBottomAnchorScrollOffset(
@@ -127,7 +127,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            0,
+            -520,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 120,
                 viewportHeight = 640,
@@ -2284,12 +2284,12 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadListBoundsUseMeasuredItemsAndNeverNegativeBottomOffset() {
+    fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
         assertEquals(2, threadMessagesBeyondBoundsItemCount(80))
         assertEquals(
-            0,
+            -568,
             threadLatestItemBottomAnchorScrollOffset(
                 itemSize = 72,
                 viewportHeight = 640,
