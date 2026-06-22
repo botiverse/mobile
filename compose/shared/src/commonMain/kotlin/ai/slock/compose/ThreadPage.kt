@@ -4211,6 +4211,12 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
+    if (payload.status == "loading" && payload.originStatus == "none") {
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            ThreadStateMessage("Loading thread…", null)
+        }
+        return
+    }
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
