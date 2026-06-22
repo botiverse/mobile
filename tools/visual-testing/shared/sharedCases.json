@@ -2002,7 +2002,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing full Members landing screen: humans/agents groups, empty/loading/error, and invite/add flows."
+      "notes": "Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page."
     },
     {
       "id": "screens.members.agent-detail.permissions",
@@ -2038,7 +2038,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing agent detail Permissions tab true-screen parity."
+      "notes": "Pending: needs real Members route launch into the agent detail Permissions tab with seeded permission/scopes data. Do not activate through the component-only agent detail visual page."
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2074,7 +2074,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing agent detail Workspace tab true-screen parity: workspace tree and file preview states."
+      "notes": "Pending: needs real Members route launch into the Workspace tab with seeded workspace tree, loading/error, and file preview states. Do not activate through the component-only agent detail visual page."
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2110,7 +2110,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing agent detail Activity tab true-screen parity."
+      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Do not activate through the component-only agent detail visual page."
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -2118,7 +2118,6 @@
       "captureType": "component-fixture",
       "surface": "members",
       "category": "members",
-      "baselineStatus": "pending",
       "fixture": "fixtures/components.members.agent-lifecycle-actions.json",
       "viewport": {
         "width": 390,
@@ -2137,16 +2136,26 @@
       "capture": {
         "selector": "[data-visual-case='components.members.agent-lifecycle-actions']",
         "crop": "element",
-        "contract": "component-bounds"
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "button[title='More actions']"
+          },
+          {
+            "type": "wait",
+            "ms": 120
+          }
+        ]
       },
-      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+      "androidCaseHint": "compose_members_agent_detail_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing component fixture for agent lifecycle actions/menu/modal states."
+      "notes": "Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent lifecycle confirmation modal. The KMP fixture opens the restart confirmation with the same action in-flight so pending/disabled button states are visible."
     },
     {
       "id": "components.members.avatar-management",
@@ -2154,7 +2163,6 @@
       "captureType": "component-fixture",
       "surface": "members",
       "category": "members",
-      "baselineStatus": "pending",
       "fixture": "fixtures/components.members.avatar-management.json",
       "viewport": {
         "width": 390,
@@ -2173,16 +2181,26 @@
       "capture": {
         "selector": "[data-visual-case='components.members.avatar-management']",
         "crop": "element",
-        "contract": "component-bounds"
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "button[title='Change avatar']"
+          },
+          {
+            "type": "wait",
+            "ms": 120
+          }
+        ]
       },
-      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/agent/AgentDetailPanel.tsx",
+      "androidCaseHint": "compose_members_agent_detail_visual",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing component fixture for avatar picker/management menu states."
+      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentAvatarPicker unified dialog, covering current avatar, generated/default choices, upload action, and active selection states."
     },
     {
       "id": "screens.settings.computers",
@@ -4677,21 +4695,21 @@
       "category": "members",
       "group": "screens-members",
       "status": "pending",
-      "notes": "Missing full Members landing screen: humans/agents groups, empty/loading/error, and invite/add flows.",
+      "notes": "Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/MembersPage.tsx",
           "fixture": "fixtures/screens.members.index.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React route/provider fixture that renders the real Members page with seeded server members, agents, invite/add states, and loading/empty/error coverage."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Needs real Android MEMBERS_PAGE route launch with seeded Members store data; the component visual page is not sufficient for a full-screen route case."
         },
         {
           "id": "harmony",
@@ -4710,27 +4728,27 @@
       "category": "members",
       "group": "screens-members",
       "status": "pending",
-      "notes": "Missing agent detail Permissions tab true-screen parity.",
+      "notes": "Pending: needs real Members route launch into the agent detail Permissions tab with seeded permission/scopes data. Do not activate through the component-only agent detail visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/MembersPage.tsx",
           "fixture": "fixtures/screens.members.agent-detail.permissions.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Permissions tab with seeded permission/scopes data."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs real Android MEMBERS_PAGE route launch into the Permissions tab with seeded permission/scopes data; component fixture capture is not sufficient."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -4743,27 +4761,27 @@
       "category": "members",
       "group": "screens-members",
       "status": "pending",
-      "notes": "Missing agent detail Workspace tab true-screen parity: workspace tree and file preview states.",
+      "notes": "Pending: needs real Members route launch into the Workspace tab with seeded workspace tree, loading/error, and file preview states. Do not activate through the component-only agent detail visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/MembersPage.tsx",
           "fixture": "fixtures/screens.members.agent-detail.workspace.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Workspace tab with seeded workspace tree and preview data."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs real Android MEMBERS_PAGE route launch into the Workspace tab with seeded workspace tree/loading/error/preview states; component fixture capture is not sufficient."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -4776,27 +4794,27 @@
       "category": "members",
       "group": "screens-members",
       "status": "pending",
-      "notes": "Missing agent detail Activity tab true-screen parity.",
+      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Do not activate through the component-only agent detail visual page.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/MembersPage.tsx",
           "fixture": "fixtures/screens.members.agent-detail.activity.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Activity tab with seeded diagnostics/activity rows."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs real Android MEMBERS_PAGE route launch into the Activity tab with seeded diagnostics/activity rows; component fixture capture is not sufficient."
         },
         {
           "id": "harmony",
           "status": "pending",
           "source": "ohos-real-screen",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
           "reason": "Needs Harmony provider capture after React and Android contracts are defined."
         }
       ]
@@ -4808,22 +4826,31 @@
       "surface": "members",
       "category": "members",
       "group": "components-members",
-      "status": "pending",
-      "notes": "Missing component fixture for agent lifecycle actions/menu/modal states.",
+      "status": "baseline",
+      "notes": "Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent lifecycle confirmation modal. The KMP fixture opens the restart confirmation with the same action in-flight so pending/disabled button states are visible.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/pages/MembersPage.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
           "fixture": "fixtures/components.members.agent-lifecycle-actions.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "components": [
+            "AgentDetailPanel",
+            "AgentDetailHeader",
+            "AgentStartStopButton"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
-          "reason": "Needs Android/KMP component fixture capture."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentLifecycleActions",
+          "components": [
+            "MembersDetailContent",
+            "MembersLifecycleConfirmation",
+            "SlockBrutalModalLayer"
+          ]
         },
         {
           "id": "harmony",
@@ -4841,22 +4868,31 @@
       "surface": "members",
       "category": "members",
       "group": "components-members",
-      "status": "pending",
-      "notes": "Missing component fixture for avatar picker/management menu states.",
+      "status": "baseline",
+      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentAvatarPicker unified dialog, covering current avatar, generated/default choices, upload action, and active selection states.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/pages/MembersPage.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/agent/AgentDetailPanel.tsx",
           "fixture": "fixtures/components.members.avatar-management.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "components": [
+            "AgentDetailPanel",
+            "AvatarSlot",
+            "PixelAvatar"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "kmp-shared",
-          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersAgentProfileTab.kt",
-          "reason": "Needs Android/KMP component fixture capture."
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAvatarManagement",
+          "components": [
+            "MembersDetailContent",
+            "MembersAgentAvatarPicker",
+            "MembersAvatar"
+          ]
         },
         {
           "id": "harmony",

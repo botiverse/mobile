@@ -245,6 +245,28 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentLifecycleActions() {
+        captureKmpComponentCase(
+            caseId = "components.members.agent-lifecycle-actions",
+            pageName = "compose_members_agent_detail_visual",
+            pageData = JSONObject().put("visualMode", "lifecycle_actions"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
+    fun captureMembersAvatarManagement() {
+        captureKmpComponentCase(
+            caseId = "components.members.avatar-management",
+            pageName = "compose_members_agent_detail_visual",
+            pageData = JSONObject().put("visualMode", "avatar_management"),
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 2_500
+        )
+    }
+
+    @Test
     fun captureChannelMembersPanel() {
         captureKmpComponentCase(
             caseId = "components.channel.members.panel",

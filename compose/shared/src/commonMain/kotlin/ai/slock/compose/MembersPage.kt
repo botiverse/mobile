@@ -453,6 +453,19 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     )
 )
 
+private enum class MembersAgentDetailVisualMode {
+    Profile,
+    LifecycleActions,
+    AvatarManagement
+}
+
+private fun String.toMembersAgentDetailVisualMode(): MembersAgentDetailVisualMode =
+    when (trim().lowercase()) {
+        "lifecycle_actions" -> MembersAgentDetailVisualMode.LifecycleActions
+        "avatar_management" -> MembersAgentDetailVisualMode.AvatarManagement
+        else -> MembersAgentDetailVisualMode.Profile
+    }
+
 @Composable
 internal fun MembersPageContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -684,6 +697,8 @@ internal fun MembersPageContent() {
 
 @Composable
 private fun MembersAgentDetailVisualContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val visualMode = pager.pageData.params.optString("visualMode").toMembersAgentDetailVisualMode()
     MembersDetailContent(
         member = membersAgentDetailVisualMember,
         agentDetailState = MembersAgentDetailLoadState.Content(membersAgentDetailVisualSnapshot),
@@ -715,7 +730,8 @@ private fun MembersAgentDetailVisualContent() {
             todayEpochDay = 20623,
             nowEpochMillis = 1781872200000,
             timeFormat = SlockTimeFormat24Hour
-        )
+        ),
+        initialVisualMode = visualMode
     )
 }
 
@@ -1237,7 +1253,8 @@ private fun MembersDetailContent(
     onReportAgentIssue: (suspend (String) -> Boolean)?,
     onUnavailableAction: (String) -> Unit,
     timeContext: SlockTimeContext,
-    sharedAgentDetailStore: SharedAgentDetailStore? = null
+    sharedAgentDetailStore: SharedAgentDetailStore? = null,
+    initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -1246,10 +1263,24 @@ private fun MembersDetailContent(
     val scope = rememberCoroutineScope()
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
     val storeState by (sharedAgentDetailStore ?: fallbackAgentDetailStore).state.collectAsState()
-    var actionState by remember(member.id.value) { mutableStateOf<MembersAgentActionState?>(null) }
+    var actionState by remember(member.id.value, initialVisualMode) {
+        mutableStateOf<MembersAgentActionState?>(
+            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
+                MembersAgentActionState(MembersAgentLifecycleAction.Restart, inProgress = true)
+            } else {
+                null
+            }
+        )
+    }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
-    var pendingConfirmation by remember(member.id.value) {
-        mutableStateOf<MembersAgentLifecycleAction?>(null)
+    var pendingConfirmation by remember(member.id.value, initialVisualMode) {
+        mutableStateOf<MembersAgentLifecycleAction?>(
+            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
+                MembersAgentLifecycleAction.Restart
+            } else {
+                null
+            }
+        )
     }
     var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
     var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
@@ -1285,7 +1316,9 @@ private fun MembersDetailContent(
             diagnosticActionState
         }
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
-    var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
+    var showAvatarPicker by remember(member.id.value, initialVisualMode) {
+        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.AvatarManagement)
+    }
     var workspaceTreeState by remember(member.id.value) {
         mutableStateOf<MembersAgentWorkspaceTreeState>(MembersAgentWorkspaceTreeState.Idle)
     }
@@ -1644,6 +1677,7 @@ private fun MembersDetailContent(
             }
             item { Spacer(Modifier.height(180.dp)) }
         }
+        }
         if (showAvatarPicker && canManage && !deleted) {
             MembersAgentAvatarPicker(
                 member = member,
@@ -1736,7 +1770,6 @@ private fun MembersDetailContent(
                 )
             }
         }
-    }
     }
 }
 
