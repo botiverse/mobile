@@ -1653,7 +1653,6 @@ internal fun SharedThreadRouteContent(
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
     onOpenParentThread: () -> Boolean = { false },
-    onOpenMemberProfile: (String) -> Unit = {},
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
     active: Boolean = true,
@@ -2798,9 +2797,6 @@ internal fun SharedThreadRouteContent(
                     if (!onOpenParentThread()) {
                         onBack()
                     }
-                }
-                action == "openMember" && !itemId.isNullOrBlank() -> {
-                    onOpenMemberProfile(itemId)
                 }
                 action == "toggleMessageSaved" && !itemId.isNullOrBlank() -> {
                     val previousSaved =
@@ -4791,8 +4787,6 @@ private fun ThreadPageContent(
         if (member != null) {
             activeMemberId = member.id
             activeModal = "memberDetail"
-        } else if (memberId.isNotBlank()) {
-            onThreadEvent("openMember", memberId, null, null)
         }
     }
     val knownMarkdownChannelNames =
@@ -4938,10 +4932,6 @@ private fun ThreadPageContent(
                         removeMemberErrorCode = payload.removeMemberErrorCode,
                         onDismiss = { activeModal = null },
                         onBack = { activeModal = "members" },
-                        onOpenProfile = {
-                            activeModal = null
-                            onThreadEvent("openMember", member.id, null, null)
-                        },
                         onRemoveMember = {
                             onThreadEvent("removeMember", member.id, null, null)
                         }
@@ -9281,7 +9271,6 @@ private fun ThreadMemberDetailModal(
     removeMemberErrorCode: String?,
     onDismiss: () -> Unit,
     onBack: () -> Unit,
-    onOpenProfile: () -> Unit,
     onRemoveMember: () -> Unit
 ) {
     val isRemoving = removeMemberStatus == "removing" && removingMemberId == member.id
@@ -9367,7 +9356,6 @@ private fun ThreadMemberDetailModal(
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockModalActionButton(label = "BACK", icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
-                SlockModalActionButton(label = "OPEN PROFILE", icon = SlockLucideIconName.User, onClick = onOpenProfile)
                 if (member.kind.equals("agent", ignoreCase = true) && member.canRemove) {
                     SlockModalActionButton(
                         label = if (isRemoving) "REMOVING" else "REMOVE AGENT",
