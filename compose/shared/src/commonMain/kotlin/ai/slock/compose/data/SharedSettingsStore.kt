@@ -539,6 +539,9 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission -> result
         }
 
+    suspend fun loadMobilePreferences(): DataResult<SettingsMobileSnapshot> =
+        DataResult.Content(localOnlyMobileSnapshot().withLocalMobilePreferences())
+
     suspend fun setNotificationPreference(enabled: Boolean): DataResult<SettingsMobileSnapshot> {
         val repository =
             notificationPreferenceRepository
@@ -583,7 +586,7 @@ class SharedSettingsDataSource(
                 it.storageKey == alignmentKey || it.name.equals(alignmentKey, ignoreCase = true)
             } ?: return DataResult.Error(ScreenError("settings_message_alignment_unknown", retryable = false))
         repository.selectMyMessageAlignment(alignment)
-        return loadMobile()
+        return loadMobilePreferences()
     }
 
     suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> =
@@ -723,6 +726,25 @@ class SharedSettingsDataSource(
                     )
         )
     }
+
+    private fun localOnlyMobileSnapshot(): SettingsMobileSnapshot =
+        SettingsMobileSnapshot(
+            pushNotifications =
+                SettingsMobileToggleSnapshot(
+                    enabled = false,
+                    available = false,
+                    statusLabel = "Moved",
+                    detail = "Notification controls are available from Settings > Notifications."
+                ),
+            muteServer =
+                SettingsMobileToggleSnapshot(
+                    enabled = false,
+                    available = false,
+                    statusLabel = "Moved",
+                    detail = "Workspace mute is available from Settings > Notifications."
+                ),
+            sendTestEnabled = false
+        )
 
     private suspend fun loadDiagnosticsSnapshot(
         feedback: String? = null
@@ -1217,7 +1239,7 @@ class SharedSettingsStore(
             SharedSettingsDestination.Notifications ->
                 dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Mobile ->
-                dataSource.loadMobile().applyToState(destination) { copy(mobile = it) }
+                dataSource.loadMobilePreferences().applyToState(destination) { copy(mobile = it) }
             SharedSettingsDestination.Storage -> loadStorage()
             SharedSettingsDestination.About ->
                 dataSource.loadAbout().applyToState(destination) { copy(about = it) }
@@ -1349,7 +1371,10 @@ class SharedSettingsStore(
                     SharedSettingsActionState(
                         action = action,
                         inProgress = false,
-                        errorCode = result.code.takeUnless { result.ok }
+                        errorCode =
+                            result.code.takeIf {
+                                result.status == SystemNotificationActionStatus.Error
+                            }
                     ),
                 effect = null
             )
@@ -1975,7 +2000,7 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
                 nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
                 nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
-                nav(SharedSettingsDestination.Mobile, "Mobile", "Device language and message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination)
             )

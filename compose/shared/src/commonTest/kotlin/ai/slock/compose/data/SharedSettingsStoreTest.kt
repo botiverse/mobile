@@ -569,7 +569,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobileLoadsLocalPreferencesThroughSharedStore() = runBlocking {
+    fun mobileLoadsMessageAlignmentWithoutServerSettingsFetch() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val repository = FakeSettingsRepository(mobileResult = DataResult.Content(mobileSnapshot()))
         val store =
@@ -589,11 +589,8 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Mobile))
 
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
-        assertEquals(true, mobile.pushNotifications.enabled)
-        assertEquals("Enabled", mobile.pushNotifications.statusLabel)
-        assertEquals("Simplified Chinese / 简体中文", mobile.localePreference.statusLabel)
         assertEquals("Right", mobile.messageAlignmentPreference.statusLabel)
-        assertEquals(listOf("mobile"), repository.calls)
+        assertEquals(emptyList<String>(), repository.calls)
         scope.cancel()
     }
 
@@ -719,7 +716,7 @@ class SharedSettingsStoreTest {
     }
 
     @Test
-    fun mobileNotificationActionCompletionStoresSuccessAndUnsupportedFeedback() = runBlocking {
+    fun mobileNotificationActionCompletionStoresActionableFeedbackWithoutGenericError() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
             SharedSettingsStore(
@@ -770,7 +767,26 @@ class SharedSettingsStoreTest {
         mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(false, mobile.testNotification.available)
         assertEquals("Unsupported", mobile.testNotification.statusLabel)
-        assertEquals("notification_unsupported", store.state.value.actionState?.errorCode)
+        assertNull(store.state.value.actionState?.errorCode)
+
+        store.accept(
+            SharedSettingsIntent.CompleteSystemNotificationAction(
+                MOBILE_ACTION_PERMISSION,
+                SystemNotificationActionResult(SystemNotificationActionStatus.NotificationsDisabled, code = "notifications_disabled")
+            )
+        )
+        mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
+        assertEquals("Disabled", mobile.notificationPermission.statusLabel)
+        assertEquals("System notifications are disabled for Raft.", mobile.notificationPermission.detail)
+        assertNull(store.state.value.actionState?.errorCode)
+
+        store.accept(
+            SharedSettingsIntent.CompleteSystemNotificationAction(
+                MOBILE_ACTION_TEST_NOTIFICATION,
+                SystemNotificationActionResult(SystemNotificationActionStatus.Error, code = "post_failed")
+            )
+        )
+        assertEquals("post_failed", store.state.value.actionState?.errorCode)
         scope.cancel()
     }
 

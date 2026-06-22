@@ -5979,7 +5979,7 @@ private fun appShellSettingsHomePayload(
                 SlockTabItemPayload(
                     key = SettingsDestinationMobile,
                     title = "Mobile",
-                    subtitle = "Device language and message alignment",
+                    subtitle = "My message alignment",
                     iconName = SlockLucideIconName.Smartphone,
                     selected = selectedDestination == SettingsDestinationMobile
                 ),
@@ -6756,76 +6756,19 @@ private fun ScreenLoadState<SettingsMobileSnapshot>.toMobilePayload(
         instanceId = "shared-shell-settings-mobile",
         title = "Mobile",
         heroIconName = SlockLucideIconName.Smartphone,
-        heroLabel = "Mobile preferences",
+        heroLabel = "Message alignment",
         detail =
             if (refreshing) {
                 "Refreshing mobile settings..."
             } else {
-                "Manage notifications and local preferences for this device."
+                "Choose how your own messages align in conversations."
             },
         sections =
             listOf(
                 KuiklySharedSettingsSection(
-                    title = "Notifications",
-                    rows =
-                        listOfNotNull(
-                            KuiklySharedSettingsRow(
-                                key = MOBILE_ACTION_NOTIFICATION_PREFERENCE,
-                                iconName = SlockLucideIconName.BellRing,
-                                title = "Notification preference",
-                                detail = mobile.pushNotifications.detail,
-                                value = (!mobile.pushNotifications.enabled).toString(),
-                                status = actionState.statusFor(MOBILE_ACTION_NOTIFICATION_PREFERENCE, mobile.pushNotifications.statusLabel),
-                                enabled = mobile.pushNotifications.available && actionState?.inProgress != true
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = MOBILE_ACTION_PERMISSION,
-                                iconName = SlockLucideIconName.Bell,
-                                title = "Push permission",
-                                detail = mobile.notificationPermission.detail,
-                                status = actionState.statusFor(MOBILE_ACTION_PERMISSION, mobile.notificationPermission.statusLabel),
-                                enabled = mobile.notificationPermission.available && actionState?.inProgress != true
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = MOBILE_ACTION_SETTINGS,
-                                iconName = SlockLucideIconName.Settings,
-                                title = "System notification settings",
-                                detail = mobile.notificationSettings.detail,
-                                status = actionState.statusFor(MOBILE_ACTION_SETTINGS, mobile.notificationSettings.statusLabel),
-                                enabled = mobile.notificationSettings.available && actionState?.inProgress != true
-                            ),
-                            KuiklySharedSettingsRow(
-                                key = MOBILE_ACTION_TEST_NOTIFICATION,
-                                iconName = SlockLucideIconName.Send,
-                                title = "Send test notification",
-                                detail = mobile.testNotification.detail,
-                                status = actionState.statusFor(MOBILE_ACTION_TEST_NOTIFICATION, mobile.testNotification.statusLabel),
-                                enabled = mobile.testNotification.available && actionState?.inProgress != true
-                            ),
-                            mobile.muteServer.takeIf { it.available }?.let {
-                                KuiklySharedSettingsRow(
-                                    key = MOBILE_ACTION_SERVER_MUTE,
-                                    iconName = SlockLucideIconName.VolumeX,
-                                    title = "Mute workspace",
-                                    detail = it.detail,
-                                    value = (!it.enabled).toString(),
-                                    status = actionState.statusFor(MOBILE_ACTION_SERVER_MUTE, it.statusLabel),
-                                    enabled = actionState?.inProgress != true
-                                )
-                            }
-                        )
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Local preferences",
+                    title = "Conversation display",
                     rows =
                         listOf(
-                            mobile.localePreference.toMobileSelectionRow(
-                                key = MOBILE_ACTION_LANGUAGE,
-                                iconName = SlockLucideIconName.Languages,
-                                title = "Language",
-                                fallbackStatus = "Unsupported",
-                                actionState = actionState
-                            ),
                             mobile.messageAlignmentPreference.toMobileSelectionRow(
                                 key = MOBILE_ACTION_MESSAGE_ALIGNMENT,
                                 iconName = SlockLucideIconName.AlignHorizontalSpaceAround,
@@ -6990,7 +6933,7 @@ private fun appShellMobilePlaceholderPayload(
         instanceId = "shared-shell-settings-mobile-placeholder",
         title = "Mobile",
         heroIconName = SlockLucideIconName.Smartphone,
-        heroLabel = "Mobile preferences",
+        heroLabel = "Message alignment",
         detail = detail,
         sections =
             listOf(
@@ -7566,7 +7509,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationLanguageRegion -> "Language, timezone, translation"
         SettingsDestinationAppearance -> "Message font size and preview"
         SettingsDestinationNotifications -> "Push status and workspace mute"
-        SettingsDestinationMobile -> "Device language and message alignment"
+        SettingsDestinationMobile -> "My message alignment"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"

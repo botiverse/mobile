@@ -1650,7 +1650,12 @@ internal class SlockKuiklyBridgeModule(
             return if (NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
                 mapOf("status" to "ok", "code" to "permission_granted")
             } else {
-                mapOf("status" to "error", "code" to "notifications_disabled")
+                openNotificationSettingsCapability()
+                mapOf(
+                        "status" to "pending",
+                        "code" to "notifications_disabled",
+                        "message" to "System notification settings opened."
+                )
             }
         }
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
