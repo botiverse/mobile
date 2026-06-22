@@ -2799,7 +2799,12 @@ private fun SettingsAppShellContent(
                 SettingsBillingContent(
                     settingsState.billing.toBillingPayload(session, timeContext),
                     bottomContentPadding = bottomContentPadding
-                ) { _, _ -> }
+                ) { action, value ->
+                    when (action) {
+                        "comparePlans" -> settingsCapabilities.openUrl(value ?: "https://raft.build/#pricing")
+                        "portal" -> settingsCapabilities.openUrl("https://raft.build/settings/billing")
+                    }
+                }
             SettingsDestinationLanguageRegion ->
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,
