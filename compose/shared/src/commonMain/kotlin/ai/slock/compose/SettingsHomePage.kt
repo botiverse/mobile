@@ -2680,7 +2680,7 @@ private fun SettingsAppShellContent(
 
     SettingsDetailShell(
         title = settingsDestinationTitle(selectedDestination),
-        subtitle = settingsDestinationSubtitle(selectedDestination),
+        subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
         onBack = {
             if (selectedDestination == SettingsDestinationDiagnosticsFeedbackChannel) {
