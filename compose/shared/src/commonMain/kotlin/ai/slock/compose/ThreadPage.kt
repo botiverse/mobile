@@ -136,6 +136,7 @@ import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -5234,6 +5235,18 @@ private fun ThreadMessagesList(
     ) {
         payload.latestMessageLayoutKey()
     }
+    val density = LocalDensity.current
+    val initialContentLayoutKey = remember(
+        payload.originStatus,
+        payload.canLoadMoreBefore,
+        payload.canLoadMoreAfter,
+        payload.messages
+    ) {
+        payload.threadInitialContentLayoutKey()
+    }
+    val initialMessageMinHeightsPx = remember(initialContentLayoutKey, density) {
+        payload.threadInitialMessageMinHeightsPx(density)
+    }
     val showReplyEmptyState = payload.messages.isEmpty() && payload.originStatus != "none"
     val lazyItemCount =
         remember(
@@ -5356,7 +5369,9 @@ private fun ThreadMessagesList(
         if (!initialBottomAnchorReady) {
             repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
                 listState.awaitThreadMessagesLayoutFrame()
-                if (listState.isThreadItemVisible(latestItemIndex)) {
+                val contentReady =
+                    listState.isInitialThreadContentReady(latestItemIndex, initialMessageMinHeightsPx)
+                if (contentReady) {
                     listState.scrollLatestItemToRenderedBottom(latestItemIndex)
                 } else if (attempt >= ThreadBottomAnchorMinimumAttempts &&
                     listState.canScrollToThreadItem(latestItemIndex)
@@ -5365,6 +5380,7 @@ private fun ThreadMessagesList(
                 }
                 delay(ThreadLayoutStabilityFrameDelayMs)
                 if (attempt >= ThreadBottomAnchorMinimumAttempts &&
+                    contentReady &&
                     listState.isLatestItemAtRenderedBottom(latestItemIndex)
                 ) {
                     initialBottomAnchorReady = true
@@ -5373,7 +5389,7 @@ private fun ThreadMessagesList(
             }
             if (listState.canScrollToThreadItem(latestItemIndex)) {
                 listState.scrollToItem(latestItemIndex)
-                listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+                listState.awaitThreadMessagesLayoutStability(latestItemIndex, initialMessageMinHeightsPx)
                 listState.scrollLatestItemToRenderedBottom(latestItemIndex)
             }
             initialBottomAnchorReady = true
@@ -5650,6 +5666,9 @@ private fun ThreadMessagesList(
                 }
             }
         }
+        if (!initialBottomAnchorReady && latestItemIndex >= 0) {
+            ThreadStateMessage("Loading messages", "Rendering conversation layout.")
+        }
         if (initialBottomAnchorReady &&
             !pendingKeyboardBottomAnchor &&
             listState.shouldShowThreadBackToBottom(latestItemIndex)
@@ -5898,6 +5917,74 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     }
 }
 
+private fun KuiklyThreadScreenPayload.threadInitialContentLayoutKey(): String =
+    buildString {
+        append(originStatus)
+        append(':')
+        append(hasThreadHistoryBoundaryItem())
+        append(':')
+        append(canLoadMoreAfter)
+        append(':')
+        append(messages.size)
+        messages.forEach { message ->
+            append('|')
+            append(message.id)
+            append(':')
+            append(message.messageType)
+            append(':')
+            append(message.body.length)
+            append(':')
+            append(message.attachments.size)
+            append(':')
+            append(message.taskId.orEmpty())
+            append(':')
+            append(message.replyCount)
+            append(':')
+            append(message.unreadReplyCount)
+        }
+    }
+
+private fun KuiklyThreadScreenPayload.threadInitialMessageMinHeightsPx(density: Density): Map<Int, Int> {
+    if (messages.isEmpty()) return emptyMap()
+    val firstMessageIndex = firstMessageListItemIndex()
+    return messages.mapIndexed { index, message ->
+        val minHeightPx =
+            with(density) {
+                message.threadInitialMessageMinHeightDp().toPx().roundToInt()
+            }
+        firstMessageIndex + index to minHeightPx
+    }.toMap()
+}
+
+private fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
+    if (isSystemMessage()) {
+        val bodyLines = body.threadInitialMarkdownLineEstimate().coerceAtMost(3)
+        return (32f + bodyLines * 16f).dp
+    }
+    val bodyLines = body.threadInitialMarkdownLineEstimate()
+    val bodyHeight = if (bodyLines > 0) bodyLines * 16f else 0f
+    val attachmentHeight = attachments.size.coerceAtMost(2) * 44f
+    val footerHeight =
+        if (replyCount > 0 || unreadReplyCount > 0 || !taskId.isNullOrBlank() || reactions.any { it.count > 0 }) {
+            28f
+        } else {
+            0f
+        }
+    return (48f + bodyHeight + attachmentHeight + footerHeight)
+        .coerceAtLeast(58f)
+        .coerceAtMost(260f)
+        .dp
+}
+
+private fun String.threadInitialMarkdownLineEstimate(): Int {
+    if (isBlank()) return 0
+    val softWrappedLines =
+        lineSequence()
+            .map { line -> (line.length / ThreadInitialMarkdownEstimatedCharsPerLine) + 1 }
+            .sum()
+    return softWrappedLines.coerceIn(1, ThreadInitialMarkdownMaxEstimatedLines)
+}
+
 private fun KuiklyThreadMessageItem.threadReactionLayoutSignature(): String =
     reactions
         .filter { reaction -> reaction.count > 0 }
@@ -6002,12 +6089,16 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
-private suspend fun LazyListState.awaitThreadMessagesLayoutStability(latestItemIndex: Int): Boolean {
+private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
+    latestItemIndex: Int,
+    minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
+): Boolean {
     var previous: ThreadMessagesLayoutStabilitySnapshot? = null
     var stableFrames = 0
     repeat(ThreadLayoutStabilityMaxFrames) {
         val current = threadMessagesLayoutStabilitySnapshot(latestItemIndex)
-        if (current.canAnchor && current == previous) {
+        val contentReady = isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)
+        if (current.canAnchor && contentReady && current == previous) {
             stableFrames += 1
             if (stableFrames >= ThreadLayoutStabilityRequiredFrames) {
                 return true
@@ -6019,6 +6110,24 @@ private suspend fun LazyListState.awaitThreadMessagesLayoutStability(latestItemI
         delay(ThreadLayoutStabilityFrameDelayMs)
     }
     return false
+}
+
+private fun LazyListState.isInitialThreadContentReady(
+    latestItemIndex: Int,
+    minHeightsByListItemIndex: Map<Int, Int>
+): Boolean {
+    val layoutInfo = layoutInfo
+    if (latestItemIndex < 0 || layoutInfo.totalItemsCount <= latestItemIndex) return false
+    val visibleItems = layoutInfo.visibleItemsInfo
+    if (visibleItems.none { it.index == latestItemIndex }) return false
+    if (minHeightsByListItemIndex.isEmpty()) return true
+    return visibleItems
+        .asSequence()
+        .filter { item -> minHeightsByListItemIndex.containsKey(item.index) }
+        .all { item ->
+            val minHeight = minHeightsByListItemIndex[item.index] ?: 0
+            item.size + ThreadInitialContentHeightTolerancePx >= minHeight
+        }
 }
 
 private fun LazyListState.threadMessagesLayoutStabilitySnapshot(
@@ -6130,6 +6239,9 @@ private const val ThreadLayoutStabilityRequiredFrames = 3
 private const val ThreadBackToBottomAnchorAttempts = 12
 private const val ThreadKeyboardBottomAnchorAttempts = 8
 private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
+private const val ThreadInitialContentHeightTolerancePx = 8
+private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
+private const val ThreadInitialMarkdownMaxEstimatedLines = 8
 
 @Composable
 private fun ThreadSystemMessageRow(
