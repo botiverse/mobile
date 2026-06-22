@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
@@ -55,6 +56,7 @@ private const val THREAD_COMPOSER_VISUAL_PAGE = "compose_thread_composer_visual"
 private const val THREAD_COMPOSER_PAGE_DATA_EVENT = "slockPageData"
 private val ThreadComposerStandaloneTopPadding = 10.dp
 private val ThreadComposerStandaloneBottomPadding = 8.dp
+private val ThreadComposerVisualInputWidth = 321.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerToolbarEndInset = 18.dp
@@ -319,11 +321,24 @@ private fun ThreadComposerScreen() {
         contentAlignment = Alignment.TopCenter
     ) {
         Box(modifier = Modifier.width(ThreadComposerVisualComponentWidth).heightIn(min = ThreadComposerVisualComponentMinHeight)) {
-            ThreadComposerContent(payload = payload, onEvent = { action, _, _, attachmentId ->
-                bridge.log(
-                    "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
+            Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+            Box(
+                modifier = Modifier
+                    .width(ThreadComposerVisualInputWidth)
+                    .offset(x = 0f, y = 14f),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                ThreadComposerContent(
+                    payload = payload,
+                    onEvent = { action, _, _, attachmentId ->
+                        bridge.log(
+                            "thread_composer_visual_event instanceId=${payload.instanceId} action=$action attachmentId=${attachmentId.orEmpty()}"
+                        )
+                    },
+                    contentPaddingTop = 0.dp,
+                    contentPaddingBottom = ThreadComposerStandaloneBottomPadding
                 )
-            })
+            }
         }
     }
 }
