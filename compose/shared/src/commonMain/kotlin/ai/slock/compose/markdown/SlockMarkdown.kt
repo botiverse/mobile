@@ -22,6 +22,7 @@ import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.text.InlineTextContent
@@ -1424,21 +1425,33 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
 
 @Composable
 private fun SlockMarkdownMentionText(label: String) {
-    KuiklyText(
-        text = label,
-        style =
-            SlockType.Body
-                .withSlockFontWeight(FontWeight.SemiBold)
-                .copy(
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    color = SlockColor.TextBlack,
-                    textDecoration = TextDecoration.Underline
-                ),
-        color = SlockColor.TextBlack,
-        maxLines = 1,
-        overflow = TextOverflow.Clip
-    )
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        KuiklyText(
+            text = label,
+            style =
+                SlockType.Body
+                    .withSlockFontWeight(FontWeight.SemiBold)
+                    .copy(
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
+                        color = SlockColor.TextBlack
+                    ),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Clip
+        )
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(SlockColor.EmptyStateGray)
+                    .align(Alignment.BottomCenter)
+        )
+    }
 }
 
 @Composable
