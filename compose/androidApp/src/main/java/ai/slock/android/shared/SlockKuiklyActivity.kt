@@ -68,6 +68,7 @@ import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
+import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.SharedAuthDataSource
@@ -136,6 +137,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var realtimeServerId: ServerId? = null
     private var realtimeSessionKey: String? = null
     private var realtimeLastSeq: Long = 0L
+    private var pageSpec: SlockKuiklyPageSpec? = null
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
@@ -167,6 +169,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         val container = findViewById<ViewGroup>(R.id.slock_kuikly_container)
         installSlockInputFontBridge(container)
         val spec = createPageSpec()
+        pageSpec = spec
         SlockPerformanceDiagnostics.install(window)
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
@@ -558,7 +561,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     (pageName.startsWith("compose_") && pageName.endsWith("_visual"))
 
     private fun startRealtimeBridgeIfNeeded() {
-        if (pageName != PAGE_APP_SHELL) return
+        if (!pageName.isRealtimeBridgeHostPage()) return
         val repository = ensureRealtimeRepository()
         val sessionStore = EncryptedAuthSessionStore(applicationContext)
         realtimeConnectJob?.cancel()
@@ -583,12 +586,15 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                                     )
                                     return@launch
                                 }
-                        connectRealtimeRepository(
+                        val result = connectRealtimeRepository(
                                 repository = repository,
                                 serverId = serverId,
                                 accessToken = accessToken,
                                 requestedLastSeq = realtimeLastSeq
                         )
+                        if (result is DataResult.Content) {
+                            joinForegroundRealtimeRooms(repository)
+                        }
                     } finally {
                         realtimeConnectJob = null
                     }
@@ -636,7 +642,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             serverId: ServerId,
             accessToken: String,
             requestedLastSeq: Long
-    ) {
+    ): DataResult<Unit> {
         val nextSessionKey = "$accessToken|${serverId.value}"
         val previousSessionKey = realtimeSessionKey
         val resumeSeq =
@@ -646,7 +652,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     requestedLastSeq
                 }
         if (realtimeServerId == serverId && realtimeSessionKey == nextSessionKey) {
-            return
+            return DataResult.Content(Unit)
         }
         realtimeSessionKey = nextSessionKey
         realtimeServerId = serverId
@@ -658,6 +664,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 "SlockKuiklyRealtime",
                 "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
         )
+        return result
     }
 
     internal fun requestRealtimeConnect(serverId: String, accessToken: String, lastSeq: Long) {
@@ -710,6 +717,27 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         realtimeSessionKey = null
     }
 
+    private fun joinForegroundRealtimeRooms(repository: RealtimeRepository) {
+        if (pageName != PAGE_THREAD) return
+        foregroundThreadRealtimeChannelIds().forEach { channelId ->
+            repository.joinChannel(ai.slock.android.core.model.ChannelId(channelId))
+            SlockDiagnosticsLogger.d(
+                    "SlockKuiklyRealtime",
+                    "join_foreground_room page=$pageName channelId=$channelId"
+            )
+        }
+    }
+
+    private fun foregroundThreadRealtimeChannelIds(): List<String> {
+        val data = runCatching { JSONObject(pageSpec?.pageData?.text.orEmpty()) }.getOrNull() ?: return emptyList()
+        return listOf("sourceThreadId", "streamChannelId", "threadId")
+                .mapNotNull { key -> data.optString(key).takeIf { it.isNotBlank() } }
+                .distinct()
+    }
+
+    private fun String.isRealtimeBridgeHostPage(): Boolean =
+            this == PAGE_APP_SHELL || this == PAGE_THREAD
+
     private fun sendRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
         val rawPayloadStr = when (rawPayload) {
             is String -> rawPayload
@@ -736,6 +764,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         const val PAGE_REGISTER = SlockKuiklyPages.REGISTER
         const val PAGE_FORGOT_PASSWORD = SlockKuiklyPages.FORGOT_PASSWORD
         const val PAGE_APP_SHELL = SlockKuiklyPages.APP_SHELL
+        const val PAGE_THREAD = SlockKuiklyPages.THREAD
         const val PAGE_HOME = SlockKuiklyPages.HOME
         const val PAGE_MEMBERS = SlockKuiklyPages.MEMBERS
         const val PAGE_SETTINGS_HOME = SlockKuiklyPages.SETTINGS_HOME
