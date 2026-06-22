@@ -59,7 +59,6 @@ private val ThreadComposerStandaloneBottomPadding = 8.dp
 private val ThreadComposerVisualInputWidth = 321.dp
 private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
-private val ThreadComposerToolbarEndInset = 18.dp
 private val ThreadComposerIconButtonSize = 26.dp
 private val ThreadComposerIconSize = 14.dp
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
@@ -855,7 +854,7 @@ internal fun ThreadComposerContent(
                         )
                     }
                     Row(
-                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight).padding(end = ThreadComposerToolbarEndInset),
+                        modifier = Modifier.fillMaxWidth().heightIn(min = ThreadComposerToolbarMinHeight),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
