@@ -12,10 +12,12 @@ import java.util.concurrent.atomic.AtomicReference
 object SlockPerformanceDiagnostics {
     private const val Tag = "SlockPerf"
     private const val SlowOperationThresholdMs = 250L
+    private const val TabSwitchOperationTtlMs = 700L
     private const val TraceNameLimit = 120
 
     private val route = AtomicReference("unknown")
     private val operation = AtomicReference("idle")
+    private val pendingTabSwitchOperation = AtomicReference<TabSwitchOperation?>(null)
     private val jankFrameCount = AtomicInteger(0)
     private val longestFrameMs = AtomicLong(0L)
     private var jankStats: JankStats? = null
@@ -57,11 +59,12 @@ object SlockPerformanceDiagnostics {
 
     fun updateOperation(view: View, nextOperation: String) {
         val sanitized = nextOperation.takeIf { it.isNotBlank() } ?: "idle"
-        operation.set(sanitized)
+        val effective = effectiveOperation(sanitized)
+        operation.set(effective)
         runCatching {
             PerformanceMetricsState.getHolderForHierarchy(view)
                     .state
-                    ?.putState("operation", sanitized)
+                    ?.putState("operation", effective)
         }
     }
 
@@ -78,6 +81,14 @@ object SlockPerformanceDiagnostics {
         val sanitizedPhase = phase.takeIf { it.isNotBlank() } ?: "marker"
         val sanitizedEvent = event.takeIf { it.isNotBlank() } ?: "instant"
         val sanitizedSceneId = sceneId.takeIf { it.isNotBlank() } ?: sanitizedRoute
+        if (sanitizedPhase.startsWith("bottom_tab_")) {
+            pendingTabSwitchOperation.set(
+                    TabSwitchOperation(
+                            operation = sanitizedPhase,
+                            expiresAtMs = System.currentTimeMillis() + TabSwitchOperationTtlMs
+                    )
+            )
+        }
         updateRoute(view, sanitizedRoute)
         updateOperation(view, sanitizedPhase)
         SlockDiagnosticsLogger.d(
@@ -152,4 +163,20 @@ object SlockPerformanceDiagnostics {
             }
         }
     }
+
+    private fun effectiveOperation(nextOperation: String): String {
+        if (nextOperation != "scene_enter") return nextOperation
+        val pending = pendingTabSwitchOperation.get() ?: return nextOperation
+        return if (pending.expiresAtMs >= System.currentTimeMillis()) {
+            pending.operation
+        } else {
+            pendingTabSwitchOperation.compareAndSet(pending, null)
+            nextOperation
+        }
+    }
+
+    private data class TabSwitchOperation(
+            val operation: String,
+            val expiresAtMs: Long
+    )
 }

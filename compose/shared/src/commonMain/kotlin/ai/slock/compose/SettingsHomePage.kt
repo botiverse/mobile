@@ -81,6 +81,7 @@ import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedTasksDataSource
 import ai.slock.compose.data.SharedTasksRouteIntent
 import ai.slock.compose.data.SharedTasksViewModel
+import ai.slock.compose.data.hasCompletedTasksSnapshot
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.data.SharedHomeContentState
@@ -1673,7 +1674,7 @@ private fun SlockAppShellContent() {
 
     LaunchedEffect(selectedTab) {
         if (selectedTab == "tasks") {
-            val hasSnapshot = tasksState.loadState is ScreenLoadState.Content
+            val hasSnapshot = tasksState.hasCompletedTasksSnapshot()
             bridge.performanceMarker(
                 phase = "tasks_screen_enter",
                 routeName = "kuikly_tasks",
@@ -2082,6 +2083,7 @@ private fun SlockAppShellContent() {
                             SharedHomeScreen(
                                 bridge = bridge,
                                 state = homeState,
+                                active = active,
                                 onIntent = homeViewModel::dispatch,
                                 selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
                                 onSelectedConversationCleared = {
@@ -8363,6 +8365,7 @@ private fun JsonObject.avatarWireValue(): String? =
 private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
+    active: Boolean,
     onIntent: (SharedHomeIntent) -> Unit,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
@@ -8373,8 +8376,10 @@ private fun SharedHomeScreen(
     onOpenConversation: (ConversationSummary) -> Unit,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    LaunchedEffect(Unit) {
-        onIntent(SharedHomeIntent.Start)
+    LaunchedEffect(active) {
+        if (active) {
+            onIntent(SharedHomeIntent.Start)
+        }
     }
 
     val serverSwitchState = state.serverSwitchState

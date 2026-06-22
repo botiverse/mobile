@@ -210,7 +210,7 @@ class SharedTasksViewModel(
         val request = TasksLoadRequest(filter = TaskFilter(statuses = selectedFilter?.let(::setOf) ?: emptySet()))
         observeTasks(request, selectedFilter)
         val currentState = state.value
-        val hasSnapshot = currentState.loadState is ScreenLoadState.Content
+        val hasSnapshot = currentState.hasCompletedTasksSnapshot()
         val reason = intent.tasksRefreshReason()
         val snapshotAgeMs = lastRefreshCompletedAt?.elapsedNow()?.inWholeMilliseconds
         diagnosticsLogger(
@@ -264,7 +264,7 @@ class SharedTasksViewModel(
         val startedAt = TimeSource.Monotonic.markNow()
         diagnosticsLogger(
             "tasks_refresh_start reason=$reason filter=${selectedFilter?.name.orEmpty()} " +
-                "hasSnapshot=${state.value.loadState is ScreenLoadState.Content}"
+                "hasSnapshot=${state.value.hasCompletedTasksSnapshot()}"
         )
         try {
             val result = useCase.refreshTasks(request)
@@ -272,8 +272,10 @@ class SharedTasksViewModel(
             diagnosticsLogger(
                 "tasks_refresh_result reason=$reason ${result.tasksDiagnosticsSummary()} durationMs=$durationMs"
             )
-            if (result is DataResult.Content) {
+            if (result.isCompletedTasksSnapshot()) {
                 lastRefreshCompletedAt = TimeSource.Monotonic.markNow()
+            }
+            if (result is DataResult.Content) {
                 if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
                     diagnosticsLogger("tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}")
                 }
@@ -389,6 +391,12 @@ internal fun tasksRefreshSkipReason(
     }
     return null
 }
+
+internal fun TasksUiState.hasCompletedTasksSnapshot(): Boolean =
+    loadState is ScreenLoadState.Content || loadState is ScreenLoadState.Empty
+
+internal fun DataResult<TaskSnapshot>.isCompletedTasksSnapshot(): Boolean =
+    this is DataResult.Content || this is DataResult.Empty
 
 private fun SharedTasksRouteIntent.tasksRefreshReason(): String =
     when (this) {

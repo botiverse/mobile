@@ -244,6 +244,25 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun emptyTasksResultCountsAsFreshCompletedSnapshot() {
+        val emptyState = TasksUiState(ScreenLoadState.Empty(EmptyReason.NoTasks))
+        val emptyResult: DataResult<TaskSnapshot> = DataResult.Empty(EmptyReason.NoTasks)
+
+        assertTrue(emptyState.hasCompletedTasksSnapshot())
+        assertTrue(emptyResult.isCompletedTasksSnapshot())
+        assertEquals(
+            TasksRefreshSkipReason.FreshSnapshot,
+            tasksRefreshSkipReason(
+                inFlight = false,
+                hasSnapshot = emptyState.hasCompletedTasksSnapshot(),
+                snapshotAgeMs = 1_000L,
+                staleWindowMs = 15_000L,
+                forceRefresh = false
+            )
+        )
+    }
+
+    @Test
     fun sharedTasksStoreUsesMviRuntimeNoopGateAndTransitionLog() {
         val transitions = mutableListOf<MviTransition<SharedTasksIntent>>()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
