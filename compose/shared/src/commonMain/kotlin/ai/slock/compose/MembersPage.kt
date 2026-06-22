@@ -3571,7 +3571,7 @@ private fun MembersAgentActivityTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MembersDetailSection(title = "ACTIVITY", modifier = modifier) {
+    MembersDetailSection(title = "ACTIVITY", modifier = modifier, framed = false) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
