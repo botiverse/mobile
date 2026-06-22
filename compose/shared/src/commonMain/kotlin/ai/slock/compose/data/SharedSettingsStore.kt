@@ -421,7 +421,7 @@ class SharedSettingsDataSource(
                             sections = emptyList()
                         )
                     )
-            is DataResult.Empty -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(sharedComputer.reason)
+            is DataResult.Empty -> DataResult.Empty(sharedComputer.reason)
             is DataResult.Error -> DataResult.Error(sharedComputer.error)
             is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
             null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)

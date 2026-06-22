@@ -798,6 +798,36 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun openComputerDoesNotFallbackToRepositoryDetailWhenSharedComputersSourceMisses() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val computersSource =
+            FakeSettingsComputersSource(
+                computerResult = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        settingsRepository = repository,
+                        computersSource = computersSource
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+
+        assertEquals(
+            listOf("sharedComputer:server-1:machine-42:false"),
+            computersSource.calls
+        )
+        assertEquals(emptyList(), repository.calls)
+        assertIs<ScreenLoadState.Empty>(store.state.value.computerDetail)
+        scope.cancel()
+    }
+
+    @Test
     fun renameComputerIntentCallsRepositoryAndReloadsDetail() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val renamed =
@@ -1997,6 +2027,30 @@ class SharedSettingsStoreTest {
                     )
                 )
             return mobileResult
+        }
+    }
+
+    private class FakeSettingsComputersSource(
+        var computersResult: DataResult<SettingsComputersSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable),
+        var computerResult: DataResult<SettingsComputerSnapshot> = DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    ) : SharedSettingsComputersSource {
+        val calls = mutableListOf<String>()
+
+        override suspend fun loadSettingsComputersForServer(
+            serverId: String,
+            force: Boolean
+        ): DataResult<SettingsComputersSnapshot> {
+            calls += "sharedComputers:$serverId:$force"
+            return computersResult
+        }
+
+        override suspend fun loadSettingsComputerSnapshotForServer(
+            serverId: String,
+            machineId: String,
+            force: Boolean
+        ): DataResult<SettingsComputerSnapshot> {
+            calls += "sharedComputer:$serverId:$machineId:$force"
+            return computerResult
         }
     }
 
