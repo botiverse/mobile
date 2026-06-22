@@ -11475,20 +11475,6 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
         "administration" ->
             SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
-        "administration-admins" ->
-            SettingsVisualSpec(variant, "Administration", "Owners and admins", SlockLucideIconName.Shield)
-        "administration-invites" ->
-            SettingsVisualSpec(variant, "Administration", "Pending human invites", SlockLucideIconName.MailPlus)
-        "administration-join-links" ->
-            SettingsVisualSpec(variant, "Administration", "Reusable join links", SlockLucideIconName.Link2)
-        "administration-pre-join-agreement" ->
-            SettingsVisualSpec(variant, "Administration", "Pre-join agreement", SlockLucideIconName.FileCheck)
-        "administration-onboarding" ->
-            SettingsVisualSpec(variant, "Administration", "Onboarding agent and greeting", SlockLucideIconName.Bot)
-        "administration-member-permissions" ->
-            SettingsVisualSpec(variant, "Administration", "Member directory permissions", SlockLucideIconName.UsersRound)
-        "administration-translation" ->
-            SettingsVisualSpec(variant, "Administration", "Server translation controls", SlockLucideIconName.Languages)
         "billing",
         "billing-loading",
         "billing-no-permission",
@@ -11517,14 +11503,7 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
     when (spec.variant) {
         "server-profile",
         "server-danger",
-        "administration",
-        "administration-admins",
-        "administration-invites",
-        "administration-join-links",
-        "administration-pre-join-agreement",
-        "administration-onboarding",
-        "administration-member-permissions",
-        "administration-translation" -> SettingsVisualServerFocusedContent(spec.variant)
+        "administration" -> SettingsVisualServerFocusedContent(spec.variant)
         "billing",
         "billing-loading",
         "billing-no-permission",
