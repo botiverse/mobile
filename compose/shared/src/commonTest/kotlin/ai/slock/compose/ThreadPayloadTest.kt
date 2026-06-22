@@ -1263,7 +1263,7 @@ class ThreadPayloadTest {
         assertEquals("parent-channel-1", composer.mentionChannelId)
         assertEquals("parent-message-1", composer.parentMessageId)
         assertEquals("Reply in thread", composer.placeholder)
-        assertEquals(true, composer.showAsTaskToggle)
+        assertEquals(false, composer.showAsTaskToggle)
     }
 
     @Test

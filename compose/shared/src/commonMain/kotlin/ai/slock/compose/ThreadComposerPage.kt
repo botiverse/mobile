@@ -551,6 +551,7 @@ internal fun KuiklyThreadScreenPayload.resolveThreadComposer(): KuiklyThreadComp
         instanceId = composer.instanceId.ifBlank { instanceId },
         placeholder = resolvedPlaceholder,
         enabled = canSend && composer.enabled,
+        showAsTaskToggle = composer.showAsTaskToggle && resolvedSurfaceKind != KuiklyThreadSurfaceKind.ReplyThread,
         surfaceKind = resolvedSurfaceKind,
         mentionChannelId = resolvedMentionChannelId,
         parentMessageId = resolvedParentMessageId,
