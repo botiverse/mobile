@@ -640,8 +640,17 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun foregroundThreadRealtimeChannelIds(): List<String> {
         val data = runCatching { JSONObject(pageSpec?.pageData?.text.orEmpty()) }.getOrNull() ?: return emptyList()
+        val payload =
+                data.optString("payload")
+                        .takeIf { it.isNotBlank() }
+                        ?.let { payloadText -> runCatching { JSONObject(payloadText) }.getOrNull() }
         return listOf("sourceThreadId", "streamChannelId", "threadId")
-                .mapNotNull { key -> data.optString(key).takeIf { it.isNotBlank() } }
+                .flatMap { key ->
+                    listOfNotNull(
+                            data.optString(key).takeIf { it.isNotBlank() },
+                            payload?.optString(key)?.takeIf { it.isNotBlank() }
+                    )
+                }
                 .distinct()
     }
 

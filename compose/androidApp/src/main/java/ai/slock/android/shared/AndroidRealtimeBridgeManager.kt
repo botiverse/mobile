@@ -14,7 +14,10 @@ import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
+import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
+import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +33,7 @@ internal object AndroidRealtimeBridgeManager {
     private val joinedRooms = linkedSetOf<ChannelId>()
 
     private var realtimeRepository: RealtimeRepository? = null
+    private var realtimeClient: SocketIoRealtimeClient? = null
     private var realtimeSubscription: RealtimeSubscription? = null
     private var realtimeRawSubscription: RealtimeSubscription? = null
     private var realtimeConnectJob: Job? = null
@@ -165,7 +169,7 @@ internal object AndroidRealtimeBridgeManager {
         }
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "room_declared surfaceId=$surfaceId rooms=${rooms.size} consumer_count=${consumers.size}"
+            "room_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }} consumer_count=${consumers.size}"
         )
         joinDeclaredRooms()
     }
@@ -191,6 +195,7 @@ internal object AndroidRealtimeBridgeManager {
                 client = client,
                 tokenRefresher = AuthTokenRefresher(sessionStore)
             )
+        realtimeClient = client
         realtimeRepository = repository
         realtimeSubscription =
             repository.observeEvents { event ->
@@ -218,6 +223,9 @@ internal object AndroidRealtimeBridgeManager {
         requestedLastSeq: Long,
         forceReconnect: Boolean
     ): DataResult<Unit> {
+        val client =
+            realtimeClient
+                ?: return DataResult.Error(ScreenError(code = "realtime_client_missing"))
         val nextSessionKey = "$accessToken|${serverId.value}"
         val previousSessionKey = realtimeSessionKey
         val previousServerId = realtimeServerId
@@ -240,7 +248,16 @@ internal object AndroidRealtimeBridgeManager {
         if (resumeSeq == 0L) {
             realtimeLastSeq = 0L
         }
-        val result = repository.connect(serverId, resumeSeq)
+        client.connect(
+            RealtimeConnectRequest(
+                auth = RealtimeAuth(
+                    token = accessToken,
+                    serverId = serverId
+                ),
+                lastSeq = resumeSeq
+            )
+        )
+        val result = DataResult.Content(Unit)
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
