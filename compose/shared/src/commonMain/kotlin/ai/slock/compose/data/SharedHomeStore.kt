@@ -149,6 +149,12 @@ class SharedHomeStore(
                     backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
                 )
             }
+            SharedHomeIntent.ForegroundRefresh ->
+                load(
+                    _state.value.serverSwitchState,
+                    showRefreshAffordance = false,
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.Force
+                )
             SharedHomeIntent.ToggleServerSwitcher ->
                 reduceState(_state.value.copy(serverSwitcherExpanded = !_state.value.serverSwitcherExpanded))
             SharedHomeIntent.DismissServerSwitcher ->
@@ -1269,6 +1275,7 @@ enum class SharedHomeTopAction {
 sealed interface SharedHomeIntent {
     data object Start : SharedHomeIntent
     data object Refresh : SharedHomeIntent
+    data object ForegroundRefresh : SharedHomeIntent
     data object ToggleServerSwitcher : SharedHomeIntent
     data object DismissServerSwitcher : SharedHomeIntent
     data class SelectConversation(val threadId: String) : SharedHomeIntent
@@ -1301,6 +1308,7 @@ private val SharedHomeIntent.loadsHome: Boolean
         when (this) {
             SharedHomeIntent.Start,
             SharedHomeIntent.Refresh,
+            SharedHomeIntent.ForegroundRefresh,
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,
@@ -1323,6 +1331,7 @@ private val SharedHomeIntent.cancelsBackgroundRefresh: Boolean
         when (this) {
             SharedHomeIntent.Start -> false
             SharedHomeIntent.Refresh,
+            SharedHomeIntent.ForegroundRefresh,
             is SharedHomeIntent.SelectServer -> true
             SharedHomeIntent.ToggleServerSwitcher,
             SharedHomeIntent.DismissServerSwitcher,

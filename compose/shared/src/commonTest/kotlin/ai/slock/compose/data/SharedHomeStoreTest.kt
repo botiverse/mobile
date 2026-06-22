@@ -1090,6 +1090,44 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun foregroundRefreshForcesNetworkWithoutVisibleRefreshAffordance() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        var now = 1_000L
+        val localStore = InMemoryComposeLocalDataStore()
+        val api = RecordingHomeApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                    api = api,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
+                ),
+            scope = scope,
+            nowMillis = { now }
+        )
+
+        store.accept(SharedHomeIntent.Start)
+        assertEquals(4, api.calls.size)
+        now += 1_000L
+
+        val blockedRefresh = api.blockNextChannels()
+        val refreshJob = launch { store.accept(SharedHomeIntent.ForegroundRefresh) }
+        blockedRefresh.awaitStarted()
+
+        val refreshingContent = store.state.value.content
+        assertTrue(refreshingContent is SharedHomeContentState.Content)
+        assertEquals(false, refreshingContent.contentRefreshing)
+
+        blockedRefresh.release()
+        refreshJob.join()
+        awaitCondition { api.calls.size >= 8 }
+        assertEquals(8, api.calls.size)
+        scope.cancel()
+    }
+
+    @Test
     fun cachedHomeStartRefreshesAfterFreshnessWindowExpires() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         var now = 1_000L

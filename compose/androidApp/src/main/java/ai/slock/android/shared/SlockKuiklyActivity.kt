@@ -174,6 +174,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         suppressVisualKeyboard()
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
+        sendAppShellLifecycleEvent("resume")
         declareForegroundRealtimeRooms()
         foregroundRealtimeOwnerIfNeeded()
     }
@@ -661,6 +662,18 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun String.isRealtimeBridgeConsumerPage(): Boolean =
             this == PAGE_APP_SHELL || this == PAGE_THREAD
+
+    private fun sendAppShellLifecycleEvent(event: String) {
+        if (pageSpec?.pageName != PAGE_APP_SHELL) return
+        kuiklyRenderViewDelegator.sendEvent(
+                REALTIME_EVENT_NAME,
+                mapOf(
+                        "action" to "appLifecycle",
+                        "event" to event,
+                        "pageName" to PAGE_APP_SHELL
+                )
+        )
+    }
 
     private fun sendRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
         val rawPayloadStr = when (rawPayload) {

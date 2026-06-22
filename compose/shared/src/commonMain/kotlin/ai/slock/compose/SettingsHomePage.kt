@@ -370,6 +370,9 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
+private const val AppShellLifecycleAction = "appLifecycle"
+private const val AppShellLifecycleResume = "resume"
+private const val AppShellLifecycleShow = "show"
 private const val HomeDestinationSearch = "search"
 private const val HomeDestinationActivity = "activity"
 private const val HomeDestinationSaved = "saved"
@@ -1198,6 +1201,7 @@ private fun SlockAppShellContent() {
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
+    val latestHomeSurfaceVisible by rememberUpdatedState(homeSurfaceVisible)
     val homeActivityRouteActive =
         selectedTab == "home" &&
             selectedHomeDestination == HomeDestinationActivity
@@ -1702,6 +1706,17 @@ private fun SlockAppShellContent() {
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
                     if (pagerEvent != AppShellRealtimeEvent) return
+                    if (eventData.optString("action") == AppShellLifecycleAction) {
+                        val event = eventData.optString("event")
+                        if (
+                            (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
+                            latestReadySession != null &&
+                            latestHomeSurfaceVisible
+                        ) {
+                            homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh)
+                        }
+                        return
+                    }
                     if (eventData.optString("action") == AppShellRealtimeAuthRefreshAction) {
                         latestRealtimeAuthRefreshHandler(eventData)
                         return

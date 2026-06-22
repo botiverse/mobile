@@ -112,6 +112,7 @@ export class SlockOhosRealtimeBridge {
 
   onPageShow(): void {
     this.socketIo.resume();
+    this.sendAppLifecycleEvent('show');
   }
 
   onPageHide(): void {
@@ -294,6 +295,14 @@ export class SlockOhosRealtimeBridge {
       serverId: params.serverId,
     });
     return true;
+  }
+
+  private sendAppLifecycleEvent(event: string): void {
+    this.controller?.sendEvent(REALTIME_EVENT_NAME, {
+      action: 'appLifecycle',
+      event: event,
+      pageName: 'compose_slock_app_shell',
+    });
   }
 }
 
