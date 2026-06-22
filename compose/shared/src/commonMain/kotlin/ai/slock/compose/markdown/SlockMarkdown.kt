@@ -822,20 +822,20 @@ internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): A
     val builder = AnnotatedString.Builder(length)
     builder.append(this)
     spanStyles.forEach { range ->
-        val weight = range.item.fontWeight ?: resolvedBase.fontWeight
+        val explicitWeight = range.item.fontWeight
         val shouldNormalizeFamily =
             range.item.fontFamily == null ||
                 range.item.fontFamily == FontFamily.Monospace
         val family =
             if (shouldNormalizeFamily) {
-                slockFontFamilyForWeight(weight)
+                explicitWeight?.let(::slockFontFamilyForWeight) ?: resolvedBase.fontFamily
             } else {
                 range.item.fontFamily
             }
         if (shouldNormalizeFamily &&
             (range.item.fontFamily == FontFamily.Monospace || family != resolvedBase.fontFamily)
         ) {
-            builder.addStyle(SpanStyle(fontFamily = family), range.start, range.end)
+            builder.addStyle(SpanStyle(fontFamily = family, fontWeight = FontWeight.Normal), range.start, range.end)
         }
     }
     return builder.toAnnotatedString()

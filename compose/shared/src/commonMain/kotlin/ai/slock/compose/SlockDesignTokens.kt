@@ -71,6 +71,12 @@ private val SpaceGroteskBold = FontFamily(KuiklyFont("space_grotesk_bold", FontW
 private val SpaceGroteskSemiBold = FontFamily(KuiklyFont("space_grotesk_semibold", FontWeight.SemiBold, FontStyle.Normal))
 private val SpaceGroteskMedium = FontFamily(KuiklyFont("space_grotesk_medium", FontWeight.Medium, FontStyle.Normal))
 private val SpaceGroteskRegular = FontFamily(KuiklyFont("space_grotesk_regular", FontWeight.Normal, FontStyle.Normal))
+private val SpaceGroteskFamilies = setOf(
+    SpaceGroteskBold,
+    SpaceGroteskSemiBold,
+    SpaceGroteskMedium,
+    SpaceGroteskRegular
+)
 
 private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
     when {
@@ -83,6 +89,13 @@ private fun spaceGroteskFamily(fontWeight: FontWeight): FontFamily =
 internal fun slockFontFamilyForWeight(fontWeight: FontWeight?): FontFamily =
     spaceGroteskFamily(fontWeight ?: FontWeight.Normal)
 
+private fun TextStyle.withSlockRenderedFontWeight(): TextStyle =
+    if (fontFamily in SpaceGroteskFamilies) {
+        copy(fontWeight = FontWeight.Normal)
+    } else {
+        this
+    }
+
 private fun slockTextStyle(
     fontWeight: FontWeight,
     fontSize: TextUnit,
@@ -91,17 +104,24 @@ private fun slockTextStyle(
 ): TextStyle =
     TextStyle(
         fontFamily = spaceGroteskFamily(fontWeight),
-        fontWeight = fontWeight,
+        fontWeight = FontWeight.Normal,
         fontSize = fontSize,
         lineHeight = lineHeight,
         letterSpacing = letterSpacing
     )
 
 internal fun TextStyle.withSlockFontWeight(fontWeight: FontWeight): TextStyle =
-    copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = fontWeight)
+    copy(fontFamily = spaceGroteskFamily(fontWeight), fontWeight = FontWeight.Normal)
 
 internal fun TextStyle.withResolvedSlockFontFamily(): TextStyle =
-    copy(fontFamily = fontFamily ?: slockFontFamilyForWeight(fontWeight))
+    when {
+        fontFamily == null ->
+            copy(fontFamily = slockFontFamilyForWeight(fontWeight), fontWeight = FontWeight.Normal)
+        fontFamily in SpaceGroteskFamilies && fontWeight != null && fontWeight != FontWeight.Normal ->
+            copy(fontFamily = slockFontFamilyForWeight(fontWeight), fontWeight = FontWeight.Normal)
+        else ->
+            withSlockRenderedFontWeight()
+    }
 
 internal object SlockType {
     val PageTitle = slockTextStyle(FontWeight.SemiBold, 20.sp, 24.sp, 0.sp)
