@@ -166,15 +166,14 @@ class SlockHomeComponentsTest {
     @Test
     fun homeLazyItemCountIncludesVisibleSectionsAndRows() {
         assertEquals(
-            14,
+            13,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 0,
                 directMessagesCount = 2,
                 channelsExpanded = true,
                 jointChannelsExpanded = true,
-                directMessagesExpanded = true,
-                contentRefreshEnabled = true
+                directMessagesExpanded = true
             )
         )
         assertEquals(
@@ -185,8 +184,7 @@ class SlockHomeComponentsTest {
                 directMessagesCount = 2,
                 channelsExpanded = false,
                 jointChannelsExpanded = false,
-                directMessagesExpanded = false,
-                contentRefreshEnabled = false
+                directMessagesExpanded = false
             )
         )
     }
@@ -194,27 +192,25 @@ class SlockHomeComponentsTest {
     @Test
     fun homeLazyItemCountTracksChannelAndJointSectionsIndependently() {
         assertEquals(
-            15,
+            14,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
                 directMessagesCount = 2,
                 channelsExpanded = false,
                 jointChannelsExpanded = true,
-                directMessagesExpanded = true,
-                contentRefreshEnabled = true
+                directMessagesExpanded = true
             )
         )
         assertEquals(
-            16,
+            15,
             homeLazyItemCount(
                 channelsCount = 3,
                 jointCount = 2,
                 directMessagesCount = 2,
                 channelsExpanded = true,
                 jointChannelsExpanded = false,
-                directMessagesExpanded = true,
-                contentRefreshEnabled = true
+                directMessagesExpanded = true
             )
         )
     }

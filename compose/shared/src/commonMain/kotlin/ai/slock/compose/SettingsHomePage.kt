@@ -8314,9 +8314,7 @@ private fun SharedHomeScreen(
                 SharedHomeSessionShell(
                     session = session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
-                    contentRefreshing = true,
                     bottomContentPadding = bottomContentPadding,
-                    onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                     onServerSelected = { serverId ->
@@ -8334,9 +8332,7 @@ private fun SharedHomeScreen(
             SharedHomeSessionShell(
                 session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
-                contentRefreshing = false,
                 bottomContentPadding = bottomContentPadding,
-                onRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                 onServerSelected = { serverId ->
@@ -8407,8 +8403,6 @@ private fun SharedHomeScreen(
                 showBottomBar = false,
                 bottomContentPadding = bottomContentPadding,
                 outerPadding = 0.dp,
-                contentRefreshing = current.contentRefreshing,
-                onContentRefresh = { onIntent(SharedHomeIntent.Refresh) },
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
                 onServerSelected = { serverId ->
@@ -10750,9 +10744,7 @@ private fun String.searchAvatarSeed(): String =
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
-    contentRefreshing: Boolean,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    onRefresh: () -> Unit,
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
     onServerSelected: (String) -> Unit,
@@ -10770,8 +10762,6 @@ private fun SharedHomeSessionShell(
         showBottomBar = false,
         bottomContentPadding = bottomContentPadding,
         outerPadding = 0.dp,
-        contentRefreshing = contentRefreshing,
-        onContentRefresh = onRefresh,
         onServerBadgeClick = onServerBadgeClick,
         onServerSwitcherDismiss = onServerSwitcherDismiss,
         onServerSelected = onServerSelected,

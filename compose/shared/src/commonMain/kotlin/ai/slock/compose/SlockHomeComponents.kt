@@ -306,8 +306,6 @@ private fun SlockHomePageContent() {
         savedCount = payload.savedCount,
         notifications = payload.notifications,
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
-        contentRefreshing = payload.contentRefreshing,
-        contentRefreshEnabled = payload.contentRefreshEnabled,
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
         channelSortMode = payload.channelSortMode,
@@ -330,10 +328,6 @@ private fun SlockHomePageContent() {
         onFollowedThreadsClick = { bridge.settingsEvent(payload.instanceId, "openFollowedThreads", null) },
         onSavedClick = { bridge.settingsEvent(payload.instanceId, "openSaved", null) },
         onSearchClick = { bridge.settingsEvent(payload.instanceId, "openSearch", null) },
-        onContentRefresh = {
-            bridge.log("home_refresh_request instanceId=${payload.instanceId}")
-            bridge.settingsEvent(payload.instanceId, "refreshHome", null)
-        },
         onNotificationView = { bridge.settingsEvent(payload.instanceId, "viewNotification", it.id) },
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
         onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
@@ -474,8 +468,6 @@ fun SlockStructuralHomeShell(
     notifications: List<SlockHomeNotificationItem> = emptyList(),
     serverSwitcherExpanded: Boolean = false,
     pendingServerId: String? = null,
-    contentRefreshing: Boolean = false,
-    contentRefreshEnabled: Boolean = true,
     applyTopSafeArea: Boolean = true,
     activitySelected: Boolean = false,
     searchSelected: Boolean = false,
@@ -492,7 +484,6 @@ fun SlockStructuralHomeShell(
     bottomContentPadding: Dp = if (showBottomBar) SlockSize.BottomBarHeight + SlockSpacing.Md else SlockSpacing.Lg,
     outerPadding: Dp = SlockSpacing.Md,
     labels: SlockHomeShellLabels = SlockHomeShellLabels.defaults(),
-    onContentRefresh: () -> Unit = {},
     onServerBadgeClick: () -> Unit = {},
     onServerSwitcherDismiss: () -> Unit = {},
     onServerSelected: (String) -> Unit = {},
@@ -537,7 +528,6 @@ fun SlockStructuralHomeShell(
     var sortMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
     var activePinMenuConversationId by remember(currentServerId) { mutableStateOf<String?>(null) }
     var pinMenuAnchor by remember(currentServerId) { mutableStateOf(Offset.Zero) }
-    var refreshIndicatorTimedOut by remember { mutableStateOf(false) }
     LaunchedEffect(currentServerId, channelSortMode, dmSortMode, pinnedSortMode) {
         channelSortModeState = SlockSidebarSortMode.fromWireValue(channelSortMode)
         directMessageSortMode = SlockSidebarSortMode.fromWireValue(dmSortMode)
@@ -551,14 +541,6 @@ fun SlockStructuralHomeShell(
             activePinMenuConversationId = null
         }
     }
-    LaunchedEffect(contentRefreshing) {
-        refreshIndicatorTimedOut = false
-        if (contentRefreshing) {
-            delay(12_000)
-            refreshIndicatorTimedOut = true
-        }
-    }
-    val indicatorRefreshing = contentRefreshing && !refreshIndicatorTimedOut
     // #211 React parity (revised by @artin 23:38): pinned rows are
     // shown alongside the original section copy, not deduped. The user
     // sees both, can click either, and either copy is independently
@@ -618,11 +600,10 @@ fun SlockStructuralHomeShell(
             channelsExpanded = channelsExpanded,
             jointChannelsExpanded = jointChannelsExpanded,
             directMessagesExpanded = directMessagesExpanded,
-            pinnedExpanded = pinnedExpanded,
-            contentRefreshEnabled = contentRefreshEnabled && indicatorRefreshing
+            pinnedExpanded = pinnedExpanded
         )
     val listState = rememberLazyListState()
-    val sidebarInteractionsEnabled = !indicatorRefreshing
+    val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
     val bottomSafeArea = if (showBottomBar) slockBottomSafeAreaPadding() else 0.dp
@@ -656,16 +637,6 @@ fun SlockStructuralHomeShell(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
-                            if (contentRefreshEnabled) {
-                                if (indicatorRefreshing) {
-                                    item(key = "slock_refresh_indicator") {
-                                        HomePullRefreshIndicator(
-                                            pullProgress = 1f,
-                                            refreshing = true
-                                        )
-                                    }
-                                }
-                            }
                             item { Spacer(Modifier.height(SlockSpacing.Md)) }
                             item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                             item {
@@ -1045,8 +1016,7 @@ internal fun homeLazyItemCount(
     channelsExpanded: Boolean,
     jointChannelsExpanded: Boolean,
     directMessagesExpanded: Boolean,
-    pinnedExpanded: Boolean = false,
-    contentRefreshEnabled: Boolean
+    pinnedExpanded: Boolean = false
 ): Int {
     val fixedItems =
         1 + // top spacer
@@ -1060,7 +1030,6 @@ internal fun homeLazyItemCount(
     val jointSectionItems = if (jointCount > 0) 2 else 0 // spacer + header
     val pinnedSectionItems = if (pinnedCount > 0) 2 else 0 // header + (rows below); rows counted conditionally
     return fixedItems +
-        (if (contentRefreshEnabled) 1 else 0) +
         jointSectionItems +
         pinnedSectionItems +
         (if (channelsExpanded) channelsCount else 0) +
@@ -1252,57 +1221,6 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
             .background(SlockColor.TextBlack.copy(alpha = 0.01f))
             .clickable(onClick = onDismiss)
     )
-}
-
-@Composable
-private fun HomePullRefreshIndicator(pullProgress: Float, refreshing: Boolean) {
-    var jumpStep by remember { mutableStateOf(0) }
-    LaunchedEffect(refreshing) {
-        if (!refreshing) {
-            jumpStep = 0
-            return@LaunchedEffect
-        }
-        while (true) {
-            jumpStep = (jumpStep + 1) % SlockRefreshLetters.length
-            delay(120)
-        }
-    }
-    val pullOffset = ((1f - pullProgress.coerceIn(0f, 1f)) * 8f).dp
-    Box(modifier = Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
-        SlockJumpingLogoBadge(
-            activeIndex = if (refreshing) jumpStep else -1,
-            modifier = Modifier.offset(y = if (refreshing) 0.dp else pullOffset)
-        )
-    }
-}
-
-private const val SlockRefreshLetters = "RAFT"
-
-@Composable
-private fun SlockJumpingLogoBadge(activeIndex: Int, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.padding(end = 2.dp, bottom = 2.dp).rotate(-2f)) {
-        Box(Modifier.matchParentSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        com.tencent.kuikly.compose.foundation.layout.Row(
-            modifier = Modifier.background(SlockColor.TextBlack).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 14.dp, vertical = SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            SlockRefreshLetters.forEachIndexed { index, letter ->
-                val letterOffset =
-                    when {
-                        activeIndex == index -> (-5).dp
-                        activeIndex >= 0 && (activeIndex + SlockRefreshLetters.length - 1) % SlockRefreshLetters.length == index -> 2.dp
-                        else -> 0.dp
-                    }
-                Text(
-                    letter.toString(),
-                    color = SlockColor.BrandYellow,
-                    style = SlockType.ButtonBold.copy(fontSize = 16.sp, lineHeight = 20.sp),
-                    modifier = Modifier.offset(y = letterOffset)
-                )
-            }
-        }
-    }
 }
 
 @Composable
