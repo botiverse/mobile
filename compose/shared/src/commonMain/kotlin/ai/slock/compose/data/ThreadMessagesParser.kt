@@ -163,7 +163,11 @@ internal fun parseSharedThreadUploadedAttachments(
 internal fun parseSharedThreadPickedAttachmentFiles(
     response: JSONObject?
 ): List<AttachmentUploadFile> {
-    val filesJson = response?.optJSONArray("files") ?: return emptyList()
+    val filesJson = response?.optJSONArray("files")
+        ?: response?.optString("bodyText").orEmpty()
+            .takeIf { it.isNotBlank() }
+            ?.let { bodyText -> runCatching { JSONObject(bodyText).optJSONArray("files") }.getOrNull() }
+        ?: return emptyList()
     return buildList {
         for (index in 0 until filesJson.length()) {
             val fileJson = filesJson.optJSONObject(index) ?: continue

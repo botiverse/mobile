@@ -217,8 +217,23 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 return true
             }
         }
-        return super.dispatchKeyEvent(event)
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (throwable: IllegalStateException) {
+            if (!throwable.isAndroidTextFocusSearchCrash()) {
+                throw throwable
+            }
+            Log.w(
+                    "SlockKuiklyActivity",
+                    "suppressed_text_focus_search_crash keyCode=${event.keyCode} action=${event.action}",
+                    throwable
+            )
+            true
+        }
     }
+
+    private fun IllegalStateException.isAndroidTextFocusSearchCrash(): Boolean =
+            message == "focus search returned a view that wasn't able to take focus!"
 
     private fun handleKuiklySystemBack() {
         if (kuiklyRenderViewDelegator.onBackPressed()) return
@@ -397,6 +412,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun handleThreadAttachmentPickerResult(uris: List<Uri>) {
         val pending = pendingThreadAttachmentUpload ?: return
         pendingThreadAttachmentUpload = null
+        SlockDiagnosticsLogger.record(
+                "SlockKuiklyAttachment",
+                "picker_result uriCount=${uris.size}"
+        )
         if (uris.isEmpty()) {
             pending.callback?.invoke(mapOf("code" to 204, "bodyText" to ""))
             return
@@ -440,9 +459,13 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             .put("fileRef", file.fileRef)
             )
         }
+        SlockDiagnosticsLogger.record(
+                "SlockKuiklyAttachment",
+                "picker_files_ready fileCount=${files.size}"
+        )
         return mapOf(
                 "code" to 200,
-                "bodyText" to "",
+                "bodyText" to JSONObject().put("files", filesJson).toString(),
                 "files" to filesJson
         )
     }

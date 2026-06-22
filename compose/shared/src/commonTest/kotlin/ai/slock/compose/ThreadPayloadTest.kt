@@ -2511,6 +2511,44 @@ class ThreadPayloadTest {
         assertEquals(0, files.first().bytes.size)
     }
 
+    @Test
+    fun parsesPickedAttachmentFileRefsFromBodyTextForSharedUpload() {
+        val files =
+            parseSharedThreadPickedAttachmentFiles(
+                JSONObject().apply {
+                    put(
+                        "bodyText",
+                        JSONObject()
+                            .put(
+                                "files",
+                                JSONArray().apply {
+                                    put(
+                                        JSONObject().apply {
+                                            put("id", "picked-1")
+                                            put("fileName", "report.txt")
+                                            put("mimeType", "text/plain")
+                                            put("sizeBytes", 5L)
+                                            put("previewUri", "content://picked/report.txt")
+                                            put("fileRef", "content://picked/report.txt")
+                                        }
+                                    )
+                                }
+                            )
+                            .toString()
+                    )
+                }
+            )
+
+        assertEquals(1, files.size)
+        assertEquals("picked-1", files.first().id)
+        assertEquals("report.txt", files.first().fileName)
+        assertEquals("text/plain", files.first().mimeType)
+        assertEquals(5L, files.first().sizeBytes)
+        assertEquals("content://picked/report.txt", files.first().previewUri)
+        assertEquals("content://picked/report.txt", files.first().fileRef)
+        assertEquals(0, files.first().bytes.size)
+    }
+
     @OptIn(ExperimentalEncodingApi::class)
     @Test
     fun parsesPickedAttachmentBase64FallbackForSharedUpload() {
