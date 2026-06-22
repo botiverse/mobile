@@ -11585,7 +11585,6 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 @Composable
 private fun SettingsVisualServerFocusedContent(variant: String) {
     val snapshot = remember { settingsVisualServerSnapshot() }
-    val sectionsByKey = snapshot.sections.associateBy { it.key }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
     var inviteEmail by remember { mutableStateOf("new.member@slock.test") }
     var joinLinkMaxUses by remember { mutableStateOf("25") }
@@ -11596,7 +11595,7 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
     var onboardingAgentId by remember { mutableStateOf(snapshot.onboarding?.onboardingAgentId.orEmpty()) }
     var onboardingGreetingEnabled by remember { mutableStateOf(snapshot.onboarding?.agentAllChannelGreetingEnabled ?: true) }
     var hideHumansFromMembers by remember { mutableStateOf(snapshot.profile.hideHumansFromMembers) }
-    var deleteConfirmationSlug by remember { mutableStateOf("") }
+    var deleteConfirmationName by remember { mutableStateOf("") }
     val serverPayload =
         ScreenLoadState.Content(snapshot).toServerPayload(
             session = homeSearchVisualSession,
@@ -11604,150 +11603,43 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
             actionState = null,
             timeContext = null
         )
-    LazyColumn(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        item { SharedSettingsHero(serverPayload.copy(sections = emptyList())) }
-        when (variant) {
-            "server-profile" -> {
-                item {
-                    SettingsServerProfileFormCard(
-                        profile = snapshot.profile,
-                        draftName = profileName,
-                        fallbackName = snapshot.profile.name,
-                        fallbackSlug = snapshot.profile.slug,
-                        role = "owner",
-                        actionState = null,
-                        onNameChange = { profileName = it },
-                        onSubmit = {}
-                    )
-                }
-                item {
-                    SettingsServerDangerZoneCard(
-                        serverName = snapshot.profile.name,
-                        expectedServerSlug = snapshot.profile.slug,
-                        role = "owner",
-                        dangerSection = sectionsByKey["danger"],
-                        confirmationSlug = deleteConfirmationSlug,
-                        actionState = null,
-                        onConfirmationSlugChange = { deleteConfirmationSlug = it },
-                        onLeave = {},
-                        onDelete = {}
-                    )
-                }
-            }
-            "server-danger" ->
-                item {
-                    SettingsServerDangerZoneCard(
-                        serverName = snapshot.profile.name,
-                        expectedServerSlug = snapshot.profile.slug,
-                        role = "owner",
-                        dangerSection = sectionsByKey["danger"],
-                        confirmationSlug = deleteConfirmationSlug,
-                        actionState = null,
-                        onConfirmationSlugChange = { deleteConfirmationSlug = it },
-                        onLeave = {},
-                        onDelete = {}
-                    )
-                }
-            "administration" -> {
-                item { SettingsServerAdminsCard(members = snapshot.admins, section = sectionsByKey["admins"], actorRole = "owner", actionState = null, onAction = { _, _ -> }) }
-                item { SettingsServerInvitesCard(invites = snapshot.pendingInvites, section = sectionsByKey["pending_invites"], email = inviteEmail, actionState = null, timeContext = null, onEmailChange = { inviteEmail = it }, onSubmit = {}, onAction = { _, _ -> }) }
-                item { SettingsServerJoinLinksCard(links = snapshot.joinLinks, section = sectionsByKey["join_links"], maxUses = joinLinkMaxUses, expiresAt = joinLinkExpiresAt, actionState = null, timeContext = null, onMaxUsesChange = { joinLinkMaxUses = it }, onExpiresAtChange = { joinLinkExpiresAt = it }, onCreate = {}, onAction = { _, _ -> }) }
-            }
-            "administration-admins" ->
-                item {
-                    SettingsServerAdminsCard(
-                        members = snapshot.admins,
-                        section = sectionsByKey["admins"],
-                        actorRole = "owner",
-                        actionState = null,
-                        onAction = { _, _ -> }
-                    )
-                }
-            "administration-invites" ->
-                item {
-                    SettingsServerInvitesCard(
-                        invites = snapshot.pendingInvites,
-                        section = sectionsByKey["pending_invites"],
-                        email = inviteEmail,
-                        actionState = null,
-                        timeContext = null,
-                        onEmailChange = { inviteEmail = it },
-                        onSubmit = {},
-                        onAction = { _, _ -> }
-                    )
-                }
-            "administration-join-links" ->
-                item {
-                    SettingsServerJoinLinksCard(
-                        links = snapshot.joinLinks,
-                        section = sectionsByKey["join_links"],
-                        maxUses = joinLinkMaxUses,
-                        expiresAt = joinLinkExpiresAt,
-                        actionState = null,
-                        timeContext = null,
-                        onMaxUsesChange = { joinLinkMaxUses = it },
-                        onExpiresAtChange = { joinLinkExpiresAt = it },
-                        onCreate = {},
-                        onAction = { _, _ -> }
-                    )
-                }
-            "administration-pre-join-agreement" ->
-                item {
-                    SettingsServerAgreementCard(
-                        agreement = snapshot.agreement,
-                        section = sectionsByKey["pre_join_agreement"],
-                        enabled = agreementEnabled,
-                        title = agreementTitle,
-                        bodyMarkdown = agreementBody,
-                        actionState = null,
-                        onEnabledChange = { agreementEnabled = it },
-                        onTitleChange = { agreementTitle = it },
-                        onBodyChange = { agreementBody = it },
-                        onSubmit = {}
-                    )
-                }
-            "administration-onboarding" ->
-                item {
-                    SettingsServerOnboardingCard(
-                        onboarding = snapshot.onboarding,
-                        section = sectionsByKey["onboarding_agent"],
-                        selectedAgentId = onboardingAgentId,
-                        greetingEnabled = onboardingGreetingEnabled,
-                        actionState = null,
-                        onAgentSelected = { onboardingAgentId = it },
-                        onGreetingEnabledChange = { onboardingGreetingEnabled = it },
-                        onSubmit = {}
-                    )
-                }
-            "administration-member-permissions" ->
-                item {
-                    SettingsServerMemberPermissionsCard(
-                        profile = snapshot.profile,
-                        section = sectionsByKey["member_permissions"],
-                        hideHumansFromMembers = hideHumansFromMembers,
-                        actionState = null,
-                        onHideHumansFromMembersChange = { hideHumansFromMembers = it },
-                        onSubmit = {}
-                    )
-                }
-            else ->
-                item {
-                    SharedSettingsSectionCard(
-                        section =
-                            KuiklySharedSettingsSection(
-                                title = "Translation",
-                                rows = snapshot.translation.toTranslationRows(sectionsByKey["translation"], null)
-                            ),
-                        onAction = { _, _ -> }
-                    )
-                }
-        }
-        item { Spacer(Modifier.height(SlockSpacing.Lg)) }
-    }
+    // Use the real production SharedSettingsServerContent so visual testing
+    // always mirrors production — no duplicated card call sites.
+    SharedSettingsServerContent(
+        payload = serverPayload,
+        inviteEmail = inviteEmail,
+        onInviteEmailChange = { inviteEmail = it },
+        joinLinkMaxUses = joinLinkMaxUses,
+        onJoinLinkMaxUsesChange = { joinLinkMaxUses = it },
+        joinLinkExpiresAt = joinLinkExpiresAt,
+        onJoinLinkExpiresAtChange = { joinLinkExpiresAt = it },
+        profileName = profileName,
+        onProfileNameChange = { profileName = it },
+        agreementEnabled = agreementEnabled,
+        onAgreementEnabledChange = { agreementEnabled = it },
+        agreementTitle = agreementTitle,
+        onAgreementTitleChange = { agreementTitle = it },
+        agreementBody = agreementBody,
+        onAgreementBodyChange = { agreementBody = it },
+        hideHumansFromMembers = hideHumansFromMembers,
+        onHideHumansFromMembersChange = { hideHumansFromMembers = it },
+        onboardingAgentId = onboardingAgentId,
+        onOnboardingAgentIdChange = { onboardingAgentId = it },
+        onboardingGreetingEnabled = onboardingGreetingEnabled,
+        onOnboardingGreetingEnabledChange = { onboardingGreetingEnabled = it },
+        serverSnapshot = snapshot,
+        timeContext = null,
+        serverRole = "owner",
+        expectedServerSlug = snapshot.profile.slug,
+        deleteConfirmationName = deleteConfirmationName,
+        onDeleteConfirmationNameChange = { deleteConfirmationName = it },
+        actionState = null,
+        bottomContentPadding = SlockSpacing.Lg,
+        onCreateJoinLink = {},
+        onAction = { _, _ -> }
+    )
 }
+
 
 @Composable
 private fun SettingsVisualBillingContent(variant: String = "billing") {
