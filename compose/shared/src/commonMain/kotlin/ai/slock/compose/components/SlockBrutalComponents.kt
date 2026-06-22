@@ -613,15 +613,13 @@ internal fun SlockBrutalActionButton(
             modifier
                 .padding(end = shadowOffset, bottom = shadowOffset)
     ) {
-        if (shadowOffset > 0.dp) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = shadowOffset, y = shadowOffset)
-                        .background(SlockColor.ShadowBlack)
-            )
-        }
+        Box(
+            modifier =
+                Modifier
+                    .matchParentSize()
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockColor.ShadowBlack)
+        )
         Box(
             modifier =
                 Modifier
