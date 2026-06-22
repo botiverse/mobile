@@ -5,8 +5,19 @@ import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.DirectMessageCreated
+import ai.slock.compose.model.MessageNew
+import ai.slock.compose.model.MessageUpdated
+import ai.slock.compose.model.RealtimeEvent
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskDeleted
+import ai.slock.compose.model.TaskUpdated
+import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -41,12 +52,18 @@ class SharedActivityStore(
             is SharedActivityIntent.MarkDone -> markDone(intent.item)
             is SharedActivityIntent.MarkRead -> markRead(intent.item)
             is SharedActivityIntent.MarkUnread -> markUnread(intent.item)
+            is SharedActivityIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.event)
         }
     }
 
     fun clear() {
         loadJob?.cancel()
         loadJob = null
+    }
+
+    fun reset() {
+        clear()
+        _state.value = SharedActivityState()
     }
 
     private fun setFilter(filter: InboxFilter) {
@@ -57,6 +74,15 @@ class SharedActivityStore(
                 loading = true
             )
         load(refresh = true)
+    }
+
+    private fun applyRealtimeEvent(event: RealtimeEvent) {
+        if (!event.refreshesActivity()) return
+        val current = _state.value
+        if (current.loading || current.refreshing) return
+        if (!current.loaded || current.snapshot != null) {
+            load(refresh = true)
+        }
     }
 
     private fun load(refresh: Boolean) {
@@ -401,7 +427,22 @@ sealed interface SharedActivityIntent {
     data class MarkDone(val item: InboxItem) : SharedActivityIntent
     data class MarkRead(val item: InboxItem) : SharedActivityIntent
     data class MarkUnread(val item: InboxItem) : SharedActivityIntent
+    data class ApplyRealtimeEvent(val event: RealtimeEvent) : SharedActivityIntent
 }
+
+private fun RealtimeEvent.refreshesActivity(): Boolean =
+    when (this) {
+        is MessageNew,
+        is MessageUpdated,
+        is DirectMessageCreated,
+        is ThreadUpdated,
+        is TaskCreated,
+        is TaskUpdated,
+        is TaskDeleted,
+        is SyncResumeResponse -> true
+        is RealtimeRefreshRequired -> scope == RealtimeRefreshScope.Home
+        else -> false
+    }
 
 private data class InboxSenderAvatarProfile(
     val kind: MemberKind,

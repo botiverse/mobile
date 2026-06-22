@@ -151,6 +151,7 @@ internal fun SharedHomeActivityScreen(
     LaunchedEffect(activityStore) {
         activityStore.dispatch(SharedActivityIntent.LoadInitial)
     }
+    val listState = rememberLazyListState()
 
     SharedActivityPanelContent(
         state = state,
@@ -160,6 +161,33 @@ internal fun SharedHomeActivityScreen(
         bottomContentPadding = bottomContentPadding,
         topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
         timeContext = timeContext,
+        listState = listState,
+        modifier = modifier
+    )
+}
+
+@Composable
+internal fun SharedHomeActivityScreen(
+    state: SharedActivityState,
+    onIntent: (SharedActivityIntent) -> Unit,
+    onOpenMessage: (HomeMessageOpenRequest) -> Unit,
+    onClose: (() -> Unit)? = null,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    includeTopSafeArea: Boolean = true,
+    timeContext: SlockTimeContext? = null,
+    shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
+    listState: LazyListState = rememberLazyListState(),
+    modifier: Modifier = Modifier
+) {
+    SharedActivityPanelContent(
+        state = state,
+        onOpenMessage = onOpenMessage,
+        onClose = onClose,
+        onIntent = onIntent,
+        bottomContentPadding = bottomContentPadding,
+        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+        timeContext = timeContext,
+        listState = listState,
         modifier = modifier
     )
 }
@@ -180,17 +208,19 @@ internal fun SharedHomeActivityPanel(
     // recomposed on every state snapshot change; this marker tells us how much
     // wall-time the panel render itself costs on the UI thread (excluding
     // inner List measure which we'd add separately if this shows hot).
+    val listState = rememberLazyListState()
     traceMarkdownSection(SlockInboxTraceNames.PANEL_RENDER, snapshot.items.size) {
         SharedActivityPanelContent(
-        state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
-        onOpenMessage = onOpenMessage,
-        onClose = onClose,
-        onIntent = {},
-        bottomContentPadding = bottomContentPadding,
-        topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
-        timeContext = timeContext,
-        modifier = modifier
-    )
+            state = SharedActivityState(selectedFilter = selectedFilter, snapshot = snapshot, loaded = true),
+            onOpenMessage = onOpenMessage,
+            onClose = onClose,
+            onIntent = {},
+            bottomContentPadding = bottomContentPadding,
+            topSafeAreaPadding = shellScope.topInset(includeTopSafeArea),
+            timeContext = timeContext,
+            listState = listState,
+            modifier = modifier
+        )
     }
 }
 
@@ -203,6 +233,7 @@ private fun SharedActivityPanelContent(
     bottomContentPadding: Dp,
     topSafeAreaPadding: Dp,
     timeContext: SlockTimeContext?,
+    listState: LazyListState,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -262,7 +293,8 @@ private fun SharedActivityPanelContent(
                     onOpenMessage = onOpenMessage,
                     onIntent = onIntent,
                     bottomContentPadding = bottomContentPadding,
-                    timeContext = timeContext
+                    timeContext = timeContext,
+                    listState = listState
                 )
         }
     }
@@ -363,9 +395,9 @@ private fun SharedActivityList(
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onIntent: (SharedActivityIntent) -> Unit,
     bottomContentPadding: Dp,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    listState: LazyListState = rememberLazyListState()
 ) {
-    val listState = rememberLazyListState()
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
