@@ -1628,6 +1628,8 @@
       "id": "components.settings.appearance.page",
       "title": "Settings Appearance Page",
       "surface": "settings",
+      "baselineStatus": "pending",
+      "notes": "React SettingsPanel AppearanceSection is documented, but Android/KMP has no first-class Appearance page provider yet; exclude from default parity accounting until a real provider exists.",
       "fixture": "fixtures/components.settings.appearance.page.json",
       "viewport": {
         "width": 390,
