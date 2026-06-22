@@ -35,6 +35,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.view.ViewTreeObserver
+import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.webkit.MimeTypeMap
 import android.widget.EditText
@@ -212,6 +213,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (handleSlockTextFieldEnterKey(event)) {
+            return true
+        }
         if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
             if (kuiklyRenderViewDelegator.onBackPressed()) {
                 return true
@@ -234,6 +238,28 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun IllegalStateException.isAndroidTextFocusSearchCrash(): Boolean =
             message == "focus search returned a view that wasn't able to take focus!"
+
+    private fun handleSlockTextFieldEnterKey(event: KeyEvent): Boolean {
+        if (event.keyCode != KeyEvent.KEYCODE_ENTER) return false
+        val textField = currentFocus as? EditText ?: return false
+        if (textField.imeOptions and EditorInfo.IME_MASK_ACTION != EditorInfo.IME_ACTION_SEND) {
+            return false
+        }
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            if (event.repeatCount == 0 && event.isShiftPressed && textField.maxLines != 1) {
+                val insertAt = textField.selectionStart.coerceIn(0, textField.text.length)
+                textField.editableText.insert(insertAt, "\n")
+            }
+            return true
+        }
+        if (event.action == KeyEvent.ACTION_UP) {
+            if (!event.isShiftPressed) {
+                textField.onEditorAction(EditorInfo.IME_ACTION_SEND)
+            }
+            return true
+        }
+        return false
+    }
 
     private fun handleKuiklySystemBack() {
         if (kuiklyRenderViewDelegator.onBackPressed()) return
