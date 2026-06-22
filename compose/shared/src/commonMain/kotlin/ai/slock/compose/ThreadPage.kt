@@ -3109,7 +3109,11 @@ internal fun SharedThreadRouteContent(
                 "send" -> {
                     val threadId = composerSurface.sendChannelId
                     val draftText = composerDraftState.seedText.trim()
-                    val attachmentIds = renderedComposer.pendingAttachments.map { it.id }.filter { it.isNotBlank() }
+                    if (renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
+                        bridge.toast("Waiting for attachments to finish uploading")
+                        return@ThreadPageContent
+                    }
+                    val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
                     if (!payload.canSend || composerDraftState.sending || threadId == null ||
                         (draftText.isBlank() && attachmentIds.isEmpty())
                     ) {

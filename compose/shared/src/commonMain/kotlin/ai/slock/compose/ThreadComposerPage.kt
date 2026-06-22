@@ -915,6 +915,16 @@ internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
         ?.let { "#${it.removePrefix("#")}" }
         ?: "this channel"
 
+internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
+    filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
+        .map { attachment -> attachment.id }
+
+internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
+    any { attachment -> attachment.id.isNotBlank() && !attachment.isReadyThreadAttachmentForSend() }
+
+private fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
+    id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
+
 internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =
     availableActions.any { action ->
         when (verb) {

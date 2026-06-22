@@ -254,6 +254,46 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun sendAttachmentIdsExcludeLocalPickedAttachmentsUntilUploadFinishes() {
+        val attachments =
+            listOf(
+                KuiklyPendingAttachmentItem(
+                    id = "picked-123-0",
+                    fileName = "local.png",
+                    status = "ready"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "remote-attachment-1",
+                    fileName = "remote.png",
+                    status = "ready"
+                ),
+                KuiklyPendingAttachmentItem(
+                    id = "remote-attachment-2",
+                    fileName = "uploading.png",
+                    status = "uploading"
+                )
+            )
+
+        assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
+        assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+    }
+
+    @Test
+    fun readyUploadedAttachmentsDoNotBlockSend() {
+        val attachments =
+            listOf(
+                KuiklyPendingAttachmentItem(
+                    id = "remote-attachment-1",
+                    fileName = "remote.png",
+                    status = "ready"
+                )
+            )
+
+        assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
+        assertFalse(attachments.hasBlockingThreadAttachmentUpload())
+    }
+
+    @Test
     fun composerSurfaceUsesStreamChannelForSendTarget() {
         val surface =
             KuiklyThreadComposerPayload(
