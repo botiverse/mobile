@@ -2364,12 +2364,15 @@
     },
     {
       "id": "screens.settings.billing-portal",
-      "title": "Settings Billing Portal Flow",
+      "title": "Settings Billing External Portal Link",
       "captureType": "real-screen",
       "surface": "settings",
       "category": "app/settings",
       "baselineStatus": "pending",
       "fixture": "fixtures/screens.settings.billing-portal.json",
+      "skip": {
+        "reason": "Skipped: billing portal is an external browser URL action (https://raft.build/settings/billing), not an in-app screen/WebView route. Validate the Billing page/action state instead."
+      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -2396,7 +2399,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Missing real billing portal/open-browser/WebView fallback visual gate."
+      "notes": "External browser URL action, not an in-app screen/WebView route; visual parity belongs to Billing page/action state."
     },
     {
       "id": "screens.home.index",
@@ -5030,34 +5033,34 @@
     },
     {
       "id": "screens.settings.billing-portal",
-      "title": "Settings Billing Portal Flow",
+      "title": "Settings Billing External Portal Link",
       "captureType": "real-screen",
       "surface": "settings",
       "category": "app/settings",
       "group": "screens-settings",
       "status": "pending",
-      "notes": "Missing real billing portal/open-browser/WebView fallback visual gate.",
+      "notes": "External browser URL action, not an in-app screen/WebView route; skipped from default pixel-diff accounting.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
+          "status": "external",
           "path": "packages/web/src/components/settings/SettingsPanel.tsx#BillingTabContent",
           "fixture": "fixtures/screens.settings.billing-portal.json",
-          "reason": "Needs React visual case/fixture under the new capture taxonomy."
+          "reason": "Billing portal opens an external website; validate Billing tab action availability instead of a portal screen."
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "external",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs real Android page/route launch capture, not a visual fixture page."
+          "reason": "Android opens https://raft.build/settings/billing in the system browser when available; no in-app route exists."
         },
         {
           "id": "harmony",
-          "status": "pending",
+          "status": "external",
           "source": "ohos-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
-          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+          "reason": "Portal management is external-web behavior; no Harmony in-app route is expected."
         }
       ]
     },
