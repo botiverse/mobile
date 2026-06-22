@@ -42,7 +42,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
-import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -66,6 +66,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -460,7 +461,7 @@ private fun SharedActivityRow(
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(modifier = Modifier.weight(1f).clickable { onOpen() }) {
+        Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, onOpen, onOpenMenu)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -514,18 +515,29 @@ private fun SharedActivityRow(
             }
             SharedActivityFooter(item)
         }
-        var actionAnchor by remember { mutableStateOf(Offset.Zero) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SharedActivitySmallIconButton(
-                iconName = SlockLucideIconName.Ellipsis,
-                modifier = Modifier.onGloballyPositioned { coordinates ->
-                    actionAnchor = coordinates.positionInRoot()
-                },
-                onClick = { onOpenMenu(actionAnchor) }
-            )
             SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
         }
     }
+}
+
+@Composable
+private fun Modifier.activityRowGestures(
+    itemKey: String,
+    onClick: () -> Unit,
+    onOpenMenu: (Offset) -> Unit
+): Modifier {
+    var rootPos by remember { mutableStateOf(Offset.Zero) }
+    return this
+        .onGloballyPositioned { rootPos = it.positionInRoot() }
+        .pointerInput(itemKey) {
+            detectTapGestures(
+                onTap = { onClick() },
+                onLongPress = { localOffset ->
+                    onOpenMenu(Offset(rootPos.x + localOffset.x, rootPos.y + localOffset.y))
+                }
+            )
+        }
 }
 
 @Composable
