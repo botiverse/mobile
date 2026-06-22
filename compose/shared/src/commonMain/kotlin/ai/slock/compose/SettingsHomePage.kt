@@ -71,6 +71,11 @@ import ai.slock.compose.data.NotificationPreferenceSnapshot
 import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
 import ai.slock.compose.data.PersistentLocaleRepository
 import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
+import ai.slock.compose.data.AuthApiResult
+import ai.slock.compose.data.AuthLoginResponse
+import ai.slock.compose.data.AuthRefreshResponse
+import ai.slock.compose.data.AuthSocialCompleteResponse
+import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthErrorCode
 import ai.slock.compose.data.SharedAuthGateIntent
@@ -108,6 +113,7 @@ import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsStorageRow
 import ai.slock.compose.data.SharedSettingsStorageSnapshot
 import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.data.SlockAuthApi
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.ScreenLoadState
@@ -351,6 +357,7 @@ private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_searc
 private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
 private const val HOME_ACTIVITY_VISUAL_PAGE = "compose_home_activity_visual"
 private const val HOME_CREATE_CHANNEL_DIALOG_VISUAL_PAGE = "compose_home_create_channel_dialog_visual"
+private const val AUTH_CHOOSE_SERVER_VISUAL_PAGE = "compose_auth_choose_server_visual"
 const val SLOCK_APP_SHELL_PAGE = "compose_slock_app_shell"
 
 private const val AppShellRouteMain = "main"
@@ -535,6 +542,14 @@ internal class ComposeHomeCreateChannelDialogVisualPage : ai.slock.compose.base.
     override fun willInit() {
         super.willInit()
         setContent { HomeCreateChannelDialogVisualContent() }
+    }
+}
+
+@Page(AUTH_CHOOSE_SERVER_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeAuthChooseServerVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthChooseServerVisualContent() }
     }
 }
 
@@ -7727,6 +7742,91 @@ private data class PendingAppShellSocialAuth(
     val nonce: Int,
     val provider: AuthProvider
 )
+
+@Composable
+private fun AuthChooseServerVisualContent() {
+    val session = remember { authChooseServerVisualSession() }
+    val store = remember(session) { InMemorySlockAuthSessionStore(session) }
+    val authDataSource = remember(store, session) {
+        SharedAuthDataSource(
+            api = AuthChooseServerVisualApi(session.user, session.servers),
+            sessionStore = store
+        )
+    }
+    AppShellServerGateContent(
+        session = session,
+        authDataSource = authDataSource,
+        onReady = {},
+        onSignOut = {}
+    )
+}
+
+private fun authChooseServerVisualSession(): StoredAuthSession =
+    StoredAuthSession(
+        user =
+            StoredAuthUser(
+                id = "user_visual",
+                email = "artin@raft.build",
+                displayName = "Artin"
+            ),
+        accessToken = "visual-access-token",
+        refreshToken = "visual-refresh-token",
+        selectedServerId = null,
+        selectedServerSlug = null,
+        servers =
+            listOf(
+                StoredAuthServer(
+                    id = "srv_design",
+                    name = "Slock Design",
+                    slug = "slock-design",
+                    role = "owner"
+                ),
+                StoredAuthServer(
+                    id = "srv_android",
+                    name = "Android Artifacts",
+                    slug = "android-artifacts",
+                    role = "admin"
+                ),
+                StoredAuthServer(
+                    id = "srv_feedback",
+                    name = "Feedback",
+                    slug = "feedback",
+                    role = "member"
+                )
+            )
+    )
+
+private class AuthChooseServerVisualApi(
+    private val user: StoredAuthUser,
+    private val servers: List<StoredAuthServer>
+) : SlockAuthApi {
+    override suspend fun login(email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun completeSocialLogin(provider: String, bodyText: String): AuthApiResult<AuthSocialCompleteResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun register(name: String, email: String, password: String): AuthApiResult<AuthLoginResponse> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun forgotPassword(email: String): AuthApiResult<Unit> =
+        AuthApiResult.Failure(code = 400)
+
+    override suspend fun currentUser(authorization: String): AuthApiResult<StoredAuthUser> =
+        AuthApiResult.Success(user)
+
+    override suspend fun refresh(refreshToken: String): AuthApiResult<AuthRefreshResponse> =
+        AuthApiResult.Failure(code = 401)
+
+    override suspend fun logout(refreshToken: String): AuthApiResult<Unit> =
+        AuthApiResult.Success(Unit)
+
+    override suspend fun servers(authorization: String): AuthApiResult<List<StoredAuthServer>> =
+        AuthApiResult.Success(servers)
+
+    override suspend fun createServer(authorization: String, bodyText: String): AuthApiResult<StoredAuthServer> =
+        AuthApiResult.Failure(code = 400)
+}
 
 private fun Pager.appShellSocialAuthProviders(): Set<AuthProvider> =
     pageData.params.optString("slockSocialAuthProviders")

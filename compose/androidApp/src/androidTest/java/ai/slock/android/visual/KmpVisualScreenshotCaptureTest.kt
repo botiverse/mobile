@@ -428,6 +428,36 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureAuthLoginScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.auth.login",
+            pageName = SlockKuiklyActivity.PAGE_LOGIN,
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 12_000
+        )
+    }
+
+    @Test
+    fun captureAuthForgotPasswordScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.auth.forgot-password",
+            pageName = SlockKuiklyActivity.PAGE_FORGOT_PASSWORD,
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 12_000
+        )
+    }
+
+    @Test
+    fun captureAuthChooseServerScreen() {
+        captureKmpComponentCase(
+            caseId = "screens.auth.choose-server",
+            pageName = "compose_auth_choose_server_visual",
+            crop = FULL_VIEWPORT_CROP,
+            settleMs = 4_500
+        )
+    }
+
+    @Test
     fun captureAuthRegisterInputs() {
         captureKmpComponentCase(
             caseId = "components.auth.register.inputs",
