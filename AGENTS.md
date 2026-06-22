@@ -388,6 +388,15 @@ cd /Users/artin/AndroidStudioProjects/Slock/compose
   Temporary app-side shims can make one APK build, but they drift from the real shared
   artifact and should be removed before handoff.
 
+## Gradle Build Safety
+
+- If Gradle compilation fails due to **cache corruption** or because the Gradle daemon
+  is **locked/occupied by another process**, **stop immediately** and report the failure.
+  Do **not** retry the build — retrying will not resolve cache or lock contention and
+  wastes time.
+- Before reporting, capture the exact error message and the Gradle task that failed.
+  Let the owner or the blocking process holder decide the next step.
+
 ## Network Priority Workflow
 
 - Every Android request that reaches `ai.slock.compose.network.SlockApiClient`
