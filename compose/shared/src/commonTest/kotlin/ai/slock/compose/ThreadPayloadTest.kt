@@ -1096,41 +1096,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun buildsTaskThreadLoadingPayloadBeforeOpeningReplyThread() {
-        val payload =
-            buildAppShellTaskThreadLoadingPayload(
-                TaskSummary(
-                    id = TaskId("task-1"),
-                    title = "Fix slow route",
-                    status = TaskStatus.InProgress,
-                    taskNumber = 42,
-                    messageId = MessageId("message-1"),
-                    channelId = ChannelId("channel-1"),
-                    channelName = "general",
-                    updatedAtLabel = "now"
-                ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
-                alignOwnMessagesRight = true
-            )
-
-        assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
-        assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals(null, payload.subtitle)
-        assertEquals("loading", payload.status)
-        assertEquals(null, payload.sourceThreadId)
-        assertEquals("message-1", payload.originParentMessageId)
-        assertEquals("message-1", payload.focusedMessageId)
-        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
-        assertEquals("channel-1", payload.parentChannelId)
-        assertEquals("message-1", payload.parentMessageId)
-        assertEquals("loading", payload.originStatus)
-        assertEquals("Opening task", payload.emptyTitle)
-        assertEquals(480, payload.localOffsetMinutes)
-        assertEquals(20593, payload.todayEpochDay)
-        assertEquals(true, payload.alignOwnMessagesRight)
-    }
-
-    @Test
     fun standaloneConversationThreadLaunchCarriesOnlyIdentityAndIntent() {
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
@@ -1368,81 +1333,6 @@ class ThreadPayloadTest {
         assertEquals(0, initialPayload.membersCount)
         assertEquals(null, initialPayload.dmPeerName)
         assertEquals(null, initialPayload.dmPeerAvatarUrl)
-    }
-
-    @Test
-    fun threadTaskHintDoesNotBuildContainingThreadPayload() {
-        val payload =
-            buildAppShellTaskContainingThreadPayload(
-                TaskSummary(
-                    id = TaskId("task-1"),
-                    title = "Fix slow route",
-                    status = TaskStatus.InProgress,
-                    taskNumber = 42,
-                    messageId = MessageId("message-1"),
-                    channelId = ChannelId("parent-channel-1"),
-                    threadId = ThreadId("thread-channel-1"),
-                    isThreadTask = true,
-                    channelName = "bug triage",
-                    updatedAtLabel = "now"
-                ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
-                alignOwnMessagesRight = true
-            )
-
-        assertEquals(null, payload)
-    }
-
-    @Test
-    fun taskThreadLoadingPayloadIgnoresLegacyThreadIdStreamHintUntilCreateOpen() {
-        val payload =
-            buildAppShellTaskThreadLoadingPayload(
-                TaskSummary(
-                    id = TaskId("task-1"),
-                    title = "Fix slow route",
-                    status = TaskStatus.InProgress,
-                    taskNumber = 42,
-                    messageId = MessageId("message-1"),
-                    parentMessageId = MessageId("message-1"),
-                    channelId = ChannelId("parent-channel-1"),
-                    threadId = ThreadId("thread-channel-1"),
-                    channelName = "bug triage",
-                    updatedAtLabel = "now"
-                ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
-                alignOwnMessagesRight = true
-            )
-
-        assertEquals("shared-shell-task-thread-task-1", payload.instanceId)
-        assertEquals(null, payload.sourceThreadId)
-        assertEquals(null, payload.streamChannelId)
-        assertEquals(null, payload.resolveThreadComposer().streamChannelId)
-        assertEquals("parent-channel-1", payload.parentChannelId)
-        assertEquals("message-1", payload.parentMessageId)
-        assertEquals("message-1", payload.originParentMessageId)
-        assertEquals("loading", payload.originStatus)
-    }
-
-    @Test
-    fun threadTaskWithoutThreadIdFallsBackToReplyThreadOpen() {
-        val payload =
-            buildAppShellTaskContainingThreadPayload(
-                TaskSummary(
-                    id = TaskId("task-1"),
-                    title = "Fix slow route",
-                    status = TaskStatus.InProgress,
-                    taskNumber = 42,
-                    messageId = MessageId("message-1"),
-                    channelId = ChannelId("parent-channel-1"),
-                    isThreadTask = true,
-                    channelName = "bug triage",
-                    updatedAtLabel = "now"
-                ),
-                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
-                alignOwnMessagesRight = true
-            )
-
-        assertEquals(null, payload)
     }
 
     @Test

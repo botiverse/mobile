@@ -58,7 +58,7 @@ class SlockAppShellTest {
             retainedAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
         )
         assertEquals(listOf("tasks"), activeOnlyAppShellComposedTabs("tasks"))
-        assertEquals(listOf("home"), activeOnlyAppShellComposedTabs("thread"))
+        assertEquals(listOf("home"), activeOnlyAppShellComposedTabs("unknown"))
     }
 
     @Test
@@ -77,7 +77,7 @@ class SlockAppShellTest {
         )
         assertEquals(
             listOf("home"),
-            homeWarmAppShellComposedTabs("thread", mountedTabs = setOf("home", "tasks"))
+            homeWarmAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
         )
     }
 
@@ -97,7 +97,7 @@ class SlockAppShellTest {
         )
         assertEquals(
             listOf("tasks", "home"),
-            warmPrimaryAppShellComposedTabs("thread", mountedTabs = setOf("home", "tasks"))
+            warmPrimaryAppShellComposedTabs("unknown", mountedTabs = setOf("home", "tasks"))
         )
     }
 
@@ -127,7 +127,7 @@ class SlockAppShellTest {
 
     @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
-        assertEquals("home", retainedAppShellSelectedTab("thread"))
+        assertEquals("home", retainedAppShellSelectedTab("unknown"))
     }
 
     @Test
@@ -136,8 +136,8 @@ class SlockAppShellTest {
         assertEquals("kuikly_tasks", appShellBottomTabPerformanceRoute("tasks"))
         assertEquals("kuikly_members", appShellBottomTabPerformanceRoute("members"))
         assertEquals("kuikly_settings", appShellBottomTabPerformanceRoute("settings"))
-        assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("thread"))
-        assertEquals("bottom_tab_home", appShellBottomTabPerformancePhase("thread"))
+        assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("unknown"))
+        assertEquals("bottom_tab_home", appShellBottomTabPerformancePhase("unknown"))
     }
 
     @Test
@@ -228,39 +228,4 @@ class SlockAppShellTest {
         assertEquals(48L, homeSurfaceVisibilityDispatchDelayMs(true))
     }
 
-    @Test
-    fun retainedThreadRouteEntryKeyUsesRouteIdentity() {
-        val base =
-            KuiklyThreadScreenPayload(
-                instanceId = "shared-shell-thread-C123",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                sourceThreadId = "C123",
-                streamChannelId = "C123"
-            )
-
-        assertEquals(
-            retainedThreadRouteEntryKey(base),
-            retainedThreadRouteEntryKey(base.copy(status = "content", title = "general"))
-        )
-    }
-
-    @Test
-    fun retainedThreadRouteEntriesAreReleasedAfterFinalPopToMain() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "shared-shell-thread-C123",
-                surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                sourceThreadId = "C123",
-                streamChannelId = "C123"
-            )
-        val entries =
-            listOf(
-                RetainedThreadRouteEntry(
-                    key = retainedThreadRouteEntryKey(payload),
-                    payload = payload
-                )
-            )
-
-        assertEquals(emptyList(), retainedThreadRouteEntriesAfterPopToMain(entries))
-    }
 }
