@@ -57,20 +57,20 @@ internal sealed interface SharedComputersIntent {
     data object Clear : SharedComputersIntent
 }
 
-internal class SharedComputersStore(
+class SharedComputersStore internal constructor(
     private val computersApiClient: SlockComputersApiClient,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {}
 ) {
     private val _state = MutableStateFlow(SharedComputersState())
-    val state: StateFlow<SharedComputersState> = _state.asStateFlow()
+    internal val state: StateFlow<SharedComputersState> = _state.asStateFlow()
 
-    fun computerPickerSliceFlow(serverId: String?): Flow<SharedComputersPickerSlice> =
+    internal fun computerPickerSliceFlow(serverId: String?): Flow<SharedComputersPickerSlice> =
         state
             .map { state -> state.selectComputerPickerSlice(serverId) }
             .distinctUntilChanged()
 
-    fun dispatch(intent: SharedComputersIntent) {
+    internal fun dispatch(intent: SharedComputersIntent) {
         when (intent) {
             is SharedComputersIntent.EnsureComputerPicker ->
                 loadComputerPicker(serverId = intent.serverId, force = false)

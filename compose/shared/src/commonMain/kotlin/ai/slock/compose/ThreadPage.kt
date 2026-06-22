@@ -4346,7 +4346,10 @@ private fun ThreadPageContent(
                     label = payload.joinLabel,
                     onJoin = { onThreadEvent("joinChannel", null, null, null) }
                 )
-            } else if (shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)) {
+            } else if (
+                payload.status != "loading" &&
+                shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)
+            ) {
                 Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
                     Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
                     Box(

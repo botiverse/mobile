@@ -574,7 +574,21 @@ class RealSettingsRepository(
         if (machines !is DataResult.Content) return machines.mapSettingsDetailError(serverId, machineId)
         val computer = machines.data.computers.firstOrNull { it.id == machineId }
             ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return getComputerDetailForServerComputer(serverId, computer)
+    }
 
+    override suspend fun getComputerDetailForComputer(computer: SettingsComputerSnapshot): DataResult<SettingsComputerDetailSnapshot> {
+        val serverId = selectedServerId() ?: return serverRequired()
+        if (computer.id.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        logger("machine_detail_fetch_start serverId=$serverId machineId=${computer.id} source=shared_computers")
+        return getComputerDetailForServerComputer(serverId, computer)
+    }
+
+    private suspend fun getComputerDetailForServerComputer(
+        serverId: String,
+        computer: SettingsComputerSnapshot
+    ): DataResult<SettingsComputerDetailSnapshot> {
+        val machineId = computer.id
         logger("machine_detail_section_start serverId=$serverId machineId=$machineId section=workspaces")
         val workspaces = settingsMachineWorkspaces(serverId, machineId)
         workspaces.logMachineDetailSection(serverId, machineId, "workspaces", (workspaces as? DataResult.Content)?.data?.size, logger, warningLogger)

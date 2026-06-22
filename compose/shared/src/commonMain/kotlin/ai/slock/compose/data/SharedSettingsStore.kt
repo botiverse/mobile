@@ -312,6 +312,7 @@ interface SharedSettingsPlatformCapabilities {
 class SharedSettingsDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
+    private val computersStore: SharedComputersStore? = null,
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
@@ -386,11 +387,46 @@ class SharedSettingsDataSource(
     suspend fun uninstallMarketplaceApp(clientRecordId: String): DataResult<SettingsConnectedAppsSnapshot> =
         settingsRepository?.uninstallMarketplaceApp(clientRecordId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
-    suspend fun loadComputers(): DataResult<SettingsComputersSnapshot> =
-        settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun loadComputers(forceComputers: Boolean = false): DataResult<SettingsComputersSnapshot> {
+        val serverId = sessionStore.readSession()?.currentServerId
+        val sharedResult =
+            if (serverId != null && computersStore != null) {
+                computersStore.ensureSettingsComputersForServer(serverId, force = forceComputers)
+            } else {
+                null
+            }
+        return sharedResult ?: settingsRepository?.getComputers() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    }
 
-    suspend fun loadComputerDetail(machineId: String): DataResult<SettingsComputerDetailSnapshot> =
-        settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+    suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
+        val serverId = sessionStore.readSession()?.currentServerId
+        val sharedComputer =
+            if (serverId != null && computersStore != null) {
+                computersStore.loadSettingsComputerSnapshotForServer(
+                    serverId = serverId,
+                    machineId = machineId,
+                    force = forceComputers
+                )
+            } else {
+                null
+            }
+        return when (sharedComputer) {
+            is DataResult.Content ->
+                settingsRepository?.getComputerDetailForComputer(sharedComputer.data)
+                    ?: DataResult.Content(
+                        SettingsComputerDetailSnapshot(
+                            computer = sharedComputer.data,
+                            workspaces = emptyList(),
+                            agents = emptyList(),
+                            sections = emptyList()
+                        )
+                    )
+            is DataResult.Empty -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(sharedComputer.reason)
+            is DataResult.Error -> DataResult.Error(sharedComputer.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
+            null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        }
+    }
 
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
         settingsRepository?.renameComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1227,11 +1263,11 @@ class SharedSettingsStore(
             SharedSettingsDestination.ComputerDetail -> {
                 val openId = _state.value.route.itemId.orEmpty()
                 if (openId.isNotBlank() && openId == machineId) {
-                    scope.launch { loadComputerDetail(machineId) }
+                    scope.launch { dataSource.loadComputerDetail(machineId, forceComputers = true).applyToState(SharedSettingsDestination.ComputerDetail) { copy(computerDetail = it) } }
                 }
             }
             SharedSettingsDestination.Computers -> {
-                scope.launch { dataSource.loadComputers().applyToComputersListState() }
+                scope.launch { dataSource.loadComputers(forceComputers = true).applyToComputersListState() }
             }
             else -> Unit
         }
@@ -1506,7 +1542,7 @@ class SharedSettingsStore(
     ) {
         when (this) {
             is DataResult.Content ->
-                dataSource.loadComputerDetail(machineId).applyComputerDetailActionResult(action, machineId)
+                dataSource.loadComputerDetail(machineId, forceComputers = true).applyComputerDetailActionResult(action, machineId)
             is DataResult.Empty ->
                 DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
             is DataResult.Error ->
@@ -1533,7 +1569,7 @@ class SharedSettingsStore(
                         computerDetail = ScreenLoadState.Loading,
                         route = SharedSettingsRoute(SharedSettingsDestination.Computers),
                         actionState = SharedSettingsActionState(action, itemId = machineId, inProgress = false)
-                    ).also { dataSource.loadComputers() }
+                    ).also { dataSource.loadComputers(forceComputers = true) }
             is DataResult.Empty ->
                 DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
             is DataResult.Error ->
@@ -1549,7 +1585,7 @@ class SharedSettingsStore(
     ) {
         when (this) {
             is DataResult.Content ->
-                dataSource.loadComputerDetail(machineId).applyComputerDetailActionResult(action, machineId)
+                dataSource.loadComputerDetail(machineId, forceComputers = true).applyComputerDetailActionResult(action, machineId)
             is DataResult.Empty ->
                 DataResult.Empty(reason).applyComputerDetailActionResult(action, machineId)
             is DataResult.Error ->

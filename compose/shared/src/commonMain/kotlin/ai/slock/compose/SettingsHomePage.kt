@@ -1057,7 +1057,7 @@ private fun SlockAppShellContent() {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
     val settingsDataSource =
-        remember {
+        remember(appShellComputersStore) {
             SharedSettingsDataSource(
                 sessionStore = authStore,
                 settingsRepository =
@@ -1067,6 +1067,7 @@ private fun SlockAppShellContent() {
                         logger = { message -> bridge.log("shared_settings_repository $message") },
                         warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
                     ),
+                computersStore = appShellComputersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
