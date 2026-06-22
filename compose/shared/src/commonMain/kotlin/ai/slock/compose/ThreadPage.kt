@@ -3212,6 +3212,7 @@ internal fun SharedThreadRouteContent(
                         }
                         when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
                             is DataResult.Content -> {
+                                val replacedAttachmentIds = files.map { file -> file.id }.filter { it.isNotBlank() }.toSet()
                                 val uploaded =
                                     uploadResult.data.attachments.map { attachment ->
                                         SharedThreadComposerAttachment(
@@ -3227,7 +3228,10 @@ internal fun SharedThreadRouteContent(
                                     return@launch
                                 }
                                 composerDraftViewModel.dispatch(
-                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(uploaded)
+                                    SharedThreadComposerDraftIntent.AddUploadedAttachments(
+                                        attachments = uploaded,
+                                        replacedAttachmentIds = replacedAttachmentIds
+                                    )
                                 )
                             }
                             is DataResult.Error ->
