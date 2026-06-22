@@ -154,6 +154,13 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun latestMessageListItemIndex_originMessageParticipatesInScrollableItems() {
+        val sig = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
+            .latestMessageListItemIndexPublic()
+        assertEquals(3, sig)
+    }
+
+    @Test
     fun latestMessageListItemIndex_emptyMessages_returnsMinusOne() {
         val sig = payload().latestMessageListItemIndexPublic()
         assertEquals(-1, sig)

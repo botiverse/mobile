@@ -5486,34 +5486,6 @@ private fun ThreadMessagesList(
         pendingKeyboardBottomAnchor = false
     }
     Column(modifier = Modifier.fillMaxSize()) {
-        if (payload.originStatus != "none") {
-            ThreadOriginCard(
-                payload = payload,
-                highlightedMentions = highlightedMentions,
-                pendingActionCardIds = pendingActionCardIds,
-                attachmentOpenStates = attachmentOpenStates,
-                attachmentCommentsEnabled = attachmentCommentsEnabled,
-                currentServerSlug = currentServerSlug,
-                quotedPreviewStates = quotedPreviewStates,
-                contentExtrasVisible = contentExtrasVisible,
-                onEnsureQuotedPreview = onEnsureQuotedPreview,
-                onOpenQuotedPermalink = onOpenQuotedPermalink,
-                onThreadEvent = onThreadEvent,
-                onShowActions = { message, anchor ->
-                    actionMenuAnchor = anchor
-                    actionMessageId = message.id
-                    diagnosticsLogger(
-                        "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
-                    )
-                },
-                onOpenTaskStatusMenu = { message, anchor ->
-                    taskStatusMenuMessageId = message.id
-                    taskStatusMenuAnchor = anchor
-                },
-                onOpenMarkdownTag = onOpenMarkdownTag,
-                onOpenMarkdownUrl = onOpenMarkdownUrl
-            )
-        }
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             LazyColumn(
                 state = listState,
@@ -5523,6 +5495,36 @@ private fun ThreadMessagesList(
                 verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
+            if (payload.hasThreadOriginItem()) {
+                item(key = ThreadOriginListItemKey) {
+                    ThreadOriginCard(
+                        payload = payload,
+                        highlightedMentions = highlightedMentions,
+                        pendingActionCardIds = pendingActionCardIds,
+                        attachmentOpenStates = attachmentOpenStates,
+                        attachmentCommentsEnabled = attachmentCommentsEnabled,
+                        currentServerSlug = currentServerSlug,
+                        quotedPreviewStates = quotedPreviewStates,
+                        contentExtrasVisible = contentExtrasVisible,
+                        onEnsureQuotedPreview = onEnsureQuotedPreview,
+                        onOpenQuotedPermalink = onOpenQuotedPermalink,
+                        onThreadEvent = onThreadEvent,
+                        onShowActions = { message, anchor ->
+                            actionMenuAnchor = anchor
+                            actionMessageId = message.id
+                            diagnosticsLogger(
+                                "thread_origin_menu_tap messageId=${message.id} rootX=${anchor.x} rootY=${anchor.y}"
+                            )
+                        },
+                        onOpenTaskStatusMenu = { message, anchor ->
+                            taskStatusMenuMessageId = message.id
+                            taskStatusMenuAnchor = anchor
+                        },
+                        onOpenMarkdownTag = onOpenMarkdownTag,
+                        onOpenMarkdownUrl = onOpenMarkdownUrl
+                    )
+                }
+            }
             if (payload.hasThreadHistoryBoundaryItem()) {
                 item(key = ThreadOlderMessagesListItemKey) {
                     when {
@@ -5799,6 +5801,7 @@ private fun ThreadMessagesList(
 private const val ThreadOlderMessagesListItemKey = "thread-page:older-messages"
 private const val ThreadNewerMessagesListItemKey = "thread-page:newer-messages"
 private const val ThreadReplyEmptyListItemKey = "thread-page:reply-empty"
+private const val ThreadOriginListItemKey = "thread-page:origin"
 
 internal fun threadMessagesLazyItemCount(
     originStatus: String,
@@ -5806,7 +5809,8 @@ internal fun threadMessagesLazyItemCount(
     messagesCount: Int,
     canLoadMoreAfter: Boolean
 ): Int =
-    (if (showHistoryBoundary) 1 else 0) +
+    (if (originStatus != "none") 1 else 0) +
+        (if (showHistoryBoundary) 1 else 0) +
         messagesCount.coerceAtLeast(0) +
         (if (canLoadMoreAfter) 1 else 0)
 
@@ -5917,11 +5921,15 @@ internal fun appendThreadQuoteToComposer(existing: String, quote: String): Strin
 private fun KuiklyThreadScreenPayload.hasThreadHistoryBoundaryItem(): Boolean =
     messages.isNotEmpty()
 
+private fun KuiklyThreadScreenPayload.hasThreadOriginItem(): Boolean =
+    originStatus != "none"
+
 private fun KuiklyThreadScreenPayload.threadHistoryBoundaryListItemIndex(): Int =
-    0
+    if (hasThreadOriginItem()) 1 else 0
 
 private fun KuiklyThreadScreenPayload.firstMessageListItemIndex(): Int {
     var index = 0
+    if (hasThreadOriginItem()) index += 1
     if (hasThreadHistoryBoundaryItem()) index += 1
     return index
 }

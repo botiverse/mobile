@@ -94,7 +94,7 @@ class ThreadPayloadTest {
             )
         )
         assertEquals(
-            5,
+            6,
             threadMessagesLazyItemCount(
                 originStatus = "content",
                 showHistoryBoundary = true,
