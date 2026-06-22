@@ -922,7 +922,16 @@ internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend()
 internal fun List<KuiklyPendingAttachmentItem>.hasBlockingThreadAttachmentUpload(): Boolean =
     any { attachment -> attachment.id.isNotBlank() && !attachment.isReadyThreadAttachmentForSend() }
 
-private fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
+internal fun List<KuiklyPendingAttachmentItem>.withThreadAttachmentUploadWaitingState(): List<KuiklyPendingAttachmentItem> =
+    map { attachment ->
+        if (attachment.isReadyThreadAttachmentForSend() || attachment.id.isBlank()) {
+            attachment
+        } else {
+            attachment.copy(status = "uploading")
+        }
+    }
+
+internal fun KuiklyPendingAttachmentItem.isReadyThreadAttachmentForSend(): Boolean =
     id.isNotBlank() && status == "ready" && !id.startsWith("picked-")
 
 internal fun KuiklyPendingMentionActionItem.supportsMentionAction(verb: String): Boolean =

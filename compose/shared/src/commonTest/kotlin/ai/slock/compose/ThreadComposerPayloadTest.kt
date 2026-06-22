@@ -276,6 +276,10 @@ class ThreadComposerPayloadTest {
 
         assertEquals(listOf("remote-attachment-1"), attachments.readyThreadAttachmentIdsForSend())
         assertTrue(attachments.hasBlockingThreadAttachmentUpload())
+        assertEquals(
+            listOf("uploading", "ready", "uploading"),
+            attachments.withThreadAttachmentUploadWaitingState().map { attachment -> attachment.status }
+        )
     }
 
     @Test

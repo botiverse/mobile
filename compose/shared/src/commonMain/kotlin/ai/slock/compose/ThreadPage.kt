@@ -668,6 +668,11 @@ private fun buildThreadPendingSendMessage(
     )
 }
 
+private data class ThreadDeferredAttachmentSend(
+    val localMessageId: String,
+    val context: KuiklyThreadPendingSendContext
+)
+
 @Serializable
 internal data class KuiklyThreadMessageCommentRef(
     val attachmentId: String,
@@ -2023,6 +2028,9 @@ internal fun SharedThreadRouteContent(
                 parentChannelId = renderedPayload.parentChannelId
             )
         }
+    var deferredAttachmentSend by remember(payload.instanceId) {
+        mutableStateOf<ThreadDeferredAttachmentSend?>(null)
+    }
     val routeUiState =
         remember(renderedPayload, filesPayload, composerState, tasksState, threadState.membersLoadStatus) {
             ThreadRouteUiState(
@@ -2514,6 +2522,50 @@ internal fun SharedThreadRouteContent(
                 )
             }
         }
+    }
+    fun markDeferredAttachmentSendFailed(errorCode: String?) {
+        val pending = deferredAttachmentSend ?: return
+        deferredAttachmentSend = null
+        threadViewModel.dispatch(SharedThreadIntent.ApplyLocalSendFailure(pending.localMessageId, errorCode))
+        composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
+    }
+    fun handleAttachmentUploadFailure(errorCode: String) {
+        if (deferredAttachmentSend != null) {
+            markDeferredAttachmentSendFailed(errorCode)
+        } else {
+            bridge.toast("Attachment upload failed: $errorCode")
+        }
+    }
+    LaunchedEffect(
+        deferredAttachmentSend?.localMessageId,
+        renderedComposer.pendingAttachments,
+        composerDraftState.sending
+    ) {
+        val pending = deferredAttachmentSend ?: return@LaunchedEffect
+        if (!composerDraftState.sending) return@LaunchedEffect
+        if (renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
+            return@LaunchedEffect
+        }
+        val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
+        if (pending.context.attachments.isNotEmpty() && attachmentIds.isEmpty()) {
+            return@LaunchedEffect
+        }
+        val readyContext =
+            pending.context.copy(
+                attachmentIds = attachmentIds,
+                attachments = renderedComposer.pendingAttachments
+            )
+        deferredAttachmentSend = null
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                buildThreadPendingSendMessage(
+                    localMessageId = pending.localMessageId,
+                    context = readyContext,
+                    session = currentSession
+                )
+            )
+        )
+        sendPendingLocalMessage(pending.localMessageId, readyContext, startedFromComposer = true)
     }
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
@@ -3109,24 +3161,27 @@ internal fun SharedThreadRouteContent(
                 "send" -> {
                     val threadId = composerSurface.sendChannelId
                     val draftText = composerDraftState.seedText.trim()
-                    if (renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
-                        bridge.toast("Waiting for attachments to finish uploading")
-                        return@ThreadPageContent
-                    }
                     val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
+                    val hasBlockingAttachmentUpload = renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
                     if (!payload.canSend || composerDraftState.sending || threadId == null ||
-                        (draftText.isBlank() && attachmentIds.isEmpty())
+                        (draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload)
                     ) {
                         return@ThreadPageContent
                     }
                     val draftAsTask = composerDraftState.seedAsTask
+                    val pendingAttachments =
+                        if (hasBlockingAttachmentUpload) {
+                            renderedComposer.pendingAttachments.withThreadAttachmentUploadWaitingState()
+                        } else {
+                            renderedComposer.pendingAttachments
+                        }
                     val pendingContext =
                         KuiklyThreadPendingSendContext(
                             channelId = threadId,
                             body = draftText,
                             asTask = draftAsTask,
                             attachmentIds = attachmentIds,
-                            attachments = renderedComposer.pendingAttachments,
+                            attachments = pendingAttachments,
                             mentionChannelId = composerSurface.mentionScopeChannelId,
                             parentMessageId = composerSurface.parentMessageId,
                             streamChannelId = composerSurface.streamChannelId,
@@ -3143,7 +3198,15 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
-                    sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
+                    if (hasBlockingAttachmentUpload) {
+                        deferredAttachmentSend =
+                            ThreadDeferredAttachmentSend(
+                                localMessageId = localMessageId,
+                                context = pendingContext
+                            )
+                    } else {
+                        sendPendingLocalMessage(localMessageId, pendingContext, startedFromComposer = true)
+                    }
                 }
                 "dismissMention" -> {
                     value?.takeIf { it.isNotBlank() }?.let { resolutionId ->
@@ -3228,7 +3291,7 @@ internal fun SharedThreadRouteContent(
                                         )
                                     }
                                 if (uploaded.isEmpty()) {
-                                    bridge.toast("Attachment upload failed: empty_upload_result")
+                                    handleAttachmentUploadFailure("empty_upload_result")
                                     return@launch
                                 }
                                 composerDraftViewModel.dispatch(
@@ -3239,13 +3302,13 @@ internal fun SharedThreadRouteContent(
                                 )
                             }
                             is DataResult.Error ->
-                                bridge.toast("Attachment upload failed: ${uploadResult.error.code}")
+                                handleAttachmentUploadFailure(uploadResult.error.code)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(uploadResult)) return@launch
-                                bridge.toast("Attachment upload failed: ${uploadResult.blocker.code}")
+                                handleAttachmentUploadFailure(uploadResult.blocker.code)
                             }
                             is DataResult.Empty ->
-                                bridge.toast("Attachment upload failed: empty_upload_result")
+                                handleAttachmentUploadFailure("empty_upload_result")
                         }
                     }
                 }
