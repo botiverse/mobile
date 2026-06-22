@@ -49,8 +49,12 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 class ThreadPayloadTest {
+    private val launchJson = Json { ignoreUnknownKeys = true }
+
     @Test
     fun threadComposerOnlyShowsOnChatTab() {
         assertTrue(shouldShowThreadComposerForTab(joined = true, showComposer = true, selectedTab = "chat"))
@@ -1106,6 +1110,75 @@ class ThreadPayloadTest {
         assertEquals(480, payload.localOffsetMinutes)
         assertEquals(20593, payload.todayEpochDay)
         assertEquals(true, payload.alignOwnMessagesRight)
+    }
+
+    @Test
+    fun standaloneTaskThreadLaunchCarriesOnlyIdentityAndIntent() {
+        val launch =
+            buildStandaloneTaskThreadLaunchPayload(
+                TaskSummary(
+                    id = TaskId("task-1"),
+                    title = "Fix slow route",
+                    status = TaskStatus.InProgress,
+                    taskNumber = 42,
+                    messageId = MessageId("message-1"),
+                    parentMessageId = MessageId("parent-message-1"),
+                    channelId = ChannelId("parent-channel-1"),
+                    threadId = ThreadId("thread-channel-1"),
+                    assignee =
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Android Dev",
+                            handle = "Android-Dev",
+                            kind = MemberKind.Agent
+                        ),
+                    creator =
+                        MemberProfile(
+                            id = MemberId("user-1"),
+                            displayName = "Artin",
+                            handle = "artin",
+                            kind = MemberKind.Human
+                        ),
+                    channelName = "bug triage",
+                    updatedAtLabel = "now"
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true
+            )
+
+        assertEquals("task-thread-task-1", launch.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals("thread-channel-1", launch.threadId)
+        assertEquals("thread-channel-1", launch.sourceThreadId)
+        assertEquals("thread-channel-1", launch.streamChannelId)
+        assertEquals("parent-channel-1", launch.parentChannelId)
+        assertEquals("parent-message-1", launch.parentMessageId)
+        assertEquals("parent-message-1", launch.originParentMessageId)
+        assertEquals("parent-message-1", launch.focusedMessageId)
+        assertEquals(480, launch.localOffsetMinutes)
+        assertEquals(20593, launch.todayEpochDay)
+        assertEquals(true, launch.alignOwnMessagesRight)
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals("task-thread-task-1", initialPayload.instanceId)
+        assertEquals("loading", initialPayload.status)
+        assertEquals(ThreadReplyPageTitle, initialPayload.title)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals("thread-channel-1", initialPayload.sourceThreadId)
+        assertEquals("parent-channel-1", initialPayload.parentChannelId)
+        assertEquals("parent-message-1", initialPayload.parentMessageId)
+        assertEquals("parent-message-1", initialPayload.focusedMessageId)
+        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList(), initialPayload.settingsActions)
+        assertEquals(0, initialPayload.membersCount)
+        assertEquals(null, initialPayload.dmPeerName)
+        assertEquals(null, initialPayload.dmPeerAvatarUrl)
     }
 
     @Test

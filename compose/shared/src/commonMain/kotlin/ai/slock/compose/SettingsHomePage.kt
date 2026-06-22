@@ -343,6 +343,7 @@ import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -397,6 +398,7 @@ private val SearchPopoverBorderColor = SlockColor.BorderBlack
 private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
+private val AppShellThreadLaunchJson = Json { ignoreUnknownKeys = true }
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -2115,18 +2117,11 @@ private fun SlockAppShellContent() {
                             onIntent = tasksViewModel::dispatch,
                             bottomContentPadding = appShellBottomContentInset,
                             onOpenTask = { task ->
-                                appShellCoroutineScope.launch {
-                                    openAppShellTaskThread(
-                                        task = task,
-                                        dataSource = threadDataSource,
-                                        timeContext = threadTimeContext,
-                                        alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
-                                        onOpenThreadPayload = { payload -> openThreadPayload(payload) },
-                                        onReplaceThreadPayload = { payload -> openThreadPayload(payload, pushCurrent = false) },
-                                        onAuthRequired = { payload -> requireSessionReauth(payload) },
-                                        onFailure = { bridge.toast("Unable to open task") }
-                                    )
-                                }
+                                pager.openStandaloneTaskThreadPage(
+                                    task = task,
+                                    timeContext = threadTimeContext,
+                                    alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+                                )
                             }
                         )
                     }
@@ -11247,6 +11242,54 @@ private fun SettingsDiagnosticsFeedbackDraft.sizeLabel(): String =
             else -> "$bytes B"
         }
     }.orEmpty()
+
+private fun Pager.openStandaloneTaskThreadPage(
+    task: TaskSummary,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean
+) {
+    val launchPayload =
+        buildStandaloneTaskThreadLaunchPayload(
+            task = task,
+            timeContext = timeContext,
+            alignOwnMessagesRight = alignOwnMessagesRight
+        )
+    val pageData =
+        JSONObject().apply {
+            put("payload", AppShellThreadLaunchJson.encodeToString(launchPayload))
+            put("instanceId", launchPayload.instanceId)
+        }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+}
+
+internal fun buildStandaloneTaskThreadLaunchPayload(
+    task: TaskSummary,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean = false
+): WireThreadLaunchPayload {
+    val streamThreadId = task.threadId?.value?.takeIf { it.isNotBlank() }
+    val parentMessageId =
+        task.parentMessageId?.value?.takeIf { it.isNotBlank() }
+            ?: task.messageId?.value?.takeIf { it.isNotBlank() }
+    return WireThreadLaunchPayload(
+        instanceId = "task-thread-${task.id.value}",
+        surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+        threadId = streamThreadId,
+        sourceThreadId = streamThreadId,
+        streamChannelId = streamThreadId,
+        parentChannelId = task.channelId?.value?.takeIf { it.isNotBlank() },
+        parentMessageId = parentMessageId,
+        originParentMessageId = parentMessageId,
+        focusedMessageId = parentMessageId,
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        todayEpochDay = timeContext?.todayEpochDay,
+        nowEpochMillis = timeContext?.nowEpochMillis,
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
+    )
+}
 
 private suspend fun openAppShellTaskThread(
     task: TaskSummary,
