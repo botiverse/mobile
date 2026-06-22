@@ -1721,8 +1721,8 @@ private fun SlockAppShellContent() {
                         latestRealtimeAuthRefreshHandler(eventData)
                         return
                     }
-                    val serverId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
                     val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return
+                    val serverId = resolveSharedShellRealtimeServerId(eventData, event, latestReadySession) ?: return
                     val activeSession = latestReadySession
                     if (
                         event is ServerMembershipRemoved &&
@@ -11009,6 +11009,24 @@ internal fun decodeSharedShellRealtimeEvent(
     }
     return null
 }
+
+internal fun resolveSharedShellRealtimeServerId(
+    eventData: JSONObject,
+    event: RealtimeEvent,
+    session: StoredAuthSession?
+): String? =
+    eventData.optString("serverId").takeIf { it.isNotBlank() }
+        ?: event.serverIdHint()?.value
+        ?: session?.currentServerId
+
+private fun RealtimeEvent.serverIdHint(): ServerId? =
+    when (this) {
+        is RealtimeRefreshRequired -> serverId
+        is ServerMembershipRemoved -> serverId
+        is ServerDeleted -> serverId
+        is ServerPlanUpdated -> serverId
+        else -> null
+    }
 
 private fun Long.updateFrom(event: RealtimeEvent): Long =
     RealtimeCursorPolicy.updateAppliedSeq(this, event)

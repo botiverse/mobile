@@ -1257,6 +1257,50 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun realtimeAnnouncementRefreshesHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi = RecordingAnnouncementsApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource = source(api = RecordingHomeApi(), announcementsApi = announcementsApi),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+        announcementsApi.calls.clear()
+        announcementsApi.activeBody =
+            """
+            {
+              "announcements": [
+                {
+                  "id": "announcement-2",
+                  "title": "Realtime notice",
+                  "pages": [
+                    { "body": "Home should consume the live announcement event." }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
+
+        store.accept(
+            SharedHomeIntent.ApplyRealtimeEvent(
+                serverId = "server-1",
+                event =
+                    RealtimeRefreshRequired(
+                        scope = RealtimeRefreshScope.Announcements,
+                        reason = "announcement:new"
+                    )
+            )
+        )
+
+        val notification = store.state.value.notifications.single()
+        assertEquals("announcement-2", notification.id)
+        assertEquals("Realtime notice", notification.title)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun dismissNotificationRemovesFromStateAndCallsSharedApi() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()
@@ -1777,25 +1821,26 @@ class SharedHomeStoreTest {
 
     private class RecordingAnnouncementsApi : SlockAnnouncementsRemindersApi {
         val calls = mutableListOf<String>()
+        var activeBody: String =
+            """
+            {
+              "announcements": [
+                {
+                  "id": "announcement-1",
+                  "title": "Upgrade available",
+                  "pages": [
+                    { "body": "Install the newest desktop daemon." }
+                  ]
+                }
+              ]
+            }
+            """.trimIndent()
 
         override suspend fun activeAnnouncements(): HomeNetworkResponse {
             calls += "GET announcements/active"
             return HomeNetworkResponse(
                 code = 200,
-                bodyText =
-                    """
-                    {
-                      "announcements": [
-                        {
-                          "id": "announcement-1",
-                          "title": "Upgrade available",
-                          "pages": [
-                            { "body": "Install the newest desktop daemon." }
-                          ]
-                        }
-                      ]
-                    }
-                    """.trimIndent()
+                bodyText = activeBody
             )
         }
 
