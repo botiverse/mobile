@@ -294,9 +294,6 @@ internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
-private val threadHeaderUuidRegex =
-    Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
-private val threadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionIconSize = 15.dp
@@ -318,15 +315,18 @@ internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     if (name.equals(ThreadReplyPageTitle, ignoreCase = true)) return null
     if (name.equals("Threads", ignoreCase = true)) return null
     if (name.equals("Thread", ignoreCase = true) || name.equals("Channel", ignoreCase = true)) return null
-    if (threadHeaderUuidRegex.matches(name) || threadHeaderShortIdRegex.matches(name)) return null
+    if (threadHeaderIdentityLikeTitle(name)) return null
     return "#$name"
 }
 
 internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
     subtitle?.trim()?.takeIf { it.startsWith("#") }?.let(::threadChannelHeaderSubtitle)
 
-internal fun threadHeaderDisplayTitle(title: String): String =
-    title.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: title
+internal fun threadHeaderDisplayTitle(
+    title: String,
+    surfaceKind: String = KuiklyThreadSurfaceKind.Channel
+): String =
+    threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
@@ -3782,8 +3782,8 @@ private fun ThreadImagePreviewOverlay(
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
             SlockTopPageHeader(
-                title = current.name.ifBlank { "Image" },
-                subtitle = current.genericAttachmentMetaLine().takeIf { it.isNotBlank() },
+                title = "Image preview",
+                subtitle = null,
                 iconName = SlockLucideIconName.Image,
                 backgroundColor = SlockColor.SurfaceWhite,
                 leadingContent = {
@@ -4830,7 +4830,7 @@ private fun ThreadPageHeader(
     onShowSettings: () -> Unit
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
-    val displayTitle = threadHeaderDisplayTitle(payload.title)
+    val displayTitle = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -8247,17 +8247,6 @@ private fun ThreadImageAttachmentTile(
             source = thumbnailUrl,
             contentDescription = attachment.name,
             modifier = Modifier.fillMaxSize()
-        )
-        Text(
-            text = attachment.name,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite.copy(alpha = 0.92f))
-                .padding(horizontal = SlockSpacing.Xs, vertical = 3.dp)
         )
     }
 }
