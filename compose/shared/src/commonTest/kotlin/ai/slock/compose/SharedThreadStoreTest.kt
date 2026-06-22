@@ -891,6 +891,43 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun threadMembersPreserveRemoteSourceServerAndDisableRemoteRemove() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val remoteMember =
+            MemberProfile(
+                id = MemberId("remote-agent"),
+                displayName = "Remote Agent",
+                handle = "remote-agent",
+                kind = MemberKind.Agent,
+                serverId = ServerId("server-2"),
+                serverName = "Remote Lab",
+                serverSlug = "remote-lab",
+                avatarUrl = "https://example.com/remote.png"
+            )
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers = listOf(member("u1", "Artin")),
+                channelMembers = listOf(member("u1", "Artin"), remoteMember)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        val remote = store.state.value.payload.members.single { it.id == "remote-agent" }
+        assertEquals("server-2", remote.sourceServerId)
+        assertEquals("Remote Lab", remote.sourceServerLabel)
+        assertEquals(false, remote.canRemove)
+        assertEquals("https://example.com/remote.png", remote.avatarUrl)
+        scope.cancel()
+    }
+
+    @Test
     fun persistentCachedThreadSnapshotRendersBeforeVisibleFetchAndSurvivesFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

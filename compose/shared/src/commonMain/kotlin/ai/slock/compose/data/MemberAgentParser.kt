@@ -8,6 +8,7 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
@@ -26,6 +27,9 @@ private val memberAgentJson = Json {
 @Serializable
 private data class WireServerMember(
     val userId: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
     val email: String? = null,
     val name: String,
     val displayName: String? = null,
@@ -64,6 +68,9 @@ private data class WireChannelMembers(
 @Serializable
 private data class WireChannelHuman(
     val id: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
     val name: String,
     val displayName: String? = null,
     val description: String? = null,
@@ -75,6 +82,9 @@ private data class WireChannelHuman(
 @Serializable
 private data class WireAgent(
     val id: String,
+    val serverId: String? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null,
     val userId: String? = null,
     val name: String,
     val displayName: String? = null,
@@ -153,6 +163,7 @@ fun parseSharedServerMemberSnapshot(
     MemberSnapshot(
         server = server,
         members = decodeServerMembers(bodyText)
+            .map { it.withSourceServer(server.id, server.name, server.slug) }
             .distinctBy { it.id.value },
     )
 }.getOrNull()
@@ -605,6 +616,9 @@ private fun WireServerMember.toMemberProfile(): MemberProfile {
         displayName = label,
         handle = name,
         kind = MemberKind.Human,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = role?.toSettingsLabel(),
         avatarUrl = avatarUrl,
@@ -626,6 +640,9 @@ private fun WireChannelHuman.toMemberProfile(): MemberProfile {
         displayName = label,
         handle = name,
         kind = MemberKind.Human,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = role?.toSettingsLabel(),
         avatarUrl = avatarUrl,
@@ -645,6 +662,9 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         displayName = label,
         handle = name,
         kind = MemberKind.Agent,
+        serverId = serverId.toServerIdOrNull(),
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverSlug = serverSlug?.takeIf { it.isNotBlank() },
         description = description,
         roleDescription = runtime,
         avatarUrl = avatarUrl,
@@ -661,6 +681,20 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         ),
     )
 }
+
+private fun String?.toServerIdOrNull(): ServerId? =
+    this?.takeIf { it.isNotBlank() }?.let(::ServerId)
+
+private fun MemberProfile.withSourceServer(
+    serverId: ServerId,
+    serverName: String,
+    serverSlug: String?
+): MemberProfile =
+    copy(
+        serverId = this.serverId ?: serverId,
+        serverName = this.serverName ?: serverName.takeIf { it.isNotBlank() },
+        serverSlug = this.serverSlug ?: serverSlug?.takeIf { it.isNotBlank() }
+    )
 
 private fun WireAgent.toAgentProfile(): AgentProfile {
     val label = displayName?.takeIf { it.isNotBlank() } ?: name

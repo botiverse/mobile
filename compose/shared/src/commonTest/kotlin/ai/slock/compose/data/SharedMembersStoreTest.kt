@@ -82,7 +82,15 @@ class SharedMembersStoreTest {
         memberRepository.channelMembersByChannel["thread-channel-1"] =
             listOf(
                 MemberProfile(MemberId("u1"), "Cindy Duplicate", "@cindy", MemberKind.Human),
-                MemberProfile(MemberId("remote-1"), "Remote User", "@remote", MemberKind.Human)
+                MemberProfile(
+                    id = MemberId("remote-1"),
+                    displayName = "Remote User",
+                    handle = "@remote",
+                    kind = MemberKind.Human,
+                    serverId = ServerId("server-2"),
+                    serverName = "Remote Lab",
+                    serverSlug = "remote-lab"
+                )
             )
         val channelRepository = FakeChannelRepository()
         val store = store(memberRepository, channelRepository)
@@ -98,7 +106,12 @@ class SharedMembersStoreTest {
             listOf(
                 SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = true),
                 SharedMembersMemberSuggestion("Build Agent", "build", inMentionChannel = false),
-                SharedMembersMemberSuggestion("Remote User", "remote", inMentionChannel = true)
+                SharedMembersMemberSuggestion(
+                    "Remote User",
+                    "remote",
+                    inMentionChannel = true,
+                    sourceServerLabel = "Remote Lab"
+                )
             ),
             store.state.value.memberSuggestions
         )

@@ -210,7 +210,10 @@ data class MemberProfile(
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
-    val permissionBadges: List<String> = emptyList()
+    val permissionBadges: List<String> = emptyList(),
+    val serverId: ServerId? = null,
+    val serverName: String? = null,
+    val serverSlug: String? = null
 )
 
 @Serializable

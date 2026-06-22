@@ -685,12 +685,12 @@ internal class SharedThreadDataSource(
             } else {
                 serverMembers
                     .filterNot { it.memberKey in memberKeys }
-                    .map { it.withHomeAvatarFallback(homeAvatarByMemberId[it.id.value]).toKuiklyThreadMemberItem() }
+                    .map { it.withHomeAvatarFallback(homeAvatarByMemberId[it.id.value]).toKuiklyThreadMemberItem(serverId) }
             }
         return MembersEnrichOutcome.Updated(
             payload.copy(
                 membersCount = members.size,
-                members = members.map { it.toKuiklyThreadMemberItem() },
+                members = members.map { it.toKuiklyThreadMemberItem(serverId) },
                 memberCandidates = candidates,
                 canAddMembers = channelMembers.data.canAddMembers
             )
@@ -2336,8 +2336,8 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             canSend = base.canSend,
             joined = base.joined,
             membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
-            emptyTitle = base.emptyTitle,
-            emptyDetail = base.emptyDetail
+            emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
+            emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
         )
     } else {
         copy(
@@ -2558,7 +2558,7 @@ private fun MemberProfile.withHomeAvatarFallback(avatarWireValue: String?): Memb
     )
 }
 
-private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
+private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = null): KuiklyThreadMemberItem =
     KuiklyThreadMemberItem(
         id = id.value,
         displayName = displayName,
@@ -2572,8 +2572,22 @@ private fun MemberProfile.toKuiklyThreadMemberItem(): KuiklyThreadMemberItem =
                 },
         avatarUrl = avatarWireValueForAvatarSlot(),
         avatarLabel = avatarLabel,
-        kind = kind.name.lowercase()
+        kind = kind.name.lowercase(),
+        sourceServerId = serverId?.value,
+        sourceServerLabel = remoteSourceServerLabel(localServerId),
+        canRemove = isLocalToServer(localServerId)
     )
+
+private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {
+    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return true
+    val localId = localServerId?.value?.takeIf { it.isNotBlank() } ?: return true
+    return sourceId == localId
+}
+
+private fun MemberProfile.remoteSourceServerLabel(localServerId: ServerId?): String? {
+    if (isLocalToServer(localServerId)) return null
+    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
+}
 
 private fun String?.toThreadMemberKind(): MemberKind? =
     when (this?.trim()?.lowercase()) {

@@ -339,6 +339,7 @@ internal fun SlockModalCompactMemberRow(
     selected: Boolean = false,
     enabled: Boolean = true,
     avatarSize: Dp = 30.dp,
+    sourceBadgeLabel: String? = null,
     trailingText: String = "",
     trailingIcon: SlockLucideIconName? = null,
     onTrailingClick: (() -> Unit)? = null,
@@ -371,13 +372,31 @@ internal fun SlockModalCompactMemberRow(
             )
         }
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
-                color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                val badge = sourceBadgeLabel?.takeIf { it.isNotBlank() }
+                if (badge != null) {
+                    Text(
+                        text = badge.uppercase(),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 12.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier =
+                            Modifier
+                                .background(SlockColor.AccentCyan.copy(alpha = 0.24f))
+                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,

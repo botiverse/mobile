@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.ChannelId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -137,6 +138,44 @@ class MemberAgentParserTest {
         val profile = assertNotNull(snapshot).members.single()
         assertEquals("user-1", profile.id.value)
         assertEquals("Artin", profile.displayName)
+    }
+
+    @Test
+    fun channelMembersPreserveSourceServerMetadata() {
+        val snapshot = parseSharedChannelMemberSnapshot(
+            bodyText =
+                """
+                {
+                  "humans": [
+                    {
+                      "id": "remote-user",
+                      "serverId": "server-remote",
+                      "serverName": "Remote Lab",
+                      "serverSlug": "remote-lab",
+                      "name": "remote",
+                      "displayName": "Remote User"
+                    }
+                  ],
+                  "agents": [
+                    {
+                      "id": "remote-agent",
+                      "serverId": "server-remote",
+                      "serverName": "Remote Lab",
+                      "serverSlug": "remote-lab",
+                      "name": "builder",
+                      "displayName": "Remote Builder",
+                      "status": "online"
+                    }
+                  ]
+                }
+                """.trimIndent(),
+            channelId = ChannelId("joint-1")
+        )
+
+        val members = assertNotNull(snapshot).members
+        assertEquals(listOf("server-remote", "server-remote"), members.map { it.serverId?.value })
+        assertEquals(listOf("Remote Lab", "Remote Lab"), members.map { it.serverName })
+        assertEquals(listOf("remote-lab", "remote-lab"), members.map { it.serverSlug })
     }
 
     @Test

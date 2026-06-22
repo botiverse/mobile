@@ -198,7 +198,8 @@ internal data class KuiklyPendingMentionActionItem(
 internal data class KuiklyComposerMemberItem(
     val displayName: String,
     val handle: String,
-    val inMentionChannel: Boolean = true
+    val inMentionChannel: Boolean = true,
+    val sourceServerLabel: String? = null
 )
 
 @Serializable
@@ -1030,7 +1031,10 @@ private fun ComposerMemberSuggestionRow(
             }
         },
         title = member.displayName,
-        subtitle = "@${member.handle}",
+        subtitle = listOfNotNull(
+            "@${member.handle}",
+            member.sourceServerLabel?.takeIf { it.isNotBlank() }
+        ).joinToString(" · "),
         onClick = onClick
     )
 }

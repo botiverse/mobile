@@ -849,7 +849,10 @@ internal data class KuiklyThreadMemberItem(
     val roleLabel: String = "",
     val avatarUrl: String? = null,
     val avatarLabel: String = displayName.take(1).uppercase(),
-    val kind: String = "human"
+    val kind: String = "human",
+    val sourceServerId: String? = null,
+    val sourceServerLabel: String? = null,
+    val canRemove: Boolean = true
 )
 
 @Serializable
@@ -1961,7 +1964,8 @@ internal fun SharedThreadRouteContent(
                 KuiklyComposerMemberItem(
                     displayName = suggestion.displayName,
                     handle = suggestion.handle,
-                    inMentionChannel = suggestion.inMentionChannel
+                    inMentionChannel = suggestion.inMentionChannel,
+                    sourceServerLabel = suggestion.sourceServerLabel
                 )
             }
         }
@@ -8981,11 +8985,12 @@ private fun ThreadMembersModal(
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
+                                sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
-                                trailingIcon = SlockLucideIconName.X,
-                                onTrailingClick = { onManageMember(member.id) },
+                                trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove },
+                                onTrailingClick = if (member.canRemove) ({ onManageMember(member.id) }) else null,
                                 onClick = { onManageMember(member.id) }
                             )
                         }
@@ -8997,11 +9002,12 @@ private fun ThreadMembersModal(
                             SlockModalCompactMemberRow(
                                 title = member.displayName,
                                 subtitle = member.roleLabel,
+                                sourceBadgeLabel = member.sourceServerLabel,
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
-                                trailingIcon = SlockLucideIconName.X,
-                                onTrailingClick = { onManageMember(member.id) },
+                                trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove },
+                                onTrailingClick = if (member.canRemove) ({ onManageMember(member.id) }) else null,
                                 onClick = { onManageMember(member.id) }
                             )
                         }
@@ -9231,12 +9237,27 @@ private fun ThreadMemberDetailModal(
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
+                    val sourceLabel = member.sourceServerLabel?.takeIf { it.isNotBlank() }
+                    if (sourceLabel != null) {
+                        Text(
+                            text = sourceLabel.uppercase(),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 13.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier =
+                                Modifier
+                                    .background(SlockColor.AccentCyan.copy(alpha = 0.24f))
+                                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockModalActionButton(label = "BACK", icon = SlockLucideIconName.ArrowLeft, onClick = onBack)
                 SlockModalActionButton(label = "OPEN PROFILE", icon = SlockLucideIconName.User, onClick = onOpenProfile)
-                if (member.kind.equals("agent", ignoreCase = true)) {
+                if (member.kind.equals("agent", ignoreCase = true) && member.canRemove) {
                     SlockModalActionButton(
                         label = if (isRemoving) "REMOVING" else "REMOVE AGENT",
                         icon = SlockLucideIconName.UserMinus,

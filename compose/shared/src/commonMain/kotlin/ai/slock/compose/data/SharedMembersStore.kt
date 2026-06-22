@@ -24,7 +24,8 @@ enum class SharedMembersLoadStatus {
 data class SharedMembersMemberSuggestion(
     val displayName: String,
     val handle: String,
-    val inMentionChannel: Boolean = true
+    val inMentionChannel: Boolean = true,
+    val sourceServerLabel: String? = null
 )
 
 data class SharedMembersChannelSuggestion(
@@ -350,8 +351,14 @@ class SharedMembersStore(
                                     result.data.members.toSharedMembersMemberSuggestions()
                                 } else {
                                     result.data.members.toSharedMembersMemberSuggestions(
+                                        localServerId = serverId,
                                         inMentionChannelIds = channelMembers.map { it.id.value }.toSet()
-                                    ).mergeMentionChannelSuggestions(channelMembers.toSharedMembersMemberSuggestions(inMentionChannel = true))
+                                    ).mergeMentionChannelSuggestions(
+                                        channelMembers.toSharedMembersMemberSuggestions(
+                                            localServerId = serverId,
+                                            inMentionChannel = true
+                                        )
+                                    )
                                 },
                             status = SharedMembersLoadStatus.Loaded
                         )
@@ -370,7 +377,7 @@ class SharedMembersStore(
                     scope = memberScope,
                     slice =
                         SharedMembersMemberSuggestionSlice(
-                            suggestions = channelMembers.toSharedMembersMemberSuggestions(),
+                            suggestions = channelMembers.toSharedMembersMemberSuggestions(localServerId = serverId),
                             status = SharedMembersLoadStatus.Loaded
                         )
                     )
@@ -441,7 +448,7 @@ class SharedMembersStore(
                     scope = memberScope,
                     slice =
                         SharedMembersMemberSuggestionSlice(
-                            suggestions = result.data.members.toSharedMembersMemberSuggestions(),
+                            suggestions = result.data.members.toSharedMembersMemberSuggestions(localServerId = serverId),
                             status = SharedMembersLoadStatus.Loaded
                         )
                     )
@@ -573,16 +580,24 @@ private fun SharedMembersState.activeMemberScope(): SharedMembersMentionScope? {
 private fun String?.normalizedId(): String? =
     this?.trim()?.takeIf { it.isNotBlank() }
 
-private fun List<MemberProfile>.toSharedMembersMemberSuggestions(): List<SharedMembersMemberSuggestion> {
-    return toSharedMembersMemberSuggestions(inMentionChannel = true)
+private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
+    localServerId: String? = null
+): List<SharedMembersMemberSuggestion> {
+    return toSharedMembersMemberSuggestions(localServerId = localServerId, inMentionChannel = true)
 }
 
 private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
+    localServerId: String? = null,
     inMentionChannel: Boolean
 ): List<SharedMembersMemberSuggestion> =
-    toSharedMembersMemberSuggestions(inMentionChannelIds = null, fallbackInMentionChannel = inMentionChannel)
+    toSharedMembersMemberSuggestions(
+        localServerId = localServerId,
+        inMentionChannelIds = null,
+        fallbackInMentionChannel = inMentionChannel
+    )
 
 private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
+    localServerId: String? = null,
     inMentionChannelIds: Set<String>?,
     fallbackInMentionChannel: Boolean = false
 ): List<SharedMembersMemberSuggestion> {
@@ -597,7 +612,8 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
                 SharedMembersMemberSuggestion(
                     displayName = member.displayName.trim().ifBlank { handle },
                     handle = handle,
-                    inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel
+                    inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
+                    sourceServerLabel = member.remoteSourceServerLabel(localServerId)
                 )
         }
     }
@@ -615,11 +631,21 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
         deduped[key] =
             when {
                 existing == null -> suggestion
-                suggestion.inMentionChannel && !existing.inMentionChannel -> existing.copy(inMentionChannel = true)
+                suggestion.inMentionChannel && !existing.inMentionChannel ->
+                    existing.copy(
+                        inMentionChannel = true,
+                        sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel
+                    )
                 else -> existing
             }
     }
     return deduped.values.toList()
+}
+
+private fun MemberProfile.remoteSourceServerLabel(localServerId: String?): String? {
+    val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null
+    if (localServerId != null && sourceId == localServerId) return null
+    return serverName?.takeIf { it.isNotBlank() } ?: serverSlug?.takeIf { it.isNotBlank() }
 }
 
 private fun List<ConversationSummary>.toSharedMembersChannelSuggestions(): List<SharedMembersChannelSuggestion> {
