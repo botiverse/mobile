@@ -35,6 +35,7 @@ import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
+import com.tencent.kuikly.compose.foundation.layout.fillMaxHeight
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.heightIn
@@ -54,7 +55,13 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 
 private const val CREATE_AGENT_DIALOG_VISUAL_PAGE = "compose_create_agent_dialog_visual"
-private val CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp
+// #55 visual parity: the legacy `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp`
+// cap has been removed. The dialog body now fills the viewport via
+// `Column.fillMaxHeight()` and the LazyColumn uses `weight(1f)` so the
+// Cancel/Create row stays pinned at the bottom. The cap value was kept
+// commented out below for historical reference only; do not reintroduce
+// without also reverting the layout change.
+// private val CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp
 
 @Page(CREATE_AGENT_DIALOG_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeCreateAgentDialogVisualPage : ai.slock.compose.base.BasePager() {
@@ -381,9 +388,29 @@ internal fun SharedCreateAgentDialog(
         dismissEnabled = !submitting,
         onDismiss = onDismiss
     ) {
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        // #55 visual parity fix: the dialog body used to be capped at
+        // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT = 430.dp` with Cancel/Create
+        // floating inside a `LazyColumn` mid-scroll, so a 390dp-tall viewport
+        // could only show COMPUTER → DESCRIPTION → RUNTIME → partial MODEL
+        // before cutting off. React's `card-brutal p-6` lets the dialog fill
+        // the viewport and pins the action buttons at the bottom; we mirror
+        // that here by:
+        //   1. Removing the heightIn(max) cap so the LazyColumn can grow
+        //      to whatever space is available.
+        //   2. Pinning the Column to `fillMaxHeight()` so the inner
+        //      `LazyColumn(weight(1f))` consumes the leftover vertical space
+        //      between the title chrome and the bottom action row.
+        //   3. Keeping Cancel/Create as a fixed Row at the bottom of the
+        //      Column so they always sit under the scrollable form area.
+        // `CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT` is left in place as a
+        // reference value (kept for any future caller that wants the legacy
+        // cap); the dialog itself no longer reads it.
+        Column(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().heightIn(max = CREATE_AGENT_DIALOG_BODY_MAX_HEIGHT),
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 draftHint?.takeIf { it.isNotBlank() }?.let { hint ->
