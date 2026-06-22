@@ -1633,12 +1633,6 @@ private fun SlockAppShellContent() {
         }
     }
 
-    LaunchedEffect(activeThreadResolvedAuxiliaryThreadId) {
-        activeThreadResolvedAuxiliaryThreadId
-            ?.takeIf { it.isNotBlank() }
-            ?.let { bridge.realtimeJoinChannel(it) }
-    }
-
     fun handleRealtimeAuthRefreshRequest(eventData: JSONObject) {
         val requestedServerId = eventData.optString("serverId").takeIf { it.isNotBlank() } ?: return
         val reason = eventData.optString("reason").takeIf { it.isNotBlank() } ?: "reconnect"
