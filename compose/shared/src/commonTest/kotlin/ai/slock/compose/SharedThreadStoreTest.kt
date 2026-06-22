@@ -151,6 +151,48 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startUsesHomeHeaderForImmediateLoadingPayloadWhenTitleIsIdentity() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            channelType = "public",
+                            kind = ConversationKind.Channel,
+                            name = "all",
+                            subtitle = "General updates",
+                            memberCount = 4
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload().copy(title = "channel-1")))
+
+        val payload = store.state.value.payload
+        assertEquals("loading", payload.status)
+        assertEquals("all", payload.title)
+        assertEquals("General updates", payload.subtitle)
+        assertEquals("public", payload.channelKind)
+        scope.cancel()
+    }
+
+    @Test
     fun startAndPagingUseConfiguredThreadPageSize() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))

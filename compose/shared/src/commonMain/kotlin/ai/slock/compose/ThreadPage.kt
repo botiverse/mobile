@@ -1713,12 +1713,6 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    if (renderedPayload.shouldRenderThreadEarlyLoadingShell()) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            ThreadStateMessage("Loading thread…", null)
-        }
-        return
-    }
     val taskChannelId = resolvedAuxiliaryThreadId?.let(::ChannelId)
     val tasksViewModel: SharedTasksViewModel? =
         taskChannelId?.let { resolvedTaskChannelId ->
@@ -4388,12 +4382,7 @@ private fun ThreadPageContent(
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
-    if (payload.shouldRenderThreadEarlyLoadingShell()) {
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            ThreadStateMessage("Loading thread…", null)
-        }
-        return
-    }
+    val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell()
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -4484,7 +4473,9 @@ private fun ThreadPageContent(
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
             ) {
-                when (selectedTab) {
+                if (renderEarlyLoadingShell) {
+                    ThreadStateMessage("Loading thread…", null)
+                } else when (selectedTab) {
                     KuiklyThreadTab.Chat ->
                         ThreadChatTab(
                             payload = payload,

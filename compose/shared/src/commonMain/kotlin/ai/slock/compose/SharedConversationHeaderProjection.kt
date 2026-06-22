@@ -61,6 +61,14 @@ internal fun KuiklyThreadScreenPayload.withConversationHeader(
     }
 }
 
+internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
+    fallback: ConversationSummary?
+): KuiklyThreadScreenPayload {
+    fallback ?: return this
+    val headerState = sharedConversationHeaderState(listOf(fallback))
+    return withConversationHeader(headerState.entryFor(this))
+}
+
 private fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
     listOfNotNull(
         parentChannelId,

@@ -186,6 +186,11 @@ internal class SharedThreadDataSource(
             .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
     }
 
+    suspend fun withConversationHeaderFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
+        val session = readSession() ?: return basePayload
+        return basePayload.withConversationHeaderFallback(resolveConversationHeaderFallback(basePayload, session))
+    }
+
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
         val snapshot = payload.toThreadSnapshot() ?: return
         localWriteThrough?.writeThreadResult(
@@ -1717,29 +1722,30 @@ internal class SharedThreadStore(
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
-        dataSource.cachePayload(initialPayload)
-        val threadId = initialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
+        val headerResolvedInitialPayload = dataSource.withConversationHeaderFallback(initialPayload)
+        dataSource.cachePayload(headerResolvedInitialPayload)
+        val threadId = headerResolvedInitialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
         val cached =
             threadId
                 ?.let(dataSource::cachedPayload)
-                ?.takeIf { it.isUsableCachedPayloadForRoute(initialPayload) }
-                ?.withRouteContext(initialPayload)
+                ?.takeIf { it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) }
+                ?.withRouteContext(headerResolvedInitialPayload)
         val current =
             _state.value.payload.takeIf {
-                it.isUsableCachedPayloadForRoute(initialPayload) && it.hasRenderableThreadContent()
+                it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) && it.hasRenderableThreadContent()
             }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
-                "status=${initialPayload.status} messages=${initialPayload.messages.size} " +
-                initialPayload.originDiagnostics()
+                "status=${headerResolvedInitialPayload.status} messages=${headerResolvedInitialPayload.messages.size} " +
+                headerResolvedInitialPayload.originDiagnostics()
         )
         val visiblePayload =
             cached
                 ?: current
                 ?: if (threadId == null) {
-                    initialPayload
+                    headerResolvedInitialPayload
                 } else {
-                    initialPayload.copy(status = "loading", errorCode = null)
+                    headerResolvedInitialPayload.copy(status = "loading", errorCode = null)
                 }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
@@ -1758,15 +1764,15 @@ internal class SharedThreadStore(
         }
         if (threadId != null && cached == null && current == null && !visiblePayload.hasRenderableThreadContent()) {
             val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
-            val persistentCached = dataSource.readCachedPayload(initialPayload)
+            val persistentCached = dataSource.readCachedPayload(headerResolvedInitialPayload)
             diagnosticsLogger?.invoke(
                 "thread_persistent_cache_result threadId=$threadId hit=${persistentCached != null} " +
                     "messages=${persistentCached?.messages?.size ?: 0} " +
                     "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
             )
-            if (persistentCached != null && _state.value.payload.isUsableCachedPayloadForRoute(initialPayload)) {
+            if (persistentCached != null && _state.value.payload.isUsableCachedPayloadForRoute(headerResolvedInitialPayload)) {
                 reducePayloadPatch { currentPayload ->
-                    val patch = persistentCached.withRouteContext(initialPayload)
+                    val patch = persistentCached.withRouteContext(headerResolvedInitialPayload)
                     diagnosticsLogger?.invoke(
                         "thread_persistent_cache_patch threadId=$threadId status=${patch.status} " +
                             "messages=${patch.messages.size} " + patch.originDiagnostics()
@@ -1779,7 +1785,7 @@ internal class SharedThreadStore(
                 "thread_persistent_cache_result threadId=${threadId.orEmpty()} hit=false messages=0 durationMs=0 reason=skipped_memory"
             )
         }
-        refresh(initialPayload)
+        refresh(headerResolvedInitialPayload)
     }
 
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
