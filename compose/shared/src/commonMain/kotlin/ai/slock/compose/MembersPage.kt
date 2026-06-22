@@ -147,6 +147,13 @@ internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: B
         }
     }
 
+private fun String?.toMembersAgentDetailTabOrNull(): MembersAgentDetailTab? {
+    val normalized = this?.trim()?.lowercase()?.replace("-", "_") ?: return null
+    return MembersAgentDetailTab.entries.firstOrNull { tab ->
+        tab.name.lowercase() == normalized || tab.label.lowercase().replace(" ", "_") == normalized
+    }
+}
+
 private sealed interface MembersAgentDetailLoadState {
     data object Idle : MembersAgentDetailLoadState
     data object Loading : MembersAgentDetailLoadState
@@ -291,6 +298,8 @@ data class KuiklyMembersPayload(
     val title: String = "Members",
     val labels: KuiklyMembersLabels = KuiklyMembersLabels(),
     val members: List<MemberProfile> = emptyList(),
+    val selectedMemberId: String? = null,
+    val initialAgentTab: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
@@ -673,6 +682,21 @@ internal fun MembersPageContent() {
             bridge.toast("Copied member id")
         },
         onOpenUrl = { bridge.openUrl(it) },
+        agentDetailLoader = { agentId ->
+            if (payload.selectedMemberId == membersAgentDetailVisualMember.id.value &&
+                agentId == membersAgentDetailVisualMember.id
+            ) {
+                DataResult.Content(membersAgentDetailVisualSnapshot)
+            } else {
+                DataResult.Empty(EmptyReason.NoMembers)
+            }
+        },
+        canViewPrivateAgentSurfaces = { member, _ ->
+            member.id == membersAgentDetailVisualMember.id
+        },
+        canManageAgent = { member, _ ->
+            member.id == membersAgentDetailVisualMember.id
+        },
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = computersSlice.machines,
@@ -749,6 +773,8 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
+        selectedMemberId = payload.optNullableString("selectedMemberId"),
+        initialAgentTab = payload.optNullableString("initialAgentTab"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
@@ -862,8 +888,11 @@ internal fun MembersRouteContent(
     inviteHumanLoadJoinLink: () -> Unit = {},
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    var selectedMemberId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var selectedMemberId by remember(payload.instanceId, payload.selectedMemberId) {
+        mutableStateOf(payload.selectedMemberId)
+    }
     val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
+    val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
     val timeContext = payload.toSlockTimeContext()
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
     val effectiveAgentDetailStore = sharedAgentDetailStore ?: fallbackAgentDetailStore
@@ -960,7 +989,8 @@ internal fun MembersRouteContent(
             onReportAgentIssue = onReportAgentIssue,
             onUnavailableAction = onUnavailableAction,
             timeContext = timeContext,
-            sharedAgentDetailStore = sharedAgentDetailStore
+            sharedAgentDetailStore = sharedAgentDetailStore,
+            initialAgentTab = initialAgentTab
         )
     } else {
         MembersListContent(
@@ -1254,7 +1284,8 @@ private fun MembersDetailContent(
     onUnavailableAction: (String) -> Unit,
     timeContext: SlockTimeContext,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
-    initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile
+    initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
+    initialAgentTab: MembersAgentDetailTab? = null
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -1282,7 +1313,9 @@ private fun MembersDetailContent(
             }
         )
     }
-    var selectedTab by remember(member.id.value) { mutableStateOf(MembersAgentDetailTab.Profile) }
+    var selectedTab by remember(member.id.value, initialAgentTab) {
+        mutableStateOf(initialAgentTab ?: MembersAgentDetailTab.Profile)
+    }
     var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
@@ -3361,29 +3394,25 @@ private fun MembersWorkspacePreviewContent(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 280.dp, max = 560.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Sm)
-            ) {
-                if (preview.markdown && viewMode == MembersWorkspaceViewMode.Preview) {
-                    SlockMarkdownBody(
-                        body = preview.content,
-                        textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
-                        onOpenUrl = onOpenUrl
-                    )
-                } else {
-                    Text(
-                        text = preview.content,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 28,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            if (preview.markdown && viewMode == MembersWorkspaceViewMode.Preview) {
+                SlockFilePreviewMarkdownPanel(
+                    name = preview.path,
+                    meta = preview.membersWorkspaceMetaLine(),
+                    statusLabel = null,
+                    status = "content",
+                    body = preview.content,
+                    error = null,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.heightIn(min = 280.dp, max = 560.dp),
+                    performanceKey = "workspace:${preview.path}",
+                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp)
+                )
+            } else {
+                SlockFilePreviewTextPanel(
+                    name = preview.path,
+                    meta = preview.membersWorkspaceMetaLine(),
+                    content = preview.content
+                )
             }
         }
         is SlockWorkspaceFilePreview.Image -> {
@@ -3395,25 +3424,43 @@ private fun MembersWorkspacePreviewContent(
                 overflow = TextOverflow.Ellipsis
             )
             if (preview.imageUrl != null) {
-                SlockCachedImage(
+                SlockFilePreviewImagePanel(
                     source = preview.imageUrl,
                     contentDescription = preview.path,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 220.dp, max = 420.dp)
-                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                        .background(SlockColor.SurfaceWhite)
                 )
             } else {
-                MembersDetailField("Image", preview.description ?: "Image preview is unavailable.")
+                SlockFilePreviewGenericCard(
+                    iconName = SlockLucideIconName.Image,
+                    name = preview.path,
+                    meta = preview.membersWorkspaceMetaLine(),
+                    message = preview.description ?: "Image preview is unavailable."
+                )
             }
         }
         is SlockWorkspaceFilePreview.Unsupported ->
-            MembersDetailField("Unsupported", preview.reason)
+            SlockFilePreviewGenericCard(
+                iconName = SlockLucideIconName.File,
+                name = preview.path,
+                meta = preview.membersWorkspaceMetaLine(),
+                message = preview.reason
+            )
         is SlockWorkspaceFilePreview.Error ->
-            MembersDetailField("Error", preview.reason)
+            SlockFilePreviewMessage(
+                iconName = SlockLucideIconName.TriangleAlert,
+                title = "Preview unavailable",
+                detail = preview.reason,
+                modifier = Modifier.fillMaxWidth()
+            )
         is SlockWorkspaceFilePreview.Loading ->
-            MembersDetailField("Preview", preview.detail)
+            SlockFilePreviewMessage(
+                iconName = SlockLucideIconName.Loader,
+                title = "Loading preview...",
+                detail = preview.detail,
+                modifier = Modifier.fillMaxWidth()
+            )
     }
 }
 
@@ -3989,6 +4036,13 @@ private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(): String =
     ).joinToString(" · ").ifBlank { path }
 
 private fun SlockWorkspaceFilePreview.Image.membersWorkspaceMetaLine(): String =
+    listOfNotNull(
+        mimeType?.takeIf { it.isNotBlank() },
+        sizeBytes.membersWorkspaceSizeLabel(),
+        modifiedAt?.takeIf { it.isNotBlank() }
+    ).joinToString(" · ").ifBlank { path }
+
+private fun SlockWorkspaceFilePreview.Unsupported.membersWorkspaceMetaLine(): String =
     listOfNotNull(
         mimeType?.takeIf { it.isNotBlank() },
         sizeBytes.membersWorkspaceSizeLabel(),

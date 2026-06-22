@@ -19,7 +19,6 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
-import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -225,11 +224,11 @@ private fun ThreadFileThumbnail(item: KuiklyThreadFileItem) {
         contentAlignment = Alignment.Center
     ) {
         if (isImage && thumbnailUrl != null) {
-            SlockCachedImage(
+            SlockAspectFitImagePreviewSurface(
                 source = thumbnailUrl,
                 contentDescription = null,
-                contentScale = ContentScale.FillBounds,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.fillMaxSize(),
+                borderWidth = 0.dp
             )
         }
         if (!(isImage && thumbnailUrl != null)) {

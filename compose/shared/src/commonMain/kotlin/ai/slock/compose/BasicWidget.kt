@@ -101,6 +101,39 @@ fun SlockCachedImage(
     )
 }
 
+@Composable
+internal fun SlockAspectFitImagePreviewSurface(
+    source: String?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    placeholderLabel: String = "IMG",
+    backgroundColor: Color = SlockColor.SurfaceCream,
+    borderWidth: Dp = SlockStroke.Default
+) {
+    Box(
+        modifier = modifier
+            .background(backgroundColor)
+            .border(borderWidth, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
+    ) {
+        if (source != null) {
+            SlockCachedImage(
+                source = source,
+                contentDescription = contentDescription,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Text(
+                text = placeholderLabel,
+                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        }
+    }
+}
+
 fun Modifier.margin(
     start: Float = 0f,
     top: Float = 0f,
