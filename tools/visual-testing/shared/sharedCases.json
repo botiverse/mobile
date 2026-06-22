@@ -2109,7 +2109,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Do not activate through the component-only agent detail visual page."
+      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Current React harness only renders the AgentDetailPanel component fixture, and Android compose_members has no pageData contract to preselect an agent or Activity tab; do not activate through compose_members_agent_detail_visual."
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -4805,21 +4805,21 @@
       "category": "members",
       "group": "screens-members",
       "status": "pending",
-      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Do not activate through the component-only agent detail visual page.",
+      "notes": "Pending: needs real Members route launch into the Activity tab with seeded diagnostics/activity rows and action states. Current React harness only renders the AgentDetailPanel component fixture, and Android compose_members has no pageData contract to preselect an agent or Activity tab; do not activate through compose_members_agent_detail_visual.",
       "providers": [
         {
           "id": "react",
           "status": "pending",
           "path": "packages/web/src/pages/MembersPage.tsx",
           "fixture": "fixtures/screens.members.agent-detail.activity.json",
-          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Activity tab with seeded diagnostics/activity rows."
+          "reason": "Needs React route/provider fixture that opens the real Members route to Agent Detail Activity with seeded diagnostics/activity rows; current VisualTestingCases only has an AgentDetailPanel component fixture."
         },
         {
           "id": "android",
           "status": "pending",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
-          "reason": "Needs real Android MEMBERS_PAGE route launch into the Activity tab with seeded diagnostics/activity rows; component fixture capture is not sufficient."
+          "reason": "Needs real Android MEMBERS_PAGE route launch into the Activity tab with seeded diagnostics/activity rows; compose_members currently has no pageData contract for selectedMemberId/initialAgentTab, and compose_members_agent_detail_visual is component-only."
         },
         {
           "id": "harmony",
