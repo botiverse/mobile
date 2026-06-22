@@ -11465,6 +11465,8 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
         "server-danger" ->
             SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
+        "administration" ->
+            SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
         "administration-admins" ->
             SettingsVisualSpec(variant, "Administration", "Owners and admins", SlockLucideIconName.Shield)
         "administration-invites" ->
@@ -11507,6 +11509,7 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
     when (spec.variant) {
         "server-profile",
         "server-danger",
+        "administration",
         "administration-admins",
         "administration-invites",
         "administration-join-links",
@@ -11640,6 +11643,11 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
                         onDelete = {}
                     )
                 }
+            "administration" -> {
+                item { SettingsServerAdminsCard(members = snapshot.admins, section = sectionsByKey["admins"], actorRole = "owner", actionState = null, onAction = { _, _ -> }) }
+                item { SettingsServerInvitesCard(invites = snapshot.pendingInvites, section = sectionsByKey["pending_invites"], email = inviteEmail, actionState = null, timeContext = null, onEmailChange = { inviteEmail = it }, onSubmit = {}, onAction = { _, _ -> }) }
+                item { SettingsServerJoinLinksCard(links = snapshot.joinLinks, section = sectionsByKey["join_links"], maxUses = joinLinkMaxUses, expiresAt = joinLinkExpiresAt, actionState = null, timeContext = null, onMaxUsesChange = { joinLinkMaxUses = it }, onExpiresAtChange = { joinLinkExpiresAt = it }, onCreate = {}, onAction = { _, _ -> }) }
+            }
             "administration-admins" ->
                 item {
                     SettingsServerAdminsCard(
