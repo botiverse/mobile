@@ -99,6 +99,27 @@ adb -s <device> shell run-as ai.slock.android cat \
 adb -s <device> logcat -d > "$OUT/logcat.txt"
 ```
 
+For repeatable Android captures, use the repository adb helper instead of
+hand-typing individual adb commands:
+
+```bash
+python3 scripts/slock_android_adb.py --device <device> get-app-state \
+  --out "$OUT" \
+  --prefix <surface>-before
+python3 scripts/slock_android_adb.py --device <device> click <x> <y>
+python3 scripts/slock_android_adb.py --device <device> scroll --direction up
+python3 scripts/slock_android_adb.py --device <device> capture-logcat \
+  --out "$OUT" \
+  --prefix <surface> \
+  --filter-regex 'SlockPerf|SlockPerfScene|tab_switch_frame|Choreographer|Skipped|jank|Exception|FATAL'
+python3 scripts/slock_android_adb.py --device <device> pull-profiler \
+  --out "$OUT" \
+  --package ai.slock.android
+```
+
+The helper prints JSON and `get-app-state` returns the `screenshot_path` and
+`uixml_path`, so those paths should be copied into `scenario.md`.
+
 OHOS collection should use the existing collector:
 
 ```bash
