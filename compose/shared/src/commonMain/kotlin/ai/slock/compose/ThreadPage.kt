@@ -93,6 +93,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -180,6 +182,9 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
+private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
+private const val ThreadFocusedMessageHighlightFadeMs = 180
+private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
@@ -5269,6 +5274,8 @@ private fun ThreadMessagesList(
     }
     var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
+    var activeFocusedMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var consumedFocusedMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     val latestMessageLayoutKey = remember(
         payload.originStatus,
         payload.canLoadMoreBefore,
@@ -5440,12 +5447,48 @@ private fun ThreadMessagesList(
             }
         }
     }
-    LaunchedEffect(payload.instanceId, latestMessageLayoutKey, latestItemIndex) {
+    LaunchedEffect(
+        payload.instanceId,
+        payload.focusedMessageId,
+        payload.messages.size,
+        lazyItemCount
+    ) {
+        val targetMessageId = payload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
+        if (targetMessageId == consumedFocusedMessageId && activeFocusedMessageId == null) {
+            return@LaunchedEffect
+        }
+        val targetIndex = payload.threadMessageListItemIndex(targetMessageId)
+        if (targetIndex < 0) {
+            return@LaunchedEffect
+        }
+        listState.awaitThreadMessagesLayoutFrame()
+        if (!listState.canScrollToThreadItem(targetIndex)) {
+            return@LaunchedEffect
+        }
+        consumedFocusedMessageId = targetMessageId
+        activeFocusedMessageId = targetMessageId
+        allowBottomAutoAnchor = false
+        initialBottomAnchorReady = true
+        listState.scrollThreadItemToViewportCenter(targetIndex)
+        delay(ThreadFocusedMessageHighlightDurationMs)
+        if (activeFocusedMessageId == targetMessageId) {
+            activeFocusedMessageId = null
+        }
+    }
+    LaunchedEffect(payload.instanceId, payload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
         if (topAnchoredOriginContent) {
             initialBottomAnchorReady = true
             return@LaunchedEffect
         }
         if (latestItemIndex < 0) return@LaunchedEffect
+        val focusedMessageTargetIndex =
+            payload.focusedMessageId
+                ?.takeIf { it.isNotBlank() }
+                ?.let { payload.threadMessageListItemIndex(it) }
+                ?: -1
+        if (focusedMessageTargetIndex >= 0) {
+            return@LaunchedEffect
+        }
         if (!initialBottomAnchorReady) {
             repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
                 listState.awaitThreadMessagesLayoutFrame()
@@ -5676,6 +5719,7 @@ private fun ThreadMessagesList(
                             messageIndex = index,
                             diagnosticsLogger = diagnosticsLogger,
                             highlightedMentions = highlightedMentions,
+                            focused = activeFocusedMessageId == message.id,
                             alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = payload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
@@ -6189,6 +6233,24 @@ private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemInd
     scrollToItem(latestItemIndex, offset)
 }
 
+private suspend fun LazyListState.scrollThreadItemToViewportCenter(itemIndex: Int) {
+    if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
+        return
+    }
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+    val offset =
+        item
+            ?.let {
+                threadFocusedItemCenterScrollOffset(
+                    itemSize = it.size,
+                    viewportHeight = viewportHeight
+                )
+            }
+            ?: 0
+    scrollToItem(itemIndex, offset)
+}
+
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
     latestItemIndex: Int,
     minHeightsByListItemIndex: Map<Int, Int> = emptyMap()
@@ -6286,6 +6348,14 @@ internal fun threadLatestItemBottomAnchorScrollOffset(
     val rawOffset = itemSize - viewportHeight
     if (rawOffset >= 0 || visibleItemCount < totalItemCount) return rawOffset
     return 0
+}
+
+internal fun threadFocusedItemCenterScrollOffset(
+    itemSize: Int,
+    viewportHeight: Int
+): Int {
+    if (itemSize <= 0 || viewportHeight <= 0) return 0
+    return (itemSize - viewportHeight) / 2
 }
 
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
@@ -6464,20 +6534,49 @@ private fun ThreadMessageCard(
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     richContentEnabled: Boolean = true,
+    focused: Boolean = false,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
 ) {
     val horizontalArrangement =
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
-    Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
+    val focusAlpha by animateFloatAsState(
+        targetValue = if (focused) 1f else 0f,
+        animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
+        label = "thread-message-focus-highlight"
+    )
+    val focusShadowOffset = 4.dp
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
     ) {
+        if (focusAlpha > 0f) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = focusShadowOffset, y = focusShadowOffset)
+                        .background(SlockColor.ShadowBlack.copy(alpha = focusAlpha))
+            )
+        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .background(SlockColor.SurfaceWhite)
+                    .then(
+                        if (focusAlpha > 0f) {
+                            Modifier
+                                .background(SlockColor.AccentCyan.copy(alpha = 0.25f * focusAlpha))
+                                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = focusAlpha))
+                        } else {
+                            Modifier
+                        }
+                    )
                     .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
         ) {

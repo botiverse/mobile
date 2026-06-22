@@ -217,6 +217,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun focusedMessageCenterOffsetAlignsTargetToViewportCenter() {
+        assertEquals(
+            -260,
+            threadFocusedItemCenterScrollOffset(
+                itemSize = 120,
+                viewportHeight = 640
+            )
+        )
+        assertEquals(
+            80,
+            threadFocusedItemCenterScrollOffset(
+                itemSize = 800,
+                viewportHeight = 640
+            )
+        )
+        assertEquals(
+            0,
+            threadFocusedItemCenterScrollOffset(
+                itemSize = 0,
+                viewportHeight = 640
+            )
+        )
+    }
+
+    @Test
     fun floatingOverlayPositionHandlesCrampedAndBottomAnchors() {
         val cramped = SlockFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
         assertEquals(
@@ -570,6 +595,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun conversationHeaderProjectionDoesNotRenderIdentityAsTitle() {
+        val uuid = "123e4567-e89b-12d3-a456-426614174000"
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId(uuid),
+                channelId = ChannelId(uuid),
+                kind = ConversationKind.Channel,
+                name = uuid,
+                permissions = ConversationPermissions(canSend = true)
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "notification-thread",
+                title = "Channel",
+                sourceThreadId = uuid,
+                streamChannelId = uuid,
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+        val headerState = sharedConversationHeaderState(listOf(conversation))
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals("Channel", renderedPayload.title)
+    }
+
+    @Test
     fun appShellPrivateChannelPayloadUsesLockHeaderKind() {
         val conversation =
             ConversationSummary(
@@ -901,6 +951,33 @@ class ThreadPayloadTest {
         assertEquals("首页专修", threadHeaderDisplayTitle("#首页专修"))
         assertEquals("design", threadHeaderDisplayTitle("design"))
         assertEquals("#", threadHeaderDisplayTitle("#"))
+    }
+
+    @Test
+    fun threadHeaderDisplayTitleDoesNotRenderIdentityFallbacks() {
+        assertEquals("Channel", threadHeaderDisplayTitle("123e4567-e89b-12d3-a456-426614174000"))
+        assertEquals("Channel", threadHeaderDisplayTitle("deadbeef"))
+        assertEquals("Direct Message", threadHeaderDisplayTitle("123e4567-e89b-12d3-a456-426614174000", KuiklyThreadSurfaceKind.DirectMessage))
+    }
+
+    @Test
+    fun canonicalConversationContextDoesNotRenderIdentityAsTitle() {
+        val uuid = "123e4567-e89b-12d3-a456-426614174000"
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId(uuid),
+                        channelId = ChannelId(uuid),
+                        kind = ConversationKind.Channel,
+                        name = uuid
+                    ),
+                originMessage = null,
+                parentMessageId = null
+            )
+
+        assertEquals("Channel", context.title)
     }
 
     @Test
