@@ -98,6 +98,7 @@ import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -170,6 +171,7 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
+private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
@@ -760,7 +762,15 @@ private data class ThreadImagePreviewState(
 }
 
 private data class ThreadAttachmentNoPreviewState(
-    val attachment: KuiklyThreadAttachmentItem
+    val attachment: KuiklyThreadAttachmentItem,
+    val markdownStatus: String = "idle",
+    val markdownBody: String? = null,
+    val markdownError: String? = null
+)
+
+private data class ThreadAttachmentMarkdownLoadResult(
+    val body: String? = null,
+    val error: String? = null
 )
 
 private data class ThreadAttachmentCommentsDialogState(
@@ -1178,11 +1188,12 @@ private fun ThreadPageScreen() {
                 logger = { message -> bridge.logDebug("shared_thread_cache $message") }
             )
         }
+    val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
     val networkClient =
         remember {
             KuiklySlockNetworkClient(
                 sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                networkModule = networkModule,
                 warningLogger = { message -> bridge.log("kuikly_network $message") }
             )
         }
@@ -1291,6 +1302,7 @@ private fun ThreadPageScreen() {
         initialPayload = payload,
         bridge = bridge,
         dataSource = dataSource,
+        networkModule = networkModule,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
         computersStore = computersStore,
@@ -1581,6 +1593,7 @@ internal fun SharedThreadRouteContent(
     initialPayload: KuiklyThreadScreenPayload,
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
+    networkModule: SlockNetworkModule,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
     computersStore: SharedComputersStore? = null,
@@ -2368,7 +2381,29 @@ internal fun SharedThreadRouteContent(
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
-        attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment)
+        val initialState =
+            ThreadAttachmentNoPreviewState(
+                attachment = attachment,
+                markdownStatus = if (attachment.isMarkdownAttachment()) "loading" else "idle"
+            )
+        attachmentNoPreviewState = initialState
+        if (!attachment.isMarkdownAttachment()) return
+        coroutineScope.launch {
+            val result =
+                loadSharedThreadMarkdownAttachment(
+                    dataSource = dataSource,
+                    networkModule = networkModule,
+                    attachment = attachment
+                )
+            val current = attachmentNoPreviewState
+            if (current?.attachment?.id != attachment.id) return@launch
+            attachmentNoPreviewState =
+                current.copy(
+                    markdownStatus = if (result.body != null) "content" else "error",
+                    markdownBody = result.body,
+                    markdownError = result.error
+                )
+        }
     }
     LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
         if (renderedThread.selectedTab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
@@ -3366,10 +3401,11 @@ internal fun SharedThreadRouteContent(
         }
         attachmentNoPreviewState?.let { preview ->
             ThreadAttachmentNoPreviewOverlay(
-                attachment = preview.attachment,
+                state = preview,
                 openState = attachmentOpenStates[preview.attachment.id],
                 onDismiss = { attachmentNoPreviewState = null },
-                onOpenWithSystem = { openAttachmentExternally(preview.attachment) }
+                onOpenWithSystem = { openAttachmentExternally(preview.attachment) },
+                onOpenUrl = { bridge.openUrl(it, null) }
             )
         }
         attachmentCommentsDialogState?.let { dialogState ->
@@ -3538,6 +3574,51 @@ private suspend fun openSharedThreadAttachment(
         is ThreadApiResult.Failure ->
             ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
     }
+}
+
+private suspend fun loadSharedThreadMarkdownAttachment(
+    dataSource: SharedThreadDataSource,
+    networkModule: SlockNetworkModule,
+    attachment: KuiklyThreadAttachmentItem
+): ThreadAttachmentMarkdownLoadResult {
+    if (!attachment.isMarkdownAttachment()) {
+        return ThreadAttachmentMarkdownLoadResult(error = "No markdown preview is available for this file type.")
+    }
+    val target =
+        when (val response = dataSource.attachmentUrl(attachment.id, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data
+            is ThreadApiResult.Failure -> return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
+        }
+    val url = target.url.takeIf { it.isNotBlank() }
+        ?: return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
+    val response =
+        try {
+            networkModule.request(
+                JSONObject().apply {
+                    put("url", url)
+                    put("method", "GET")
+                    put("headers", JSONObject())
+                    put("timeoutMillis", 30_000)
+                }
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
+        }
+    if (response.code !in 200..299) {
+        return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
+    }
+    val body = response.bodyText.takeIf { it.isNotBlank() }
+        ?: return ThreadAttachmentMarkdownLoadResult(error = "Markdown file is empty.")
+    val previewBody =
+        if (body.length > ThreadMarkdownAttachmentPreviewMaxChars) {
+            body.take(ThreadMarkdownAttachmentPreviewMaxChars) +
+                "\n\n_Preview truncated. Open with system viewer for the full file._"
+        } else {
+            body
+        }
+    return ThreadAttachmentMarkdownLoadResult(body = previewBody)
 }
 
 internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
@@ -3823,49 +3904,53 @@ private fun ThreadImagePreviewOverlay(
     val hasMultiple = state.images.size > 1
     val isLoading = current.id in state.loadingAttachmentIds
     val failedWithoutImage = current.id in state.failedAttachmentIds && displayUrl == null
-    val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()
     val swipeThresholdPx =
         with(LocalDensity.current) {
             56.dp.toPx()
         }
-    Box(
-        modifier = Modifier.fillMaxSize().background(SlockColor.TextBlack.copy(alpha = 0.92f))
-    ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .height(topSafeArea + 58.dp)
-                    .background(SlockColor.SurfaceWhite)
-                    .padding(start = 12.dp, top = topSafeArea, end = 12.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ThreadImagePreviewIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onDismiss)
-                Text(
-                    text = current.name.ifBlank { "Image" },
-                    style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = "Image preview",
+            subtitle = current.name.ifBlank { "Image" },
+            iconName = SlockLucideIconName.Image,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = onDismiss,
+                    size = 30.dp,
+                    shadowOffset = 2.dp
                 )
-                ThreadImagePreviewIconButton(
-                    icon = SlockLucideIconName.ExternalLink,
+            },
+            trailingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ExternalLink,
                     enabled = displayUrl != null,
-                    onClick = { onOpenExternally(current) }
+                    onClick = { onOpenExternally(current) },
+                    size = 30.dp,
+                    shadowOffset = 2.dp,
+                    disabledAlpha = 0.42f
                 )
-                ThreadImagePreviewIconButton(icon = SlockLucideIconName.X, onClick = onDismiss)
             }
+        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
             Box(
-                modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack)
-            )
-            Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier.fillMaxWidth()
+                    .weight(1f)
+                    .padding(
+                        start = SlockSpacing.Md,
+                        top = SlockSpacing.Md,
+                        end = SlockSpacing.Md,
+                        bottom = SlockSpacing.Md + previewBottomPadding
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 Box(
                     modifier = Modifier.fillMaxSize()
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
                         .then(
                             if (hasMultiple) {
                                 Modifier.pointerInput(state.currentIndex, state.images.size) {
@@ -3897,8 +3982,8 @@ private fun ThreadImagePreviewOverlay(
                         SlockCachedImage(
                             source = displayUrl,
                             contentDescription = current.name,
-                            contentScale = ContentScale.FillBounds,
-                            modifier = Modifier.fillMaxSize()
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize().padding(8.dp)
                         )
                     } else {
                         ThreadImagePreviewEmptyState(
@@ -3930,7 +4015,7 @@ private fun ThreadImagePreviewOverlay(
                 LazyRow(
                     modifier = Modifier.fillMaxWidth()
                         .height(74.dp + bottomSafeArea)
-                        .background(SlockColor.TextBlack)
+                        .background(SlockColor.SurfaceWhite)
                         .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -3943,15 +4028,6 @@ private fun ThreadImagePreviewOverlay(
                             onClick = { onSelectIndex(index) }
                         )
                     }
-                }
-            } else {
-                if (bottomSafeArea > 0.dp) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(bottomSafeArea)
-                            .background(SlockColor.TextBlack.copy(alpha = 0.92f))
-                    )
                 }
             }
         }
@@ -4111,17 +4187,20 @@ private fun ThreadImagePreviewThumbnail(
 
 @Composable
 private fun ThreadAttachmentNoPreviewOverlay(
-    attachment: KuiklyThreadAttachmentItem,
+    state: ThreadAttachmentNoPreviewState,
     openState: ThreadAttachmentOpenUiState?,
     onDismiss: () -> Unit,
-    onOpenWithSystem: () -> Unit
+    onOpenWithSystem: () -> Unit,
+    onOpenUrl: (String) -> Unit
 ) {
+    val attachment = state.attachment
     val isOpening = openState.threadAttachmentIsOpening()
+    val isMarkdown = attachment.isMarkdownAttachment()
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
-            title = "File preview",
+            title = if (isMarkdown) "Markdown preview" else "File preview",
             subtitle = attachment.name.ifBlank { "Attachment" },
-            iconName = SlockLucideIconName.File,
+            iconName = if (isMarkdown) SlockLucideIconName.FileText else SlockLucideIconName.File,
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
                 SlockBrutalIconButton(
@@ -4136,61 +4215,19 @@ private fun ThreadAttachmentNoPreviewOverlay(
             modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(SlockSpacing.Lg),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(88.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockLucideIcon(
-                        SlockLucideIconName.File,
-                        modifier = Modifier.size(42.dp),
-                        color = "#FF111827"
-                    )
-                }
-                Text(
-                    text = attachment.name.ifBlank { "Attachment" },
-                    style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+            if (isMarkdown) {
+                ThreadMarkdownAttachmentPreview(
+                    state = state,
+                    openState = openState,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.weight(1f)
                 )
-                val meta = attachment.genericAttachmentMetaLine()
-                if (meta.isNotBlank()) {
-                    Text(
-                        text = meta,
-                        style = SlockType.Body,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Text(
-                    text = "No preview is available for this file type.",
-                    style = SlockType.Body,
-                    color = SlockColor.TextBlack,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+            } else {
+                ThreadGenericAttachmentPreviewCard(
+                    attachment = attachment,
+                    openState = openState,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                openState.threadAttachmentStatusLabel()?.let { statusLabel ->
-                    Text(
-                        text = statusLabel,
-                        style = SlockType.Caption,
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
             SlockBrutalActionButton(
                 label = if (isOpening) "Preparing..." else "Open with...",
@@ -4201,6 +4238,183 @@ private fun ThreadAttachmentNoPreviewOverlay(
                 leadingIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink
             )
         }
+    }
+}
+
+@Composable
+private fun ThreadGenericAttachmentPreviewCard(
+    attachment: KuiklyThreadAttachmentItem,
+    openState: ThreadAttachmentOpenUiState?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .padding(SlockSpacing.Lg),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(88.dp)
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+            contentAlignment = Alignment.Center
+        ) {
+            SlockLucideIcon(
+                SlockLucideIconName.File,
+                modifier = Modifier.size(42.dp),
+                color = "#FF111827"
+            )
+        }
+        Text(
+            text = attachment.name.ifBlank { "Attachment" },
+            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        val meta = attachment.genericAttachmentMetaLine()
+        if (meta.isNotBlank()) {
+            Text(
+                text = meta,
+                style = SlockType.Body,
+                color = SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = "No preview is available for this file type.",
+            style = SlockType.Body,
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+            Text(
+                text = statusLabel,
+                style = SlockType.Caption,
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ThreadMarkdownAttachmentPreview(
+    state: ThreadAttachmentNoPreviewState,
+    openState: ThreadAttachmentOpenUiState?,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val attachment = state.attachment
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite)
+            .border(SlockStroke.Default, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = attachment.name.ifBlank { "Markdown" },
+                style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            val meta = attachment.genericAttachmentMetaLine()
+            if (meta.isNotBlank()) {
+                Text(
+                    text = meta,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption,
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        when (state.markdownStatus) {
+            "content" -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentPadding = PaddingValues(SlockSpacing.Md),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+                ) {
+                    item {
+                        SlockMarkdownBody(
+                            body = state.markdownBody.orEmpty(),
+                            onOpenUrl = onOpenUrl,
+                            modifier = Modifier.fillMaxWidth(),
+                            performanceKey = "attachment:${attachment.id.take(8)}"
+                        )
+                    }
+                }
+            }
+            "error" ->
+                ThreadAttachmentPreviewMessage(
+                    iconName = SlockLucideIconName.FileText,
+                    title = "Markdown preview unavailable",
+                    detail = state.markdownError.orEmpty().ifBlank { "Open with system viewer to inspect this file." },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+            else ->
+                ThreadAttachmentPreviewMessage(
+                    iconName = SlockLucideIconName.Loader,
+                    title = "Loading markdown preview...",
+                    detail = attachment.name.ifBlank { "Markdown file" },
+                    modifier = Modifier.fillMaxWidth().weight(1f)
+                )
+        }
+    }
+}
+
+@Composable
+private fun ThreadAttachmentPreviewMessage(
+    iconName: SlockLucideIconName,
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.padding(SlockSpacing.Lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(34.dp), color = "#FF000000")
+        Text(
+            text = title,
+            style = SlockType.ButtonBold.copy(color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+        Text(
+            text = detail,
+            style = SlockType.Body,
+            color = SlockColor.TextMutedGray,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -8082,6 +8296,14 @@ private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
 
 private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
     mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)
+
+private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
+    mimeType.substringBefore(';').trim().let { normalizedMime ->
+        normalizedMime.equals("text/markdown", ignoreCase = true) ||
+            normalizedMime.equals("text/x-markdown", ignoreCase = true)
+    } ||
+        name.endsWith(".md", ignoreCase = true) ||
+        name.endsWith(".markdown", ignoreCase = true)
 
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     listOf(sizeLabel, mimeType)
