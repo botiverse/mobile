@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
@@ -26,11 +27,14 @@ internal data class SlockAppShellScope(
 internal fun rememberSlockAppShellScope(): SlockAppShellScope {
     val topSafeArea = slockTopSafeAreaPadding()
     val bottomSafeArea = slockBottomSafeAreaPadding()
-    return SlockAppShellScope(
-        topSafeArea = topSafeArea,
-        bottomSafeArea = bottomSafeArea,
-        bottomTabBarContentInset = slockAppBottomTabBarContentInset(bottomSafeArea)
-    )
+    val bottomTabBarContentInset = slockAppBottomTabBarContentInset(bottomSafeArea)
+    return remember(topSafeArea, bottomSafeArea, bottomTabBarContentInset) {
+        SlockAppShellScope(
+            topSafeArea = topSafeArea,
+            bottomSafeArea = bottomSafeArea,
+            bottomTabBarContentInset = bottomTabBarContentInset
+        )
+    }
 }
 
 @Composable

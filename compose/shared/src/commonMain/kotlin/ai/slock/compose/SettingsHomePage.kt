@@ -1814,12 +1814,15 @@ private fun SlockAppShellContent() {
             selectedHomeDestination = selectedHomeDestination,
             selectedSettingsDestination = selectedSettingsDestination
         )
+    val appShellBottomTabItems = remember(selectedTab) {
+        appShellBottomTabs(selectedTab)
+    }
     val appShellBottomContentInset = shellScope.bottomInset(showAppShellBottomTabs)
 
     val mainRouteContent: @Composable () -> Unit = {
         SlockAppShellSurface(
             shellScope = shellScope,
-            bottomTabs = appShellBottomTabs(selectedTab),
+            bottomTabs = appShellBottomTabItems,
             onBottomTabSelected = {
                 val nextTab = retainedAppShellSelectedTab(it)
                 val visitedBefore = nextTab in retainedAppShellTabs
