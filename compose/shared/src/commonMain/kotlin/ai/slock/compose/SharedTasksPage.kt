@@ -75,9 +75,11 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.delay
 
 private const val TasksListDefaultBeyondBoundsItemCount = 1
 private const val TasksListMaxBeyondBoundsItemCount = 4
+private const val TasksLoadedContentActivationDelayMs = 48L
 
 @Composable
 internal fun SharedTasksScreen(
@@ -85,7 +87,8 @@ internal fun SharedTasksScreen(
     onIntent: (SharedTasksRouteIntent) -> Unit,
     modifier: Modifier = Modifier,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    stageLoadedContent: Boolean = false
 ) {
     SharedTasksPanel(
         state = state,
@@ -94,7 +97,8 @@ internal fun SharedTasksScreen(
         showHeader = true,
         showChannelFilter = true,
         onOpenTask = onOpenTask,
-        bottomContentPadding = bottomContentPadding
+        bottomContentPadding = bottomContentPadding,
+        stageLoadedContent = stageLoadedContent
     )
 }
 
@@ -109,7 +113,8 @@ internal fun SharedTasksPanel(
      *  Server-mode (no implicit channel) leaves this null and the button is hidden. */
     createTasksChannelId: ChannelId? = null,
     onOpenTask: ((TaskSummary) -> Unit)? = null,
-    bottomContentPadding: Dp = SlockSpacing.Lg
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    stageLoadedContent: Boolean = false
 ) {
     var lastContent by remember { mutableStateOf<TasksContent?>(null) }
     val currentContent = (state.loadState as? ScreenLoadState.Content)?.data
@@ -153,7 +158,8 @@ internal fun SharedTasksPanel(
                     createTasksChannelId = createTasksChannelId,
                     onOpenTask = onOpenTask,
                     onIntent = onIntent,
-                    bottomContentPadding = bottomContentPadding
+                    bottomContentPadding = bottomContentPadding,
+                    stageLoadedContent = stageLoadedContent
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
@@ -291,8 +297,17 @@ private fun SharedTasksLoadedBody(
     createTasksChannelId: ChannelId?,
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    stageLoadedContent: Boolean
 ) {
+    var loadedContentReady by remember { mutableStateOf(!stageLoadedContent) }
+    LaunchedEffect(stageLoadedContent) {
+        if (stageLoadedContent) {
+            loadedContentReady = false
+            delay(TasksLoadedContentActivationDelayMs)
+        }
+        loadedContentReady = true
+    }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         SharedTasksLoadedBodyContent(
             state = state,
@@ -303,7 +318,8 @@ private fun SharedTasksLoadedBody(
             onOpenTask = onOpenTask,
             onIntent = onIntent,
             defaultViewMode = defaultTasksViewMode(maxWidth),
-            bottomContentPadding = bottomContentPadding
+            bottomContentPadding = bottomContentPadding,
+            loadedContentReady = loadedContentReady
         )
     }
 }
@@ -318,7 +334,8 @@ private fun SharedTasksLoadedBodyContent(
     onOpenTask: ((TaskSummary) -> Unit)?,
     onIntent: (SharedTasksRouteIntent) -> Unit,
     defaultViewMode: TasksViewMode,
-    bottomContentPadding: Dp
+    bottomContentPadding: Dp,
+    loadedContentReady: Boolean = true
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     val viewModeRepository =
@@ -484,7 +501,9 @@ private fun SharedTasksLoadedBodyContent(
                     },
                     onCreateClick = { createDialogOpen = true }
                 )
-                when (presentationState.selectedMode) {
+                if (!sharedTasksLoadedContentShouldRender(loadedContentReady)) {
+                    SharedTasksFirstFramePlaceholder()
+                } else when (presentationState.selectedMode) {
                     TasksViewMode.Board -> {
                         // Horizontal board: each TaskStatus is a fixed-width column the user can
                         // scroll between left/right. Mirrors the React `overflow-x-auto` panel.
@@ -665,6 +684,19 @@ private fun SharedTasksLoadedBodyContent(
         }
         }
     }
+}
+
+internal fun sharedTasksLoadedContentShouldRender(loadedContentReady: Boolean): Boolean =
+    loadedContentReady
+
+@Composable
+private fun SharedTasksFirstFramePlaceholder() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SlockColor.SurfaceWhite)
+            .padding(SlockSpacing.Md)
+    )
 }
 
 internal fun sharedTasksLazyItemCount(
