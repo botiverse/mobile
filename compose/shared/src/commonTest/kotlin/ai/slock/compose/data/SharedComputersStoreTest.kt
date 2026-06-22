@@ -68,6 +68,29 @@ class SharedComputersStoreTest {
         assertEquals(SharedComputersLoadStatus.Idle, store.state.value.selectComputerPickerSlice("server-2").status)
     }
 
+    @Test
+    fun settingsComputerSlicesProjectFromSharedMachineSnapshot() = runBlocking {
+        val api = RecordingComputersApi()
+        val store = store(api)
+
+        val computers = store.loadSettingsComputersForServer("server-1")
+        val detailComputer = store.loadSettingsComputerSnapshotForServer("server-1", "machine-1")
+
+        assertEquals(1, api.calls.count { it == "GET servers/server-1/machines" })
+        val snapshot = (computers as DataResult.Content).data
+        assertEquals("0.53.0", snapshot.latestDaemonVersion)
+        assertEquals("machine-1", snapshot.computers.single().id)
+        assertEquals("Maria Laptop", snapshot.computers.single().name)
+        assertEquals(true, snapshot.computers.single().online)
+        assertEquals("darwin", snapshot.computers.single().platform)
+        assertEquals("maria.local", snapshot.computers.single().hostname)
+        assertEquals("sk_machine_abc", snapshot.computers.single().apiKeyPrefix)
+        assertEquals(7L, snapshot.computers.single().statusVersion)
+
+        val computer = (detailComputer as DataResult.Content).data
+        assertEquals(snapshot.computers.single(), computer)
+    }
+
     private fun store(api: RecordingComputersApi): SharedComputersStore =
         SharedComputersStore(
             computersApiClient = SlockComputersApiClient(api),
