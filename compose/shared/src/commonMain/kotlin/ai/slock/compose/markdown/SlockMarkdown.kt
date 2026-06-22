@@ -1153,7 +1153,7 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
 }
 
 private val SlockMarkdownInlineChipHeight = 21.sp
-private val SlockMarkdownInlineCodeChipHeight = 18.sp
+private val SlockMarkdownInlineCodeChipHeight = 21.sp
 private val SlockMarkdownReferenceChipBackground = SlockColor.SurfaceCream
 
 internal fun slockMarkdownInlineTagWidthSp(
@@ -1174,12 +1174,12 @@ internal fun slockMarkdownInlineChipWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
 
 internal fun slockMarkdownInlineCodeWidthSp(code: String) =
-    (code.slockInlineTextWidthUnits() * 7.1f + 8f).coerceAtLeast(22f).sp
+    (code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() + 8f).coerceAtLeast(24f).sp
 
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.copy(
         fontSize = 14.sp,
-        lineHeight = 18.sp
+        lineHeight = 20.sp
     )
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
@@ -1190,6 +1190,25 @@ private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private fun String.slockInlineTextWidthUnits(): Int =
     fold(0) { total, char ->
         total + if (char.code > 0x7F) 2 else 1
+    }
+
+private fun Char.slockInlineCodeWidthSp(): Float =
+    when {
+        code > 0x7F -> 14f
+        isDigit() -> 7.2f
+        isUpperCase() -> 8f
+        isLowerCase() ->
+            when (this) {
+                'f', 'i', 'j', 'l', 'r', 't' -> 4.4f
+                'm', 'w' -> 10.2f
+                else -> 7.1f
+            }
+        this == '.' -> 3.6f
+        this == ':' -> 3.8f
+        this == ' ' -> 4f
+        this in "_-/" -> 5.6f
+        this in "()[]{}" -> 5f
+        else -> 6.4f
     }
 
 internal fun slockMarkdownTagColor(kind: ThreadMarkdownTagKind, highlighted: Boolean = false): Color =
@@ -1258,7 +1277,7 @@ private fun SlockMarkdownInlineCodeChip(code: String) {
             style =
                 SlockType.Caption.copy(
                     fontSize = 14.sp,
-                    lineHeight = 18.sp
+                    lineHeight = 20.sp
                 ),
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
