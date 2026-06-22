@@ -611,7 +611,8 @@ internal fun SlockBrutalActionButton(
     Box(
         modifier =
             modifier
-                .padding(end = shadowOffset, bottom = shadowOffset)
+                .padding(end = shadowOffset, bottom = shadowOffset),
+        propagateMinConstraints = true
     ) {
         Box(
             modifier =
