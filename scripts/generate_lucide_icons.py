@@ -96,6 +96,7 @@ LUCIDE_ICONS = [
     "file-text",
     "flag",
     "flame",
+    "folder",
     "folder-open",
     "funnel",
     "git-branch",

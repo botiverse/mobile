@@ -59,6 +59,7 @@ enum class SlockLucideIconName(val wireName: String) {
     FileText("file-text"),
     Flag("flag"),
     Flame("flame"),
+    Folder("folder"),
     FolderOpen("folder-open"),
     Funnel("funnel"),
     GitBranch("git-branch"),

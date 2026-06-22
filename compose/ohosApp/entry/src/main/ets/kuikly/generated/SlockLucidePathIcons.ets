@@ -64,6 +64,7 @@ export const SlockLucidePathIconNames: string[] = [
   'file-text',
   'flag',
   'flame',
+  'folder',
   'folder-open',
   'funnel',
   'git-branch',
@@ -1988,6 +1989,21 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
       return [
     {
       commands: 'M 12 3 q 1 4 4 6.5 t 3 5.5 a 1 1 0 0 1 -14 0 5 5 0 0 1 1 -3 1 1 0 0 0 5 0 c 0 -2 -1.5 -3 -1.5 -5 q 0 -2 2.5 -4',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'folder':
+      return [
+    {
+      commands: 'M 20 20 a 2 2 0 0 0 2 -2 V 8 a 2 2 0 0 0 -2 -2 h -7.9 a 2 2 0 0 1 -1.69 -0.9 L 9.6 3.9 A 2 2 0 0 0 7.93 3 H 4 a 2 2 0 0 0 -2 2 v 13 a 2 2 0 0 0 2 2 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,
