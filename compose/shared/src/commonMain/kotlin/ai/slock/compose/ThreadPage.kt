@@ -4099,26 +4099,31 @@ private fun ThreadAttachmentNoPreviewOverlay(
     onOpenWithSystem: () -> Unit
 ) {
     val isOpening = openState.threadAttachmentIsOpening()
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(SlockColor.TextBlack.copy(alpha = 0.92f))
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(18.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ThreadImagePreviewIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onDismiss)
-                ThreadImagePreviewIconButton(icon = SlockLucideIconName.X, onClick = onDismiss)
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = "File preview",
+            subtitle = attachment.name.ifBlank { "Attachment" },
+            iconName = SlockLucideIconName.File,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = onDismiss,
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
             }
+        )
+        Column(
+            modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(SlockSpacing.Lg),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -4137,8 +4142,8 @@ private fun ThreadAttachmentNoPreviewOverlay(
                 }
                 Text(
                     text = attachment.name.ifBlank { "Attachment" },
-                    style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.SurfaceWhite),
-                    color = SlockColor.SurfaceWhite,
+                    style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                    color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -4146,44 +4151,37 @@ private fun ThreadAttachmentNoPreviewOverlay(
                 if (meta.isNotBlank()) {
                     Text(
                         text = meta,
-                        style = SlockType.Body.copy(color = SlockColor.SurfaceCream),
-                        color = SlockColor.SurfaceCream,
+                        style = SlockType.Body,
+                        color = SlockColor.TextMutedGray,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
                 Text(
                     text = "No preview is available for this file type.",
-                    style = SlockType.Body.copy(color = SlockColor.SurfaceCream),
-                    color = SlockColor.SurfaceCream,
+                    style = SlockType.Body,
+                    color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 openState.threadAttachmentStatusLabel()?.let { statusLabel ->
                     Text(
                         text = statusLabel,
-                        style = SlockType.Caption.copy(color = SlockColor.SurfaceWhite),
-                        color = SlockColor.SurfaceWhite,
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SlockBrutalActionButton(
-                    label = if (isOpening) "Preparing..." else "Open with...",
-                    onClick = onOpenWithSystem,
-                    enabled = !isOpening,
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    minWidth = 180.dp,
-                    leadingIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink
-                )
-                Spacer(Modifier.height(6.dp))
-            }
+            SlockBrutalActionButton(
+                label = if (isOpening) "Preparing..." else "Open with...",
+                onClick = onOpenWithSystem,
+                enabled = !isOpening,
+                backgroundColor = SlockColor.BrandYellow,
+                minWidth = 180.dp,
+                leadingIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink
+            )
         }
     }
 }
