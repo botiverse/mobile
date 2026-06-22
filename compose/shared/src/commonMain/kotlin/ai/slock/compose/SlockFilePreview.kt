@@ -101,6 +101,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         subtitle = payload.subtitle.ifBlank { payload.name.ifBlank { payload.path } },
         iconName = payload.previewIconName(),
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
+        contentPadding = 0.dp,
         trailingContent =
             payload.externalUrl?.takeIf { it.isNotBlank() }?.let { externalUrl ->
                 {
@@ -141,7 +142,8 @@ private fun SlockFilePreviewStandalonePageContent() {
     ) {
         SlockFilePreviewPayloadContent(
             payload = payload,
-            onOpenUrl = {}
+            onOpenUrl = {},
+            modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
 }
@@ -226,23 +228,27 @@ internal fun SlockFilePreviewPayloadContent(
                 body = payload.content,
                 error = null,
                 onOpenUrl = onOpenUrl,
-                modifier = modifier.heightIn(min = 280.dp, max = 560.dp),
+                modifier = modifier.fillMaxSize(),
                 performanceKey = "preview:${payload.path}",
-                textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp)
+                textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                showChrome = false
             )
         "text" ->
             SlockFilePreviewTextPanel(
                 name = payload.name.ifBlank { payload.path },
                 meta = payload.meta,
                 content = payload.content,
-                modifier = modifier
+                modifier = modifier.fillMaxSize(),
+                showChrome = false
             )
         "image" ->
             if (payload.imageUrl != null) {
                 SlockFilePreviewImagePanel(
                     source = payload.imageUrl,
                     contentDescription = payload.name.ifBlank { payload.path },
-                    modifier = modifier.fillMaxWidth().heightIn(min = 220.dp, max = 420.dp)
+                    modifier = modifier.fillMaxSize(),
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    borderWidth = 0.dp
                 )
             } else {
                 SlockFilePreviewGenericCard(
@@ -250,7 +256,7 @@ internal fun SlockFilePreviewPayloadContent(
                     name = payload.name.ifBlank { payload.path },
                     meta = payload.meta,
                     message = payload.message.ifBlank { "Image preview is unavailable." },
-                    modifier = modifier.fillMaxWidth()
+                    modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
                 )
             }
         "loading" ->
@@ -258,14 +264,14 @@ internal fun SlockFilePreviewPayloadContent(
                 iconName = SlockLucideIconName.Loader,
                 title = "Loading preview...",
                 detail = payload.message.ifBlank { "Fetching preview content." },
-                modifier = modifier.fillMaxWidth()
+                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         "error" ->
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
                 title = "Preview unavailable",
                 detail = payload.error ?: payload.message.ifBlank { "Unable to load this file preview." },
-                modifier = modifier.fillMaxWidth()
+                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         else ->
             SlockFilePreviewGenericCard(
@@ -273,7 +279,7 @@ internal fun SlockFilePreviewPayloadContent(
                 name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
                 meta = payload.meta,
                 message = payload.message.ifBlank { "No preview is available for this file type." },
-                modifier = modifier.fillMaxWidth()
+                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
     }
 }
@@ -368,6 +374,7 @@ internal fun SlockFilePreviewPageScaffold(
     iconName: SlockLucideIconName,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -388,7 +395,7 @@ internal fun SlockFilePreviewPageScaffold(
             trailingContent = trailingContent
         )
         Column(
-            modifier = Modifier.fillMaxSize().padding(SlockSpacing.Md),
+            modifier = Modifier.fillMaxSize().padding(contentPadding),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
         ) {
             content()
@@ -459,8 +466,27 @@ internal fun SlockFilePreviewMarkdownPanel(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier,
     performanceKey: String? = null,
-    textStyle: TextStyle? = null
+    textStyle: TextStyle? = null,
+    showChrome: Boolean = true
 ) {
+    if (!showChrome && status == "content") {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(SlockSpacing.Md),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            item {
+                SlockMarkdownBody(
+                    body = body.orEmpty(),
+                    textStyle = textStyle ?: SlockType.Body,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.fillMaxWidth(),
+                    performanceKey = performanceKey
+                )
+            }
+        }
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -514,8 +540,26 @@ internal fun SlockFilePreviewTextPanel(
     name: String,
     meta: String,
     content: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showChrome: Boolean = true
 ) {
+    if (!showChrome) {
+        LazyColumn(
+            modifier = modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(SlockSpacing.Md)
+        ) {
+            item {
+                Text(
+                    text = content,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = Int.MAX_VALUE,
+                    overflow = TextOverflow.Clip
+                )
+            }
+        }
+        return
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -548,17 +592,17 @@ internal fun SlockFilePreviewImagePanel(
     source: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    placeholderLabel: String = "IMG"
+    placeholderLabel: String = "IMG",
+    backgroundColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.SurfaceWhite,
+    borderWidth: com.tencent.kuikly.compose.ui.unit.Dp = SlockStroke.Default
 ) {
     SlockAspectFitImagePreviewSurface(
         source = source,
         contentDescription = contentDescription,
         placeholderLabel = placeholderLabel,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = 220.dp, max = 420.dp),
-        backgroundColor = SlockColor.SurfaceWhite,
-        borderWidth = SlockStroke.Default
+        modifier = modifier.fillMaxWidth(),
+        backgroundColor = backgroundColor,
+        borderWidth = borderWidth
     )
 }
 
