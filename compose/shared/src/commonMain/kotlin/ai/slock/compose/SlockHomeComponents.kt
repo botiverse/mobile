@@ -1694,7 +1694,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    var rowTopLeft by remember { mutableStateOf(Offset.Zero) }
+    val rowTopLeft = remember { SlockMutableOffsetRef() }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
@@ -1708,9 +1708,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
+                        val rowTopLeftValue = rowTopLeft.value
                         val longPressAnchor = Offset(
-                            x = rowTopLeft.x + pressOffset.x,
-                            y = rowTopLeft.y + rowHeightPx
+                            x = rowTopLeftValue.x + pressOffset.x,
+                            y = rowTopLeftValue.y + rowHeightPx
                         )
                         onLongPress.invoke(longPressAnchor)
                     }
@@ -1738,7 +1739,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
                     val pos = coordinates.positionInRoot()
-                    rowTopLeft = Offset(x = pos.x, y = pos.y)
+                    rowTopLeft.update(Offset(x = pos.x, y = pos.y))
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)
@@ -1840,7 +1841,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
         ChannelRowInteractionState.Default -> Color.Transparent
         ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
     }
-    var rowTopLeft by remember { mutableStateOf(Offset.Zero) }
+    val rowTopLeft = remember { SlockMutableOffsetRef() }
     val hoverableModifier = Modifier.hoverable(hoverInteractionSource)
     val clickModifier = remember(onClick, onLongPress, onPress, onPressEnd) {
         if (onLongPress != null) {
@@ -1854,9 +1855,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                     onTap = { onClick?.invoke() },
                     onLongPress = { pressOffset ->
                         val rowHeightPx = this.size.height
+                        val rowTopLeftValue = rowTopLeft.value
                         val longPressAnchor = Offset(
-                            x = rowTopLeft.x + pressOffset.x,
-                            y = rowTopLeft.y + rowHeightPx
+                            x = rowTopLeftValue.x + pressOffset.x,
+                            y = rowTopLeftValue.y + rowHeightPx
                         )
                         onLongPress.invoke(longPressAnchor)
                     }
@@ -1884,7 +1886,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { coordinates ->
                     val pos = coordinates.positionInRoot()
-                    rowTopLeft = Offset(x = pos.x, y = pos.y)
+                    rowTopLeft.update(Offset(x = pos.x, y = pos.y))
                 }
                 .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
                 .then(clickModifier)

@@ -386,7 +386,7 @@ internal fun Button(
     pressOffset: Dp = SlockPressTokens.ButtonOffset,
     content: (@Composable () -> Unit) = {}
 ) {
-    var rootPosition by remember { mutableStateOf(Offset.Zero) }
+    val rootPosition = remember { SlockMutableOffsetRef() }
     var pressed by remember { mutableStateOf(false) }
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
@@ -395,7 +395,7 @@ internal fun Button(
     Box(
         modifier = Modifier
             .onGloballyPositioned {
-                rootPosition = it.positionInRoot()
+                rootPosition.update(it.positionInRoot())
             }
             .pointerInput(enabled, pressFeedback) {
                 detectTapGestures(
@@ -416,8 +416,8 @@ internal fun Button(
                             // 转换为相对于根节点的位置
                             val clickedPositionInRoot = with(density) {
                                 Offset(
-                                    (clickedPositionInBox.x + rootPosition.x).toDp().value,
-                                    (clickedPositionInBox.y + rootPosition.y).toDp().value
+                                    (clickedPositionInBox.x + rootPosition.value.x).toDp().value,
+                                    (clickedPositionInBox.y + rootPosition.value.y).toDp().value
                                 )
                             }
                             onClickUpdate.value.invoke()

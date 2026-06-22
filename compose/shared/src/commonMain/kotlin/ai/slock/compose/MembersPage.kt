@@ -2004,7 +2004,7 @@ private fun MembersDetailHeader(
     onRequestManagementMenu: (Offset) -> Unit
 ) {
     val summary = detail?.summary
-    var threeDotButtonCenter by remember { mutableStateOf<Offset?>(null) }
+    val threeDotButtonCenter = remember { SlockMutableOffsetRef() }
     val statusLabel =
         if (deleted) {
             "Deleted"
@@ -2091,14 +2091,16 @@ private fun MembersDetailHeader(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Ellipsis,
                     onClick = {
-                        onRequestManagementMenu(threeDotButtonCenter ?: Offset.Zero)
+                        onRequestManagementMenu(threeDotButtonCenter.value)
                     },
                     size = MembersActionSize,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
                         val pos = coordinates.positionInRoot()
-                        threeDotButtonCenter = Offset(
-                            x = pos.x + coordinates.size.width.toFloat() / 2f,
-                            y = pos.y + coordinates.size.height.toFloat() / 2f
+                        threeDotButtonCenter.update(
+                            Offset(
+                                x = pos.x + coordinates.size.width.toFloat() / 2f,
+                                y = pos.y + coordinates.size.height.toFloat() / 2f
+                            )
                         )
                     }
                 )

@@ -4,6 +4,7 @@ import ai.slock.compose.Button as SlockAnchorButton
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockLucideIcon
 import ai.slock.compose.SlockLucideIconName
+import ai.slock.compose.SlockMutableOffsetRef
 import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
@@ -797,13 +798,13 @@ internal fun SlockAnchoredToolbarChip(
     activeShadowColor: Color = SlockColor.ShadowBlack
 ) {
     val density = LocalDensity.current
-    var anchor by remember { mutableStateOf<Offset?>(null) }
+    val anchor = remember { SlockMutableOffsetRef() }
     Box(
         modifier =
             modifier.onGloballyPositioned { coords ->
                 val root = coords.positionInRoot().toSlockDpOffset(density)
                 val height = with(density) { coords.size.height.toDp().value }
-                anchor = Offset(root.x, root.y + height)
+                anchor.update(Offset(root.x, root.y + height))
             }
     ) {
         SlockToolbarChip(
@@ -821,7 +822,7 @@ internal fun SlockAnchoredToolbarChip(
             activeShadowOffset = activeShadowOffset,
             reserveActiveShadowSpace = reserveActiveShadowSpace,
             activeShadowColor = activeShadowColor,
-            onClick = { anchor?.let(onClick) }
+            onClick = { if (anchor.hasValue) onClick(anchor.value) }
         )
     }
 }
