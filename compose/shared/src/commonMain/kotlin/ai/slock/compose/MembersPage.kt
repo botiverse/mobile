@@ -2028,7 +2028,12 @@ private fun MembersAgentDetailStateNotice(
 ) {
     val message =
         when (state) {
-            MembersAgentDetailLoadState.Loading -> "Loading agent profile..."
+            // Loading state is intentionally silent (#51 follow-up from @Cindy / @artin):
+            // the body banner with "Loading agent profile..." is intrusive when the
+            // detail is re-fetched after a dropdown action (e.g. lifecycle action or
+            // refresh), and a new fetch typically completes fast enough that the
+            // user-facing in-progress indicator on the action itself is enough.
+            MembersAgentDetailLoadState.Loading -> null
             MembersAgentDetailLoadState.Empty -> "Agent profile metadata is unavailable."
             is MembersAgentDetailLoadState.Error -> "Could not load agent profile: ${state.code}"
             is MembersAgentDetailLoadState.NoPermission -> "Private agent surfaces are hidden: ${state.code}"
