@@ -618,11 +618,15 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
             if (confirming.value) {
                 SettingsAccountWarning(payload.logoutConfirmMessage)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SettingsInlineButton(
-                        text = payload.logoutCancelLabel,
-                        color = SlockColor.SurfaceWhite,
+                    SlockBrutalActionButton(
+                        label = payload.logoutCancelLabel,
+                        onClick = { confirming.value = false },
                         enabled = true,
-                        modifier = Modifier.weight(1f).clickable { confirming.value = false }
+                        modifier = Modifier.weight(1f),
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        minWidth = 0.dp,
+                        minHeight = 44.dp,
+                        shadowOffset = 2.dp
                     )
                     SlockBrutalActionButton(
                         label = payload.logoutConfirmLabel,
@@ -721,16 +725,6 @@ private fun SettingsAccountSuccess(text: String) {
     ) {
         SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(14.dp))
         Text(text, style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 2, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun SettingsInlineButton(text: String, color: Color, enabled: Boolean, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier.height(44.dp).background(if (enabled) color else SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(text, style = SlockType.Button.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
