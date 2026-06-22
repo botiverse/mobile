@@ -11613,6 +11613,8 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
         "server-danger" ->
             SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
+        "server-danger-modal" ->
+            SettingsVisualSpec(variant, "Delete Server", "Destructive confirmation modal", SlockLucideIconName.TriangleAlert)
         "administration" ->
             SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
         "billing",
@@ -11643,6 +11645,7 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
     when (spec.variant) {
         "server-profile",
         "server-danger",
+        "server-danger-modal",
         "administration" -> SettingsVisualServerFocusedContent(spec.variant)
         "billing",
         "billing-loading",
@@ -11703,6 +11706,48 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 
 @Composable
 private fun SettingsVisualServerFocusedContent(variant: String) {
+    // server-danger-modal: render Delete Server SlockUnifiedDialog in safe open state.
+    // Delete button kept disabled — only captures modal visual, never triggers delete.
+    if (variant == "server-danger-modal") {
+        val snap = remember { settingsVisualServerSnapshot() }
+        var modalSlug by remember { mutableStateOf("") }
+        val serverSlug = snap.profile.slug
+        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            SlockUnifiedDialog(
+                title = "Delete Server",
+                onDismiss = {},
+                dismissEnabled = true
+            ) {
+                Text(
+                    "This action cannot be undone. This will permanently delete ${snap.profile.name} and remove all members, channels, and data.",
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    "Please type $serverSlug to confirm.",
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray
+                )
+                SlockModalTextField(
+                    label = "Server slug",
+                    value = modalSlug,
+                    placeholder = serverSlug,
+                    onValueChange = { modalSlug = it },
+                    required = true,
+                    enabled = true
+                )
+                SlockModalFullWidthActionButton(
+                    label = "Delete Server",
+                    icon = SlockLucideIconName.Trash2,
+                    onClick = {},
+                    enabled = false,
+                    color = SlockColor.AccentRed
+                )
+            }
+        }
+        return
+    }
+
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
     var inviteEmail by remember { mutableStateOf("new.member@slock.test") }
