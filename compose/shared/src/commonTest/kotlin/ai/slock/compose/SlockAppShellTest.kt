@@ -62,6 +62,26 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun homeWarmAppShellComposedTabsKeepsOnlyHomeInactive() {
+        assertEquals(
+            listOf("home", "tasks"),
+            homeWarmAppShellComposedTabs("tasks", mountedTabs = setOf("home", "tasks"))
+        )
+        assertEquals(
+            listOf("tasks"),
+            homeWarmAppShellComposedTabs("tasks", mountedTabs = setOf("tasks"))
+        )
+        assertEquals(
+            listOf("home", "settings"),
+            homeWarmAppShellComposedTabs("settings", mountedTabs = setOf("home", "tasks", "settings"))
+        )
+        assertEquals(
+            listOf("home"),
+            homeWarmAppShellComposedTabs("thread", mountedTabs = setOf("home", "tasks"))
+        )
+    }
+
+    @Test
     fun retainedAppShellSelectedTabFallsBackToHome() {
         assertEquals("home", retainedAppShellSelectedTab("thread"))
     }
