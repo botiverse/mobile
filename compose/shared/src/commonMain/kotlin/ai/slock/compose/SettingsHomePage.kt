@@ -12969,7 +12969,8 @@ internal fun SettingsHomeContent(
                 SlockVerticalTabBar(
                     items = payload.items,
                     showSelection = payload.showSelection,
-                    onSelect = onSelect
+                    onSelect = onSelect,
+                    modifier = Modifier.padding(start = SlockSpacing.Md)
                 )
             }
             item {
