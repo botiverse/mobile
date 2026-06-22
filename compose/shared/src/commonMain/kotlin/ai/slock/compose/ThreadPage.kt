@@ -5494,7 +5494,6 @@ private fun ThreadMessagesList(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
-                    .padding(vertical = 2.dp)
                     .alpha(if (initialBottomAnchorReady || latestItemIndex < 0) 1f else 0f)
                     .bouncesEnable(false),
                 verticalArrangement = Arrangement.Bottom,
