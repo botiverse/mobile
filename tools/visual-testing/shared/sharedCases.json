@@ -399,9 +399,6 @@
       "title": "Home Notification Center States",
       "surface": "home",
       "fixture": "fixtures/components.home.notification-center.states.json",
-      "skip": {
-        "reason": "Fixture data is not aligned between React and Android providers, so pixel diff compares different notification text/content."
-      },
       "viewport": {
         "width": 390,
         "height": 844,
@@ -3040,18 +3037,17 @@
       "title": "Home Notification Center States",
       "surface": "home",
       "group": "product-home",
-      "status": "skipped",
-      "notes": "Skipped until React and Android providers use the same notification fixture text/content. Current screenshots compare different notification messages, so visual diff is meaningless.",
+      "status": "baseline",
+      "notes": "React and Android now render the same two-notification fixture: warning agent disconnect plus info release-gate review. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "reason": "Needs fixture-aligned notification-center capture.",
+          "status": "ready",
           "components": [
             "NotificationCenter"
           ],
-          "path": "packages/web/src/components/layout/NotificationCenter.tsx",
-          "fixture": "fixtures/components.home.notification-center.states.json"
+          "path": "packages/web/src/components/ui/NotificationCenter.tsx",
+          "fixture": "packages/web/src/visual-testing/VisualTestingCases.tsx#VISUAL_NOTIFICATION_CENTER_ENTRIES"
         },
         {
           "id": "android",
