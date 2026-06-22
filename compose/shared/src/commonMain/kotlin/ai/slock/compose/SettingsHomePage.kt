@@ -1607,20 +1607,20 @@ private fun SlockAppShellContent() {
                 )
         )
         selectedHomeConversationId = conversation.threadId.value
-        val payload = appShellThreadPayload(conversation, anchorMessageId)
+        val launchPayload =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = conversation,
+                timeContext = threadTimeContext,
+                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+                anchorMessageId = anchorMessageId
+            )
         bridge.log(
-            "home_open_thread_payload source=$source threadId=${conversation.threadId.value} " +
-                "sourceThreadId=${payload.sourceThreadId.orEmpty()} surface=${payload.surfaceKind} " +
-                "parentChannelId=${payload.parentChannelId.orEmpty()} parentMessageId=${payload.parentMessageId.orEmpty()} " +
-                "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${payload.originParentMessageId.orEmpty()} " +
-                "originStatus=${payload.originStatus} hasOriginMessage=${payload.originMessage != null} " +
-                "hasOriginPreview=${!payload.originPreview.isNullOrBlank()}"
+            "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
+                "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
+                "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
+                "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
         )
-        if (pushCurrent && appShellRoute == AppShellRouteThread) {
-            activeThreadPayload?.let { threadBackStack = threadBackStack + it }
-        }
-        setActiveThreadPayload(payload)
-        appShellRoute = AppShellRouteThread
+        pager.openStandaloneThreadLaunchPayload(launchPayload)
     }
 
     fun openHomeMessage(request: HomeMessageOpenRequest, source: String, pushCurrent: Boolean = true) {
@@ -11249,18 +11249,57 @@ private fun Pager.openStandaloneTaskThreadPage(
     timeContext: AppShellThreadTimeContext?,
     alignOwnMessagesRight: Boolean
 ) {
-    val launchPayload =
+    openStandaloneThreadLaunchPayload(
         buildStandaloneTaskThreadLaunchPayload(
             task = task,
             timeContext = timeContext,
             alignOwnMessagesRight = alignOwnMessagesRight
         )
+    )
+}
+
+private fun Pager.openStandaloneThreadLaunchPayload(launchPayload: WireThreadLaunchPayload) {
     val pageData =
         JSONObject().apply {
             put("payload", AppShellThreadLaunchJson.encodeToString(launchPayload))
             put("instanceId", launchPayload.instanceId)
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+}
+
+internal fun buildStandaloneConversationThreadLaunchPayload(
+    conversation: ConversationSummary,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean = false,
+    anchorMessageId: String? = null
+): WireThreadLaunchPayload {
+    val surfaceKind = conversation.threadSurfaceKind()
+    val streamChannelId = conversation.threadStreamChannelId()
+    val parentMessageId = conversation.threadParentMessageId()
+    val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    return WireThreadLaunchPayload(
+        instanceId = "shared-shell-thread-${conversation.threadId.value}",
+        surfaceKind = surfaceKind,
+        threadId =
+            when (surfaceKind) {
+                KuiklyThreadSurfaceKind.ReplyThread,
+                KuiklyThreadSurfaceKind.DirectMessage -> streamChannelId
+                else -> null
+            },
+        sourceThreadId = streamChannelId,
+        streamChannelId = streamChannelId,
+        parentChannelId = conversation.threadParentChannelId(),
+        parentMessageId = parentMessageId,
+        originParentMessageId = if (isReplyThread) parentMessageId else null,
+        focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
+        selectedTab = "chat",
+        navigationLabel = "Back",
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        localOffsetMinutes = timeContext?.localOffsetMinutes ?: 0,
+        todayEpochDay = timeContext?.todayEpochDay,
+        nowEpochMillis = timeContext?.nowEpochMillis,
+        timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour
+    )
 }
 
 internal fun buildStandaloneTaskThreadLaunchPayload(

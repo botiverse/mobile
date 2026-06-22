@@ -149,6 +149,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.math.roundToInt
 import kotlin.time.TimeMark
@@ -530,6 +531,37 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
         showSettingsAction = showSettingsAction && showModeTabs,
         showMembersAction = showMembersAction && showModeTabs
     )
+
+internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLaunchPayload =
+    WireThreadLaunchPayload(
+        instanceId = instanceId,
+        surfaceKind = surfaceKind,
+        threadId =
+            when (surfaceKind) {
+                KuiklyThreadSurfaceKind.ReplyThread,
+                KuiklyThreadSurfaceKind.DirectMessage -> streamChannelId.nonBlank() ?: sourceThreadId.nonBlank()
+                else -> null
+            },
+        sourceThreadId = sourceThreadId.nonBlank(),
+        streamChannelId = streamChannelId.nonBlank(),
+        parentChannelId = parentChannelId.nonBlank(),
+        parentMessageId = parentMessageId.nonBlank(),
+        originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
+        focusedMessageId = focusedMessageId.nonBlank(),
+        selectedTab = selectedTab,
+        navigationLabel = navigationLabel,
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        localOffsetMinutes = localOffsetMinutes,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat
+    )
+
+private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
+    JSONObject().apply {
+        put("payload", threadPageJson.encodeToString(this@toThreadPageData))
+        put("instanceId", instanceId)
+    }
 
 internal fun KuiklyThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
     threadChannelHeaderSubtitle(title)
@@ -1206,6 +1238,18 @@ private fun ThreadPageScreen() {
                 api = NetworkSlockTasksApi(networkClient)
             )
         }
+    val routerModule = remember(pager) {
+        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+    }
+    fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
+        val launchPayload = nextPayload.toWireThreadLaunchPayload()
+        if (!launchPayload.hasRouteIdentity()) {
+            bridge.toast("Unable to open thread")
+            bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
+            return
+        }
+        routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+    }
     SharedThreadRouteContent(
         initialPayload = payload,
         bridge = bridge,
@@ -1215,8 +1259,10 @@ private fun ThreadPageScreen() {
         computersStore = computersStore,
         membersStore = membersStore,
         onBack = {
-            pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
-        }
+            routerModule.closePage()
+        },
+        onOpenThreadPayload = ::openStandaloneThreadPayload,
+        onReplaceThreadPayload = {}
     )
 }
 

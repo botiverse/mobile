@@ -1126,6 +1126,125 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneConversationThreadLaunchCarriesOnlyIdentityAndIntent() {
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                ConversationSummary(
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    channelType = "private",
+                    kind = ConversationKind.Channel,
+                    name = "release-room",
+                    subtitle = "Product state must not be in PagerData",
+                    joined = false,
+                    memberCount = 12,
+                    avatar = AvatarReference.Pixel("display-seed"),
+                    permissions =
+                        ConversationPermissions(
+                            canRead = true,
+                            canSend = false,
+                            canCreateTask = false
+                        )
+                ),
+                AppShellThreadTimeContext(localOffsetMinutes = 480, todayEpochDay = 20593),
+                alignOwnMessagesRight = true,
+                anchorMessageId = "message-focus"
+            )
+
+        assertEquals("shared-shell-thread-channel-1", launch.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.surfaceKind)
+        assertEquals(null, launch.threadId)
+        assertEquals("channel-1", launch.sourceThreadId)
+        assertEquals("channel-1", launch.streamChannelId)
+        assertEquals(null, launch.parentChannelId)
+        assertEquals(null, launch.parentMessageId)
+        assertEquals("message-focus", launch.focusedMessageId)
+        assertEquals(480, launch.localOffsetMinutes)
+        assertEquals(20593, launch.todayEpochDay)
+        assertEquals(true, launch.alignOwnMessagesRight)
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals("shared-shell-thread-channel-1", initialPayload.instanceId)
+        assertEquals("loading", initialPayload.status)
+        assertEquals("Channel", initialPayload.title)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
+        assertEquals("channel-1", initialPayload.sourceThreadId)
+        assertEquals("message-focus", initialPayload.focusedMessageId)
+        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList(), initialPayload.settingsActions)
+        assertEquals(0, initialPayload.membersCount)
+        assertEquals(true, initialPayload.joined)
+        assertEquals(true, initialPayload.canSend)
+        assertEquals(null, initialPayload.dmPeerName)
+        assertEquals(null, initialPayload.dmPeerAvatarUrl)
+    }
+
+    @Test
+    fun screenPayloadWireLaunchDropsDisplayAndProductState() {
+        val launch =
+            KuiklyThreadScreenPayload(
+                instanceId = "display-route",
+                title = "Display title",
+                subtitle = "Display subtitle",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-channel-1",
+                streamChannelId = "thread-channel-1",
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-message-1",
+                originParentMessageId = "parent-message-1",
+                focusedMessageId = "reply-2",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "reply-1",
+                            authorId = "agent-1",
+                            authorName = "Android Dev",
+                            timestampLabel = "now",
+                            body = "This must not enter route payload"
+                        )
+                    ),
+                joined = false,
+                canSend = false,
+                membersCount = 7,
+                dmPeerName = "Display peer",
+                dmPeerAvatarUrl = "https://example.com/avatar.png"
+            ).toWireThreadLaunchPayload()
+
+        assertEquals("display-route", launch.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals("thread-channel-1", launch.threadId)
+        assertEquals("thread-channel-1", launch.sourceThreadId)
+        assertEquals("thread-channel-1", launch.streamChannelId)
+        assertEquals("parent-channel-1", launch.parentChannelId)
+        assertEquals("parent-message-1", launch.parentMessageId)
+        assertEquals("reply-2", launch.focusedMessageId)
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals("loading", initialPayload.status)
+        assertEquals(ThreadReplyPageTitle, initialPayload.title)
+        assertEquals(emptyList<KuiklyThreadMessageItem>(), initialPayload.messages)
+        assertEquals(emptyList<KuiklyThreadTaskItem>(), initialPayload.tasks)
+        assertEquals(emptyList(), initialPayload.settingsActions)
+        assertEquals(0, initialPayload.membersCount)
+        assertEquals(true, initialPayload.joined)
+        assertEquals(true, initialPayload.canSend)
+        assertEquals(null, initialPayload.dmPeerName)
+        assertEquals(null, initialPayload.dmPeerAvatarUrl)
+    }
+
+    @Test
     fun standaloneTaskThreadLaunchCarriesOnlyIdentityAndIntent() {
         val launch =
             buildStandaloneTaskThreadLaunchPayload(
