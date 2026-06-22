@@ -1067,7 +1067,7 @@ private fun SlockAppShellContent() {
                         logger = { message -> bridge.log("shared_settings_repository $message") },
                         warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
                     ),
-                computersStore = appShellComputersStore,
+                computersSource = appShellComputersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,

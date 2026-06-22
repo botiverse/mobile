@@ -37,6 +37,19 @@ internal data class SharedComputersState(
     val serverSlices: Map<String, SharedComputersServerSlice> = emptyMap()
 )
 
+interface SharedSettingsComputersSource {
+    suspend fun loadSettingsComputersForServer(
+        serverId: String,
+        force: Boolean = false
+    ): DataResult<SettingsComputersSnapshot>
+
+    suspend fun loadSettingsComputerSnapshotForServer(
+        serverId: String,
+        machineId: String,
+        force: Boolean = false
+    ): DataResult<SettingsComputerSnapshot>
+}
+
 internal fun SharedComputersState.selectComputerServerSlice(serverId: String?): SharedComputersServerSlice {
     val normalizedServerId = serverId.normalizedComputerServerId() ?: return SharedComputersServerSlice()
     return serverSlices[normalizedServerId] ?: SharedComputersServerSlice()
@@ -61,7 +74,7 @@ class SharedComputersStore internal constructor(
     private val computersApiClient: SlockComputersApiClient,
     private val scope: CoroutineScope,
     private val logger: (String) -> Unit = {}
-) {
+) : SharedSettingsComputersSource {
     private val _state = MutableStateFlow(SharedComputersState())
     internal val state: StateFlow<SharedComputersState> = _state.asStateFlow()
 
@@ -90,7 +103,7 @@ class SharedComputersStore internal constructor(
         ensureComputersForServer(serverId = serverId, force = force)
     }
 
-    internal suspend fun ensureSettingsComputersForServer(serverId: String, force: Boolean = false): DataResult<SettingsComputersSnapshot> {
+    override suspend fun loadSettingsComputersForServer(serverId: String, force: Boolean): DataResult<SettingsComputersSnapshot> {
         val normalizedServerId =
             serverId.normalizedComputerServerId()
                 ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -98,10 +111,10 @@ class SharedComputersStore internal constructor(
         return _state.value.selectComputerServerSlice(normalizedServerId).toSettingsComputersResult()
     }
 
-    internal suspend fun loadSettingsComputerSnapshotForServer(
+    override suspend fun loadSettingsComputerSnapshotForServer(
         serverId: String,
         machineId: String,
-        force: Boolean = false
+        force: Boolean
     ): DataResult<SettingsComputerSnapshot> {
         val normalizedServerId =
             serverId.normalizedComputerServerId()

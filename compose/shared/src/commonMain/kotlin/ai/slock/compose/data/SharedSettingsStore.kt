@@ -312,7 +312,7 @@ interface SharedSettingsPlatformCapabilities {
 class SharedSettingsDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val settingsRepository: SettingsRepository? = null,
-    private val computersStore: SharedComputersStore? = null,
+    private val computersSource: SharedSettingsComputersSource? = null,
     private val notificationPreferenceRepository: NotificationPreferenceRepository? = null,
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
@@ -390,8 +390,8 @@ class SharedSettingsDataSource(
     suspend fun loadComputers(forceComputers: Boolean = false): DataResult<SettingsComputersSnapshot> {
         val serverId = sessionStore.readSession()?.currentServerId
         val sharedResult =
-            if (serverId != null && computersStore != null) {
-                computersStore.ensureSettingsComputersForServer(serverId, force = forceComputers)
+            if (serverId != null && computersSource != null) {
+                computersSource.loadSettingsComputersForServer(serverId, force = forceComputers)
             } else {
                 null
             }
@@ -401,8 +401,8 @@ class SharedSettingsDataSource(
     suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
         val serverId = sessionStore.readSession()?.currentServerId
         val sharedComputer =
-            if (serverId != null && computersStore != null) {
-                computersStore.loadSettingsComputerSnapshotForServer(
+            if (serverId != null && computersSource != null) {
+                computersSource.loadSettingsComputerSnapshotForServer(
                     serverId = serverId,
                     machineId = machineId,
                     force = forceComputers
