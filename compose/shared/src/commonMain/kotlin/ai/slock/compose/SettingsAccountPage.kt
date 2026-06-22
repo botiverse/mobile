@@ -643,11 +643,9 @@ private fun SettingsLogoutAction(payload: KuiklySettingsAccountPayload, onConfir
                 SlockBrutalActionButton(
                     label = payload.logoutLabel,
                     onClick = { confirming.value = true },
-                    modifier = Modifier.fillMaxWidth(),
                     backgroundColor = SlockColor.AccentRed,
                     minWidth = 0.dp,
                     minHeight = 48.dp,
-                    shadowOffset = 0.dp,
                     textStyle = SlockType.Button.copy(color = SlockColor.TextBlack)
                 )
             }
