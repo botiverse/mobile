@@ -102,9 +102,9 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun retainedAppShellInactivePaneKeepsFullLayoutOnlyForHome() {
+    fun retainedAppShellInactivePaneKeepsFullLayoutForWarmPrimaryTabs() {
         assertEquals(true, retainedAppShellInactivePaneKeepsLayout("home"))
-        assertEquals(false, retainedAppShellInactivePaneKeepsLayout("tasks"))
+        assertEquals(true, retainedAppShellInactivePaneKeepsLayout("tasks"))
         assertEquals(false, retainedAppShellInactivePaneKeepsLayout("settings"))
     }
 

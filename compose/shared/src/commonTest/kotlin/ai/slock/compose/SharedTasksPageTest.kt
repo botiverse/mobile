@@ -103,4 +103,13 @@ class SharedTasksPageTest {
         assertEquals(false, sharedTasksLoadedContentShouldRender(false))
         assertEquals(true, sharedTasksLoadedContentShouldRender(true))
     }
+
+    @Test
+    fun tasksLoadedContentActivationStagingDelayIsRoutePolicy() {
+        assertEquals(0L, sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent = false))
+        assertEquals(
+            TasksRouteActivationLoadedContentStagingDelayMs,
+            sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent = true)
+        )
+    }
 }

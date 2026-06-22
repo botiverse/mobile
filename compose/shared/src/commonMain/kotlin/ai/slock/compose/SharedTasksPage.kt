@@ -79,7 +79,9 @@ import kotlinx.coroutines.delay
 
 private const val TasksListDefaultBeyondBoundsItemCount = 1
 private const val TasksListMaxBeyondBoundsItemCount = 4
-private const val TasksLoadedContentActivationDelayMs = 48L
+
+// Delay heavy board/list mount for roughly six 60Hz frames after AppShell tab activation.
+internal const val TasksRouteActivationLoadedContentStagingDelayMs = 96L
 
 @Composable
 internal fun SharedTasksScreen(
@@ -300,11 +302,12 @@ private fun SharedTasksLoadedBody(
     bottomContentPadding: Dp,
     stageLoadedContent: Boolean
 ) {
+    val activationStagingDelayMs = sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent)
     var loadedContentReady by remember { mutableStateOf(!stageLoadedContent) }
-    LaunchedEffect(stageLoadedContent) {
-        if (stageLoadedContent) {
+    LaunchedEffect(activationStagingDelayMs) {
+        if (activationStagingDelayMs > 0L) {
             loadedContentReady = false
-            delay(TasksLoadedContentActivationDelayMs)
+            delay(activationStagingDelayMs)
         }
         loadedContentReady = true
     }
@@ -688,6 +691,9 @@ private fun SharedTasksLoadedBodyContent(
 
 internal fun sharedTasksLoadedContentShouldRender(loadedContentReady: Boolean): Boolean =
     loadedContentReady
+
+internal fun sharedTasksLoadedContentActivationStagingDelayMs(stageLoadedContent: Boolean): Long =
+    if (stageLoadedContent) TasksRouteActivationLoadedContentStagingDelayMs else 0L
 
 @Composable
 private fun SharedTasksFirstFramePlaceholder() {
