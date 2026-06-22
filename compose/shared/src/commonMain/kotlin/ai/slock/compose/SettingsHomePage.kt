@@ -744,6 +744,17 @@ internal fun retainedAppShellTabOrder(selectedTab: String): List<String> {
 private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
+internal fun appShellBottomTabPerformanceRoute(tab: String): String =
+    when (retainedAppShellSelectedTab(tab)) {
+        "tasks" -> "kuikly_tasks"
+        "members" -> "kuikly_members"
+        "settings" -> "kuikly_settings"
+        else -> "kuikly_home"
+    }
+
+internal fun appShellBottomTabPerformancePhase(tab: String): String =
+    "bottom_tab_${retainedAppShellSelectedTab(tab)}"
+
 internal fun appShellBottomTabsVisible(
     selectedTab: String,
     selectedHomeDestination: String?,
@@ -2016,6 +2027,17 @@ private fun SlockAppShellContent() {
                 bottomTabs = appShellBottomTabs(selectedTab),
                 onBottomTabSelected = {
                     val nextTab = retainedAppShellSelectedTab(it)
+                    bridge.performanceMarker(
+                        phase = appShellBottomTabPerformancePhase(nextTab),
+                        routeName = appShellBottomTabPerformanceRoute(nextTab),
+                        event = "instant",
+                        metadata =
+                            mapOf(
+                                "from" to retainedAppShellSelectedTab(selectedTab),
+                                "to" to nextTab,
+                                "retained" to isRetainedAppShellTab(nextTab).toString()
+                            )
+                    )
                     selectedTab = nextTab
                     if (isRetainedAppShellTab(nextTab)) {
                         retainedAppShellTabs = retainedAppShellTabs + nextTab

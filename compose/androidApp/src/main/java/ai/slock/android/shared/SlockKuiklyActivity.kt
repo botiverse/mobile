@@ -1197,6 +1197,10 @@ internal class SlockKuiklyBridgeModule(
                 performanceScene(params)
                 null
             }
+            "performanceMarker" -> {
+                performanceMarker(params)
+                null
+            }
             "kuiklyPerformanceSnapshot" -> {
                 kuiklyPerformanceSnapshot(params)
                 null
@@ -1264,6 +1268,32 @@ internal class SlockKuiklyBridgeModule(
         (activity as? SlockKuiklyActivity)?.updatePerformanceScene(
                 action = request.optString("action").ifBlank { "enter" },
                 sceneName = sceneName
+        )
+    }
+
+    private fun performanceMarker(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        val routeName = request.optString("routeName").trim()
+        val phase = request.optString("phase").trim()
+        if (routeName.isBlank() && phase.isBlank()) return
+        val container =
+                (activity as? SlockKuiklyActivity)
+                        ?.findViewById<ViewGroup?>(R.id.slock_kuikly_container)
+                        ?: return
+        val durationMs =
+                if (request.has("durationMs")) {
+                    request.optLong("durationMs").takeIf { it >= 0L }
+                } else {
+                    null
+                }
+        SlockPerformanceDiagnostics.recordMarker(
+                view = container,
+                routeName = routeName,
+                phase = phase,
+                event = request.optString("event").trim(),
+                sceneId = request.optString("sceneId").trim(),
+                durationMs = durationMs,
+                metadata = request.optJSONObject("metadata").toStableLogText()
         )
     }
 
@@ -2276,4 +2306,18 @@ internal fun JSONObject.toMap(): Map<String, Any> {
         }
     }
     return map
+}
+
+private fun JSONObject?.toStableLogText(): String {
+    this ?: return ""
+    val parts = mutableListOf<String>()
+    val keys = keys()
+    while (keys.hasNext()) {
+        val key = keys.next()
+        val value = optString(key).take(80)
+        if (key.isNotBlank() && value.isNotBlank()) {
+            parts += "${key.take(40)}:$value"
+        }
+    }
+    return parts.sorted().joinToString(separator = ",")
 }

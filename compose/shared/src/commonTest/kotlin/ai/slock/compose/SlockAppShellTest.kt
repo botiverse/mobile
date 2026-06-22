@@ -46,6 +46,16 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun bottomTabPerformanceMarkerUsesRetainedTabIdentity() {
+        assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("home"))
+        assertEquals("kuikly_tasks", appShellBottomTabPerformanceRoute("tasks"))
+        assertEquals("kuikly_members", appShellBottomTabPerformanceRoute("members"))
+        assertEquals("kuikly_settings", appShellBottomTabPerformanceRoute("settings"))
+        assertEquals("kuikly_home", appShellBottomTabPerformanceRoute("thread"))
+        assertEquals("bottom_tab_home", appShellBottomTabPerformancePhase("thread"))
+    }
+
+    @Test
     fun appShellBottomTabsOnlyShowOnPrimarySurfaces() {
         assertEquals(
             true,

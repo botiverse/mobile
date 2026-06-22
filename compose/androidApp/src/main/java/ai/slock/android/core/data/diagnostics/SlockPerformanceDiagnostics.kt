@@ -65,6 +65,46 @@ object SlockPerformanceDiagnostics {
         }
     }
 
+    fun recordMarker(
+            view: View,
+            routeName: String,
+            phase: String,
+            event: String,
+            sceneId: String,
+            durationMs: Long?,
+            metadata: String
+    ) {
+        val sanitizedRoute = routeName.takeIf { it.isNotBlank() } ?: "unknown"
+        val sanitizedPhase = phase.takeIf { it.isNotBlank() } ?: "marker"
+        val sanitizedEvent = event.takeIf { it.isNotBlank() } ?: "instant"
+        val sanitizedSceneId = sceneId.takeIf { it.isNotBlank() } ?: sanitizedRoute
+        updateRoute(view, sanitizedRoute)
+        updateOperation(view, sanitizedPhase)
+        SlockDiagnosticsLogger.d(
+                Tag,
+                buildString {
+                    append("marker route=")
+                    append(sanitizedRoute)
+                    append(" operation=")
+                    append(sanitizedPhase)
+                    append(" phase=")
+                    append(sanitizedPhase)
+                    append(" event=")
+                    append(sanitizedEvent)
+                    append(" sceneId=")
+                    append(sanitizedSceneId)
+                    durationMs?.takeIf { it >= 0L }?.let {
+                        append(" durationMs=")
+                        append(it)
+                    }
+                    if (metadata.isNotBlank()) {
+                        append(" metadata=")
+                        append(metadata)
+                    }
+                }
+        )
+    }
+
     fun beginTrace(operationName: String): ActiveTrace {
         val traceName = operationName.take(TraceNameLimit)
         Trace.beginSection(traceName)
