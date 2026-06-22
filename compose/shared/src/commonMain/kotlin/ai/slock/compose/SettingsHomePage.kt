@@ -307,6 +307,7 @@ import com.tencent.kuikly.compose.ui.draw.alpha
 import com.tencent.kuikly.compose.ui.draw.rotate
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
@@ -846,11 +847,11 @@ private fun retainedAppShellPaneModifier(active: Boolean): Modifier =
         Modifier.fillMaxSize().alpha(1f)
     } else {
         // Keep the retained tab/route composed so remember/LazyListState survive
-        // tab switches, but move the inactive pane's hit area offscreen. Kuikly
-        // Compose can still route drag gestures to a full-size alpha(0f)
-        // LazyColumn, while size(0.dp) can starve retained Home sections of
-        // normal LazyColumn measurement after repeated tab switches.
-        Modifier.fillMaxSize().offset(x = (-10000).dp).alpha(0f)
+        // tab switches, but hide it via a layer transform instead of a layout
+        // offset. Layout offset re-places the full retained tree on every tab
+        // switch; size(0.dp) can starve retained Home sections of normal
+        // LazyColumn measurement after repeated tab switches.
+        Modifier.fillMaxSize().graphicsLayer(alpha = 0f, translationX = -10000f)
     }
 
 @Composable

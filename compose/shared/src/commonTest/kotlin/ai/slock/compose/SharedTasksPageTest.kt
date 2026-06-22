@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.ChannelId
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -46,6 +47,12 @@ class SharedTasksPageTest {
             ),
             sharedTasksEmptyStateCopy(hasAnyFilter = false, isChannelMode = false)
         )
+    }
+
+    @Test
+    fun serverWideEmptyTasksSkipsToolbarWithoutCreateAction() {
+        assertEquals(false, sharedTasksEmptyToolbarVisible(createTasksChannelId = null))
+        assertEquals(true, sharedTasksEmptyToolbarVisible(createTasksChannelId = ChannelId("channel-1")))
     }
 
     @Test

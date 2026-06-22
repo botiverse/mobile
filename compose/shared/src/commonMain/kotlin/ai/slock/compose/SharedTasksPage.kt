@@ -159,33 +159,35 @@ internal fun SharedTasksPanel(
                 if (showHeader) {
                     SharedTasksHeader()
                 }
+                val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
                 val emptyCopy =
                     sharedTasksEmptyStateCopy(
                         hasAnyFilter = state.selectedFilter != null,
                         isChannelMode = createTasksChannelId != null
                     )
-                // #no-task-new-btn: render toolbar + New Task button above
-                // the empty state body so the user can create the first task.
-                // Filter chips are shown on empty data so the UI isn't jarring
-                // when tasks arrive; view switch persists across empty<->loaded.
-                SharedTasksToolbar(
-                    channelOptions = emptyList(),
-                    selectedChannels = emptySet(),
-                    creatorOptions = emptyList(),
-                    selectedCreatorIds = emptySet(),
-                    assigneeOptions = emptyList(),
-                    selectedAssigneeIds = emptySet(),
-                    selectedMode = emptySelectedMode,
-                    showChannelFilter = showChannelFilter,
-                    openFilterId = null,
-                    showCreateButton = createTasksChannelId != null,
-                    onModeSelected = { mode -> emptySelectedMode = mode },
-                    onChannelChipClick = { },
-                    onCreatorChipClick = { },
-                    onAssigneeChipClick = { },
-                    onClearAll = { },
-                    onCreateClick = { emptyCreateDialogOpen = true }
-                )
+                if (showEmptyToolbar) {
+                    // #no-task-new-btn: channel empty state still needs New Task.
+                    // Server-wide empty has no create action and no task rows, so
+                    // skip the disabled filter/view toolbar on the tab-switch path.
+                    SharedTasksToolbar(
+                        channelOptions = emptyList(),
+                        selectedChannels = emptySet(),
+                        creatorOptions = emptyList(),
+                        selectedCreatorIds = emptySet(),
+                        assigneeOptions = emptyList(),
+                        selectedAssigneeIds = emptySet(),
+                        selectedMode = emptySelectedMode,
+                        showChannelFilter = showChannelFilter,
+                        openFilterId = null,
+                        showCreateButton = true,
+                        onModeSelected = { mode -> emptySelectedMode = mode },
+                        onChannelChipClick = { },
+                        onCreatorChipClick = { },
+                        onAssigneeChipClick = { },
+                        onClearAll = { },
+                        onCreateClick = { emptyCreateDialogOpen = true }
+                    )
+                }
                 SharedTasksStateBody(
                     title = emptyCopy.title,
                     detail = emptyCopy.description,
@@ -271,6 +273,9 @@ internal fun sharedTasksEmptyStateCopy(
                 description = "DM and agent task boards are intentionally excluded from this server-wide view."
             )
     }
+
+internal fun sharedTasksEmptyToolbarVisible(createTasksChannelId: ChannelId?): Boolean =
+    createTasksChannelId != null
 
 private fun TasksVisibleContent.hasAnyPresentationFilter(): Boolean =
     selectedChannelNames.isNotEmpty() ||
