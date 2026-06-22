@@ -2104,7 +2104,12 @@ internal class SlockKuiklyBridgeModule(
             )
         }
         return runCatching {
-            appContext.startActivity(intent)
+            val chooser =
+                    Intent.createChooser(intent, "Open with").apply {
+                        clipData = intent.clipData
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+            appContext.startActivity(chooser)
             SlockDiagnosticsLogger.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${!needsDownload} durationMs=${System.currentTimeMillis() - startedAt}"

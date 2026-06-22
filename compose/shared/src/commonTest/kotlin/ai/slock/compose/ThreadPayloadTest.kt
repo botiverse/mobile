@@ -65,6 +65,19 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
+        val attachment =
+            KuiklyThreadAttachmentItem(
+                id = "att-1",
+                name = "archive.zip",
+                sizeLabel = "42 KB",
+                mimeType = "application/zip"
+            )
+
+        assertEquals("42 KB · application/zip", attachment.genericAttachmentMetaLine())
+    }
+
+    @Test
     fun threadMessagesLazyItemCountTracksScrollableRows() {
         assertEquals(
             4,

@@ -718,6 +718,10 @@ private data class ThreadImagePreviewState(
     val current: KuiklyThreadAttachmentItem? get() = images.getOrNull(currentIndex)
 }
 
+private data class ThreadAttachmentNoPreviewState(
+    val attachment: KuiklyThreadAttachmentItem
+)
+
 private data class ThreadAttachmentCommentsDialogState(
     val attachment: KuiklyThreadAttachmentItem,
     val parentMessage: KuiklyThreadMessageItem,
@@ -1834,6 +1838,7 @@ internal fun SharedThreadRouteContent(
     val filesPayload = filesState.payload
     var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
+    var attachmentNoPreviewState by remember(payload.instanceId) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
     val renderedComposerState =
         remember(
             renderedPayload.composer,
@@ -2237,6 +2242,7 @@ internal fun SharedThreadRouteContent(
     }
     fun openImagePreview(group: ThreadImageAttachmentGroup) {
         if (group.images.isEmpty()) return
+        attachmentNoPreviewState = null
         val currentIndex = group.currentIndex.coerceIn(0, group.images.lastIndex)
         imagePreviewState = ThreadImagePreviewState(images = group.images, currentIndex = currentIndex)
         requestImagePreviewUrl(group.images[currentIndex].id)
@@ -2269,6 +2275,11 @@ internal fun SharedThreadRouteContent(
                 bridge.toast(result.message.ifBlank { "Unable to open attachment" })
             }
         }
+    }
+    fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
+        if (attachment.id.isBlank()) return
+        imagePreviewState = null
+        attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment)
     }
     LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
         if (renderedThread.selectedTab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
@@ -2456,7 +2467,7 @@ internal fun SharedThreadRouteContent(
                                 renderedThread.findThreadAttachment(attachmentId)
                                     ?: renderedFiles.findThreadAttachment(attachmentId)
                                     ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
-                            openAttachmentExternally(attachment)
+                            openAttachmentNoPreview(attachment)
                         }
                     }
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
@@ -3180,6 +3191,14 @@ internal fun SharedThreadRouteContent(
                     openAttachmentExternally(attachment)
                 },
                 onSelectIndex = ::selectImagePreviewIndex
+            )
+        }
+        attachmentNoPreviewState?.let { preview ->
+            ThreadAttachmentNoPreviewOverlay(
+                attachment = preview.attachment,
+                openState = attachmentOpenStates[preview.attachment.id],
+                onDismiss = { attachmentNoPreviewState = null },
+                onOpenWithSystem = { openAttachmentExternally(preview.attachment) }
             )
         }
         attachmentCommentsDialogState?.let { dialogState ->
@@ -3914,6 +3933,103 @@ private fun ThreadImagePreviewThumbnail(
                 )
             } else {
                 SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThreadAttachmentNoPreviewOverlay(
+    attachment: KuiklyThreadAttachmentItem,
+    openState: ThreadAttachmentOpenUiState?,
+    onDismiss: () -> Unit,
+    onOpenWithSystem: () -> Unit
+) {
+    val isOpening = openState.threadAttachmentIsOpening()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SlockColor.TextBlack.copy(alpha = 0.92f))
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(18.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ThreadImagePreviewIconButton(icon = SlockLucideIconName.ArrowLeft, onClick = onDismiss)
+                ThreadImagePreviewIconButton(icon = SlockLucideIconName.X, onClick = onDismiss)
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.File,
+                        modifier = Modifier.size(42.dp),
+                        color = "#FF111827"
+                    )
+                }
+                Text(
+                    text = attachment.name.ifBlank { "Attachment" },
+                    style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.SurfaceWhite),
+                    color = SlockColor.SurfaceWhite,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val meta = attachment.genericAttachmentMetaLine()
+                if (meta.isNotBlank()) {
+                    Text(
+                        text = meta,
+                        style = SlockType.Body.copy(color = SlockColor.SurfaceCream),
+                        color = SlockColor.SurfaceCream,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = "No preview is available for this file type.",
+                    style = SlockType.Body.copy(color = SlockColor.SurfaceCream),
+                    color = SlockColor.SurfaceCream,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                openState.threadAttachmentStatusLabel()?.let { statusLabel ->
+                    Text(
+                        text = statusLabel,
+                        style = SlockType.Caption.copy(color = SlockColor.SurfaceWhite),
+                        color = SlockColor.SurfaceWhite,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SlockBrutalActionButton(
+                    label = if (isOpening) "Preparing..." else "Open with...",
+                    onClick = onOpenWithSystem,
+                    enabled = !isOpening,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    minWidth = 180.dp,
+                    leadingIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink
+                )
+                Spacer(Modifier.height(6.dp))
             }
         }
     }
@@ -7650,6 +7766,11 @@ private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
 
 private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
     mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)
+
+internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
+    listOf(sizeLabel, mimeType)
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
 
 private fun KuiklyThreadAttachmentItem.threadAttachmentCommentCountLabel(): String? =
     commentCount
