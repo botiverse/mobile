@@ -2714,25 +2714,6 @@ internal fun SharedThreadRouteContent(
                         bridge.toast("Copied")
                     }
                 }
-                action == "quoteMessage" && !itemId.isNullOrBlank() -> {
-                    val body =
-                        renderedThread.threadActionMessage(itemId)?.body
-                            ?: renderedThread.messages.firstOrNull { it.id == itemId }?.body
-                            ?: renderedThread.originMessage?.takeIf { it.id == itemId }?.body
-                            ?: ""
-                    val quote = formatThreadMessageQuote(body)
-                    if (quote.isBlank()) {
-                        bridge.toast("Nothing to quote")
-                        return@ThreadPageContent
-                    }
-                    composerDraftViewModel.dispatch(
-                        SharedThreadComposerDraftIntent.Change(
-                            seedText = appendThreadQuoteToComposer(composerDraftState.seedText, quote),
-                            seedAsTask = composerDraftState.seedAsTask
-                        )
-                    )
-                    bridge.toast("Quoted")
-                }
                 action == "openMessageThread" && !itemId.isNullOrBlank() -> {
                     val parentMessage =
                         renderedThread.messages.firstOrNull { it.id == itemId }
@@ -5695,10 +5676,6 @@ private fun ThreadMessagesList(
                         actionMessageId = null
                         onThreadEvent("copyMessage", message.id, null, null)
                     },
-                    onQuote = {
-                        actionMessageId = null
-                        onThreadEvent("quoteMessage", message.id, null, null)
-                    },
                     onSave = {
                         actionMessageId = null
                         onThreadEvent("toggleMessageSaved", message.id, null, null)
@@ -7133,7 +7110,6 @@ private fun ThreadMessageActionMenu(
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopy: () -> Unit,
-    onQuote: () -> Unit,
     onSave: () -> Unit,
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
@@ -7145,9 +7121,6 @@ private fun ThreadMessageActionMenu(
                 add(ThreadMessageMenuAction("Reply", SlockLucideIconName.MessageSquare, "message", onReply))
             }
             add(ThreadMessageMenuAction("Copy markdown", SlockLucideIconName.Copy, "copy", onCopy))
-            if (message.body.isNotBlank()) {
-                add(ThreadMessageMenuAction("Quote message", SlockLucideIconName.MessageSquarePlus, "copy", onQuote))
-            }
             if (showSaveAction) {
                 add(
                     ThreadMessageMenuAction(
