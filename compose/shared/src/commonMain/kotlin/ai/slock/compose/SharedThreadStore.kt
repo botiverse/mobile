@@ -3350,8 +3350,30 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
-    val profileAvatarWireValue = profile.avatar?.wireValue ?: profile.avatarUrl
     val isAgent = profile.kind == MemberKind.Agent || authorKind.equals("agent", ignoreCase = true)
+    val profileAvatarWireValue =
+        avatarWireValueForAvatarSlot(
+            kind = if (isAgent) MemberKind.Agent else profile.kind,
+            id = profile.id.value,
+            avatarWireValue = profile.avatar?.wireValue,
+            avatarUrl = profile.avatarUrl,
+            gravatarHash = profile.gravatarHash
+        )
+    val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
+    val resolvedAvatarWireValue =
+        if (isAgent) {
+            if (currentAvatarWireValue == null || currentAvatarWireValue.isGravatarAvatarWireValue()) {
+                profileAvatarWireValue
+            } else {
+                avatarWireValueForAvatarSlot(
+                    kind = MemberKind.Agent,
+                    id = authorId.ifBlank { profile.id.value },
+                    avatarWireValue = currentAvatarWireValue
+                )
+            }
+        } else {
+            currentAvatarWireValue ?: profileAvatarWireValue
+        }
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
         authorKind =
@@ -3361,7 +3383,7 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
                 else -> authorKind
             },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
-        avatarWireValue = avatarWireValue ?: profileAvatarWireValue,
+        avatarWireValue = resolvedAvatarWireValue,
         gravatarHash = if (isAgent) null else gravatarHash ?: profile.gravatarHash
     )
 }
@@ -3823,8 +3845,15 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
             },
         isOwn = currentUserId != null && author.id.value == currentUserId,
         avatarLabel = author.avatarLabel,
-        avatarWireValue = author.avatar?.wireValue ?: author.avatarUrl,
-        gravatarHash = author.gravatarHash,
+        avatarWireValue =
+            avatarWireValueForAvatarSlot(
+                kind = author.kind,
+                id = author.id.value,
+                avatarWireValue = author.avatar?.wireValue,
+                avatarUrl = author.avatarUrl,
+                gravatarHash = author.gravatarHash
+            ),
+        gravatarHash = if (author.kind == MemberKind.Agent) null else author.gravatarHash,
         seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
