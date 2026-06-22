@@ -249,6 +249,8 @@ class ThreadPayloadTest {
                       "sourceThreadId": "channel-1",
                       "streamChannelId": "channel-1",
                       "membersCount": 2,
+                      "joined": false,
+                      "canSend": false,
                       "settingsActions": [
                         {"id": "archive", "enabled": true}
                       ]
@@ -262,7 +264,9 @@ class ThreadPayloadTest {
         assertEquals("loading", payload.status)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals("channel-1", payload.streamChannelId)
-        assertEquals(2, payload.membersCount)
+        assertEquals(0, payload.membersCount)
+        assertEquals(true, payload.joined)
+        assertEquals(true, payload.canSend)
         assertEquals(emptyList<KuiklyThreadMessageItem>(), payload.messages)
         assertEquals(emptyList<KuiklyThreadTaskItem>(), payload.tasks)
         assertEquals(emptyList<KuiklyThreadMemberItem>(), payload.members)
@@ -270,8 +274,7 @@ class ThreadPayloadTest {
         assertEquals("{}", payload.filesPayload)
         assertEquals("", payload.resolveThreadComposer().seedText)
         assertEquals(false, payload.resolveThreadComposer().seedAsTask)
-        assertEquals("archive", payload.settingsActions.single().id)
-        assertEquals(true, payload.settingsActions.single().enabled)
+        assertEquals(emptyList(), payload.settingsActions)
     }
 
     @Test
@@ -288,18 +291,34 @@ class ThreadPayloadTest {
             "members",
             "memberCandidates",
             "filesPayload",
-            "composer"
+            "composer",
+            "title",
+            "subtitle",
+            "channelKind",
+            "memberScopedMentions",
+            "showModeTabs",
+            "showReplyActions",
+            "showComposer",
+            "joined",
+            "canSend",
+            "membersCount",
+            "canAddMembers",
+            "settingsActions",
+            "showMembersAction",
+            "showSettingsAction",
+            "showOpenInChannelAction",
+            "showMessageSaveAction",
+            "showTaskOpenActions",
+            "showTaskStatusActions",
+            "emptyTitle",
+            "emptyDetail",
+            "joinLabel",
+            "dmPeerName",
+            "dmPeerAvatarUrl",
+            "dmPeerAvatarLabel",
+            "dmPeerGravatarUrl"
         ).forEach { forbidden ->
             assertFalse(forbidden in names, "$forbidden must stay outside compose_thread launch pageData")
-        }
-
-        val settingsDescriptor = WireThreadSettingsActionPayload.serializer().descriptor
-        val settingsNames = (0 until settingsDescriptor.elementsCount)
-            .map { index -> settingsDescriptor.getElementName(index) }
-            .toSet()
-
-        listOf("title", "subtitle", "icon", "destructive").forEach { forbidden ->
-            assertFalse(forbidden in settingsNames, "$forbidden must stay outside thread settings action launch wire")
         }
     }
 
@@ -326,13 +345,13 @@ class ThreadPayloadTest {
         assertEquals("dm-1", payload.sourceThreadId)
         assertEquals("dm-1", payload.streamChannelId)
         assertEquals("files", payload.selectedTab)
-        assertEquals(false, payload.canSend)
+        assertEquals(true, payload.canSend)
         assertEquals(true, payload.memberScopedMentions)
-        assertEquals(false, payload.resolveThreadComposer().enabled)
+        assertEquals(true, payload.resolveThreadComposer().enabled)
     }
 
     @Test
-    fun launchPayloadDmPeerNameOverridesDirectMessageFallbackTitle() {
+    fun launchPayloadDmPeerHintsAreIgnoredUntilStoreProjectionArrives() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -351,13 +370,13 @@ class ThreadPayloadTest {
             )
 
         assertEquals("page-dm", payload.instanceId)
-        assertEquals("artin", payload.title)
+        assertEquals("Direct Message", payload.title)
         assertEquals("dm-artin", payload.sourceThreadId)
         assertEquals("dm-artin", payload.streamChannelId)
-        assertEquals("artin", payload.dmPeerName)
-        assertEquals("https://cdn.slock.ai/avatars/artin.webp", payload.dmPeerAvatarUrl)
-        assertEquals("AR", payload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerAvatarLabel)
+        assertEquals(null, payload.dmPeerGravatarUrl)
     }
 
     @Test
@@ -599,7 +618,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun launchSettingsActionVisualFieldsAreIgnoredAtBoundary() {
+    fun launchSettingsActionsAreIgnoredAtBoundary() {
         val payload =
             parseThreadScreenPayload(
                 payload =
@@ -622,10 +641,10 @@ class ThreadPayloadTest {
                 instanceId = "fallback"
             )
 
-        assertEquals(listOf(KuiklyThreadSettingsAction(id = "visibility", enabled = false)), payload.settingsActions)
+        assertEquals(emptyList(), payload.settingsActions)
         assertEquals(
             emptyList(),
-            payload.settingsActions.normalizedThreadSettingsChannelActions()
+            payload.settingsActions.normalizedThreadSettingsChannelActions(useDefaultWhenEmpty = false)
         )
     }
 

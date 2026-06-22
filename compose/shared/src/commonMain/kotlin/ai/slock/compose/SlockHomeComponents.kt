@@ -386,19 +386,12 @@ private fun openThreadPageFromConversationId(
     val launchPayload =
         WireThreadLaunchPayload(
             instanceId = "${payload.instanceId}:$conversationId",
-            title = "#${conversation.name}",
-            subtitle = null,
             surfaceKind = surfaceKind,
-            channelKind = conversation.homeChannelKind(),
             threadId = threadChannelId,
             sourceThreadId = if (surfaceKind == KuiklyThreadSurfaceKind.Channel) conversationId else null,
             streamChannelId = threadChannelId,
             parentChannelId = if (surfaceKind != KuiklyThreadSurfaceKind.Channel) conversationId else null,
-            parentMessageId = null,
-            dmPeerName = conversation.name.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-            dmPeerAvatarUrl = conversation.avatarUrl.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-            dmPeerAvatarLabel = conversation.avatarLabel.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage },
-            dmPeerGravatarUrl = conversation.gravatarUrl.takeIf { surfaceKind == KuiklyThreadSurfaceKind.DirectMessage }
+            parentMessageId = null
         )
     val pageData =
         JSONObject().apply {

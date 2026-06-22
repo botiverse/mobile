@@ -118,13 +118,20 @@ path from the hot route.
 
 Thread PagerData should contain only:
 
-- `serverId` / `serverSlug`.
-- `channelId` or `threadId`.
-- `parentChannelId` / `parentMessageId` for reply/task thread origin.
-- `surfaceKind`.
-- optional render/debug flags.
-- optional small origin proof if it is needed to prevent a blank header, but
-  not a full message list or repository response.
+- route identity: `serverId` / `serverSlug`, `channelId` or `threadId`,
+  `streamChannelId`, `parentChannelId` / `parentMessageId`.
+- launch intent: `surfaceKind`, selected tab, focused message id, origin parent
+  message id, back label.
+- host context: safe-area/time-format/local-time fields, debug/render flags.
+
+Thread PagerData must not contain display, capability, or product-state hints:
+
+- no title/subtitle/channel kind/private/joint label.
+- no DM peer name/avatar/gravatar/header projection.
+- no joined/canSend/canAttach/canCreateTask/member count/member candidates.
+- no settings actions, composer state, files payload, messages, tasks,
+  attachments, markdown/action-card state, or repository response body.
+- no empty/loading copy overrides.
 
 Thread must fetch/observe the real payload through:
 
@@ -132,6 +139,39 @@ Thread must fetch/observe the real payload through:
 - repository/data-source.
 - local fallback cache.
 - realtime events.
+
+Current guard:
+
+- Production `compose_thread` launch is parsed through `WireThreadLaunchPayload`
+  only.
+- Full `KuiklyThreadScreenPayload` route payloads are rejected in production
+  parser tests.
+- `WireThreadLaunchPayload` descriptor tests enforce the whitelist above.
+
+### Realtime Ownership
+
+Phase 1 must keep one realtime owner for a session/server. The app shell remains
+the owner of:
+
+- realtime connection lifecycle.
+- auth refresh requests.
+- cursor policy.
+- route-level join requests.
+- fan-out of decoded `RealtimeEvent`s.
+
+Standalone Thread Pager instances must not open a second realtime connection for
+the same session/server. They receive events through a pager-event/notification
+relay from the app shell or host, keyed by server id and thread route identity.
+
+The proof must validate:
+
+- channel message created/updated/deleted events reach the active standalone
+  Thread Pager.
+- reaction and saved-state updates reach the active standalone Thread Pager.
+- task created/updated/deleted events reach task-bearing Thread views.
+- auth refresh still happens once at the shell/session owner.
+- route join is idempotent: opening the Thread Pager does not double-connect or
+  double-apply the same realtime event.
 
 ### Tab Model
 
@@ -168,6 +208,11 @@ Everything else is delayed or lazy:
 The current `40802fe8` patch is a mitigation within the existing architecture;
 this spec is the cleaner boundary.
 
+This first-screen contract is not part of Phase 1 measurement unless explicitly
+called out. Phase 1 measures the Pager boundary with Thread internals kept as
+close as practical to the embedded path. Composer/action-card/files/task lazy
+mounting is a later phase so performance attribution stays clean.
+
 ## Migration Plan
 
 ### Phase 0: Document and Freeze the Contract
@@ -185,18 +230,33 @@ Requirements:
 
 - Use the existing `ComposeThreadPage` / `THREAD_PAGE` entry.
 - Pass only route identity in PagerData.
+- Keep `WireThreadLaunchPayload` as a hard whitelist. Descriptor tests must
+  reject display/capability fields such as `title`, `dmPeerName`,
+  `membersCount`, `joined`, `canSend`, `settingsActions`, `emptyTitle`,
+  `messages`, `tasks`, `members`, `filesPayload`, and `composer`.
+- Keep Thread internals materially unchanged from the embedded path for this
+  proof. Do not bundle composer/action-card/files/task lazy mounting into the
+  boundary experiment.
 - Preserve auth/session/realtime behavior through the existing shared stores.
+- Use the realtime ownership contract above: shell/session owns the connection,
+  standalone Thread receives routed events and does not create a duplicate
+  connection.
 - Close with `RouterModule.closePage()`.
 - No new Android multi-container architecture.
+- Task Thread launch must pass task/thread identity and focused intent only.
+  The opener must not prefetch a display payload or pre-create UI state just to
+  fill the Thread Pager header. Thread Pager/store resolves create-or-open,
+  auth-required, and canonical content after launch.
 
 Measurements:
 
 - Home -> `#all`.
-- Tasks -> Thread.
+- Tasks -> Thread with only task/thread identity launch params.
 - Reply Thread from long-press/Open Thread.
 - Back/close correctness.
 - Composer send path.
 - Attachment picker path.
+- realtime event delivery and duplicate-connection check.
 
 Acceptance:
 
@@ -204,9 +264,12 @@ Acceptance:
   improve or stay no worse than the embedded path.
 - Android host `layout`/`dispatchDraw` for Thread first content should drop
   meaningfully from current traces.
-- No duplicate realtime subscriptions.
+- No duplicate realtime subscriptions/connections and no duplicate event apply.
 - No lost Home/Tasks state on return.
 - No stale badge/presence regression.
+- No product display/capability state appears in `compose_thread` PagerData.
+- No preloaded Thread messages/tasks/files/composer/settings/member payload
+  appears in `compose_thread` PagerData.
 
 ### Phase 2: Remove Embedded Thread Hot Path
 

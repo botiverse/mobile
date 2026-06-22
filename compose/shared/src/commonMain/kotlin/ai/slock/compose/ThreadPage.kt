@@ -428,46 +428,21 @@ internal data class KuiklyThreadScreenPayload(
 @Serializable
 internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
-    val title: String = "Thread",
-    val subtitle: String? = null,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
-    val channelKind: String = "channel",
     val threadId: String? = null,
     val sourceThreadId: String? = null,
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
-    val memberScopedMentions: Boolean = false,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
-    val showModeTabs: Boolean? = null,
-    val showReplyActions: Boolean? = null,
     val alignOwnMessagesRight: Boolean = false,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour,
-    val showComposer: Boolean = true,
-    val joined: Boolean = true,
-    val canSend: Boolean = true,
-    val membersCount: Int = 0,
-    val canAddMembers: Boolean = true,
-    val settingsActions: List<WireThreadSettingsActionPayload> = emptyList(),
-    val showMembersAction: Boolean? = null,
-    val showSettingsAction: Boolean? = null,
-    val showOpenInChannelAction: Boolean = false,
-    val showMessageSaveAction: Boolean = true,
-    val showTaskOpenActions: Boolean = true,
-    val showTaskStatusActions: Boolean = true,
-    val emptyTitle: String = "Loading conversation",
-    val emptyDetail: String = "Loading messages from this conversation.",
-    val joinLabel: String = "Join channel",
-    val dmPeerName: String? = null,
-    val dmPeerAvatarUrl: String? = null,
-    val dmPeerAvatarLabel: String? = null,
-    val dmPeerGravatarUrl: String? = null
+    val timeFormat: String = SlockTimeFormat24Hour
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -497,8 +472,8 @@ internal data class WireThreadLaunchPayload(
         val resolvedComposer =
             KuiklyThreadComposerPayload(
                 surfaceKind = surfaceKind,
-                enabled = canSend,
-                showAsTaskToggle = showTaskOpenActions,
+                enabled = true,
+                showAsTaskToggle = true,
                 mentionChannelId = parentChannelId.nonBlank(),
                 parentMessageId = parentMessageId.nonBlank(),
                 streamChannelId = resolvedStreamId
@@ -509,12 +484,11 @@ internal data class WireThreadLaunchPayload(
             subtitle = null,
             status = "loading",
             surfaceKind = surfaceKind,
-            channelKind = channelKind,
             sourceThreadId = resolvedSourceId,
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
-            memberScopedMentions = memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
+            memberScopedMentions = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
                     originParentMessageId.nonBlank() ?: parentMessageId.nonBlank()
@@ -524,8 +498,8 @@ internal data class WireThreadLaunchPayload(
             focusedMessageId = focusedMessageId.nonBlank(),
             selectedTab = selectedTab,
             navigationLabel = navigationLabel,
-            showModeTabs = showModeTabs ?: !isReplyThread,
-            showReplyActions = showReplyActions ?: !isReplyThread,
+            showModeTabs = !isReplyThread,
+            showReplyActions = !isReplyThread,
             alignOwnMessagesRight = alignOwnMessagesRight,
             localOffsetMinutes = localOffsetMinutes,
             todayEpochDay = todayEpochDay,
@@ -533,48 +507,14 @@ internal data class WireThreadLaunchPayload(
             timeFormat = timeFormat,
             filesPayload = "{}",
             composer = resolvedComposer,
-            showComposer = showComposer,
-            joined = joined,
-            canSend = canSend,
-            membersCount = membersCount,
-            canAddMembers = canAddMembers,
-            settingsActions = settingsActions.toThreadSettingsActions(),
-            showMembersAction = showMembersAction ?: !isReplyThread,
-            showSettingsAction = showSettingsAction ?: !isReplyThread,
-            showOpenInChannelAction = showOpenInChannelAction || (isReplyThread && parentMessageId.nonBlank() != null),
-            showMessageSaveAction = showMessageSaveAction,
-            showTaskOpenActions = showTaskOpenActions,
-            showTaskStatusActions = showTaskStatusActions,
-            emptyTitle = emptyTitle,
-            emptyDetail = emptyDetail,
-            joinLabel = joinLabel,
-            dmPeerName = dmPeerName.nonBlank(),
-            dmPeerAvatarUrl = dmPeerAvatarUrl.nonBlank(),
-            dmPeerAvatarLabel = dmPeerAvatarLabel.nonBlank(),
-            dmPeerGravatarUrl = dmPeerGravatarUrl.nonBlank()
+            showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+            showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
+            showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null,
+            emptyTitle = "Loading conversation",
+            emptyDetail = "Loading messages from this conversation."
         ).withLaunchHeaderContext()
     }
 }
-
-@Serializable
-internal data class WireThreadSettingsActionPayload(
-    val id: String,
-    val enabled: Boolean = true,
-    val permission: String? = null
-)
-
-private fun List<WireThreadSettingsActionPayload>.toThreadSettingsActions(): List<KuiklyThreadSettingsAction> =
-    mapNotNull { action ->
-        action.id
-            .takeIf { it.isNotBlank() }
-            ?.let { id ->
-                KuiklyThreadSettingsAction(
-                    id = id,
-                    enabled = action.enabled,
-                    permission = action.permission
-                )
-            }
-    }
 
 internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): KuiklyThreadScreenPayload =
     copy(
