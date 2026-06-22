@@ -89,6 +89,7 @@ export const SlockLucidePathIconNames: string[] = [
   'loader',
   'loader-circle',
   'mail',
+  'mail-open',
   'mail-plus',
   'message-circle',
   'message-circle-off',
@@ -3010,6 +3011,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'M 4 4 H 20 A 2 2 0 0 1 22 6 V 18 A 2 2 0 0 1 20 20 H 4 A 2 2 0 0 1 2 18 V 6 A 2 2 0 0 1 4 4 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'mail-open':
+      return [
+    {
+      commands: 'M 21.2 8.4 c 0.5 0.38 0.8 0.97 0.8 1.6 v 10 a 2 2 0 0 1 -2 2 H 4 a 2 2 0 0 1 -2 -2 V 10 a 2 2 0 0 1 0.8 -1.6 l 8 -6 a 2 2 0 0 1 2.4 0 l 8 6 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'm 22 10 -8.97 5.7 a 1.94 1.94 0 0 1 -2.06 0 L 2 10',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

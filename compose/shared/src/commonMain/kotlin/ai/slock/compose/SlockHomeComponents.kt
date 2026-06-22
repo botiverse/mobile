@@ -961,7 +961,7 @@ fun SlockStructuralHomeShell(
                         SlockBaseMenuItem(
                             id = if (hasUnread) "mark-read" else "mark-unread",
                             label = if (hasUnread) labels.markAsRead else labels.markAsUnread,
-                            icon = if (hasUnread) SlockLucideIconName.Check else SlockLucideIconName.Mail
+                            icon = if (hasUnread) SlockLucideIconName.MailOpen else SlockLucideIconName.Mail
                         )
                     )
                     add(

@@ -84,6 +84,7 @@ enum class SlockLucideIconName(val wireName: String) {
     Loader("loader"),
     LoaderCircle("loader-circle"),
     Mail("mail"),
+    MailOpen("mail-open"),
     MailPlus("mail-plus"),
     MessageCircle("message-circle"),
     MessageCircleOff("message-circle-off"),

@@ -121,6 +121,7 @@ LUCIDE_ICONS = [
     "loader",
     "loader-circle",
     "mail",
+    "mail-open",
     "mail-plus",
     "message-circle",
     "message-circle-off",
