@@ -336,14 +336,14 @@ internal fun AuthActionButton(
     val buttonBackground = if (enabled || preserveDisabledVisual) background else SlockColor.EmptyStateGray
     Box(modifier = modifier.fillMaxWidth().height(36.dp).padding(end = 2.dp, bottom = 2.dp)) {
         Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        Button(
-            onClick = if (enabled && !loading) onClick else ({}),
-            enabled = enabled && !loading,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(buttonBackground)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .clickable(enabled = enabled && !loading, onClick = onClick)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
         ) {
             Row(
                 horizontalArrangement = Arrangement.Center,
