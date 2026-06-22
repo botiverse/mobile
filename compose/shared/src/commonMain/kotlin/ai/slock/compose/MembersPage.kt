@@ -26,6 +26,7 @@ import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailLoadStatus
 import ai.slock.compose.data.SharedAgentDetailState
@@ -797,6 +798,7 @@ internal fun MembersRouteContent(
     onOpenDirectMessage: (MemberProfile) -> Unit,
     onCopyMemberId: (MemberProfile) -> Unit,
     onOpenUrl: (String) -> Unit = {},
+    agentDetailActions: SharedAgentDetailActions? = null,
     agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
     agentDetailRefreshKey: Any? = Unit,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
@@ -927,6 +929,7 @@ internal fun MembersRouteContent(
             onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
             onCopyMemberId = { onCopyMemberId(selectedMember) },
             onOpenUrl = onOpenUrl,
+            agentDetailActions = agentDetailActions,
             onUpdateAgentProfile = onUpdateAgentProfile,
             onUploadAgentAvatar = onUploadAgentAvatar,
             onPickAgentAvatarFile = onPickAgentAvatarFile,
@@ -1219,6 +1222,7 @@ private fun MembersDetailContent(
     onOpenDirectMessage: () -> Unit,
     onCopyMemberId: () -> Unit,
     onOpenUrl: (String) -> Unit,
+    agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)?,
     onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
@@ -1260,6 +1264,23 @@ private fun MembersDetailContent(
     }
     val storePendingConfirmation: MembersAgentLifecycleAction? =
         storeState.pendingConfirmation.takeIf { sharedAgentDetailStore != null }
+    val effectiveDiagnosticActionState =
+        if (sharedAgentDetailStore != null) {
+            storeState.diagnosticActionInFlight?.let {
+                MembersAgentDiagnosticActionState(actionKey = it, inProgress = true)
+            } ?: storeState.lastActionResult
+                ?.takeIf { it.actionKey == "copy" || it.actionKey == "report" }
+                ?.let {
+                    MembersAgentDiagnosticActionState(
+                        actionKey = it.actionKey,
+                        inProgress = false,
+                        errorCode = it.errorCode,
+                        successLabel = it.successLabel
+                    )
+                }
+        } else {
+            diagnosticActionState
+        }
     var managementMenuAnchor by remember(member.id.value) { mutableStateOf<Offset?>(null) }
     var showAvatarPicker by remember(member.id.value) { mutableStateOf(false) }
     var workspaceTreeState by remember(member.id.value) {
@@ -1379,7 +1400,7 @@ private fun MembersDetailContent(
     fun runLifecycleAction(action: MembersAgentLifecycleAction, confirmed: Boolean = false) {
         if (lifecycleInFlight != null) return
         val callback = onAgentLifecycleAction
-        if (!canManage || callback == null) {
+        if (!canManage || (agentDetailActions == null && callback == null)) {
             onUnavailableAction("Agent management is not available.")
             return
         }
@@ -1392,19 +1413,20 @@ private fun MembersDetailContent(
             }
             return
         }
-        sharedAgentDetailStore?.dispatch(
-            SharedAgentDetailIntent.StartLifecycleAction(action.actionKey)
-        )
         scope.launch {
             pendingConfirmation = null
             actionState = MembersAgentActionState(action, inProgress = true)
             val result =
-                try {
-                    callback(member.id, action)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                    sharedAgentDetailStore.runLifecycleAction(member.id, action, agentDetailActions)
+                } else {
+                    try {
+                        requireNotNull(callback).invoke(member.id, action)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+                    }
                 }
             val errorCode = result.membersLifecycleErrorCode(action)
             actionState =
@@ -1414,54 +1436,44 @@ private fun MembersDetailContent(
                     errorCode = errorCode,
                     successLabel = action.successLabel.takeIf { errorCode == null }
                 )
-            sharedAgentDetailStore?.dispatch(
-                SharedAgentDetailIntent.FinishLifecycleAction(
-                    actionKey = action.actionKey,
-                    successLabel = actionState?.successLabel,
-                    errorCode = errorCode
-                )
-            )
         }
     }
     fun copyDiagnostics() {
-        sharedAgentDetailStore?.dispatch(
-            SharedAgentDetailIntent.StartDiagnosticAction("copy")
-        )
-        onCopyAgentDiagnostics(buildMembersAgentDiagnostics(member, detail))
-        diagnosticActionState =
-            MembersAgentDiagnosticActionState(
-                actionKey = "copy",
-                inProgress = false,
-                successLabel = "Diagnostics copied"
-            )
-        sharedAgentDetailStore?.dispatch(
-            SharedAgentDetailIntent.FinishDiagnosticAction(
-                actionKey = "copy",
-                successLabel = "Diagnostics copied"
-            )
-        )
+        val diagnostics = buildMembersAgentDiagnostics(member, detail)
+        if (sharedAgentDetailStore != null && agentDetailActions != null) {
+            sharedAgentDetailStore.copyDiagnostics(diagnostics, agentDetailActions)
+        } else {
+            onCopyAgentDiagnostics(diagnostics)
+            diagnosticActionState =
+                MembersAgentDiagnosticActionState(
+                    actionKey = "copy",
+                    inProgress = false,
+                    successLabel = "Diagnostics copied"
+                )
+        }
     }
     fun reportIssue() {
         val callback = onReportAgentIssue
         if (diagnosticInFlight != null) return
-        if (callback == null) {
+        if (agentDetailActions == null && callback == null) {
             onUnavailableAction("Agent issue reporting is not available.")
             return
         }
-        sharedAgentDetailStore?.dispatch(
-            SharedAgentDetailIntent.StartDiagnosticAction("report")
-        )
         scope.launch {
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(actionKey = "report", inProgress = true)
             val diagnostics = buildMembersAgentDiagnostics(member, detail)
             val reported =
-                try {
-                    callback(diagnostics)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    false
+                if (sharedAgentDetailStore != null && agentDetailActions != null) {
+                    sharedAgentDetailStore.reportIssue(diagnostics, agentDetailActions)
+                } else {
+                    try {
+                        requireNotNull(callback).invoke(diagnostics)
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        false
+                    }
                 }
             diagnosticActionState =
                 MembersAgentDiagnosticActionState(
@@ -1470,13 +1482,6 @@ private fun MembersDetailContent(
                     errorCode = if (reported) null else "agent_issue_report_failed",
                     successLabel = "Issue reported".takeIf { reported }
                 )
-            sharedAgentDetailStore?.dispatch(
-                SharedAgentDetailIntent.FinishDiagnosticAction(
-                    actionKey = "report",
-                    successLabel = diagnosticActionState?.successLabel,
-                    errorCode = diagnosticActionState?.errorCode
-                )
-            )
         }
     }
     fun saveAvatar(avatarUrl: String?) {
@@ -1615,7 +1620,7 @@ private fun MembersDetailContent(
                             MembersAgentActivityTab(
                                 member = member,
                                 detail = detail,
-                                diagnosticActionState = diagnosticActionState,
+                                diagnosticActionState = effectiveDiagnosticActionState,
                                 onCopyDiagnostics = { copyDiagnostics() },
                                 timeContext = timeContext,
                                 onOpenUrl = onOpenUrl,
@@ -1673,7 +1678,7 @@ private fun MembersDetailContent(
                 machineAssigned = menuMachineAssigned,
                 canManage = canManage,
                 deleted = deleted,
-                hasReportIssue = onReportAgentIssue != null,
+                hasReportIssue = agentDetailActions != null || onReportAgentIssue != null,
                 inProgress = lifecycleInFlight != null || diagnosticInFlight != null
             )
             SlockBrutalDropdownMenu(

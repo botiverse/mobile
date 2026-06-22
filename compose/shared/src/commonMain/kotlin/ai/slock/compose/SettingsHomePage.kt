@@ -134,6 +134,7 @@ import ai.slock.compose.data.parseSlockHome
 import ai.slock.compose.data.CreateChannelRequest
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.AgentLifecycleActionResult
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.KuiklySlockAuthTransport
 import ai.slock.compose.data.KuiklySlockNetworkClient
@@ -156,6 +157,7 @@ import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
+import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
@@ -8160,6 +8162,60 @@ private fun SharedMembersScreen(
                     is DataResult.NoPermission -> result
                 }
             }
+            val agentDetailActions =
+                remember(memberRepository, settingsCapabilities, bridge) {
+                    object : SharedAgentDetailActions {
+                        override suspend fun runLifecycleAction(
+                            agentId: MemberId,
+                            action: MembersAgentLifecycleAction
+                        ): DataResult<AgentLifecycleActionResult> {
+                            val result =
+                                when (action) {
+                                    MembersAgentLifecycleAction.Start ->
+                                        memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.Stop ->
+                                        memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.Restart,
+                                    MembersAgentLifecycleAction.ResetSession,
+                                    MembersAgentLifecycleAction.ResetFull ->
+                                        memberRepository.resetAgent(
+                                            DataRequestPriority.Foreground,
+                                            AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
+                                        )
+                                    MembersAgentLifecycleAction.Delete ->
+                                        memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
+                                    MembersAgentLifecycleAction.UnassignMachine ->
+                                        memberRepository.assignAgentMachine(
+                                            DataRequestPriority.Foreground,
+                                            AgentMachineAssignmentRequest(agentId, machineId = null)
+                                        )
+                                }
+                            if (result is DataResult.Content && result.data.success) {
+                                if (
+                                    action == MembersAgentLifecycleAction.ResetSession ||
+                                    action == MembersAgentLifecycleAction.ResetFull
+                                ) {
+                                    memberRepository.clearAgentActivityCache(agentId)
+                                }
+                                state = state.withMembersLifecycleResult(action, agentId)
+                                localAgentDetailRefreshKey += 1
+                            }
+                            return result
+                        }
+
+                        override fun copyDiagnostics(diagnostics: String) {
+                            bridge.copyToPasteboard(diagnostics)
+                            bridge.toast("Copied agent diagnostics")
+                        }
+
+                        override suspend fun reportIssue(diagnostics: String): Boolean {
+                            bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
+                            val ok = settingsCapabilities.sendFeedback()
+                            bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
+                            return ok
+                        }
+                    }
+                }
             MembersRouteContent(
                 payload = membersPayload,
                 sharedAgentDetailStore = sharedAgentDetailStore,
@@ -8170,6 +8226,7 @@ private fun SharedMembersScreen(
                     bridge.toast("Copied member id")
                 },
                 onOpenUrl = { bridge.openUrl(it) },
+                agentDetailActions = agentDetailActions,
                 agentDetailLoader = { agentId ->
                     memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
                 },
@@ -8225,40 +8282,6 @@ private fun SharedMembersScreen(
                     }
                     result
                 },
-                onAgentLifecycleAction = { agentId, action ->
-                    val result =
-                        when (action) {
-                            MembersAgentLifecycleAction.Start ->
-                                memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.Stop ->
-                                memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.Restart,
-                            MembersAgentLifecycleAction.ResetSession,
-                            MembersAgentLifecycleAction.ResetFull ->
-                                memberRepository.resetAgent(
-                                    DataRequestPriority.Foreground,
-                                    AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
-                                )
-                            MembersAgentLifecycleAction.Delete ->
-                                memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
-                            MembersAgentLifecycleAction.UnassignMachine ->
-                                memberRepository.assignAgentMachine(
-                                    DataRequestPriority.Foreground,
-                                    AgentMachineAssignmentRequest(agentId, machineId = null)
-                                )
-                        }
-                    if (result is DataResult.Content && result.data.success) {
-                        if (
-                            action == MembersAgentLifecycleAction.ResetSession ||
-                            action == MembersAgentLifecycleAction.ResetFull
-                        ) {
-                            memberRepository.clearAgentActivityCache(agentId)
-                        }
-                        state = state.withMembersLifecycleResult(action, agentId)
-                        localAgentDetailRefreshKey += 1
-                    }
-                    result
-                },
                 agentWorkspaceTreeLoader = { agentId ->
                     memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
                 },
@@ -8267,16 +8290,6 @@ private fun SharedMembersScreen(
                 },
                 agentWorkspaceFileLoader = { agentId, path ->
                     memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, agentId, path)
-                },
-                onCopyAgentDiagnostics = { diagnostics ->
-                    bridge.copyToPasteboard(diagnostics)
-                    bridge.toast("Copied agent diagnostics")
-                },
-                onReportAgentIssue = { diagnostics ->
-                    bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
-                    val ok = settingsCapabilities.sendFeedback()
-                    bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
-                    ok
                 },
                 canViewPrivateAgentSurfaces = { _, detail ->
                     current.server.permissions.canManageSettings ||

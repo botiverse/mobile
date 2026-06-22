@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.MembersAgentLifecycleAction
 import ai.slock.compose.model.MemberId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,17 @@ internal data class SharedAgentDetailActionResult(
     val successLabel: String? = null,
     val errorCode: String? = null
 )
+
+internal interface SharedAgentDetailActions {
+    suspend fun runLifecycleAction(
+        agentId: MemberId,
+        action: MembersAgentLifecycleAction
+    ): DataResult<AgentLifecycleActionResult>
+
+    fun copyDiagnostics(diagnostics: String)
+
+    suspend fun reportIssue(diagnostics: String): Boolean
+}
 
 internal sealed interface SharedAgentDetailIntent {
     data class SelectMember(val memberId: MemberId) : SharedAgentDetailIntent
@@ -264,4 +276,71 @@ internal class SharedAgentDetailStore(
             logger("shared_agent_detail_store ${intent::class.simpleName} -> state updated")
         }
     }
+
+    suspend fun runLifecycleAction(
+        agentId: MemberId,
+        action: MembersAgentLifecycleAction,
+        actions: SharedAgentDetailActions
+    ): DataResult<AgentLifecycleActionResult> {
+        dispatch(SharedAgentDetailIntent.StartLifecycleAction(action.actionKey))
+        val result =
+            try {
+                actions.runLifecycleAction(agentId, action)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                DataResult.Error(ScreenError("agent_${action.actionKey}_failed"))
+            }
+        val errorCode = result.lifecycleErrorCode(action)
+        dispatch(
+            SharedAgentDetailIntent.FinishLifecycleAction(
+                actionKey = action.actionKey,
+                successLabel = action.successLabel.takeIf { errorCode == null },
+                errorCode = errorCode
+            )
+        )
+        return result
+    }
+
+    fun copyDiagnostics(diagnostics: String, actions: SharedAgentDetailActions) {
+        dispatch(SharedAgentDetailIntent.StartDiagnosticAction("copy"))
+        actions.copyDiagnostics(diagnostics)
+        dispatch(
+            SharedAgentDetailIntent.FinishDiagnosticAction(
+                actionKey = "copy",
+                successLabel = "Diagnostics copied"
+            )
+        )
+    }
+
+    suspend fun reportIssue(diagnostics: String, actions: SharedAgentDetailActions): Boolean {
+        dispatch(SharedAgentDetailIntent.StartDiagnosticAction("report"))
+        val reported =
+            try {
+                actions.reportIssue(diagnostics)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (_: Throwable) {
+                false
+            }
+        dispatch(
+            SharedAgentDetailIntent.FinishDiagnosticAction(
+                actionKey = "report",
+                successLabel = "Issue reported".takeIf { reported },
+                errorCode = if (reported) null else "agent_issue_report_failed"
+            )
+        )
+        return reported
+    }
+
+    private fun DataResult<AgentLifecycleActionResult>.lifecycleErrorCode(
+        action: MembersAgentLifecycleAction
+    ): String? =
+        when (this) {
+            is DataResult.Content ->
+                if (data.success) null else "agent_${action.actionKey}_failed"
+            is DataResult.Empty -> reason.name
+            is DataResult.Error -> error.code
+            is DataResult.NoPermission -> blocker.code
+        }
 }
