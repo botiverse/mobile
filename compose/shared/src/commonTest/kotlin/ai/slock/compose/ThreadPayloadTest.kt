@@ -65,6 +65,11 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadQuickReactionsIncludeServerCheckMarkEmoji() {
+        assertTrue("✅" in ThreadQuickReactionEmojis)
+    }
+
+    @Test
     fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
         val attachment =
             KuiklyThreadAttachmentItem(

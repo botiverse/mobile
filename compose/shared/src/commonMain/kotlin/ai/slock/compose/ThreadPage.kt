@@ -6902,7 +6902,7 @@ private val ThreadMessageMenuWidth = 208.dp
 private const val ThreadMessageMenuFallbackHeight = 210f
 private const val ThreadMessageMenuAnchorGap = 8f
 private const val ThreadMessageMenuHorizontalNudge = 16f
-private val ThreadQuickReactionEmojis = listOf("👍", "❤️", "🎉", "👀", "🔥", "😂")
+internal val ThreadQuickReactionEmojis = listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅")
 
 @Composable
 private fun ThreadMessageActionMenu(
@@ -7217,6 +7217,35 @@ private fun ThreadQuickReactionGlyph(
                 drawRect(cyan, topLeft = scaledOffset(17.5f, 12f), size = scaledSize(3f, 5f))
                 drawRect(ink, topLeft = scaledOffset(4f, 5f), size = scaledSize(16f, 14f), style = stroke2)
                 drawPath(smile, ink, style = stroke15)
+            }
+            "✅", "☑", "☑️", "✔", "✔️", "✓" -> {
+                val box = path {
+                    m(5f, 4f)
+                    l(19f, 4f)
+                    c(19.6f, 4f, 20f, 4.4f, 20f, 5f)
+                    l(20f, 19f)
+                    c(20f, 19.6f, 19.6f, 20f, 19f, 20f)
+                    l(5f, 20f)
+                    c(4.4f, 20f, 4f, 19.6f, 4f, 19f)
+                    l(4f, 5f)
+                    c(4f, 4.4f, 4.4f, 4f, 5f, 4f)
+                    close()
+                }
+                val check = path {
+                    m(7f, 12.2f)
+                    l(10.3f, 15.6f)
+                    l(17.3f, 8.4f)
+                }
+                val highlight = path {
+                    m(6f, 5.5f)
+                    l(12f, 5.5f)
+                    l(6f, 11.5f)
+                    close()
+                }
+                drawPath(box, SlockColor.AccentLime, style = Fill)
+                drawPath(highlight, cream, style = Fill)
+                drawPath(box, ink, style = stroke2)
+                drawPath(check, ink, style = Stroke(width = 2.6f * unit))
             }
             else -> {
                 drawCircle(yellow, radius = 9f * unit, center = scaledOffset(12f, 12f))
