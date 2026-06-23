@@ -194,6 +194,7 @@ private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
 private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
+private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
@@ -6573,18 +6574,22 @@ private suspend fun LazyListState.scrollThreadItemToViewportCenter(itemIndex: In
     if (itemIndex < 0 || layoutInfo.totalItemsCount <= itemIndex) {
         return
     }
-    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
-    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
-    val offset =
-        item
-            ?.let {
-                threadFocusedItemCenterScrollOffset(
-                    itemSize = it.size,
-                    viewportHeight = viewportHeight
-                )
-            }
-            ?: 0
-    scrollToItem(itemIndex, offset)
+    repeat(ThreadFocusedMessageCenterAttempts) {
+        val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == itemIndex }
+        if (item == null) {
+            scrollToItem(itemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            return@repeat
+        }
+        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        val offset =
+            threadFocusedItemCenterScrollOffset(
+                itemSize = item.size,
+                viewportHeight = viewportHeight
+            )
+        scrollToItem(itemIndex, offset)
+        delay(ThreadLayoutStabilityFrameDelayMs)
+    }
 }
 
 private suspend fun LazyListState.awaitThreadMessagesLayoutStability(
@@ -6882,7 +6887,6 @@ private fun ThreadMessageCard(
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
         label = "thread-message-focus-highlight"
     )
-    val focusShadowOffset = 4.dp
     Box(
         modifier =
             Modifier
@@ -6890,27 +6894,15 @@ private fun ThreadMessageCard(
                 .background(SlockColor.SurfaceWhite)
                 .padding(horizontal = outerPadding, vertical = SlockSpacing.Sm)
     ) {
-        if (focusAlpha > 0f) {
-            Box(
-                modifier =
-                    Modifier
-                        .matchParentSize()
-                        .offset(x = focusShadowOffset, y = focusShadowOffset)
-                        .background(SlockColor.ShadowBlack.copy(alpha = focusAlpha))
-            )
-        }
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .then(
+                    .background(
                         if (focusAlpha > 0f) {
-                            Modifier
-                                .background(SlockColor.AccentCyan.copy(alpha = 0.25f * focusAlpha))
-                                .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = focusAlpha))
+                            SlockColor.AccentCyan.copy(alpha = 0.12f * focusAlpha)
                         } else {
-                            Modifier
+                            SlockColor.SurfaceWhite
                         }
                     )
                     .padding(horizontal = SlockSpacing.Xxs, vertical = SlockSpacing.Xs),
