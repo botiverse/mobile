@@ -8,7 +8,6 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
-import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import kotlin.test.Test
@@ -235,50 +234,10 @@ class RealtimeEventMapperTest {
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 
-        assertTrue(RealtimeSocketEvents.ReadUpdated in events)
         assertTrue(RealtimeSocketEvents.AgentSession in events)
         assertTrue(RealtimeSocketEvents.ComputerUpgradeProgress in events)
         assertTrue(RealtimeSocketEvents.ComputerUpgradeDone in events)
         assertTrue(RealtimeSocketEvents.DaemonStatus in events)
-    }
-
-    @Test
-    fun readUpdatedMapsChannelUnreadProjectionPayload() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.ReadUpdated,
-                """
-                {
-                  "serverId": "server-1",
-                  "channelId": "channel-1",
-                  "seq": 123,
-                  "unreadCount": 0,
-                  "scope": "channel"
-                }
-                """.trimIndent()
-            )
-
-        val read = assertIs<ReadStateUpdated>(event)
-        assertEquals("server-1", read.serverId.value)
-        assertEquals("channel-1", read.channelId?.value)
-        assertEquals(123L, read.seq)
-        assertEquals(0, read.unreadCount)
-        assertEquals("channel", read.scope)
-    }
-
-    @Test
-    fun readUpdatedMapsInboxScopeWithoutChannel() {
-        val event =
-            RealtimeEventMapper().map(
-                RealtimeSocketEvents.ReadUpdated,
-                """{"serverId":"server-1","unreadCount":0,"scope":"inbox"}"""
-            )
-
-        val read = assertIs<ReadStateUpdated>(event)
-        assertEquals("server-1", read.serverId.value)
-        assertNull(read.channelId)
-        assertEquals(0, read.unreadCount)
-        assertEquals("inbox", read.scope)
     }
 
     @Test

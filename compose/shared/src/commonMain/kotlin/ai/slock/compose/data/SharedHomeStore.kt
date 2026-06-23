@@ -11,7 +11,6 @@ import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
-import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
@@ -266,10 +265,6 @@ class SharedHomeStore(
             applyRealtimeRefresh(event)
             return
         }
-        if (event is ReadStateUpdated) {
-            applyReadStateUpdated(serverId, event)
-            return
-        }
         if (event is MemberPresenceUpdated) {
             enqueuePresenceEvent(serverId, event)
             return
@@ -320,16 +315,6 @@ class SharedHomeStore(
 
     private suspend fun applyRealtimeEventWhileHomeHidden(serverId: ServerId, event: RealtimeEvent) {
         when (event) {
-            is ReadStateUpdated -> {
-                dataSource.applyRealtimeEvent(
-                    serverId = serverId,
-                    event = event,
-                    activeConversationId = _state.value.selectedConversationId,
-                    projectUpdatedSnapshot = false
-                )
-                hiddenHomeSnapshotDirty = true
-                markHomeRealtimeDirty(serverId, "read_state")
-            }
             is RealtimeRefreshRequired -> {
                 if (event.scope == RealtimeRefreshScope.Announcements) {
                     loadNotifications()
@@ -356,50 +341,6 @@ class SharedHomeStore(
                 }
             }
         }
-    }
-
-    private suspend fun applyReadStateUpdated(serverId: ServerId, event: ReadStateUpdated) {
-        if (event.serverId != serverId) return
-        if (event.channelId != null && event.unreadCount != null) {
-            val result =
-                dataSource.applyRealtimeEvent(
-                    serverId = serverId,
-                    event = event,
-                    activeConversationId = _state.value.selectedConversationId
-                )
-            if (result is DataResult.Content) {
-                val current = _state.value.content as? SharedHomeContentState.Content
-                if (current != null) {
-                    val nextContent =
-                        current.copy(
-                            snapshot = result.data.preserveStableRowsFrom(current.snapshot),
-                            baseSnapshot = result.data.preserveStableRowsFrom(current.baseSnapshot)
-                        )
-                    reduceState(
-                        _state.value.copy(
-                            content = nextContent,
-                            serverUnreadCounts = result.data.serverUnreadCounts,
-                            appBadgeCount =
-                                snapshotToBadgeCount(
-                                    snapshot = result.data,
-                                    selectedServerId = serverId,
-                                    isStale = false,
-                                    nowMillis = nowMillis
-                                )
-                        )
-                    )
-                }
-                return
-            }
-        }
-        applyRealtimeRefresh(
-            RealtimeRefreshRequired(
-                scope = RealtimeRefreshScope.Home,
-                reason = "read:updated",
-                serverId = event.serverId,
-                channelId = event.channelId
-            )
-        )
     }
 
     private suspend fun setHomeSurfaceVisible(visible: Boolean) {
@@ -1510,7 +1451,6 @@ private fun RealtimeEvent.homeRealtimeDirtyReason(): String =
         is DirectMessageCreated -> "direct_message_created"
         is ai.slock.compose.model.MessageNew -> "message_new"
         is ai.slock.compose.model.MessageUpdated -> "message_updated"
-        is ReadStateUpdated -> "read_state"
         is ai.slock.compose.model.SyncResumeResponse -> "sync_resume"
         is ai.slock.compose.model.ThreadUpdated -> "thread_updated"
         is ai.slock.compose.model.TaskCreated -> "task_created"

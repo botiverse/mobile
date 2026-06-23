@@ -12,7 +12,6 @@ const WIRE_EVENTS: Array<string> = [
   'message:new',
   'dm:new',
   'message:updated',
-  'read:updated',
   'thread:updated',
   'channel:updated',
   'channel:members-updated',

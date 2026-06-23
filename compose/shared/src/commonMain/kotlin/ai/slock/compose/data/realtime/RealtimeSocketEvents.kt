@@ -21,7 +21,6 @@ object RealtimeSocketEvents {
     const val Heartbeat = "heartbeat"
     const val MessageNew = "message:new"
     const val MessageUpdated = "message:updated"
-    const val ReadUpdated = "read:updated"
     const val DirectMessageNew = "dm:new"
     const val ThreadUpdated = "thread:updated"
     const val ChannelUpdated = "channel:updated"
@@ -55,7 +54,6 @@ object RealtimeSocketEvents {
         MessageNew,
         DirectMessageNew,
         MessageUpdated,
-        ReadUpdated,
         ThreadUpdated,
         ChannelUpdated,
         ChannelMembersUpdated,

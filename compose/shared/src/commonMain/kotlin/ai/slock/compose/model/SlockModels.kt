@@ -410,15 +410,6 @@ data class MessageNew(val message: Message) : RealtimeEvent
 data class MessageUpdated(val message: Message) : RealtimeEvent
 
 @Serializable
-data class ReadStateUpdated(
-    val serverId: ServerId,
-    val channelId: ChannelId? = null,
-    val seq: Long? = null,
-    val unreadCount: Int? = null,
-    val scope: String = "channel"
-) : RealtimeEvent
-
-@Serializable
 data class DirectMessageCreated(val channelId: ChannelId) : RealtimeEvent
 
 @Serializable

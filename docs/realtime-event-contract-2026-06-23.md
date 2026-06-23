@@ -15,7 +15,6 @@ Scope: KMP/shared and Android Socket.IO listener parity with the Slock server. S
 | --- | --- | --- | --- | --- |
 | `message:new` | `services/messageService.ts`, `routes/tasks.ts`, `routes/internal.ts`, `services/actionCardsService.ts` | enriched message row | `MessageNew` | Home, Thread, Activity/cache |
 | `message:updated` | `routes/messages.ts`, `routes/internal*.ts`, `routes/tasks.ts`, `services/actionCardsService.ts` | enriched message row | `MessageUpdated` | Home, Thread, Activity/cache |
-| `read:updated` | `routes/channels.ts` | `{ serverId, channelId?, seq?, unreadCount?, scope }` | `ReadStateUpdated` | Home unread projection, Activity refresh/cache |
 | `dm:new` | `services/messageService.ts` | `{ channelId }` | `DirectMessageCreated` | Home refresh / join path |
 | `thread:updated` | `services/messageService.ts` | `{ parentMessageId, threadChannelId, replyCount, lastReplyAt, participantIds, unreadCount?, firstUnreadMessageId? }` | `ThreadUpdated` | Home, Thread |
 | `channel:updated` | `routes/channels.ts`, `services/onboardingService.ts`, `services/actionCardsService.ts` | `{ channel }` or `{ channelId }` | `RealtimeRefreshRequired(Home)` | Home |
@@ -56,8 +55,6 @@ Scope: KMP/shared and Android Socket.IO listener parity with the Slock server. S
 ## 2026-06-23 Alignment Changes
 
 - Added `agent:session`, `computer:upgrade:progress`, `computer:upgrade:done`, and legacy `daemon:status` to the KMP event contract.
-- Added `read:updated` as the cross-device read/unread projection event. React already clears the current device projection locally through `messageStore.clearUnread`, `inboxStore.markRead/markAllRead`, and `threadStore.clearThreadUnread`; this event makes the same state converge on other machines.
 - Moved Android listener white-listing to common `RealtimeSocketEvents.ServerWireEvents` so native listener coverage uses the same contract as shared mapper tests; mirrored the new events in the OHOS bridge white-list.
-- Server emits `read:updated` on channel read/read-all/unread and inbox read-all. Channel read-all/unread include `unreadCount` for local Home cache patching; sparse read/inbox events refresh Home/Activity projections.
 - Mapped `agent:session` to `RealtimeRefreshRequired(Agents)`.
 - Mapped `computer:upgrade:progress`, `computer:upgrade:done`, and `daemon:status` to `RealtimeRefreshRequired(Machines)`.

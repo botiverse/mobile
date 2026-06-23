@@ -33,7 +33,6 @@ typealias InboxItemKind = ai.slock.compose.model.InboxItemKind
 typealias RealtimeEvent = ai.slock.compose.model.RealtimeEvent
 typealias MessageNew = ai.slock.compose.model.MessageNew
 typealias MessageUpdated = ai.slock.compose.model.MessageUpdated
-typealias ReadStateUpdated = ai.slock.compose.model.ReadStateUpdated
 typealias DirectMessageCreated = ai.slock.compose.model.DirectMessageCreated
 typealias ThreadUpdated = ai.slock.compose.model.ThreadUpdated
 typealias TaskCreated = ai.slock.compose.model.TaskCreated

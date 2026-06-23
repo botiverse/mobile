@@ -24,7 +24,6 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
-import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.ServerDeleted
 import ai.slock.compose.model.ServerPlanUpdated
 import ai.slock.compose.model.ServerId
@@ -112,8 +111,6 @@ class RealtimeEventMapper {
                 decodeMessageWire(element)?.toDomain()?.let(::MessageNew)
             RealtimeSocketEvents.MessageUpdated ->
                 decodeMessageWire(element)?.toDomain()?.let(::MessageUpdated)
-            RealtimeSocketEvents.ReadUpdated ->
-                decodeOrNull(ReadUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.DirectMessageNew -> decodeDirectMessageNew(element)
             RealtimeSocketEvents.ThreadUpdated ->
                 decodeOrNull(ThreadUpdatedDto.serializer(), element)?.toDomain()
@@ -347,15 +344,6 @@ private data class ThreadUpdatedDto(
 )
 
 @Serializable
-private data class ReadUpdatedDto(
-    val serverId: String,
-    val channelId: String? = null,
-    val seq: Long? = null,
-    val unreadCount: Int? = null,
-    val scope: String = "channel",
-)
-
-@Serializable
 private data class TaskInfoWireDto(
     val id: String,
     val messageId: String? = null,
@@ -530,14 +518,6 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated = ThreadUpdated(
     replyCount = replyCount,
     lastReplyAt = lastReplyAt,
     participantIds = participantIds.map(::MemberId),
-)
-
-private fun ReadUpdatedDto.toDomain(): ReadStateUpdated = ReadStateUpdated(
-    serverId = ServerId(serverId),
-    channelId = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
-    seq = seq,
-    unreadCount = unreadCount?.coerceAtLeast(0),
-    scope = scope
 )
 
 private fun TaskCreatedDto.toDomain(): TaskCreated? {
