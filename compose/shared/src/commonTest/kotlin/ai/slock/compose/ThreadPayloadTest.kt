@@ -2494,6 +2494,46 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun linkedTasksFallbackToTaskIdAndTaskNumberWhenMessageIdIsMissing() {
+        val taskWithoutMessageId =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "ship task",
+                status = TaskStatus.InReview,
+                taskNumber = 240,
+                messageId = null,
+                assignee =
+                    MemberProfile(
+                        id = MemberId("agent-android"),
+                        displayName = "Android Developer",
+                        handle = "Android-Developer",
+                        kind = MemberKind.Agent
+                    ),
+                updatedAtLabel = ""
+            )
+        val linkedTasks = listOf(taskWithoutMessageId).threadLinkedTasksByMessageLookup()
+        val taskIdMessage =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "ship task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "Todo"
+            )
+        val taskNumberMessage = taskIdMessage.copy(id = "message-241", taskId = null)
+
+        val byTaskId = taskIdMessage.withLinkedTask(linkedTasks.threadLinkedTaskForMessage(taskIdMessage))
+        val byTaskNumber = taskNumberMessage.withLinkedTask(linkedTasks.threadLinkedTaskForMessage(taskNumberMessage))
+
+        assertEquals("InReview", byTaskId.taskStatus)
+        assertEquals("Android Developer", byTaskId.taskAssigneeName)
+        assertEquals("InReview", byTaskNumber.taskStatus)
+        assertEquals("Android Developer", byTaskNumber.taskAssigneeName)
+    }
+
+    @Test
     fun threadTasksJoinStartsOnlyAfterContentGate() {
         val taskChannelId = ChannelId("channel-1")
         val loadingPayload =

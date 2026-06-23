@@ -1010,6 +1010,31 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageId(): Map<String, TaskS
         messageId to task
     }.toMap()
 
+private const val ThreadTaskIdLookupPrefix = "task-id:"
+private const val ThreadTaskNumberLookupPrefix = "task-number:"
+
+internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(): Map<String, TaskSummary> =
+    buildMap {
+        this@threadLinkedTasksByMessageLookup.forEach { task ->
+            task.messageId?.value?.trim()?.takeIf { it.isNotBlank() }?.let { messageId ->
+                put(messageId, task)
+            }
+            task.id.value.trim().takeIf { it.isNotBlank() }?.let { taskId ->
+                putIfAbsent(ThreadTaskIdLookupPrefix + taskId, task)
+            }
+            task.taskNumber?.let { taskNumber ->
+                putIfAbsent(ThreadTaskNumberLookupPrefix + taskNumber, task)
+            }
+        }
+    }
+
+internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: KuiklyThreadMessageItem): TaskSummary? =
+    get(message.id) ?: message.taskId?.trim()?.takeIf { it.isNotBlank() }?.let { taskId ->
+        get(ThreadTaskIdLookupPrefix + taskId)
+    } ?: message.taskNumber?.let { taskNumber ->
+        get(ThreadTaskNumberLookupPrefix + taskNumber)
+    }
+
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
 
@@ -4827,8 +4852,8 @@ private fun ThreadPageContent(
                     }
                 )
             }
-            val linkedTasksByMessageId = remember(payload.tasks) {
-                payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageId()
+            val linkedTasksByMessageLookup = remember(payload.tasks) {
+                payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageLookup()
             }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
@@ -4840,7 +4865,7 @@ private fun ThreadPageContent(
                         ThreadChatTab(
                             payload = payload,
                             composerKeyboardInsetDp = composerKeyboardInsetDp,
-                            linkedTasksByMessageId = linkedTasksByMessageId,
+                            linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                             highlightedMentions = highlightedMentions,
                             pendingActionCardIds = pendingActionCardIds,
                             attachmentOpenStates = attachmentOpenStates,
@@ -5239,7 +5264,7 @@ private fun ThreadPageTabs(
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
     composerKeyboardInsetDp: Float,
-    linkedTasksByMessageId: Map<String, TaskSummary>,
+    linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -5258,7 +5283,7 @@ private fun ThreadChatTab(
                 ThreadMessagesList(
                     payload = payload,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksByMessageId = linkedTasksByMessageId,
+                    linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
                     pendingActionCardIds = pendingActionCardIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -5287,7 +5312,7 @@ private fun ThreadChatTab(
                 ThreadMessagesList(
                     payload = payload,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
-                    linkedTasksByMessageId = linkedTasksByMessageId,
+                    linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
                     pendingActionCardIds = pendingActionCardIds,
                     attachmentOpenStates = attachmentOpenStates,
@@ -5307,7 +5332,7 @@ private fun ThreadChatTab(
             ThreadMessagesList(
                 payload = payload,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
-                linkedTasksByMessageId = linkedTasksByMessageId,
+                linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                 highlightedMentions = highlightedMentions,
                 pendingActionCardIds = pendingActionCardIds,
                 attachmentOpenStates = attachmentOpenStates,
@@ -5327,7 +5352,7 @@ private fun ThreadChatTab(
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
     composerKeyboardInsetDp: Float,
-    linkedTasksByMessageId: Map<String, TaskSummary>,
+    linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -5688,6 +5713,7 @@ private fun ThreadMessagesList(
                 item(key = ThreadOriginListItemKey) {
                     ThreadOriginCard(
                         payload = payload,
+                        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                         highlightedMentions = highlightedMentions,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
@@ -5786,7 +5812,7 @@ private fun ThreadMessagesList(
                         )
                     }
                 }
-                val linkedTask = linkedTasksByMessageId[message.id]
+                val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(message)
                 val displayMessage =
                     remember(message, linkedTask, messagePerformanceKey) {
                         val startedAt = TimeSource.Monotonic.markNow()
@@ -7980,6 +8006,7 @@ private fun ThreadMessageMenuDivider() {
 @Composable
 private fun ThreadOriginCard(
     payload: KuiklyThreadScreenPayload,
+    linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap(),
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -8028,17 +8055,22 @@ private fun ThreadOriginCard(
             }
             else -> {
                 payload.originMessage?.let { origin ->
+                    val linkedTask = linkedTasksByMessageLookup.threadLinkedTaskForMessage(origin)
+                    val displayOrigin = origin.withLinkedTask(linkedTask)
+                    val linkedTaskAssigneeName = linkedTask?.threadLinkedTaskAssigneeDisplayName()
                     val originActionCard = if (contentExtrasVisible) origin.threadActionCard() else null
-                    if (origin.isSystemMessage() && originActionCard == null) {
+                    if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
-                            message = origin,
+                            message = displayOrigin,
                             highlightedMentions = highlightedMentions,
                             showReplyAction = false,
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
-                            resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
-                                value = origin.taskAssigneeName,
-                                id = origin.taskAssigneeId
-                            ),
+                            resolvedTaskAssigneeName =
+                                linkedTaskAssigneeName
+                                    ?: payload.resolveTaskAssigneeDisplayName(
+                                        value = displayOrigin.taskAssigneeName,
+                                        id = displayOrigin.taskAssigneeId
+                                    ),
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
@@ -8050,14 +8082,16 @@ private fun ThreadOriginCard(
                         )
                     } else {
                         ThreadMessageCard(
-                            message = origin,
+                            message = displayOrigin,
                             actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
                             showReplyAction = false,
-                            resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
-                                value = origin.taskAssigneeName,
-                                id = origin.taskAssigneeId
-                            ),
+                            resolvedTaskAssigneeName =
+                                linkedTaskAssigneeName
+                                    ?: payload.resolveTaskAssigneeDisplayName(
+                                        value = displayOrigin.taskAssigneeName,
+                                        id = displayOrigin.taskAssigneeId
+                                    ),
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
