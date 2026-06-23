@@ -78,8 +78,6 @@ internal data class KuiklySettingsAccountPayload(
     val connectLabel: String = "Connect",
     val connectingLabel: String = "Connecting",
     val failedLabel: String = "Failed",
-    val avatarUploadLabel: String = "Upload image",
-    val avatarUploadingLabel: String = "Uploading avatar",
     val avatarInProgress: Boolean = false,
     val avatarErrorCode: String? = null,
     val logoutTitle: String = "Log out",
@@ -255,13 +253,6 @@ private fun SettingsAccountProfileCard(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    if (payload.avatarInProgress) payload.avatarUploadingLabel else payload.avatarUploadLabel,
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
             }
         }
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
