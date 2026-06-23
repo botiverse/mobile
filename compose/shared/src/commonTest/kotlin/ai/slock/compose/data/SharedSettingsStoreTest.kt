@@ -1980,6 +1980,19 @@ class SharedSettingsStoreTest {
             return DataResult.Content(SettingsServerActionResult(success = true))
         }
 
+        override suspend fun updateSystemChannelVisibility(
+            allChannelId: String,
+            hide: Boolean
+        ): DataResult<SettingsServerActionResult> {
+            calls += "updateSystemChannelVisibility:$allChannelId:$hide"
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
+
+        override suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult> {
+            calls += "restoreSystemChannel"
+            return DataResult.Content(SettingsServerActionResult(success = true))
+        }
+
         override suspend fun getMobileSettings(): DataResult<SettingsMobileSnapshot> {
             calls += "mobile"
             return mobileResult

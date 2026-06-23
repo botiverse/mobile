@@ -29,6 +29,8 @@ import ai.slock.compose.data.ChannelJoinResult
 import ai.slock.compose.data.ChannelLeaveResult
 import ai.slock.compose.data.ChannelDeleteResult
 import ai.slock.compose.data.ChannelRepository
+import ai.slock.compose.data.ChannelUpdateResult
+import ai.slock.compose.data.ChannelVisibility
 import ai.slock.compose.data.ChannelSnapshot
 import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.CreateChannelRequest
@@ -3887,6 +3889,7 @@ class SharedThreadStoreTest {
         override suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult> = error("unused")
         override suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult> = error("unused")
         override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> = error("unused")
+        override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> = error("unused")
     }
 
     private class RecordingAgentsApi : SlockAgentsApi {
