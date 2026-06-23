@@ -306,6 +306,9 @@ private val ThreadHeaderActionIconSize = 15.dp
 private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
+private val ThreadHeaderUuidRegex =
+    Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
+private val ThreadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
 
 internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
@@ -325,18 +328,15 @@ internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     if (name.equals(ThreadReplyPageTitle, ignoreCase = true)) return null
     if (name.equals("Threads", ignoreCase = true)) return null
     if (name.equals("Thread", ignoreCase = true) || name.equals("Channel", ignoreCase = true)) return null
-    if (threadHeaderIdentityLikeTitle(name)) return null
+    if (ThreadHeaderUuidRegex.matches(name) || ThreadHeaderShortIdRegex.matches(name)) return null
     return "#$name"
 }
 
 internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
     subtitle?.trim()?.takeIf { it.startsWith("#") }?.let(::threadChannelHeaderSubtitle)
 
-internal fun threadHeaderDisplayTitle(
-    title: String,
-    surfaceKind: String = KuiklyThreadSurfaceKind.Channel
-): String =
-    threadHeaderSafeTitleOrNull(title) ?: threadHeaderFallbackTitle(surfaceKind)
+internal fun threadHeaderDisplayTitle(title: String): String =
+    title.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: title
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
@@ -4852,7 +4852,7 @@ private fun ThreadPageHeader(
     onShowSettings: () -> Unit
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
-    val displayTitle = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)
+    val displayTitle = threadHeaderDisplayTitle(payload.title)
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
