@@ -7286,7 +7286,10 @@ internal fun threadMessageTaskMetaLabel(
             ?.trim()
             ?.removePrefix("@")
             ?.takeIf { it.isNotBlank() }
-    if (number == null && assignee == null && message.taskStatus.isNullOrBlank() && message.taskId.isNullOrBlank()) {
+    val hasUnresolvedAssignee =
+        assignee == null &&
+            (!message.taskAssigneeId.isNullOrBlank() || !message.taskAssigneeName.isNullOrBlank())
+    if (hasUnresolvedAssignee || (number == null && assignee == null)) {
         return null
     }
     return buildString {
