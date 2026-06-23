@@ -180,8 +180,7 @@ class RealConversationRepository(
             context = context,
             parentChannelId = parentChannelId,
             parentMessageId = parentMessageId,
-            messageLimit = messageLimit,
-            block = { networkClient.channelMessages(DataRequestPriority.Foreground, parentChannelId, messageLimit) }
+            messageLimit = messageLimit
         )
     }
 
@@ -448,7 +447,6 @@ class RealConversationRepository(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
         messageLimit: Int,
-        block: suspend () -> HomeNetworkResponse,
         source: String = "messages_channel_reply_thread"
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
@@ -456,28 +454,40 @@ class RealConversationRepository(
             "reply_thread_load_start source=$source parentChannelId=${parentChannelId.value} " +
                 "parentMessageId=${parentMessageId.value} messageLimit=$messageLimit"
         )
-        val createOrOpenResult =
-            async { createOrOpenThread(parentChannelId, parentMessageId) }
-        val messagesDeferred =
-            async {
-                executeConversation(
-                    emptyReason = EmptyReason.NoMessages,
-                    block = block,
-                    emptyWhen = { it.messages.isEmpty() },
-                    source = source,
-                    mapper = { bodyText ->
-                        parseSharedChannelMessages(bodyText, ThreadId(parentChannelId.value))
-                    }
-                )
+        val createOrOpen = createOrOpenThread(parentChannelId, parentMessageId)
+        if (createOrOpen !is DataResult.Content) {
+            warningLogger(
+                "reply_thread_load_result source=$source " +
+                    "result=${createOrOpen.conversationDiagnosticsResult()} " +
+                    "parentChannelId=${parentChannelId.value} parentMessageId=${parentMessageId.value} " +
+                    "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return@coroutineScope when (createOrOpen) {
+                is DataResult.Empty -> createOrOpen
+                is DataResult.Error -> createOrOpen
+                is DataResult.NoPermission -> createOrOpen
+                is DataResult.Content -> error("unreachable reply thread create/open content branch")
             }
-        val createOrOpen = createOrOpenResult.await()
-        val resolvedThreadChannelId: ChannelId? =
-            (createOrOpen as? DataResult.Content)?.data?.threadChannelId
-        val messagesResult = messagesDeferred.await()
+        }
+        val resolvedThreadChannelId = createOrOpen.data.threadChannelId
+        val messagesResult =
+            executeConversation(
+                emptyReason = EmptyReason.NoMessages,
+                block = {
+                    networkClient.channelMessages(
+                        DataRequestPriority.Foreground,
+                        resolvedThreadChannelId,
+                        messageLimit
+                    )
+                },
+                emptyWhen = { it.messages.isEmpty() },
+                source = source,
+                mapper = { bodyText ->
+                    parseSharedChannelMessages(bodyText, ThreadId(resolvedThreadChannelId.value))
+                }
+            )
         val rawMessages: List<Message> =
             (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
-        val snapshotMessages = rawMessages.filter { it.parentMessageId == parentMessageId }
-        val resolvedStreamChannelId = resolvedThreadChannelId ?: parentChannelId
         val snapshot =
             buildSharedThreadSnapshot(
                 payload = SharedMessagesPayload(
@@ -485,25 +495,24 @@ class RealConversationRepository(
                     hasOlder = (messagesResult as? DataResult.Content)?.data?.hasOlder ?: false,
                     hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
                 ),
-                threadId = ThreadId(resolvedStreamChannelId.value),
-                canLoadMoreBefore = snapshotMessages.size >= messageLimit
+                threadId = ThreadId(resolvedThreadChannelId.value),
+                canLoadMoreBefore = rawMessages.size >= messageLimit
             ).withReplyThreadConversation(
                 parentChannelId = parentChannelId,
                 parentMessageId = parentMessageId,
-                streamChannelId = resolvedStreamChannelId
+                streamChannelId = resolvedThreadChannelId
             )
         warningLogger(
             "reply_thread_load_result source=$source " +
                 "result=${messagesResult.conversationDiagnosticsResult()} " +
-                "messages=${snapshotMessages.size} tasks=${snapshot.tasks.size} " +
-                "resolvedThreadChannelId=${resolvedThreadChannelId?.value ?: "null"} " +
+                "messages=${rawMessages.size} tasks=${snapshot.tasks.size} " +
+                "resolvedThreadChannelId=${resolvedThreadChannelId.value} " +
                 "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
         )
         when {
             messagesResult is DataResult.Content -> DataResult.Content(snapshot)
             messagesResult is DataResult.Empty &&
-                messagesResult.reason == EmptyReason.NoMessages &&
-                createOrOpen is DataResult.Content -> DataResult.Content(snapshot)
+                messagesResult.reason == EmptyReason.NoMessages -> DataResult.Content(snapshot)
             else -> messagesResult as DataResult<ThreadSnapshot>
         }
     }

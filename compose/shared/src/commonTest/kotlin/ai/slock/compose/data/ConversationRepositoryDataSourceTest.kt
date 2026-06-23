@@ -59,6 +59,41 @@ class ConversationRepositoryDataSourceTest {
     }
 
     @Test
+    fun getReplyThreadLoadsMessagesFromResolvedThreadChannel() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "POST channels/channel-1/threads" to """{"threadChannelId":"thread-1","replyCount":2,"ok":true}""",
+                        "GET messages/channel/thread-1" to
+                            """{"messages":[${messageJson("reply-1", "thread-1", seq = 2, content = "reply body")}],"historyLimited":false}"""
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result =
+            repository.getReplyThread(
+                parentChannelId = ChannelId("channel-1"),
+                parentMessageId = MessageId("parent-1"),
+                limit = 25
+            )
+
+        val snapshot = assertIs<DataResult.Content<ThreadSnapshot>>(result).data
+        assertEquals("thread-1", snapshot.conversation.thread?.streamChannelId?.value)
+        assertEquals("channel-1", snapshot.conversation.thread?.parentChannelId?.value)
+        assertEquals("parent-1", snapshot.conversation.thread?.parentMessageId?.value)
+        assertEquals(listOf("reply body"), snapshot.messages.map { it.body })
+        assertEquals(
+            listOf(
+                RecordedConversationRequest(DataRequestPriority.Foreground, "POST", "channels/channel-1/threads"),
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/thread-1", listOf("limit" to "25"))
+            ),
+            network.requests
+        )
+        assertEquals(listOf("""{"parentMessageId":"parent-1"}"""), network.bodies)
+    }
+
+    @Test
     fun getChannelThreadsParsesParentMessageKeyedRecordResponse() = runBlocking {
         val network =
             FakeConversationNetworkClient(
