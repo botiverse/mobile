@@ -99,6 +99,9 @@ fun parseSlockHome(
         payload.serverUnreadSummary
             .firstOrNull { it.serverId == currentServer.id.value }
             ?.unreadCount
+    val serverUnreadCounts =
+        payload.serverUnreadSummary
+            .associate { it.serverId to it.unreadCount.coerceAtLeast(0) }
     val unreadTotal = serverUnreadTotal ?: channelUnreadTotal
     val unreadSource =
         if (serverUnreadTotal != null) AppBadgeSource.SERVER_UNREAD_SUMMARY
@@ -112,7 +115,8 @@ fun parseSlockHome(
             channels = channelsWithUnread,
             directMessages = dmsWithUnread,
             unreadTotal = unreadTotal,
-            unreadSource = unreadSource
+            unreadSource = unreadSource,
+            serverUnreadCounts = serverUnreadCounts
         )
     )
 }

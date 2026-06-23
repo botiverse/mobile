@@ -175,6 +175,13 @@ class SharedHomeStoreTest {
         assertEquals(11, content.snapshot.unreadTotal)
         assertEquals(11, content.snapshot.server.unreadCount)
         assertEquals(
+            mapOf(
+                "server-1" to 3,
+                "server-2" to 11
+            ),
+            store.state.value.serverUnreadCounts
+        )
+        assertEquals(
             listOf(
                 "channels:server-1",
                 "dms:server-1",
@@ -1662,15 +1669,15 @@ class SharedHomeStoreTest {
 
         override suspend fun serverUnreadSummary(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
             calls += "summary:${serverId.value}"
-            val unread = unreadByServerId[serverId.value] ?: 0
             return HomeNetworkResponse(
                 code = 200,
                 bodyText =
-                    """
-                    [
-                      {"serverId":"${serverId.value}","unreadCount":$unread}
-                    ]
-                    """.trimIndent()
+                    unreadByServerId.entries.joinToString(
+                        prefix = "[",
+                        postfix = "]"
+                    ) { (id, unread) ->
+                        """{"serverId":"$id","unreadCount":$unread}"""
+                    }
             )
         }
     }

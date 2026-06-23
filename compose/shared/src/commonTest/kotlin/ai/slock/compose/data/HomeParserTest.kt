@@ -94,6 +94,10 @@ class HomeParserTest {
                                 ServerUnreadSummaryDto(
                                     serverId = "server-1",
                                     unreadCount = 9
+                                ),
+                                ServerUnreadSummaryDto(
+                                    serverId = "server-2",
+                                    unreadCount = 5
                                 )
                             )
                     ),
@@ -104,6 +108,7 @@ class HomeParserTest {
         assertEquals(4, result.data.channels.single().unreadCount)
         assertEquals(9, result.data.unreadTotal)
         assertEquals(9, result.data.server.unreadCount)
+        assertEquals(mapOf("server-1" to 9, "server-2" to 5), result.data.serverUnreadCounts)
     }
 
     @Test

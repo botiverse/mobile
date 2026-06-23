@@ -64,6 +64,13 @@ data class HomeSnapshot(
      */
     val unreadSource: AppBadgeSource = AppBadgeSource.UNKNOWN,
     /**
+     * Cross-server unread counts from `/servers/unread-summary`, keyed by
+     * server id. The selected server still exposes its projected count through
+     * [server] / [unreadTotal]; this map is for surfaces such as the Home
+     * server switcher that need other servers' counts without route payloads.
+     */
+    val serverUnreadCounts: Map<String, Int> = emptyMap(),
+    /**
      * #211: per-server sidebar order snapshot, including pinned conversation
      * ids, pinned order, and pinned sort mode. `null` means the sidebar
      * order has not been loaded for this snapshot yet; the visual layer

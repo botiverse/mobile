@@ -8493,6 +8493,7 @@ private fun SharedHomeScreen(
                 SharedHomeSessionShell(
                     session = session,
                     serverSwitcherExpanded = serverSwitcherExpanded,
+                    serverUnreadCounts = state.serverUnreadCounts,
                     bottomContentPadding = bottomContentPadding,
                     onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                     onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -8511,6 +8512,7 @@ private fun SharedHomeScreen(
             SharedHomeSessionShell(
                 session = current.session,
                 serverSwitcherExpanded = serverSwitcherExpanded,
+                serverUnreadCounts = state.serverUnreadCounts,
                 bottomContentPadding = bottomContentPadding,
                 onServerBadgeClick = { onIntent(SharedHomeIntent.ToggleServerSwitcher) },
                 onServerSwitcherDismiss = { onIntent(SharedHomeIntent.DismissServerSwitcher) },
@@ -8532,7 +8534,7 @@ private fun SharedHomeScreen(
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
             val servers =
-                remember(current.session.servers, snapshot.server) {
+                remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
                         server.toServerSummary().let { summary ->
                             if (summary.id == snapshot.server.id) {
@@ -8540,8 +8542,8 @@ private fun SharedHomeScreen(
                             } else {
                                 summary
                             }
-                        }.toSharedSwitcherItem()
-                    }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem()) }
+                        }.toSharedSwitcherItem(state.serverUnreadCounts)
+                    }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
                 remember(snapshot.channels) {
@@ -10973,6 +10975,7 @@ private fun String.searchAvatarSeed(): String =
 private fun SharedHomeSessionShell(
     session: StoredAuthSession,
     serverSwitcherExpanded: Boolean,
+    serverUnreadCounts: Map<String, Int> = emptyMap(),
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onServerBadgeClick: () -> Unit,
     onServerSwitcherDismiss: () -> Unit,
@@ -10984,7 +10987,7 @@ private fun SharedHomeSessionShell(
     SlockStructuralHomeShell(
         currentServerName = currentServer?.name ?: "No server",
         currentServerId = currentServer?.id?.value ?: session.currentServerId.orEmpty(),
-        servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem() },
+        servers = session.servers.map { it.toServerSummary().toSharedSwitcherItem(serverUnreadCounts) },
         channels = emptyList(),
         directMessages = emptyList(),
         serverSwitcherExpanded = serverSwitcherExpanded,
@@ -11005,12 +11008,12 @@ internal fun StoredAuthSession.currentServerSummary(): ServerSummary? {
         ?: servers.firstOrNull()?.toServerSummary()
 }
 
-private fun ServerSummary.toSharedSwitcherItem(): SlockServerSwitcherItem =
+private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, Int> = emptyMap()): SlockServerSwitcherItem =
     SlockServerSwitcherItem(
         id = id.value,
         name = name,
         slug = slug ?: description?.removePrefix("/") ?: id.value,
-        unreadCount = unreadCount
+        unreadCount = serverUnreadCounts[id.value] ?: unreadCount
     )
 
 private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConversationItem =
