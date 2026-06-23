@@ -485,6 +485,60 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
     )
 )
 
+private val membersAgentDetailVisualWorkspaceTreeSnapshot = AgentWorkspaceTreeSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    rootPath = "~/.slock/agents/agent-product-ux",
+    root = SlockWorkspaceNode(
+        id = "~/.slock/agents/agent-product-ux",
+        name = "agent-product-ux",
+        path = "~/.slock/agents/agent-product-ux",
+        kind = SlockWorkspaceFileKind.Folder,
+        children = listOf(
+            SlockWorkspaceNode(
+                id = "MEMORY.md",
+                name = "MEMORY.md",
+                path = "MEMORY.md",
+                kind = SlockWorkspaceFileKind.Markdown,
+                meta = "86 B"
+            ),
+            SlockWorkspaceNode(
+                id = "notes",
+                name = "notes",
+                path = "notes",
+                kind = SlockWorkspaceFileKind.Folder,
+                meta = "folder"
+            )
+        )
+    )
+)
+
+private val membersAgentDetailVisualWorkspaceNotesChildren = AgentWorkspaceChildrenSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    dirPath = "notes",
+    children = listOf(
+        SlockWorkspaceNode(
+            id = "notes/visual-parity.md",
+            name = "visual-parity.md",
+            path = "notes/visual-parity.md",
+            kind = SlockWorkspaceFileKind.Markdown,
+            meta = "1.2 KB"
+        )
+    )
+)
+
+private val membersAgentDetailVisualWorkspaceMemoryFile = AgentWorkspaceFilePreviewSnapshot(
+    agentId = membersAgentDetailVisualMember.id,
+    path = "MEMORY.md",
+    preview = SlockWorkspaceFilePreview.Text(
+        path = "MEMORY.md",
+        content = "# Product UX Designer\n\n- Owns visual fixture review.\n- Tracks cross-platform parity gaps.\n",
+        markdown = true,
+        sizeBytes = 86,
+        modifiedAt = "2026-06-19T12:28:00Z",
+        mimeType = "text/markdown"
+    )
+)
+
 private enum class MembersAgentDetailVisualMode {
     Profile,
     LifecycleActions,
@@ -719,6 +773,27 @@ internal fun MembersPageContent() {
         },
         canManageAgent = { member, _ ->
             member.id == membersAgentDetailVisualMember.id
+        },
+        agentWorkspaceTreeLoader = { agentId ->
+            if (agentId == membersAgentDetailVisualMember.id) {
+                DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot)
+            } else {
+                DataResult.Empty(EmptyReason.NoMembers)
+            }
+        },
+        agentWorkspaceChildrenLoader = { agentId, path ->
+            if (agentId == membersAgentDetailVisualMember.id && path == "notes") {
+                DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
+            } else {
+                DataResult.Empty(EmptyReason.NoMembers)
+            }
+        },
+        agentWorkspaceFileLoader = { agentId, path ->
+            if (agentId == membersAgentDetailVisualMember.id && path == "MEMORY.md") {
+                DataResult.Content(membersAgentDetailVisualWorkspaceMemoryFile)
+            } else {
+                DataResult.Empty(EmptyReason.NoMembers)
+            }
         },
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
@@ -3006,19 +3081,19 @@ private fun MembersAgentProfileTab(
                 }
                 if (!summary?.model.isNullOrBlank()) {
                     MembersAgentRuntimeChip(
-                        label = summary?.model.orDash(),
+                        label = summary.model.orDash(),
                         kind = MembersAgentRuntimeChipKind.Model
                     )
                 }
                 if (!summary?.reasoning.isNullOrBlank()) {
                     MembersAgentRuntimeChip(
-                        label = summary?.reasoning.orDash(),
+                        label = summary.reasoning.orDash(),
                         kind = MembersAgentRuntimeChipKind.Reasoning
                     )
                 }
                 if (!summary?.executionMode.isNullOrBlank()) {
                     MembersAgentRuntimeChip(
-                        label = summary?.executionMode.orDash(),
+                        label = summary.executionMode.orDash(),
                         kind = MembersAgentRuntimeChipKind.Mode
                     )
                 }

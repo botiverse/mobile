@@ -1991,12 +1991,48 @@
       "notes": "Pending: needs real Members route/provider capture with seeded humans, agents, invite/add states, and loading/empty/error coverage. Do not activate through the component-only agent detail visual page."
     },
     {
+      "id": "screens.members.agent-detail.profile",
+      "title": "Members Agent Detail Profile Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "fixture": "fixtures/screens.members.agent-detail.profile.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {
+            "agentTab": "profile"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.profile']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=profile",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Real route capture for the Profile tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=profile; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=profile."
+    },
+    {
       "id": "screens.members.agent-detail.permissions",
       "title": "Members Agent Detail Permissions Screen",
       "captureType": "real-screen",
       "surface": "members",
       "category": "members",
-      "baselineStatus": "pending",
       "fixture": "fixtures/screens.members.agent-detail.permissions.json",
       "viewport": {
         "width": 390,
@@ -2009,7 +2045,9 @@
         {
           "id": "default",
           "name": "Default",
-          "props": {}
+          "props": {
+            "agentTab": "permissions"
+          }
         }
       ],
       "capture": {
@@ -2017,14 +2055,88 @@
         "crop": "element",
         "contract": "screen-route"
       },
-      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=permissions",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Pending: needs real Members route launch into the agent detail Permissions tab with seeded permission/scopes data. Do not activate through the component-only agent detail visual page."
+      "notes": "Real route capture for the Permissions tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=permissions; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=permissions."
+    },
+    {
+      "id": "screens.members.agent-detail.dms",
+      "title": "Members Agent Detail Agent DMs Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "fixture": "fixtures/screens.members.agent-detail.dms.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {
+            "agentTab": "dms"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.dms']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=dms",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Real route capture for the Agent DMs tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=dms; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=dms."
+    },
+    {
+      "id": "screens.members.agent-detail.reminders",
+      "title": "Members Agent Detail Reminders Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "fixture": "fixtures/screens.members.agent-detail.reminders.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {
+            "agentTab": "reminders"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.reminders']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=reminders",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Real route capture for the Reminders tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=reminders; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=reminders."
     },
     {
       "id": "screens.members.agent-detail.workspace",
@@ -2032,7 +2144,6 @@
       "captureType": "real-screen",
       "surface": "members",
       "category": "members",
-      "baselineStatus": "pending",
       "fixture": "fixtures/screens.members.agent-detail.workspace.json",
       "viewport": {
         "width": 390,
@@ -2045,7 +2156,9 @@
         {
           "id": "default",
           "name": "Default",
-          "props": {}
+          "props": {
+            "agentTab": "workspace"
+          }
         }
       ],
       "capture": {
@@ -2053,14 +2166,51 @@
         "crop": "element",
         "contract": "screen-route"
       },
-      "reactPathHint": "packages/web/src/pages/MembersPage.tsx",
-      "androidCaseHint": "pending",
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=workspace",
       "tolerance": {
         "pixelRatio": 0.02,
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Pending: needs real Members route launch into the Workspace tab with seeded workspace tree, loading/error, and file preview states. Do not activate through the component-only agent detail visual page."
+      "notes": "Real route capture for the Workspace tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=workspace; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=workspace."
+    },
+    {
+      "id": "screens.members.agent-detail.apps",
+      "title": "Members Agent Detail Apps Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "fixture": "fixtures/screens.members.agent-detail.apps.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "default",
+          "name": "Default",
+          "props": {
+            "agentTab": "apps"
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='screens.members.agent-detail.apps']",
+        "crop": "element",
+        "contract": "screen-route"
+      },
+      "reactPathHint": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+      "androidCaseHint": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=apps",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      },
+      "notes": "Real route capture for the Apps tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=apps; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=apps."
     },
     {
       "id": "screens.members.agent-detail.activity",
@@ -2080,7 +2230,9 @@
         {
           "id": "default",
           "name": "Default",
-          "props": {}
+          "props": {
+            "agentTab": "activity"
+          }
         }
       ],
       "capture": {
@@ -2095,7 +2247,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real route capture. React uses MainLayout at /s/visual/agent/agent-product-ux?agentTab=activity with a seeded trajectory log. Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity; the real Members route consumes mock detail/activity data through the SharedAgentDetailStore loader."
+      "notes": "Real route capture for the Activity tab. React uses MainLayout at /s/visual/agent/agent-product-ux with agentTab=activity; Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity."
     },
     {
       "id": "components.members.agent-lifecycle-actions",
@@ -4718,28 +4870,171 @@
       ]
     },
     {
+      "id": "screens.members.agent-detail.profile",
+      "title": "Members Agent Detail Profile Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Profile tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+          "fixture": "fixtures/screens.members.agent-detail.profile.json",
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailProfileScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=profile",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentProfileTab"
+          ]
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
       "id": "screens.members.agent-detail.permissions",
       "title": "Members Agent Detail Permissions Screen",
       "captureType": "real-screen",
       "surface": "members",
       "category": "members",
       "group": "screens-members",
-      "status": "pending",
-      "notes": "Pending: needs real Members route launch into the agent detail Permissions tab with seeded permission/scopes data. Do not activate through the component-only agent detail visual page.",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Permissions tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/pages/MembersPage.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
           "fixture": "fixtures/screens.members.agent-detail.permissions.json",
-          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Permissions tab with seeded permission/scopes data."
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
-          "reason": "Needs real Android MEMBERS_PAGE route launch into the Permissions tab with seeded permission/scopes data; component fixture capture is not sufficient."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailPermissionsScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=permissions",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentPlaceholderTab"
+          ]
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.dms",
+      "title": "Members Agent Detail Agent DMs Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Agent DMs tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+          "fixture": "fixtures/screens.members.agent-detail.dms.json",
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailDmsScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=dms",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentDmsTab"
+          ]
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.reminders",
+      "title": "Members Agent Detail Reminders Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Reminders tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+          "fixture": "fixtures/screens.members.agent-detail.reminders.json",
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailRemindersScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=reminders",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentRemindersTab"
+          ]
         },
         {
           "id": "harmony",
@@ -4757,22 +5052,77 @@
       "surface": "members",
       "category": "members",
       "group": "screens-members",
-      "status": "pending",
-      "notes": "Pending: needs real Members route launch into the Workspace tab with seeded workspace tree, loading/error, and file preview states. Do not activate through the component-only agent detail visual page.",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Workspace tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
-          "status": "pending",
-          "path": "packages/web/src/pages/MembersPage.tsx",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
           "fixture": "fixtures/screens.members.agent-detail.workspace.json",
-          "reason": "Needs React route/provider fixture that opens real Members agent detail on the Workspace tab with seeded workspace tree and preview data."
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
         },
         {
           "id": "android",
-          "status": "pending",
+          "status": "ready",
           "source": "android-real-screen",
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
-          "reason": "Needs real Android MEMBERS_PAGE route launch into the Workspace tab with seeded workspace tree/loading/error/preview states; component fixture capture is not sufficient."
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailWorkspaceScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=workspace",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentWorkspaceTab"
+          ]
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
+      "id": "screens.members.agent-detail.apps",
+      "title": "Members Agent Detail Apps Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "baseline",
+      "notes": "Real Members route capture for the Apps tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#AgentRoute",
+          "fixture": "fixtures/screens.members.agent-detail.apps.json",
+          "components": [
+            "MainLayout",
+            "AgentRoute",
+            "AgentDetailPanel"
+          ]
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "source": "android-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentDetailAppsScreen",
+          "route": "compose_members:selectedMemberId=agent-product-ux,initialAgentTab=apps",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersDetailContent",
+            "MembersAgentAppsTab"
+          ]
         },
         {
           "id": "harmony",
@@ -4791,7 +5141,7 @@
       "category": "members",
       "group": "screens-members",
       "status": "baseline",
-      "notes": "Real route capture. React uses MainLayout at /s/visual/agent/agent-product-ux?agentTab=activity with a seeded trajectory log. Android uses compose_members pageData with selectedMemberId=agent-product-ux and initialAgentTab=activity; the real Members route consumes mock detail/activity data through the SharedAgentDetailStore loader.",
+      "notes": "Real Members route capture for the Activity tab with the shared Product UX agent fixture. Harmony remains pending real-device/provider capture.",
       "providers": [
         {
           "id": "react",
@@ -4801,8 +5151,7 @@
           "components": [
             "MainLayout",
             "AgentRoute",
-            "AgentDetailPanel",
-            "AgentActivityLog"
+            "AgentDetailPanel"
           ]
         },
         {

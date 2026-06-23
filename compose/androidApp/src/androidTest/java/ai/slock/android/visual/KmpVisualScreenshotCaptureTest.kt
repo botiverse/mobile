@@ -245,11 +245,69 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureMembersAgentDetailProfileScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.profile",
+            tab = "profile"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailPermissionsScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.permissions",
+            tab = "permissions"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailDmsScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.dms",
+            tab = "dms"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailRemindersScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.reminders",
+            tab = "reminders"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailWorkspaceScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.workspace",
+            tab = "workspace"
+        )
+    }
+
+    @Test
+    fun captureMembersAgentDetailAppsScreen() {
+        captureMembersAgentDetailScreen(
+            caseId = "screens.members.agent-detail.apps",
+            tab = "apps"
+        )
+    }
+
+    @Test
     fun captureMembersAgentDetailActivityScreen() {
-        captureKmpComponentCase(
+        captureMembersAgentDetailScreen(
             caseId = "screens.members.agent-detail.activity",
+            tab = "activity"
+        )
+    }
+
+    private fun captureMembersAgentDetailScreen(
+        caseId: String,
+        tab: String
+    ) {
+        captureKmpComponentCase(
+            caseId = caseId,
             pageName = "compose_members",
-            pageData = membersAgentDetailActivityPageData(),
+            pageData = membersAgentDetailPageData(tab),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
@@ -756,14 +814,14 @@ class KmpVisualScreenshotCaptureTest {
             .put("advancedOpen", advancedOpen)
             .put("command", command)
 
-    private fun membersAgentDetailActivityPageData(): JSONObject {
-        val instanceId = "visual-members-agent-activity"
+    private fun membersAgentDetailPageData(tab: String): JSONObject {
+        val instanceId = "visual-members-agent-$tab"
         val payload =
             JSONObject()
                 .put("instanceId", instanceId)
                 .put("title", "Members")
                 .put("selectedMemberId", "agent-product-ux")
-                .put("initialAgentTab", "activity")
+                .put("initialAgentTab", tab)
                 .put("localOffsetMinutes", 480)
                 .put("todayEpochDay", 20623)
                 .put("timeFormat", "24h")
