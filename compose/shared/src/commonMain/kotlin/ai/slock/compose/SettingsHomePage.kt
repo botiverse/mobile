@@ -3390,13 +3390,6 @@ private fun SettingsLanguageRegionContent(
                         onSubmit = onSaveTime
                     )
                 }
-                item {
-                    SettingsServerTranslationPreferenceCard(
-                        snapshot = snapshot,
-                        actionState = actionState,
-                        onServerTranslationChange = onServerTranslationChange
-                    )
-                }
             }
         }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -3583,6 +3576,12 @@ private fun SettingsAppearanceFontSizeCard(
     val busy = actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.inProgress
     val selected = fontSizeDraft.ifBlank { snapshot.messageBodyFontSize.selectedKey }
     val dirty = selected != snapshot.messageBodyFontSize.selectedKey
+    // Auto-save on font selection change.
+    LaunchedEffect(fontSizeDraft) {
+        if (!dirty) return@LaunchedEffect
+        delay(300)
+        onSubmit()
+    }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Type, title = "Message font size") {
         SettingsFormDetailText(snapshot.messageBodyFontSize.detail)
         SegmentedControl(
@@ -3597,13 +3596,6 @@ private fun SettingsAppearanceFontSizeCard(
         if (actionState?.action == APPEARANCE_ACTION_MESSAGE_FONT_SIZE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode)
         }
-        SlockBrutalActionButton(
-            label = actionState.statusFor(APPEARANCE_ACTION_MESSAGE_FONT_SIZE, "Save"),
-            onClick = onSubmit,
-            enabled = dirty && !busy,
-            leadingIcon = SlockLucideIconName.Save,
-            backgroundColor = SlockColor.AccentPink
-        )
         SettingsFormDivider()
         SettingsAppearancePreview(fontSizeKey = selected)
     }
