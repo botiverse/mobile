@@ -227,6 +227,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const attachmentId = (records["attachmentId"] as string | undefined) ?? "attachment";
     const fileName = (records["fileName"] as string | undefined) ?? "attachment";
     const mimeType = records["mimeType"] as string | undefined;
+    const trackProgress = records["trackProgress"] === true || records["trackProgress"] === "true";
     if (url === undefined || url.length === 0) {
       callback({ "status": "failed", "message": "Unable to download attachment" });
       return;
@@ -239,7 +240,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
       const cached = this.isUsableAttachmentCacheFile(path);
       if (!cached) {
-        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId);
+        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId, trackProgress ? callback : undefined);
         if (!downloaded) {
           callback({ "status": "failed", "message": "Unable to download attachment" });
           return;
@@ -1009,28 +1010,87 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     }
   }
 
-  private async downloadAttachmentToCache(url: string, path: string, attachmentId: string): Promise<boolean> {
+  private async downloadAttachmentToCache(
+    url: string,
+    path: string,
+    attachmentId: string,
+    progressCallback?: KuiklyRenderCallback
+  ): Promise<boolean> {
     const tempPath = `${path}.part`;
     const request = http.createHttp();
+    let file: File | undefined = undefined;
+    let downloadedBytes = 0;
+    let totalBytes: number | undefined = undefined;
+    let lastPercent = -1;
+    let lastProgressAt = Date.now();
+    let resolveDataEnd: (() => void) | undefined = undefined;
+    const dataEndPromise = new Promise<void>((resolve) => {
+      resolveDataEnd = resolve;
+    });
+    const dataReceiveCallback = (chunk: ArrayBuffer) => {
+      if (file === undefined) {
+        return;
+      }
+      fs.writeSync(file.fd, chunk);
+      downloadedBytes += chunk.byteLength;
+      const percent = this.attachmentDownloadPercent(downloadedBytes, totalBytes);
+      if (this.emitAttachmentDownloadProgressIfNeeded(
+        progressCallback,
+        downloadedBytes,
+        totalBytes,
+        percent,
+        lastPercent,
+        lastProgressAt
+      )) {
+        lastPercent = percent ?? lastPercent;
+        lastProgressAt = Date.now();
+      }
+    };
+    const dataEndCallback = () => {
+      resolveDataEnd?.();
+    };
+    const dataReceiveProgressCallback = (progress: http.DataReceiveProgressInfo) => {
+      totalBytes = progress.totalSize > 0 ? progress.totalSize : totalBytes;
+      const progressDownloadedBytes = Math.max(downloadedBytes, progress.receiveSize);
+      const percent = this.attachmentDownloadPercent(progressDownloadedBytes, totalBytes);
+      if (this.emitAttachmentDownloadProgressIfNeeded(
+        progressCallback,
+        progressDownloadedBytes,
+        totalBytes,
+        percent,
+        lastPercent,
+        lastProgressAt
+      )) {
+        lastPercent = percent ?? lastPercent;
+        lastProgressAt = Date.now();
+      }
+    };
     try {
-      const response = await request.request(url, {
+      this.safeUnlink(tempPath);
+      file = fs.openSync(tempPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
+      request.on("dataReceive", dataReceiveCallback);
+      request.on("dataEnd", dataEndCallback);
+      request.on("dataReceiveProgress", dataReceiveProgressCallback);
+      this.emitAttachmentDownloadProgress(progressCallback, 0, undefined, undefined);
+      const responseCode = await request.requestInStream(url, {
         method: http.RequestMethod.GET,
         header: { "Accept": "*/*" },
         connectTimeout: 30000,
         readTimeout: 60000
       });
-      const responseCode = Number(response.responseCode ?? 0);
       if (responseCode < 200 || responseCode >= 300) {
         SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${responseCode}`);
         return false;
       }
-      this.safeUnlink(tempPath);
-      const file = fs.openSync(tempPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
-      try {
-        fs.writeSync(file.fd, this.httpResultToArrayBuffer(response.result));
-      } finally {
-        fs.closeSync(file);
-      }
+      await dataEndPromise;
+      this.emitAttachmentDownloadProgress(
+        progressCallback,
+        downloadedBytes,
+        totalBytes,
+        totalBytes !== undefined ? 100 : undefined
+      );
+      fs.closeSync(file);
+      file = undefined;
       this.safeUnlink(path);
       fs.renameSync(tempPath, path);
       return true;
@@ -1038,8 +1098,66 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       this.safeUnlink(tempPath);
       return false;
     } finally {
+      request.off("dataReceive", dataReceiveCallback);
+      request.off("dataEnd", dataEndCallback);
+      request.off("dataReceiveProgress", dataReceiveProgressCallback);
+      if (file !== undefined) {
+        fs.closeSync(file);
+      }
       request.destroy();
     }
+  }
+
+  private attachmentDownloadPercent(downloadedBytes: number, totalBytes?: number): number | undefined {
+    if (totalBytes === undefined || totalBytes <= 0) {
+      return undefined;
+    }
+    return Math.min(100, Math.max(0, Math.floor((downloadedBytes * 100) / totalBytes)));
+  }
+
+  private emitAttachmentDownloadProgressIfNeeded(
+    callback: KuiklyRenderCallback | undefined,
+    downloadedBytes: number,
+    totalBytes: number | undefined,
+    percent: number | undefined,
+    lastPercent: number,
+    lastProgressAt: number
+  ): boolean {
+    if (callback === undefined) {
+      return false;
+    }
+    const now = Date.now();
+    const shouldEmit =
+      (percent !== undefined && percent >= 100) ||
+        (percent !== undefined && percent !== lastPercent && percent - lastPercent >= 2) ||
+        (percent === undefined && now - lastProgressAt >= 500) ||
+        now - lastProgressAt >= 750;
+    if (shouldEmit) {
+      this.emitAttachmentDownloadProgress(callback, downloadedBytes, totalBytes, percent);
+    }
+    return shouldEmit;
+  }
+
+  private emitAttachmentDownloadProgress(
+    callback: KuiklyRenderCallback | undefined,
+    downloadedBytes: number,
+    totalBytes: number | undefined,
+    percent: number | undefined
+  ) {
+    if (callback === undefined) {
+      return;
+    }
+    const payload: Record<string, Object> = {
+      "status": "progress",
+      "downloadedBytes": downloadedBytes
+    };
+    if (totalBytes !== undefined && totalBytes > 0) {
+      payload["totalBytes"] = totalBytes;
+    }
+    if (percent !== undefined) {
+      payload["percent"] = Math.min(100, Math.max(0, percent));
+    }
+    callback(payload);
   }
 
   private safeUnlink(path: string) {
