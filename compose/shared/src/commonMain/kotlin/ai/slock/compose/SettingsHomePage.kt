@@ -2826,6 +2826,9 @@ private fun SettingsAppShellContent(
                     bottomContentPadding = bottomContentPadding,
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
+                        if (enabled) {
+                            onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
+                        }
                     },
                     onServerMuteChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetServerMute(enabled))

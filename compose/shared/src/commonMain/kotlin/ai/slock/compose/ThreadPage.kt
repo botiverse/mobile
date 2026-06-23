@@ -116,6 +116,7 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
@@ -6774,8 +6775,7 @@ private fun ThreadReactionChip(
 ) {
     val background = if (reaction.selected) SlockColor.AccentPink.copy(alpha = 0.2f) else Color(0xFFEEEDE6)
     val chipModifier = Modifier
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(background)
+            .background(background, RoundedCornerShape(SlockRadius.Sm))
             .padding(horizontal = 6.dp, vertical = 3.dp)
     val chipContent: @Composable () -> Unit = {
         Row(
@@ -6827,8 +6827,7 @@ private fun ThreadReactionAddChip(onClick: (Offset) -> Unit) {
 private fun ThreadReactionAddChipChrome() {
     Box(
         modifier = Modifier
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(SlockColor.EmptyStateGray)
+            .background(SlockColor.EmptyStateGray, RoundedCornerShape(SlockRadius.Sm))
             .padding(horizontal = 7.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
