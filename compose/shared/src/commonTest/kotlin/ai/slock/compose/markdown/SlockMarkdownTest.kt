@@ -189,6 +189,42 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun task25ReferenceScenarioKeepsReactTokenColorsAndBoundaries() {
+        val body =
+            "Ping @artin in #raft-mobile and #raft-mobile:4752266f for #25; " +
+                "ignore #a67dddad #3adea0d5 #34xxx and #missing-channel:4752266f."
+
+        val plan =
+            SlockMarkdownInlineTokenRegistry.plan(
+                body,
+                highlightedMentions = setOf("artin"),
+                knownChannelNames = setOf("raft-mobile")
+            )
+        val tokens = plan.tagTokens()
+
+        assertEquals(listOf("@artin", "#raft-mobile", "#raft-mobile:4752266f", "#25"), tokens.map { it.label })
+        assertEquals(
+            listOf(
+                MarkdownInlineTokenKind.UserMention,
+                MarkdownInlineTokenKind.Channel,
+                MarkdownInlineTokenKind.ChannelThread,
+                MarkdownInlineTokenKind.Task
+            ),
+            tokens.map { it.kind }
+        )
+        assertEquals(listOf(true, false, false, false), tokens.map { it.highlighted })
+        assertEquals(
+            listOf(
+                SlockColor.BrandYellow,
+                SlockColor.AccentPink.copy(alpha = 0.3f),
+                SlockColor.AccentCyan.copy(alpha = 0.3f),
+                SlockColor.BrandYellow.copy(alpha = 0.4f)
+            ),
+            tokens.map { token -> slockMarkdownTagColor(token.tag!!.kind, token.highlighted) }
+        )
+    }
+
+    @Test
     fun inlineCodeKeepsSlockFontInsteadOfMono() {
         val inlineCodeStyle = slockMarkdownInlineCodeTextStyle(SlockType.Body)
 
@@ -373,6 +409,33 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         assertEquals(fallbackWidth, inlineContent.getValue("slock-code:4").placeholder.width)
+    }
+
+    @Test
+    fun inlineCodeMeasuredWidthCannotInterceptReportedTokens() {
+        val tokens =
+            listOf(
+                "mimo",
+                "MIMO_API_KEY",
+                "~/.pi/agent/auth.json",
+                "SlockColor.BorderBlack",
+                "blockNextChannels"
+            )
+        val body = tokens.joinToString(separator = " ") { "`$it`" }
+        val plan = SlockMarkdownInlineTokenRegistry.plan(body)
+        val measuredWidths = plan.inlineCodeTokens().associate { it.id to 1.sp }
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = body,
+                inlineCodeWidths = measuredWidths,
+                inlineCodeTextStyle = SlockType.Body
+            ).inlineContent?.invoke().orEmpty()
+
+        plan.inlineCodeTokens().forEach { token ->
+            val placeholder = inlineContent.getValue(token.id).placeholder
+            assertEquals(slockMarkdownInlineCodeWidthSp(token.code!!), placeholder.width)
+            assertEquals(SlockType.Body.lineHeight, placeholder.height)
+        }
     }
 
     @Test
