@@ -197,7 +197,8 @@ internal data class KuiklyPendingAttachmentItem(
     val sizeLabel: String = "",
     val mimeType: String? = null,
     val previewUri: String? = null,
-    val status: String = "ready"
+    val status: String = "ready",
+    val errorCode: String? = null
 )
 
 @Serializable
@@ -281,7 +282,8 @@ data class SharedThreadComposerAttachment(
     val sizeLabel: String = "",
     val mimeType: String? = null,
     val previewUri: String? = null,
-    val status: String = "ready"
+    val status: String = "ready",
+    val errorCode: String? = null
 )
 
 data class SharedThreadComposerMemberSuggestion(
@@ -1668,9 +1670,10 @@ private fun ComposerTextChip(text: String, enabled: Boolean = true, onClick: () 
 
 private fun KuiklyPendingAttachmentItem.statusLabel(): String {
     val detail = sizeLabel.takeIf { it.isNotBlank() }
+    val failureReason = threadFailureReasonLabel(errorCode)
     val state = when (status) {
         "uploading" -> "Uploading"
-        "failed" -> "Upload failed"
+        "failed" -> listOf("Upload failed", failureReason).filterNotNull().joinToString(": ")
         else -> "Ready"
     }
     return listOf(state, detail).filter { it != null && it.isNotBlank() }.joinToString(" • ")

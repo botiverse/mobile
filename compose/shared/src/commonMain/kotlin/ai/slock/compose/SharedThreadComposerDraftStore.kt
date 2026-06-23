@@ -49,6 +49,10 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class AddLocalAttachments(
         val attachments: List<SharedThreadComposerAttachment>
     ) : SharedThreadComposerDraftIntent
+    data class MarkAttachmentsFailed(
+        val attachmentIds: Set<String>,
+        val errorCode: String
+    ) : SharedThreadComposerDraftIntent
     data class RemoveAttachment(val id: String) : SharedThreadComposerDraftIntent
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
 }
@@ -176,6 +180,20 @@ internal class SharedThreadComposerDraftStore {
                         uploadedAttachments =
                             (current.uploadedAttachments + intent.attachments)
                                 .distinctBy { attachment -> attachment.id }
+                    )
+                is SharedThreadComposerDraftIntent.MarkAttachmentsFailed ->
+                    current.copy(
+                        syncNonce = current.syncNonce + 1,
+                        sending = false,
+                        failureLabel = null,
+                        uploadedAttachments =
+                            current.uploadedAttachments.map { attachment ->
+                                if (attachment.id in intent.attachmentIds) {
+                                    attachment.copy(status = "failed", errorCode = intent.errorCode)
+                                } else {
+                                    attachment
+                                }
+                            }
                     )
                 is SharedThreadComposerDraftIntent.RemoveAttachment ->
                     current.copy(

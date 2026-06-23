@@ -2349,7 +2349,11 @@ internal fun SharedThreadRouteContent(
                     meta = meta,
                     message =
                         when (attachment.status) {
-                            "failed" -> "Attachment upload failed. Retry the upload from the composer."
+                            "failed" ->
+                                listOf(
+                                    "Attachment upload failed",
+                                    threadFailureReasonLabel(attachment.errorCode)
+                                ).filterNotNull().joinToString(": ") + ". Retry the upload from the composer."
                             else -> "Preparing attachment preview..."
                         },
                     error =
@@ -2472,8 +2476,7 @@ internal fun SharedThreadRouteContent(
                     is ThreadApiResult.Success -> sendResponse.data
                     is ThreadApiResult.Failure -> {
                         val errorCode =
-                            sendResponse.contractCode
-                                ?: sendResponse.errorBodyText?.takeIf { it.isNotBlank() }
+                            threadFailureReasonLabel(sendResponse.contractCode ?: sendResponse.errorBodyText)
                                 ?: "send_failed"
                         bridge.performanceMarker(
                             phase = "composer_send",
@@ -2540,11 +2543,19 @@ internal fun SharedThreadRouteContent(
         threadViewModel.dispatch(SharedThreadIntent.ApplyLocalSendFailure(pending.localMessageId, errorCode))
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
     }
-    fun handleAttachmentUploadFailure(errorCode: String) {
+    fun handleAttachmentUploadFailure(errorCode: String, attachmentIds: Set<String> = emptySet()) {
         if (deferredAttachmentSend != null) {
             markDeferredAttachmentSendFailed(errorCode)
         } else {
-            bridge.toast("Attachment upload failed: $errorCode")
+            if (attachmentIds.isNotEmpty()) {
+                composerDraftViewModel.dispatch(
+                    SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                        attachmentIds = attachmentIds,
+                        errorCode = errorCode
+                    )
+                )
+            }
+            bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
         }
     }
     LaunchedEffect(
@@ -3357,12 +3368,13 @@ internal fun SharedThreadRouteContent(
                             val errorCode = response?.optString("errorCode")?.takeIf { it.isNotBlank() }
                             when {
                                 errorCode != null ->
-                                    bridge.toast("Attachment upload failed: $errorCode")
+                                    bridge.toast("Attachment upload failed: ${threadFailureReasonLabel(errorCode) ?: errorCode}")
                                 response == null ->
                                     bridge.toast("Attachment picker unavailable")
                             }
                             return@launch
                         }
+                        val localAttachmentIds = files.map { file -> file.id }.filter { it.isNotBlank() }.toSet()
                         val localAttachments =
                             files
                                 .filter { file -> file.id.isNotBlank() }
@@ -3398,7 +3410,7 @@ internal fun SharedThreadRouteContent(
                                         )
                                     }
                                 if (uploaded.isEmpty()) {
-                                    handleAttachmentUploadFailure("empty_upload_result")
+                                    handleAttachmentUploadFailure("empty_upload_result", localAttachmentIds)
                                     return@launch
                                 }
                                 composerDraftViewModel.dispatch(
@@ -3409,13 +3421,13 @@ internal fun SharedThreadRouteContent(
                                 )
                             }
                             is DataResult.Error ->
-                                handleAttachmentUploadFailure(uploadResult.error.code)
+                                handleAttachmentUploadFailure(uploadResult.error.code, localAttachmentIds)
                             is DataResult.NoPermission -> {
                                 if (routeAuthRequired(uploadResult)) return@launch
-                                handleAttachmentUploadFailure(uploadResult.blocker.code)
+                                handleAttachmentUploadFailure(uploadResult.blocker.code, localAttachmentIds)
                             }
                             is DataResult.Empty ->
-                                handleAttachmentUploadFailure("empty_upload_result")
+                                handleAttachmentUploadFailure("empty_upload_result", localAttachmentIds)
                         }
                     }
                 }
@@ -4586,7 +4598,8 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                 sizeLabel = attachment.sizeLabel,
                 mimeType = attachment.mimeType,
                 previewUri = attachment.previewUri,
-                status = attachment.status
+                status = attachment.status,
+                errorCode = attachment.errorCode
             )
         } + draftState.uploadedAttachments)
             .distinctBy { attachment -> attachment.id }
@@ -4604,7 +4617,8 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                     sizeLabel = attachment.sizeLabel,
                     mimeType = attachment.mimeType,
                     previewUri = attachment.previewUri,
-                    status = attachment.status
+                    status = attachment.status,
+                    errorCode = attachment.errorCode
                 )
             },
         composerMode = if (composerMode == "failed") "failed" else composerMode,
@@ -6814,7 +6828,7 @@ private fun ThreadMessageLocalSendStatus(
     val isFailed = message.deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
     val label =
         if (isFailed) {
-            "Send failed · Retry"
+            threadSendFailureStatusLabel(message.pendingSendErrorCode)
         } else if (message.pendingSendContext?.asTask == true) {
             "Sending as task..."
         } else {

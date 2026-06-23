@@ -101,6 +101,31 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun uploadFailureMarksLocalAttachmentWithReason() {
+        val store = SharedThreadComposerDraftStore()
+        val local =
+            SharedThreadComposerAttachment(
+                id = "picked-local-1",
+                fileName = "image.png",
+                sizeLabel = "24 KB",
+                mimeType = "image/png",
+                status = "uploading"
+            )
+
+        store.dispatch(SharedThreadComposerDraftIntent.AddLocalAttachments(listOf(local)))
+        store.dispatch(
+            SharedThreadComposerDraftIntent.MarkAttachmentsFailed(
+                attachmentIds = setOf("picked-local-1"),
+                errorCode = "payload_too_large"
+            )
+        )
+
+        val failed = store.state.value.uploadedAttachments.single()
+        assertEquals("failed", failed.status)
+        assertEquals("payload_too_large", failed.errorCode)
+    }
+
+    @Test
     fun completeSendReplacesPendingMentionActionsAndSuccessfulNextSendClearsThem() {
         val store = SharedThreadComposerDraftStore()
         val pending =
