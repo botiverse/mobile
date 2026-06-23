@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.TasksViewMode
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -20,6 +21,22 @@ class SlockHomeComponentsTest {
         assertEquals(SlockPresence.Online, homeDmStatusPresence(SlockPresence.Online))
         assertEquals(SlockPresence.Unknown, homeDmStatusPresence(SlockPresence.Unknown))
         assertEquals(SlockPresence.Offline, homeDmStatusPresence(SlockPresence.Offline))
+    }
+
+    @Test
+    fun homeDmStatusIndicatorUsesAgentStatusBeforePresence() {
+        val working = homeDmStatusIndicatorState(AgentStatus.Working.name, SlockPresence.Online)
+        val idle = homeDmStatusIndicatorState(AgentStatus.Idle.name, SlockPresence.Offline)
+        val fallback = homeDmStatusIndicatorState(null, SlockPresence.Unknown)
+
+        assertEquals(AgentStatus.Working, working.status)
+        assertEquals(SlockColor.BrandYellow, working.color)
+        assertTrue(working.pulsing)
+        assertEquals(AgentStatus.Idle, idle.status)
+        assertEquals(SlockColor.AccentLime, idle.color)
+        assertFalse(idle.pulsing)
+        assertEquals(null, fallback.status)
+        assertEquals(SlockColor.BrandYellow, fallback.color)
     }
 
     @Test

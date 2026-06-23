@@ -5486,19 +5486,10 @@ private val MemberKind.membersAvatarColor: Color
     }
 
 private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
-    when (this) {
-        AgentStatus.Online -> SlockColor.AccentLime
-        AgentStatus.Working -> SlockColor.BrandYellow
-        AgentStatus.Thinking -> SlockColor.BrandYellow
-        AgentStatus.Idle -> SlockColor.AccentLime
-        AgentStatus.Disconnected,
-        AgentStatus.Offline -> SlockColor.EmptyStateGray
-        AgentStatus.Error -> SlockColor.AccentOrange
-        null -> presence.membersPresenceColor
-    }
+    slockAgentStatusIndicatorState(this, presence).color
 
 private fun AgentStatus?.membersStatusPulsing(): Boolean =
-    this == AgentStatus.Working || this == AgentStatus.Thinking
+    slockAgentStatusIndicatorState(this, this?.presence ?: Presence.Offline).pulsing
 
 internal data class MembersAgentStatusDisplayState(
     val status: AgentStatus?,
@@ -5517,13 +5508,6 @@ internal fun MemberProfile.membersAgentStatusDisplayState(
         pulsing = resolvedStatus.membersStatusPulsing()
     )
 }
-
-private val Presence.membersPresenceColor: Color
-    get() = when (this) {
-        Presence.Active -> SlockColor.AccentLime
-        Presence.Away -> SlockColor.BrandYellow
-        Presence.Offline -> SlockColor.EmptyStateGray
-    }
 
 private val MemberProfile.detailHandle: String
     get() = handle.takeIf { it.isNotBlank() }?.let { if (it.startsWith("@")) it else "@$it" } ?: id.value

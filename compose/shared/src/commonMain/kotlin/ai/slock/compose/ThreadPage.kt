@@ -1869,7 +1869,7 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                    statusColor = message.threadAgentStatusColor()
+                    status = message.threadAgentStatusIndicatorState()
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -7204,7 +7204,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        statusColor = message.threadAgentStatusColor(),
+                        status = message.threadAgentStatusIndicatorState(),
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
@@ -7371,7 +7371,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        statusColor = message.threadAgentStatusColor(),
+                        status = message.threadAgentStatusIndicatorState(),
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
@@ -8692,7 +8692,7 @@ private fun ThreadOriginCard(
 private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    statusColor: Color?,
+    status: SlockAgentStatusIndicatorState?,
     onClick: () -> Unit
 ) {
     val avatarSource =
@@ -8704,9 +8704,10 @@ private fun ThreadMessageAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = statusColor,
+            statusColor = status?.color,
             avatarSize = 40.dp,
-            statusSize = 10.dp
+            statusSize = 10.dp,
+            statusPulsing = status?.pulsing == true
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
@@ -8722,7 +8723,7 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    statusColor: Color?
+    status: SlockAgentStatusIndicatorState?
 ) {
     val avatarSource =
         remember(avatarWireValue) {
@@ -8733,9 +8734,10 @@ private fun ThreadMessageStaticAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = statusColor,
+            statusColor = status?.color,
             avatarSize = 40.dp,
-            statusSize = 10.dp
+            statusSize = 10.dp,
+            statusPulsing = status?.pulsing == true
         ) {
             SlockAvatar(
                 avatarWireValue = avatarSource,
@@ -8750,17 +8752,12 @@ private fun ThreadMessageStaticAvatar(
 private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
     isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
 
-private fun KuiklyThreadMessageItem.threadAgentStatusColor(): Color? {
+private fun KuiklyThreadMessageItem.threadAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
     if (!showsAgentStatusIndicator()) return null
-    return when (authorAgentStatus.orEmpty().trim().lowercase().replace("-", "_").replace(" ", "_")) {
-        "online", "active", "available", "connected", "working", "running", "busy", "thinking" ->
-            SlockColor.AccentLime
-        "idle", "away" -> SlockColor.BrandYellow
-        "error", "failed", "failure" -> SlockColor.AccentRed
-        "offline", "disconnected", "not_connected", "notconnected", "inactive" ->
-            SlockColor.EmptyStateGray
-        else -> SlockColor.AccentLime
-    }
+    return slockAgentStatusIndicatorState(
+        statusValue = authorAgentStatus,
+        fallbackPresence = AgentStatus.fromWireValue(authorAgentStatus)?.presence ?: ai.slock.compose.model.Presence.Active
+    )
 }
 
 @Composable

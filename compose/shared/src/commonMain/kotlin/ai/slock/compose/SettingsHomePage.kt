@@ -11543,6 +11543,7 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         gravatarUrl = gravatarUrl,
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         presence = presence.toSharedPresence(),
+        agentStatus = agentStatus?.name,
         hasDraft = hasDraft,
         joined = joined && permissions.canRead,
         archived = archived

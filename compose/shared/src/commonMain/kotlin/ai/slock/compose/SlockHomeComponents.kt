@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalPanel
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.resources.MR
 import com.tencent.kuikly.core.manager.BridgeManager
@@ -164,6 +165,7 @@ data class SlockHomeConversationItem(
     val gravatarUrl: String? = null,
     val peerType: String? = null,
     val presence: SlockPresence? = null,
+    val agentStatus: String? = null,
     val hasDraft: Boolean = false,
     val joined: Boolean = true,
     val archived: Boolean = false
@@ -707,6 +709,7 @@ fun SlockStructuralHomeShell(
                                             gravatarUrl = pinned.gravatarUrl,
                                             peerType = pinned.peerType,
                                             presence = pinned.presence,
+                                            agentStatus = pinned.agentStatus,
                                             modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                             hasDraft = pinned.hasDraft,
                                             badge = pinned.unreadCount.takeIf { it > 0 }?.toString(),
@@ -855,6 +858,7 @@ fun SlockStructuralHomeShell(
                                     gravatarUrl = dm.gravatarUrl,
                                     peerType = dm.peerType,
                                     presence = dm.presence,
+                                    agentStatus = dm.agentStatus,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     hasDraft = dm.hasDraft,
                                     badge = dm.unreadCount.takeIf { it > 0 }?.toString(),
@@ -1061,6 +1065,22 @@ private val SlockHomeSortMenuItems =
 
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
     presence ?: SlockPresence.Offline
+
+internal fun homeDmStatusIndicatorState(
+    agentStatus: String?,
+    presence: SlockPresence?
+): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        statusValue = agentStatus,
+        fallbackPresence = homeDmStatusPresence(presence).toModelPresence()
+    )
+
+private fun SlockPresence.toModelPresence(): Presence =
+    when (this) {
+        SlockPresence.Online -> Presence.Active
+        SlockPresence.Unknown -> Presence.Away
+        SlockPresence.Offline -> Presence.Offline
+    }
 
 internal fun homeActivitySidebarUnreadCount(
     homeUnreadCount: Int,
@@ -1876,7 +1896,7 @@ private fun DimmedUnreadCount(text: String) {
 }
 
 @Composable
-private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, presence: SlockPresence? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
+private fun DirectMessageRow(name: String, description: String? = null, modifier: Modifier = Modifier, avatarLabel: String, avatarWireValue: String? = null, gravatarUrl: String? = null, peerType: String? = null, presence: SlockPresence? = null, agentStatus: String? = null, badge: String? = null, hasDraft: Boolean = false, interactionState: ChannelRowInteractionState = ChannelRowInteractionState.Default, onClick: (() -> Unit)? = null, onLongPress: ((Offset) -> Unit)? = null, onPress: (() -> Unit)? = null, onPressEnd: (() -> Unit)? = null) {
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -2011,7 +2031,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 Spacer(Modifier.width(SlockSpacing.Sm))
             }
             if (isAgent) {
-                DirectMessageStatusDot(homeDmStatusPresence(presence))
+                DirectMessageStatusDot(homeDmStatusIndicatorState(agentStatus, presence))
             }
             if (hasDraft) {
                 if (isAgent) Spacer(Modifier.width(SlockSpacing.Xs))
@@ -2027,14 +2047,11 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
 }
 
 @Composable
-private fun DirectMessageStatusDot(presence: SlockPresence) {
-    Box(
-        modifier =
-            Modifier
-                .size(DirectMessageStatusDotSize)
-                .borderRadius(4.dp)
-                .background(presence.homeRowColor)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+private fun DirectMessageStatusDot(state: SlockAgentStatusIndicatorState) {
+    SlockStatusIndicator(
+        color = state.color,
+        size = DirectMessageStatusDotSize,
+        pulsing = state.pulsing
     )
 }
 
