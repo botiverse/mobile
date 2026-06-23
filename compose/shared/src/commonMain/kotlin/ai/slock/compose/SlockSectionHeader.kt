@@ -227,9 +227,12 @@ internal fun SlockRaftPullRefreshIndicator(
 }
 
 @Composable
-internal fun SlockCenteredLoading(message: String = "Loading...") {
+internal fun SlockCenteredLoading(
+    message: String = "Loading...",
+    modifier: Modifier = Modifier.fillMaxSize()
+) {
     Box(
-        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+        modifier = modifier.background(SlockColor.SurfaceWhite),
         contentAlignment = Alignment.Center
     ) {
         Text(

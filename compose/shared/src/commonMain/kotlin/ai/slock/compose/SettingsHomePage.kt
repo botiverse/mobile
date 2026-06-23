@@ -9556,10 +9556,10 @@ private fun SharedHomeSearchPanel(
             ) {
                 item {
                     val hasSearchRows = state.items.isNotEmpty() || entityResults.isNotEmpty()
-                    if (state.loading || state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
+                    if (state.loading && !hasSearchRows) {
+                        SlockCenteredLoading(modifier = Modifier.fillParentMaxSize())
+                    } else if (state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
                         SharedHomePanelStatus(
-                            loading = state.loading,
-                            loadingText = "Searching…",
                             errorCode = state.errorCode,
                             noPermissionCode = state.noPermissionCode,
                             empty = false,
@@ -9912,6 +9912,23 @@ private fun SharedHomeSavedPanel(
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
     }
     val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
+    if (state.loading && state.items.isEmpty()) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.SurfaceWhite)
+        ) {
+            SharedHomeSavedHeader(
+                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                onClose = onClose,
+                refreshing = state.refreshing && !state.pullRefreshing,
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+            )
+            SlockCenteredLoading(modifier = Modifier.fillMaxWidth().weight(1f))
+        }
+        return
+    }
     LazyColumn(
         state = listState,
         modifier =
@@ -9940,11 +9957,9 @@ private fun SharedHomeSavedPanel(
             )
         }
         val hasSavedRows = state.items.isNotEmpty()
-        if (state.loading || state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
+        if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
             item {
                 SharedHomePanelStatus(
-                    loading = state.loading,
-                    loadingText = "Loading saved messages...",
                     errorCode = state.errorCode,
                     noPermissionCode = state.noPermissionCode,
                     empty = false,
@@ -10303,8 +10318,6 @@ private fun SharedHomeSearchControlsBlock(content: @Composable ColumnScope.() ->
 
 @Composable
 private fun SharedHomePanelStatus(
-    loading: Boolean,
-    loadingText: String,
     errorCode: String?,
     noPermissionCode: String?,
     empty: Boolean,
@@ -10313,12 +10326,6 @@ private fun SharedHomePanelStatus(
     onRetry: () -> Unit
 ) {
     when {
-        loading ->
-            SharedHomePanelMessage(
-                title = loadingText,
-                detail = "Loading the latest results.",
-                tone = SlockColor.BrandYellow
-            )
         noPermissionCode != null ->
             SharedHomePanelMessage(
                 title = "No permission",
