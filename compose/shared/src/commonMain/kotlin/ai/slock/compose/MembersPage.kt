@@ -3753,20 +3753,26 @@ private fun MembersAgentActivityRow(
                 )
             }
             if (displayBody.isNotBlank()) {
-                // #63 React parity + owner directive (artin 06-23 16:38):
-                // '运行信息的数据不需要接入 markdown 的，就纯文本就好' — runtime /
-                // activity body is always plain Text, never SlockMarkdownBody.
-                // The previous `if (activity.refTextEnabled)` markdown branch
-                // was contributing to the visual mismatch because React renders
-                // the same field as plain text, but the KMP markdown path
-                // produced slightly different line spacing and link styling.
-                Text(
-                    text = displayBody,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = if (expanded) 12 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                // #64 owner override (artin 06-23 17:41): '改成用 SlockMarkdownBody
+                // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
+                // the activity body can render task refs / issue refs (e.g. `#225`,
+                // `#task-7`) as styled inline text + clickable onOpenUrl links
+                // when `refTextEnabled` is true.
+                if (activity.refTextEnabled) {
+                    SlockMarkdownBody(
+                        body = displayBody,
+                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        onOpenUrl = onOpenUrl,
+                    )
+                } else {
+                    Text(
+                        text = displayBody,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = if (expanded) 12 else 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             if (longBody) {
                 Text(
