@@ -446,6 +446,33 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val localMessageId = "local-send-channel-1-1"
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "delete me")))
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+
+        store.accept(SharedThreadIntent.DismissLocalFailedSend(localMessageId))
+
+        assertEquals(null, store.state.value.payload.messages.firstOrNull { it.id == localMessageId })
+        val persistedMessages = localStore.readThread(ThreadId("channel-1"))?.messages.orEmpty()
+        assertEquals(null, persistedMessages.firstOrNull { it.id.value == localMessageId })
+        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        assertNotNull(cachedPayload)
+        assertEquals(null, cachedPayload.messages.firstOrNull { it.id == localMessageId })
+        scope.cancel()
+    }
+
+    @Test
     fun refreshRetainsLocalFailedBubbleMissingFromServerPage() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
