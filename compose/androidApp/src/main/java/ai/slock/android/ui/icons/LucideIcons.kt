@@ -3558,6 +3558,34 @@ object LucideIcons {
                 }.build()
     }
 
+    // #71 React parity: replaces the vertical three-dot `Ellipsis` icon used
+    // by the agent detail management button with the horizontal three-line
+    // `Menu` icon (matches React `lucide-react Menu` used in
+    // `AgentDetailPanel.tsx:1822`). SVG path: M4 5h16 / M4 12h16 / M4 19h16.
+    val Menu: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMenu",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 5.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        moveTo(x = 4.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                        moveTo(x = 4.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                    }
+                }.build()
+    }
+
     val Monitor: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideMonitor",
@@ -5939,5 +5967,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellRing, Blocks, Bookmark, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Eraser, ExternalLink, Eye, EyeOff, File, FileCheck, FileCode, FileText, Flag, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pencil, Pin, PinOff, Play, Plus, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
+    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellRing, Blocks, Bookmark, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Eraser, ExternalLink, Eye, EyeOff, File, FileCheck, FileCode, FileText, Flag, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Menu, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pencil, Pin, PinOff, Play, Plus, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
 }

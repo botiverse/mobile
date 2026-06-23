@@ -92,10 +92,16 @@ import com.tencent.kuikly.compose.extension.NestedScrollMode
 import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
+import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
@@ -2053,7 +2059,7 @@ private fun MembersDetailHeader(
             )
             if (member.kind == MemberKind.Agent) {
                 SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.Ellipsis,
+                    iconName = SlockLucideIconName.Menu,
                     onClick = {
                         onRequestManagementMenu(threeDotButtonCenter.value)
                     },
@@ -2062,7 +2068,13 @@ private fun MembersDetailHeader(
                         val pos = coordinates.positionInRoot()
                         threeDotButtonCenter.update(
                             Offset(
-                                x = pos.x + coordinates.size.width.toFloat() / 2f,
+                                // #71 anchor at the button's TOP-LEFT corner
+                                // (was button CENTER) so the dropdown menu
+                                // can auto-flip horizontally against the
+                                // button's right edge instead of the center,
+                                // matching React `DropdownMenu` (place right
+                                // edge of menu at right edge of trigger).
+                                x = pos.x,
                                 y = pos.y + coordinates.size.height.toFloat() / 2f
                             )
                         )
@@ -3501,10 +3513,20 @@ private fun MembersWorkspaceNodeRow(
         ) {
             Spacer(Modifier.width((row.depth * 14).dp))
             if (node.kind == SlockWorkspaceFileKind.Folder) {
-                SlockLucideIcon(
-                    if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
-                    Modifier.size(13.dp),
-                )
+                if (loading) {
+                    // #70: replace the chevron with a rotating Loader spinner
+                    // while the directory contents are being fetched. Mirrors
+                    // React's `AgentWorkspace.tsx` spinner pattern (but KMP
+                    // per @artin's 06-23 20:51 directive shows the spinner
+                    // inline as the chevron substitute instead of alongside
+                    // a "Loading..." text label).
+                    SlockSpinnerIcon(size = 13.dp)
+                } else {
+                    SlockLucideIcon(
+                        if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
+                        Modifier.size(13.dp),
+                    )
+                }
             } else {
                 Spacer(Modifier.width(13.dp))
             }
@@ -4305,6 +4327,42 @@ private data class MembersAgentGroup(
     val label: String,
     val members: List<MemberProfile>
 )
+
+/**
+ * #70: Rotating Loader spinner used by the workspace file tree as a chevron
+ * substitute while a directory's children are being fetched
+ * (`loadingDirs.contains(node.path)`). Mirrors the React
+ * `AgentWorkspace.tsx` `<Spinner size="xs" />` pattern, but the KMP form
+ * drops the React "Loading..." text per @artin's 06-23 20:51 directive
+ * ("不要用文字做到最后，就把那个文件夹的 icon 改成 loading spinner 就行").
+ *
+ * 900ms rotation cycle matches the visual rhythm of the React inline
+ * spinner without being so fast it looks nervous on the cheap-ohm
+ * emulator display.
+ */
+@Composable
+private fun SlockSpinnerIcon(
+    size: Dp = 14.dp,
+    color: String = SlockColor.TextBlackArgb
+) {
+    val transition = rememberInfiniteTransition(label = "slock-workspace-spinner")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "slock-workspace-spinner-rotation"
+    )
+    SlockLucideIcon(
+        SlockLucideIconName.Loader,
+        modifier = Modifier
+            .size(size)
+            .graphicsLayer { rotationZ = rotation },
+        color = color
+    )
+}
 
 private fun groupedAgentMembers(members: List<MemberProfile>): List<MembersAgentGroup> =
     members

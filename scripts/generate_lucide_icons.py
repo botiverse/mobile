@@ -86,6 +86,7 @@ LUCIDE_ICONS = [
     "credit-card",
     "download",
     "ellipsis",
+    "menu",
     "eraser",
     "external-link",
     "eye",

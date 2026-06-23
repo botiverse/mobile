@@ -27,7 +27,10 @@ import com.tencent.kuikly.compose.ui.unit.sp
 
 private const val SlockBrutalDropdownMenuWidthValue = 200f
 private const val SlockBrutalDropdownMenuRowHeightValue = 40f
-private const val SlockBrutalDropdownMenuVerticalOffsetValue = 8f
+// #71: 8dp default vertical offset put the first menu row right at the
+// button's bottom edge — easy to mis-click the first action (Stop / Delete /
+// etc.) when the user intended the button. 16dp gives a clearer visual gap.
+private const val SlockBrutalDropdownMenuVerticalOffsetValue = 16f
 private const val SlockBrutalDropdownMenuShadowOffsetValue = 4f
 
 /**

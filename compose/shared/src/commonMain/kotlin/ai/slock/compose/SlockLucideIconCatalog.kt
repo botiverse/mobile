@@ -49,6 +49,7 @@ enum class SlockLucideIconName(val wireName: String) {
     CreditCard("credit-card"),
     Download("download"),
     Ellipsis("ellipsis"),
+    Menu("menu"),
     Eraser("eraser"),
     ExternalLink("external-link"),
     Eye("eye"),
