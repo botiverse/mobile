@@ -217,7 +217,7 @@ internal fun SlockRaftPullRefreshIndicator(
                         }
                     Text(
                         text = char.toString(),
-                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 15.sp),
+                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                         color = SlockColor.BrandYellow,
                         maxLines = 1,
                         modifier = Modifier.offset(y = (-jump).dp)

@@ -396,7 +396,7 @@ private fun SharedActivityFilterBar(
                     minWidth = 0.dp,
                     shadowOffset = 2.dp,
                     backgroundColor = SlockColor.SurfaceWhite,
-                    textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 13.sp),
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
                     onClick = onMarkAllRead
                 )
             }
@@ -576,7 +576,7 @@ private fun SharedActivityRow(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = secondary,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -761,7 +761,7 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
             minWidth = 0.dp,
             shadowOffset = 2.dp,
             backgroundColor = SlockColor.SurfaceWhite,
-            textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 13.sp),
+            textStyle = SlockType.ButtonBold.copy(fontSize = 11.sp, lineHeight = 14.sp),
             onClick = onClick
         )
     }

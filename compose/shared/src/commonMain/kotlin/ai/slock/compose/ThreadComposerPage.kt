@@ -1386,7 +1386,7 @@ private fun ComposerAttachmentTile(
                 )
                 Text(
                     text = attachment.fileName,
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 11.sp),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 12.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis

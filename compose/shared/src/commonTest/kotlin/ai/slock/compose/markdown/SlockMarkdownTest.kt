@@ -392,7 +392,7 @@ class SlockMarkdownTest {
             slockMarkdownAnnotator(
                 content = "Use `mimo`",
                 inlineCodeWidths = mapOf("slock-code:4" to 44.sp),
-                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 19.sp)
+                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             ).inlineContent?.invoke().orEmpty()
 
         assertEquals(44.sp, inlineContent.getValue("slock-code:4").placeholder.width)
