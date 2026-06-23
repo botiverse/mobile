@@ -11,6 +11,30 @@
     {
       "name": "EntryAbility_label",
       "value": "Raft"
+    },
+    {
+      "name": "SlockFormAbility_desc",
+      "value": "Raft widgets"
+    },
+    {
+      "name": "SlockFormAbility_label",
+      "value": "Raft Widgets"
+    },
+    {
+      "name": "activity_unread_form_display_name",
+      "value": "Activity"
+    },
+    {
+      "name": "activity_unread_form_desc",
+      "value": "Raft Activity unread widget"
+    },
+    {
+      "name": "agent_runtime_form_display_name",
+      "value": "Agents"
+    },
+    {
+      "name": "agent_runtime_form_desc",
+      "value": "Raft agent runtime widget"
     }
   ]
 }

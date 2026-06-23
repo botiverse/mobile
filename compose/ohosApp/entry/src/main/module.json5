@@ -42,6 +42,21 @@
         ]
       }
     ],
+    "extensionAbilities": [
+      {
+        "name": "SlockFormAbility",
+        "srcEntry": "./ets/formability/SlockFormAbility.ets",
+        "description": "$string:SlockFormAbility_desc",
+        "label": "$string:SlockFormAbility_label",
+        "type": "form",
+        "metadata": [
+          {
+            "name": "ohos.extension.form",
+            "resource": "$profile:form_config"
+          }
+        ]
+      }
+    ],
     "metadata": [
       {
         "name": "half_leading",

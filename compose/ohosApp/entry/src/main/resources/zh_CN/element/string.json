@@ -11,6 +11,30 @@
     {
       "name": "EntryAbility_label",
       "value": "Raft"
+    },
+    {
+      "name": "SlockFormAbility_desc",
+      "value": "Raft 小组件"
+    },
+    {
+      "name": "SlockFormAbility_label",
+      "value": "Raft 小组件"
+    },
+    {
+      "name": "activity_unread_form_display_name",
+      "value": "Activity"
+    },
+    {
+      "name": "activity_unread_form_desc",
+      "value": "Raft Activity 未读小组件"
+    },
+    {
+      "name": "agent_runtime_form_display_name",
+      "value": "Agents"
+    },
+    {
+      "name": "agent_runtime_form_desc",
+      "value": "Raft Agent 运行状态小组件"
     }
   ]
 }
