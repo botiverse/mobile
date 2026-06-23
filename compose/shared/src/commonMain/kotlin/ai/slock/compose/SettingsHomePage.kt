@@ -816,6 +816,13 @@ internal fun retainedAppShellInactivePaneKeepsLayout(tab: String): Boolean =
 internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
 
+internal fun homeDestinationRefreshesOnLifecycleResume(destination: String?): Boolean =
+    when (retainedHomeSecondaryDestination(destination)) {
+        null, HomeDestinationActivity, HomeDestinationSaved -> true
+        HomeDestinationSearch -> false
+        else -> false
+    }
+
 internal fun homeSecondaryPerformanceRoute(destination: String): String =
     when (retainedHomeSecondaryDestination(destination)) {
         HomeDestinationActivity -> "kuikly_home_activity"
@@ -1204,7 +1211,6 @@ private fun SlockAppShellContent() {
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
-    val latestHomeSearchSavedState by rememberUpdatedState(homeSearchSavedState)
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
@@ -1733,16 +1739,13 @@ private fun SlockAppShellContent() {
                             )
                             when (retainedAppShellSelectedTab(latestSelectedTab)) {
                                 "home" ->
-                                    when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
-                                        null -> homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh)
-                                        HomeDestinationActivity -> homeActivityStore.dispatch(SharedActivityIntent.Refresh)
-                                        HomeDestinationSaved -> homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
-                                        HomeDestinationSearch ->
-                                            if (latestHomeSearchSavedState.search.hasResumeSearchRefreshIntent()) {
-                                                homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
-                                            } else {
-                                                homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
-                                            }
+                                    if (homeDestinationRefreshesOnLifecycleResume(latestSelectedHomeDestination)) {
+                                        when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
+                                            null -> homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh)
+                                            HomeDestinationActivity -> homeActivityStore.dispatch(SharedActivityIntent.Refresh)
+                                            HomeDestinationSaved -> homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
+                                            HomeDestinationSearch -> Unit
+                                        }
                                     }
                                 "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
                                 "members" -> {
@@ -9241,7 +9244,6 @@ private fun SharedHomeSearchPanel(
             SharedHomeSearchToolbar(
                 query = state.query,
                 loading = state.loading,
-                refreshing = state.refreshing,
                 onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
                 onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
                 onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
@@ -9463,13 +9465,6 @@ private fun SharedHomeSearchDivider() {
     )
 }
 
-private fun SharedHomeSearchPanelState.hasResumeSearchRefreshIntent(): Boolean =
-    query.trim().isNotBlank() ||
-        myMessagesOnly ||
-        !selectedSenderId.isNullOrBlank() ||
-        !selectedChannelId.isNullOrBlank() ||
-        timeRange != SearchTimeRange.Any
-
 private fun homeSearchFilterAnchorReady(
     filterId: String,
     senderAnchor: Offset,
@@ -9489,7 +9484,6 @@ private fun homeSearchFilterAnchorReady(
 private fun SharedHomeSearchToolbar(
     query: String,
     loading: Boolean,
-    refreshing: Boolean,
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
@@ -9523,9 +9517,6 @@ private fun SharedHomeSearchToolbar(
             onClear = onClear,
             modifier = Modifier.weight(1f)
         )
-        if (refreshing) {
-            SlockHeaderRefreshIndicator()
-        }
     }
 }
 
