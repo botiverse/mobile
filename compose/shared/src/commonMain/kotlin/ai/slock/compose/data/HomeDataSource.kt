@@ -32,8 +32,7 @@ class SharedHomeDataSource(
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
-    private val diagnosticsLogger: (String) -> Unit = {},
-    private val sharedRealtimeStore: SharedRealtimeStore? = null
+    private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val typedApi = SlockHomeApiClient(api, diagnosticsLogger)
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
@@ -126,14 +125,10 @@ class SharedHomeDataSource(
         activeConversationId: String? = null,
         projectUpdatedSnapshot: Boolean = true
     ): DataResult<HomeSnapshot> {
-        val realtimeAcceptResult =
-            sharedRealtimeStore?.acceptRealtimeEvents(serverId, events, activeConversationId)
         val homeUpdated =
-            realtimeAcceptResult?.wrote
-                ?: localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
+            localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
                 ?: return DataResult.Empty(EmptyReason.NoChannels)
-        val mayHaveUpdatedSnapshot = homeUpdated || realtimeAcceptResult?.duplicates.orZero() > 0
-        if (!mayHaveUpdatedSnapshot || events.none { event -> event.updatesHomeSnapshot() }) {
+        if (!homeUpdated || events.none { event -> event.updatesHomeSnapshot() }) {
             return DataResult.Empty(EmptyReason.NoChannels)
         }
         if (!projectUpdatedSnapshot) {
@@ -159,8 +154,6 @@ class SharedHomeDataSource(
         return client.dismissAnnouncement(id)
     }
 }
-
-private fun Int?.orZero(): Int = this ?: 0
 
 internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
     when (this) {

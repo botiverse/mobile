@@ -6,8 +6,7 @@ import ai.slock.compose.model.ServerId
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
     val authStore: KuiklyAuthSessionStore,
-    val localDataStore: ComposeLocalDataStore,
-    val realtimeStore: SharedRealtimeStore
+    val localDataStore: ComposeLocalDataStore
 ) {
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
         SqlDelightComposeLocalDataStore(
@@ -21,20 +20,10 @@ internal class SlockSharedStoreProvider private constructor(
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore = RelationalComposeLocalDataStore(relationalStore)
-            val realtimeWriteThrough =
-                ComposeLocalWriteThrough(
-                    localDataStore,
-                    logger = { message -> bridge.logDebug("shared_realtime_cache $message") }
-                )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authStore = KuiklyAuthSessionStore(relationalStore),
-                localDataStore = localDataStore,
-                realtimeStore =
-                    SharedRealtimeStore(
-                        localWriteThrough = realtimeWriteThrough,
-                        logger = { message -> bridge.logDebug(message) }
-                    )
+                localDataStore = localDataStore
             )
         }
     }

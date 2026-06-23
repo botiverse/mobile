@@ -1399,7 +1399,6 @@ private fun ThreadPageScreen() {
             networkClient,
             authStore,
             localWriteThrough,
-            sharedStores.realtimeStore,
             memberRepository,
             channelRepository,
             createAgentCoordinator
@@ -1408,7 +1407,6 @@ private fun ThreadPageScreen() {
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
-                sharedRealtimeStore = sharedStores.realtimeStore,
                 memberRepository = memberRepository,
                 conversationRepository =
                     RealConversationRepository(
