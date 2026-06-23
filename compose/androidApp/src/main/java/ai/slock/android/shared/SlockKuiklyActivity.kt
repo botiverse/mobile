@@ -1263,7 +1263,9 @@ private class SlockKuiklyImageAdapter(
 }
 
 internal class SlockKuiklyBridgeModule(
-        private val appContext: Context
+        private val appContext: Context,
+        private val badgeApplier: ai.slock.android.badge.BadgeApplier =
+            ai.slock.android.badge.AndroidNotificationBadgeApplier(appContext),
 ) : KuiklyRenderBaseModule() {
     private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
     private val gson = Gson()
@@ -1291,6 +1293,10 @@ internal class SlockKuiklyBridgeModule(
                     SlockBridgeLogLevel.WARN -> Log.w("SlockKuikly", content)
                     SlockBridgeLogLevel.ERROR -> Log.e("SlockKuikly", content)
                 }
+                null
+            }
+            "appBadge" -> {
+                applyAppBadge(params)
                 null
             }
             "copyToPasteboard" -> {
@@ -1347,6 +1353,24 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
         }
+    }
+
+    /**
+     * #100: host consumer of the shared `bridge.appBadge(count, source, isStale)`
+     * contract (see #81). Parses the JSON params, dispatches to the [BadgeApplier].
+     *
+     * Boundary rule (per #81, 2026-06-15 12:59): `source` and `isStale` are passed
+     * to the applier for diagnostics only. The applier MUST NOT branch on `source`
+     * to decide which UI to show, and MUST keep the previous `count` visible when
+     * `isStale=true` (the shared side already did the `previous.copy(isStale=true)`
+     * projection, so `count` here is already the unchanged value).
+     */
+    private fun applyAppBadge(params: String?) {
+        val request = JSONObject(params ?: "{}")
+        val count = request.optInt("count", 0).coerceAtLeast(0)
+        val source = request.optString("source", "UNKNOWN")
+        val isStale = request.optBoolean("isStale", false)
+        badgeApplier.apply(count = count, source = source, isStale = isStale)
     }
 
     private fun reportRealtime(params: String?) {
