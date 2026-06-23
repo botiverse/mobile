@@ -1834,23 +1834,17 @@ private fun MembersDetailContent(
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
     val storeState by (sharedAgentDetailStore ?: fallbackAgentDetailStore).state.collectAsState()
     var actionState by remember(member.id.value, initialVisualMode) {
-        mutableStateOf<MembersAgentActionState?>(
-            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
-                MembersAgentActionState(MembersAgentLifecycleAction.Restart, inProgress = true)
-            } else {
-                null
-            }
-        )
+        mutableStateOf<MembersAgentActionState?>(null)
     }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
-    var pendingConfirmation by remember(member.id.value, initialVisualMode) {
-        mutableStateOf<MembersAgentLifecycleAction?>(
-            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
-                MembersAgentLifecycleAction.Restart
-            } else {
-                null
-            }
-        )
+    var pendingConfirmation by remember(member.id.value) {
+        mutableStateOf<MembersAgentLifecycleAction?>(null)
+    }
+    var restartResetDialogOpen by remember(member.id.value, initialVisualMode) {
+        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
+    }
+    var restartResetSelection by remember(member.id.value) {
+        mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
     var selectedTab by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab ?: MembersAgentDetailTab.Profile)
@@ -2016,6 +2010,10 @@ private fun MembersDetailContent(
                     }
                 }
             val errorCode = result.membersLifecycleErrorCode(action)
+            if (errorCode == null && action.isRestartResetDialogAction()) {
+                restartResetDialogOpen = false
+                restartResetSelection = MembersAgentLifecycleAction.Restart
+            }
             actionState =
                 MembersAgentActionState(
                     action = action,
@@ -2272,11 +2270,48 @@ private fun MembersDetailContent(
                     handleMembersManagementMenuSelection(
                         id = id,
                         primaryAction = menuPrimary,
+                        openRestartResetDialog = {
+                            restartResetSelection = MembersAgentLifecycleAction.Restart
+                            actionState = null
+                            restartResetDialogOpen = true
+                        },
                         runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
                 onDismiss = {
                     managementMenuOpen = false
+                }
+            )
+        }
+        if (restartResetDialogOpen && member.kind == MemberKind.Agent) {
+            val selectedActionResult =
+                if (sharedAgentDetailStore != null) {
+                    storeState.lastActionResult
+                        ?.takeIf { it.actionKey == restartResetSelection.actionKey }
+                        ?.let {
+                            MembersAgentActionState(
+                                action = restartResetSelection,
+                                inProgress = false,
+                                errorCode = it.errorCode,
+                                successLabel = it.successLabel
+                            )
+                        }
+                } else {
+                    actionState?.takeIf { it.action == restartResetSelection }
+                }
+            MembersRestartResetDialog(
+                agentName = member.displayName,
+                selectedAction = restartResetSelection,
+                busy = lifecycleInFlight != null,
+                errorCode = selectedActionResult?.errorCode,
+                onSelectedActionChange = { restartResetSelection = it },
+                onConfirm = { runLifecycleAction(restartResetSelection, confirmed = true) },
+                onDismiss = {
+                    if (lifecycleInFlight == null) {
+                        restartResetDialogOpen = false
+                        restartResetSelection = MembersAgentLifecycleAction.Restart
+                        actionState = null
+                    }
                 }
             )
         }
@@ -2356,8 +2391,13 @@ internal fun buildMembersManagementMenuItems(
 private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
+    openRestartResetDialog: () -> Unit,
     runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
 ) {
+    if (id == MembersAgentLifecycleAction.Restart.actionKey) {
+        openRestartResetDialog()
+        return
+    }
     val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }
         ?: primaryAction?.takeIf { it.actionKey == id }
     if (action != null) {
@@ -2652,6 +2692,195 @@ private fun MembersLifecycleConfirmation(
         }
     }
 }
+
+@Composable
+private fun MembersRestartResetDialog(
+    agentName: String,
+    selectedAction: MembersAgentLifecycleAction,
+    busy: Boolean,
+    errorCode: String?,
+    onSelectedActionChange: (MembersAgentLifecycleAction) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = "Restart ${agentName.uppercase()}",
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        maxWidth = 520.dp,
+        titleFontSize = 24,
+        titleLineHeight = 30,
+        titleMaxLines = 2,
+        contentSpacing = SlockSpacing.Md
+    ) {
+        errorCode?.takeIf { it.isNotBlank() }?.let {
+            MembersRestartResetNotice(
+                text = "Failed to reset agent: $it",
+                color = SlockColor.AccentOrange
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.Restart,
+                selected = selectedAction == MembersAgentLifecycleAction.Restart,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.Restart) }
+            )
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.ResetSession,
+                selected = selectedAction == MembersAgentLifecycleAction.ResetSession,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetSession) }
+            )
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.ResetFull,
+                selected = selectedAction == MembersAgentLifecycleAction.ResetFull,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetFull) }
+            )
+        }
+        if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
+            MembersRestartResetNotice(
+                text = "This will permanently delete all workspace files including MEMORY.md and notes/. This cannot be undone.",
+                color = SlockColor.AccentOrange
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = "Cancel",
+                leadingIcon = SlockLucideIconName.X,
+                enabled = !busy,
+                backgroundColor = SlockColor.SurfaceWhite,
+                modifier = Modifier.width(132.dp),
+                onClick = onDismiss
+            )
+            SlockBrutalActionButton(
+                label = if (busy) "Restarting..." else selectedAction.restartResetButtonLabel(),
+                leadingIcon = SlockLucideIconName.RotateCcw,
+                enabled = !busy,
+                backgroundColor = selectedAction.restartResetAccentColor(),
+                modifier = Modifier.weight(1f),
+                onClick = onConfirm
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersRestartResetActionCard(
+    action: MembersAgentLifecycleAction,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val shadowOffset = if (selected) 4.dp else 0.dp
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(end = shadowOffset, bottom = shadowOffset)
+                .background(if (selected) SlockColor.ShadowBlack else SlockColor.SurfaceWhite)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(end = shadowOffset, bottom = shadowOffset)
+                    .background(if (selected) action.restartResetTintColor() else SlockColor.SurfaceWhite)
+                    .border(
+                        if (selected) SlockStroke.Default else SlockStroke.Thin,
+                        if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.32f)
+                    )
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(horizontal = SlockSpacing.Md, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = action.restartResetTitle(),
+                style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = action.restartResetDescription(),
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersRestartResetNotice(text: String, color: Color) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
+    this == MembersAgentLifecycleAction.Restart ||
+        this == MembersAgentLifecycleAction.ResetSession ||
+        this == MembersAgentLifecycleAction.ResetFull
+
+private fun MembersAgentLifecycleAction.restartResetTitle(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart -> "RESTART"
+        MembersAgentLifecycleAction.ResetSession -> "RESET SESSION & RESTART"
+        MembersAgentLifecycleAction.ResetFull -> "FULL RESET & RESTART"
+        else -> label.uppercase()
+    }
+
+private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart -> "Restart"
+        MembersAgentLifecycleAction.ResetSession -> "Reset Session & Restart"
+        MembersAgentLifecycleAction.ResetFull -> "Full Reset & Restart"
+        else -> label
+    }
+
+private fun MembersAgentLifecycleAction.restartResetDescription(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart ->
+            "Stop and restart the agent process. Keeps the runtime session and workspace files."
+        MembersAgentLifecycleAction.ResetSession ->
+            "Clear the runtime session and restart. Workspace files (MEMORY.md, notes/) are preserved."
+        MembersAgentLifecycleAction.ResetFull ->
+            "Clear the runtime session, delete all workspace files, and restart from scratch."
+        else -> ""
+    }
+
+private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
+    when (this) {
+        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed
+        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange
+        else -> SlockColor.AccentCyan
+    }
+
+private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
+    when (this) {
+        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed.copy(alpha = 0.2f)
+        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange.copy(alpha = 0.2f)
+        else -> SlockColor.AccentCyan.copy(alpha = 0.2f)
+    }
 
 @Composable
 private fun MembersAgentTabBar(

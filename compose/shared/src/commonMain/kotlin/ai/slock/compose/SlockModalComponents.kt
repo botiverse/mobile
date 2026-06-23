@@ -77,6 +77,7 @@ internal fun SlockUnifiedDialog(
     contentPadding: Dp = 20.dp,
     titleFontSize: Int = 22,
     titleLineHeight: Int = 26,
+    titleMaxLines: Int = 1,
     contentSpacing: Dp = 16.dp,
     content: @Composable () -> Unit
 ) {
@@ -123,7 +124,7 @@ internal fun SlockUnifiedDialog(
                                 ),
                             color = SlockColor.TextBlack,
                             modifier = Modifier.weight(1f),
-                            maxLines = 1,
+                            maxLines = titleMaxLines,
                             overflow = TextOverflow.Ellipsis
                         )
                         SlockBrutalIconButton(
