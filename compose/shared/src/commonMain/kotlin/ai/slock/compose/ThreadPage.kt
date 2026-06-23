@@ -1361,6 +1361,17 @@ internal fun shouldShowThreadComposerForTab(
         showComposer &&
         KuiklyThreadTab.fromWireValue(selectedTab) == KuiklyThreadTab.Chat
 
+internal fun shouldShowThreadComposerForReadyContent(
+    joined: Boolean,
+    showComposer: Boolean,
+    selectedTab: String?,
+    contentExtrasVisible: Boolean,
+    threadContentReady: Boolean
+): Boolean =
+    contentExtrasVisible &&
+        threadContentReady &&
+        shouldShowThreadComposerForTab(joined, showComposer, selectedTab)
+
 internal data class SharedThreadRealtimeEventSignal(
     val sequence: Long,
     val event: RealtimeEvent
@@ -5004,9 +5015,17 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
+    var threadContentReadyForComposer by remember(payload.instanceId, payload.status) {
+        mutableStateOf(payload.status != "content")
+    }
     val showComposerForSelectedTab =
-        contentExtrasVisible &&
-            shouldShowThreadComposerForTab(payload.joined, payload.showComposer, selectedTab.wireValue)
+        shouldShowThreadComposerForReadyContent(
+            joined = payload.joined,
+            showComposer = payload.showComposer,
+            selectedTab = selectedTab.wireValue,
+            contentExtrasVisible = contentExtrasVisible,
+            threadContentReady = threadContentReadyForComposer
+        )
     val taskPanelChannelId =
         remember(taskChannelId, payload.sourceThreadId, payload.instanceId) {
             taskChannelId
@@ -5095,7 +5114,10 @@ private fun ThreadPageContent(
                             onOpenMember = onOpenMemberProfile,
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
-                            diagnosticsLogger = diagnosticsLogger
+                            diagnosticsLogger = diagnosticsLogger,
+                            onThreadContentReady = {
+                                threadContentReadyForComposer = true
+                            }
                         )
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
@@ -5497,7 +5519,8 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    onThreadContentReady: () -> Unit = {}
 ) {
     val linkedTaskReferences =
         remember(payload.originMessage, payload.messages) {
@@ -5546,7 +5569,8 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         onOpenMember = onOpenMember,
         onOpenMarkdownTag = onOpenMarkdownTag,
         onOpenMarkdownUrl = onOpenMarkdownUrl,
-        diagnosticsLogger = diagnosticsLogger
+        diagnosticsLogger = diagnosticsLogger,
+        onThreadContentReady = onThreadContentReady
     )
 }
 
@@ -5565,7 +5589,8 @@ private fun ThreadChatTab(
     onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    onThreadContentReady: () -> Unit = {}
 ) {
     when (payload.status) {
         "loading" ->
@@ -5584,7 +5609,8 @@ private fun ThreadChatTab(
                     onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
-                    diagnosticsLogger = diagnosticsLogger
+                    diagnosticsLogger = diagnosticsLogger,
+                    onThreadContentReady = onThreadContentReady
                 )
             } else {
                 ThreadStateMessage("Loading...", null)
@@ -5613,9 +5639,13 @@ private fun ThreadChatTab(
                     onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
-                    diagnosticsLogger = diagnosticsLogger
+                    diagnosticsLogger = diagnosticsLogger,
+                    onThreadContentReady = onThreadContentReady
                 )
             } else {
+                LaunchedEffect(payload.instanceId, payload.status) {
+                    onThreadContentReady()
+                }
                 ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
             }
         else ->
@@ -5633,7 +5663,8 @@ private fun ThreadChatTab(
                 onOpenMember = onOpenMember,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
-                diagnosticsLogger = diagnosticsLogger
+                diagnosticsLogger = diagnosticsLogger,
+                onThreadContentReady = onThreadContentReady
             )
     }
 }
@@ -5653,9 +5684,13 @@ private fun ThreadMessagesList(
     onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
-    diagnosticsLogger: (String) -> Unit = {}
+    diagnosticsLogger: (String) -> Unit = {},
+    onThreadContentReady: () -> Unit = {}
 ) {
     if (payload.messages.isEmpty() && payload.originStatus == "none") {
+        LaunchedEffect(payload.instanceId, payload.status) {
+            onThreadContentReady()
+        }
         ThreadStateMessage(payload.emptyTitle, payload.emptyDetail)
         return
     }
@@ -5699,6 +5734,11 @@ private fun ThreadMessagesList(
     }
     var initialBottomAnchorReady by remember(payload.instanceId, topAnchoredOriginContent) {
         mutableStateOf(topAnchoredOriginContent)
+    }
+    LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
+        if (initialBottomAnchorReady || latestItemIndex < 0) {
+            onThreadContentReady()
+        }
     }
     var latestLocalSendBottomAnchorActiveKey by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }

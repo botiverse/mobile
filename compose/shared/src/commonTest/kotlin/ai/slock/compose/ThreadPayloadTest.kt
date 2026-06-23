@@ -66,6 +66,37 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadComposerWaitsForContentReady() {
+        assertFalse(
+            shouldShowThreadComposerForReadyContent(
+                joined = true,
+                showComposer = true,
+                selectedTab = "chat",
+                contentExtrasVisible = true,
+                threadContentReady = false
+            )
+        )
+        assertFalse(
+            shouldShowThreadComposerForReadyContent(
+                joined = true,
+                showComposer = true,
+                selectedTab = "chat",
+                contentExtrasVisible = false,
+                threadContentReady = true
+            )
+        )
+        assertTrue(
+            shouldShowThreadComposerForReadyContent(
+                joined = true,
+                showComposer = true,
+                selectedTab = "chat",
+                contentExtrasVisible = true,
+                threadContentReady = true
+            )
+        )
+    }
+
+    @Test
     fun consumeComposerSeedForSendRemovesOnlySentAttachments() {
         val payload =
             KuiklyThreadScreenPayload(
