@@ -4619,6 +4619,7 @@ private fun ThreadPageContent(
     onFilesAuthRequired: (String?) -> Unit,
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    onOpenMemberProfile: (String) -> Unit = {},
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),

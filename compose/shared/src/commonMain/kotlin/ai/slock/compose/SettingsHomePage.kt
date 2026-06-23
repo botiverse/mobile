@@ -4719,54 +4719,245 @@ private fun SettingsServerDangerZoneCard(
         }
     }
     if (showDeleteModal) {
-        SlockUnifiedDialog(
-            title = "Delete Server",
+        SettingsServerDeleteConfirmationDialog(
+            serverName = serverName,
+            expectedServerSlug = expectedServerSlug,
+            confirmationSlug = modalConfirmationSlug,
+            deleteBusy = deleteBusy,
+            deleteEnabled = deleteEnabled,
+            errorCode = actionState?.errorCode.takeIf { actionState?.action == SERVER_ACTION_DELETE },
             onDismiss = {
                 if (!deleteBusy) {
                     showDeleteModal = false
                     modalConfirmationSlug = ""
                 }
             },
-            dismissEnabled = !deleteBusy
-        ) {
-            Text(
-                "This action cannot be undone. This will permanently delete ${serverName.ifBlank { "this server" }} and remove all members, channels, and data.",
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
-            )
-            Text(
-                "Please type ${expectedServerSlug.ifBlank { "the server slug" }} to confirm.",
-                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
-            )
-            SlockModalTextField(
-                label = "Server slug",
-                value = modalConfirmationSlug,
-                placeholder = expectedServerSlug.ifBlank { "server-slug" },
-                onValueChange = { modalConfirmationSlug = it },
-                required = true,
-                enabled = !deleteBusy
-            )
-            if (actionState?.action == SERVER_ACTION_DELETE && actionState.errorCode != null) {
-                Text(
-                    actionState.errorCode,
-                    style = SlockType.Caption.copy(color = SlockColor.AccentRed),
-                    color = SlockColor.AccentRed
-                )
+            onConfirmationSlugChange = { modalConfirmationSlug = it },
+            onCancel = {
+                if (!deleteBusy) {
+                    showDeleteModal = false
+                    modalConfirmationSlug = ""
+                }
+            },
+            onDelete = {
+                onConfirmationSlugChange(modalConfirmationSlug)
+                onDelete()
+                if (actionState?.action != SERVER_ACTION_DELETE || actionState.errorCode == null) {
+                    showDeleteModal = false
+                    modalConfirmationSlug = ""
+                }
             }
-            SlockModalFullWidthActionButton(
-                label = actionState.serverStatusFor(SERVER_ACTION_DELETE, "Delete Server"),
-                icon = SlockLucideIconName.Trash2,
-                onClick = {
-                    onConfirmationSlugChange(modalConfirmationSlug)
-                    onDelete()
-                    if (actionState?.action != SERVER_ACTION_DELETE || actionState.errorCode == null) {
-                        showDeleteModal = false
-                        modalConfirmationSlug = ""
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerDeleteConfirmationDialog(
+    serverName: String,
+    expectedServerSlug: String,
+    confirmationSlug: String,
+    deleteBusy: Boolean,
+    deleteEnabled: Boolean,
+    errorCode: String?,
+    onDismiss: () -> Unit,
+    onConfirmationSlugChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val resolvedName = serverName.ifBlank { "this server" }
+    val resolvedSlug = expectedServerSlug.ifBlank { "server-slug" }
+    Modal(onWillDismiss = { if (!deleteBusy) onDismiss() }) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(SlockColor.ShadowBlack.copy(alpha = 0.58f))
+                    .clickable(enabled = !deleteBusy, onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .padding(horizontal = 18.dp)
+                        .offset(y = (-36).dp)
+                        .widthIn(max = 360.dp)
+                        .clickable(enabled = false, onClick = {})
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = 4.dp, y = 4.dp)
+                            .background(SlockColor.ShadowBlack)
+                )
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "DELETE SERVER",
+                            style =
+                                SlockType.PageTitle.copy(
+                                    fontSize = 18.sp,
+                                    lineHeight = 22.sp,
+                                    color = SlockColor.TextBlack
+                                ),
+                            color = SlockColor.TextBlack,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        SlockBrutalIconButton(
+                            enabled = !deleteBusy,
+                            iconName = SlockLucideIconName.X,
+                            onClick = onDismiss,
+                            size = 34.dp,
+                            shadowOffset = 3.dp
+                        )
                     }
-                },
-                enabled = deleteEnabled,
-                color = SlockColor.AccentRed
+                    SettingsServerDeleteWarningBanner(serverName = resolvedName)
+                    Text(
+                        "Type $resolvedSlug to confirm:",
+                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                    SettingsServerSlugInput(
+                        value = confirmationSlug,
+                        placeholder = resolvedSlug,
+                        enabled = !deleteBusy,
+                        onValueChange = onConfirmationSlugChange
+                    )
+                    errorCode?.takeIf { it.isNotBlank() }?.let {
+                        SettingsServerDeleteWarningBanner(serverName = null, text = it)
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        SlockBrutalActionButton(
+                            label = "Cancel",
+                            onClick = onCancel,
+                            enabled = !deleteBusy,
+                            modifier = Modifier.width(72.dp),
+                            backgroundColor = SlockColor.SurfaceWhite,
+                            minWidth = 0.dp,
+                            minHeight = 34.dp,
+                            shadowOffset = 3.dp,
+                            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                        )
+                        SlockBrutalActionButton(
+                            label = if (deleteBusy) "Deleting..." else "Delete Server",
+                            onClick = onDelete,
+                            enabled = deleteEnabled,
+                            modifier = Modifier.width(112.dp),
+                            backgroundColor = SlockColor.AccentRed,
+                            disabledBackgroundColor = SlockColor.AccentRed.copy(alpha = 0.28f),
+                            minWidth = 0.dp,
+                            minHeight = 34.dp,
+                            shadowOffset = 3.dp,
+                            textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsServerDeleteWarningBanner(
+    serverName: String?,
+    text: String? = null
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.AccentRed.copy(alpha = 0.14f))
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.TriangleAlert,
+            modifier = Modifier.padding(top = 1.dp).size(16.dp),
+            color = "#FF000000"
+        )
+        Text(
+            text ?: "This will permanently delete ${serverName ?: "this server"} and all its data (agents, channels, messages). This cannot be undone.",
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerSlugInput(
+    value: String,
+    placeholder: String,
+    enabled: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    var focused by remember { mutableStateOf(false) }
+    val shadowOffset = if (focused && enabled) 4.dp else 3.dp
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .height(42.dp)
+                        .width(42.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
+            }
+            TextField(
+                value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
+                placeholder = placeholder,
+                placeholderColor = SlockColor.TextMutedGray,
+                autoFocus = false,
+                onFocus = { focused = true },
+                onBlur = { focused = false },
+                maxLines = 1,
+                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
             )
         }
     }
@@ -11227,6 +11418,10 @@ private fun SettingsPageVisualContent() {
         remember(pager.pageData.params.toString()) {
             pager.pageData.params.optString("variant", "account").ifBlank { "account" }
         }
+    if (variant == "server-danger-modal") {
+        SettingsServerDangerModalVisualContent()
+        return
+    }
     val spec = settingsVisualSpec(variant)
     Box(
         modifier =
@@ -11260,7 +11455,7 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
         "server-danger" ->
             SettingsVisualSpec(variant, "Server Danger", "Leave or delete this workspace", SlockLucideIconName.TriangleAlert)
         "server-danger-modal" ->
-            SettingsVisualSpec(variant, "Delete Server", "Destructive confirmation modal", SlockLucideIconName.TriangleAlert)
+            SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
         "administration" ->
             SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
         "billing",
@@ -11352,48 +11547,6 @@ private fun SettingsVisualAccountContent(variant: String = "account") {
 
 @Composable
 private fun SettingsVisualServerFocusedContent(variant: String) {
-    // server-danger-modal: render Delete Server SlockUnifiedDialog in safe open state.
-    // Delete button kept disabled — only captures modal visual, never triggers delete.
-    if (variant == "server-danger-modal") {
-        val snap = remember { settingsVisualServerSnapshot() }
-        var modalSlug by remember { mutableStateOf("") }
-        val serverSlug = snap.profile.slug
-        Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-            SlockUnifiedDialog(
-                title = "Delete Server",
-                onDismiss = {},
-                dismissEnabled = true
-            ) {
-                Text(
-                    "This action cannot be undone. This will permanently delete ${snap.profile.name} and remove all members, channels, and data.",
-                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack
-                )
-                Text(
-                    "Please type $serverSlug to confirm.",
-                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray
-                )
-                SlockModalTextField(
-                    label = "Server slug",
-                    value = modalSlug,
-                    placeholder = serverSlug,
-                    onValueChange = { modalSlug = it },
-                    required = true,
-                    enabled = true
-                )
-                SlockModalFullWidthActionButton(
-                    label = "Delete Server",
-                    icon = SlockLucideIconName.Trash2,
-                    onClick = {},
-                    enabled = false,
-                    color = SlockColor.AccentRed
-                )
-            }
-        }
-        return
-    }
-
     val snapshot = remember { settingsVisualServerSnapshot() }
     var profileName by remember { mutableStateOf(snapshot.profile.name) }
     var inviteEmail by remember { mutableStateOf("new.member@slock.test") }
@@ -11448,6 +11601,118 @@ private fun SettingsVisualServerFocusedContent(variant: String) {
         onCreateJoinLink = {},
         onAction = { _, _ -> }
     )
+}
+
+@Composable
+private fun SettingsServerDangerModalVisualContent() {
+    val snapshot = remember { settingsVisualServerSnapshot() }
+    var modalSlug by remember { mutableStateOf("") }
+    val serverSlug = snapshot.profile.slug
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(61.dp)
+                        .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SettingsDetailBackButton(onBack = {})
+                Text(
+                    "Server Profile",
+                    style = SlockType.PageTitle.copy(fontSize = 17.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
+            Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+                SettingsServerProfileBackdropCard(snapshot)
+            }
+        }
+        SettingsServerDeleteConfirmationDialog(
+            serverName = snapshot.profile.name,
+            expectedServerSlug = serverSlug,
+            confirmationSlug = modalSlug,
+            deleteBusy = false,
+            deleteEnabled = false,
+            errorCode = null,
+            onDismiss = {},
+            onConfirmationSlugChange = { modalSlug = it },
+            onCancel = {},
+            onDelete = {}
+        )
+    }
+}
+
+@Composable
+private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(SlockLucideIconName.Building2, modifier = Modifier.size(14.dp), color = "#FF000000")
+            Text(
+                "PROFILE",
+                style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, letterSpacing = 1.3.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        SettingsServerBackdropField(label = "Name", value = snapshot.profile.name)
+        SettingsServerBackdropField(label = "Slug", value = snapshot.profile.slug)
+    }
+}
+
+@Composable
+private fun SettingsServerBackdropField(
+    label: String,
+    value: String
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            label,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+        Box(modifier = Modifier.fillMaxWidth().height(39.dp)) {
+            Box(
+                modifier =
+                    Modifier
+                        .matchParentSize()
+                        .offset(x = 3.dp, y = 3.dp)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Text(
+                    value,
+                    style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
 }
 
 
@@ -11579,8 +11844,8 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
     SettingsServerSnapshot(
         profile =
             ai.slock.compose.data.SettingsServerProfileSnapshot(
-                name = "Raft Design",
-                slug = "raft-design",
+                name = "Visual Server",
+                slug = "visual",
                 hideHumansFromMembers = true,
                 canSave = true
             ),
