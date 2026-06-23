@@ -1601,10 +1601,10 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
     }
     val borderColor = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1696,10 +1696,10 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
     }
     val borderColor = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
@@ -1843,10 +1843,10 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Hovered -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
-        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Pressed -> SlockColor.SurfaceWhite
     }
     val borderColor = when (interactionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
