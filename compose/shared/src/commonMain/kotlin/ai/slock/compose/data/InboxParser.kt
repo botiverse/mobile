@@ -305,11 +305,7 @@ private fun WireSavedEntry.toInboxItem(): InboxItem {
         "thread" -> InboxItemKind.Thread
         else -> InboxItemKind.Channel
     }
-    val key = when (itemKind) {
-        InboxItemKind.DirectMessage -> "dm:$channelId"
-        InboxItemKind.Thread -> "thread:$channelId"
-        else -> "channel:$channelId"
-    }
+    val key = "saved:$messageId"
     return InboxItem(
         key = key,
         kind = itemKind,
