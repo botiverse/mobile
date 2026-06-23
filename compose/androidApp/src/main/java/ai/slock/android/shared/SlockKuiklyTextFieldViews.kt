@@ -6,16 +6,24 @@ import android.view.ActionMode
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
+import android.view.MotionEvent
+import android.view.inputmethod.EditorInfo
+import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import com.tencent.kuikly.core.render.android.css.ktx.toDpF
+import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
+import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextProps
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 
 private const val PROP_FONT_FAMILY = "fontFamily"
 private const val PROP_KEYBOARD_TYPE = "keyboardType"
+private const val PROP_RETURN_KEY_TYPE = "returnKeyType"
 private const val PROP_SYSTEM_NEWLINE_ACTION = "slockSystemNewlineAction"
 private const val KEYBOARD_TYPE_EMAIL = "email"
 private const val MENU_ITEM_INSERT_NEWLINE = 0x534C0A
+private const val LOG_TAG = "SlockComposerNewline"
 
-internal class SlockKuiklyTextFieldView(
+internal open class SlockKuiklyTextFieldView(
     context: Context,
     softInputMode: Int?
 ) : KRTextFieldView(context, softInputMode) {
@@ -37,11 +45,16 @@ internal class SlockKuiklyTextFieldView(
             }
             PROP_SYSTEM_NEWLINE_ACTION -> {
                 systemNewlineActionEnabled = propValue.toSlockBoolean()
+                logState("setProp systemNewlineAction raw=${propValue.describeSlockPropValue()}")
                 applySystemNewlineActionMode()
                 true
             }
             KRTextProps.PROP_KEY_NUMBER_OF_LINES -> {
-                allowsMultipleLines = propValue.toSlockLineCount() != 1
+                val lineCount = propValue.toSlockLineCount()
+                allowsMultipleLines = lineCount != 1
+                logState(
+                    "setProp numberOfLines raw=${propValue.describeSlockPropValue()} parsed=$lineCount"
+                )
                 super.setProp(propKey, propValue).also {
                     applySlockInputMetrics()
                     applySystemNewlineActionMode()
@@ -67,6 +80,7 @@ internal class SlockKuiklyTextFieldView(
         when (propKey) {
             PROP_SYSTEM_NEWLINE_ACTION -> {
                 systemNewlineActionEnabled = false
+                logState("resetProp systemNewlineAction")
                 applySystemNewlineActionMode()
                 true
             }
@@ -87,6 +101,7 @@ internal class SlockKuiklyTextFieldView(
         val callback = newlineActionModeCallback.takeIf { systemNewlineActionEnabled && allowsMultipleLines }
         customInsertionActionModeCallback = callback
         customSelectionActionModeCallback = callback
+        logState("applyActionMode installed=${callback != null}")
     }
 
     private fun insertNewlineAtSelection() {
@@ -99,35 +114,140 @@ internal class SlockKuiklyTextFieldView(
         }.coerceIn(0, length)
         val start = selectionStart.takeIf { it >= 0 }?.coerceIn(0, length) ?: fallback
         val end = selectionEnd.takeIf { it >= 0 }?.coerceIn(0, length) ?: fallback
+        logState("insertNewline start=$start end=$end textLength=$length")
         editable.replace(minOf(start, end), maxOf(start, end), "\n")
+    }
+
+    override fun performLongClick(): Boolean {
+        logState("performLongClick")
+        return super.performLongClick() || startNewlineActionModeFallback("performLongClick")
+    }
+
+    override fun performLongClick(x: Float, y: Float): Boolean {
+        logState("performLongClick x=$x y=$y")
+        return super.performLongClick(x, y) || startNewlineActionModeFallback("performLongClickAt")
+    }
+
+    private fun startNewlineActionModeFallback(source: String): Boolean {
+        if (!systemNewlineActionEnabled || !allowsMultipleLines) {
+            logState("actionModeFallback skipped source=$source")
+            return false
+        }
+        val started = startActionMode(newlineActionModeCallback) != null
+        logState("actionModeFallback source=$source started=$started")
+        return started
+    }
+
+    private fun logState(message: String) {
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "$message enabled=$systemNewlineActionEnabled multiline=$allowsMultipleLines " +
+                "maxLines=$maxLines singleLine=$isSingleLine selection=$selectionStart..$selectionEnd"
+        )
     }
 
     private inner class NewlineActionModeCallback : ActionMode.Callback {
         override fun onCreateActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+            logState("onCreateActionMode before menu=${menu.describeSlockMenu()}")
             ensureNewlineMenuItem(menu)
+            logState("onCreateActionMode after menu=${menu.describeSlockMenu()}")
             return true
         }
 
         override fun onPrepareActionMode(mode: ActionMode?, menu: Menu?): Boolean {
+            logState("onPrepareActionMode before menu=${menu.describeSlockMenu()}")
             ensureNewlineMenuItem(menu)
+            logState("onPrepareActionMode after menu=${menu.describeSlockMenu()}")
             return false
         }
 
         override fun onActionItemClicked(mode: ActionMode?, item: MenuItem?): Boolean {
+            logState(
+                "onActionItemClicked item=${item?.itemId} title=${item?.title?.toString().orEmpty()}"
+            )
             if (item?.itemId != MENU_ITEM_INSERT_NEWLINE) return false
             insertNewlineAtSelection()
             mode?.finish()
             return true
         }
 
-        override fun onDestroyActionMode(mode: ActionMode?) = Unit
+        override fun onDestroyActionMode(mode: ActionMode?) {
+            logState("onDestroyActionMode")
+        }
 
         private fun ensureNewlineMenuItem(menu: Menu?) {
-            if (!systemNewlineActionEnabled || !allowsMultipleLines || menu == null) return
-            if (menu.findItem(MENU_ITEM_INSERT_NEWLINE) != null) return
+            if (!systemNewlineActionEnabled || !allowsMultipleLines || menu == null) {
+                logState("ensureNewlineMenuItem skipped menuNull=${menu == null}")
+                return
+            }
+            if (menu.findItem(MENU_ITEM_INSERT_NEWLINE) != null) {
+                logState("ensureNewlineMenuItem already-present")
+                return
+            }
             menu.add(Menu.NONE, MENU_ITEM_INSERT_NEWLINE, Menu.NONE, "换行")
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            logState("ensureNewlineMenuItem added")
         }
+    }
+}
+
+internal class SlockKuiklyTextAreaView(
+    context: Context,
+    softInputMode: Int?
+) : SlockKuiklyTextFieldView(context, softInputMode) {
+    init {
+        gravity = Gravity.LEFT or Gravity.TOP
+    }
+
+    override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
+        when (method) {
+            KRTextAreaView.METHOD_GET_INNER_CONTENT_HEIGHT -> getContentHeight(callback)
+            else -> super.call(method, params, callback)
+        }
+
+    override fun setProp(propKey: String, propValue: Any): Boolean =
+        when (propKey) {
+            PROP_RETURN_KEY_TYPE -> setReturnKeyType(propValue)
+            else -> super.setProp(propKey, propValue)
+        }
+
+    override fun initSingleLine() {
+        isSingleLine = false
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN &&
+            computeVerticalScrollRange() > computeVerticalScrollExtent()
+        ) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+        }
+        return super.onTouchEvent(event)
+    }
+
+    private fun getContentHeight(callback: KuiklyRenderCallback?) {
+        callback?.invoke(
+            mapOf("height" to kuiklyRenderContext.toDpF(layout.height.toFloat()))
+        )
+    }
+
+    private fun setReturnKeyType(value: Any): Boolean {
+        val method = transformationMethod
+        isSingleLine = true
+        transformationMethod = method
+        maxLines = Integer.MAX_VALUE
+        setHorizontallyScrolling(false)
+        imeOptions =
+            when (value as String) {
+                "none" -> EditorInfo.IME_ACTION_NONE
+                "search" -> EditorInfo.IME_ACTION_SEARCH
+                "send" -> EditorInfo.IME_ACTION_SEND
+                "done" -> EditorInfo.IME_ACTION_DONE
+                "next" -> EditorInfo.IME_ACTION_NEXT
+                "go" -> EditorInfo.IME_ACTION_GO
+                "previous" -> EditorInfo.IME_ACTION_PREVIOUS
+                else -> EditorInfo.IME_NULL
+            }
+        return true
     }
 }
 
@@ -148,3 +268,26 @@ internal fun Any?.toSlockLineCount(defaultValue: Int = 1): Int =
         }
         else -> defaultValue
     }
+
+private fun Any?.describeSlockPropValue(): String =
+    when (this) {
+        null -> "null"
+        else -> "${this::class.simpleName}:$this"
+    }
+
+private fun Menu?.describeSlockMenu(): String {
+    if (this == null) return "null"
+    return buildString {
+        append("size=")
+        append(size())
+        append(" [")
+        for (index in 0 until size()) {
+            if (index > 0) append(", ")
+            val item = getItem(index)
+            append(item.itemId)
+            append(":")
+            append(item.title)
+        }
+        append("]")
+    }
+}

@@ -541,6 +541,7 @@ internal fun TextField(
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
         .onFocusChanged {
@@ -619,6 +620,7 @@ internal fun TextField(
 
     val updatedModifier = modifier
         .let { if (systemNewlineAction) it.setProp(SLOCK_SYSTEM_NEWLINE_ACTION_PROP, 1) else it }
+        .let { if (systemNewlineAction) it.setProp(SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP, maxLines) else it }
         .keyboardHeightChange(currentKeyboardHeightChange)
         .focusRequester(focusRequester)
         .onFocusChanged {
@@ -667,6 +669,7 @@ internal fun TextField(
 }
 
 private const val SLOCK_SYSTEM_NEWLINE_ACTION_PROP = "slockSystemNewlineAction"
+private const val SLOCK_TEXT_FIELD_NUMBER_OF_LINES_PROP = "numberOfLines"
 
 @Composable
 fun Modifier.dtReport(enable: Boolean): Modifier {

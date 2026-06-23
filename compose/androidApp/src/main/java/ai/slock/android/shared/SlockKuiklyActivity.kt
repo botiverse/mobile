@@ -88,6 +88,7 @@ import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.tencent.kuikly.core.render.android.performace.KRMonitorType
 import com.tencent.kuikly.core.render.android.performace.KRPerformanceData
 import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
+import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
 import com.google.gson.Gson
@@ -519,6 +520,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderExport.renderViewExport(
             KRTextFieldView.VIEW_NAME,
             renderViewExportCreator = { context -> SlockKuiklyTextFieldView(context, window.attributes?.softInputMode) }
+        )
+        kuiklyRenderExport.renderViewExport(
+            KRTextAreaView.VIEW_NAME,
+            renderViewExportCreator = { context -> SlockKuiklyTextAreaView(context, window.attributes?.softInputMode) }
         )
         kuiklyRenderExport.renderViewExport(
             SlockLucideIconRenderView.VIEW_NAME,
