@@ -1,3 +1,9 @@
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.concurrent.TimeUnit
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -25,6 +31,25 @@ val buglyAndroidAppKey =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
+fun slockBuildTime(): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
+    formatter.timeZone = TimeZone.getTimeZone("UTC")
+    return formatter.format(Date())
+}
+
+fun slockGitCommit(): String =
+    try {
+        val process = ProcessBuilder("git", "rev-parse", "--short", "HEAD")
+            .directory(rootProject.projectDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        process.waitFor(5, TimeUnit.SECONDS)
+        if (process.exitValue() == 0 && output.isNotBlank()) output else "unknown"
+    } catch (_: Throwable) {
+        "unknown"
+    }
+
 android {
     namespace = "ai.slock.android"
     compileSdk {
@@ -44,6 +69,8 @@ android {
         buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         buildConfigField("String", "BUGLY_ANDROID_APP_ID", "\"$buglyAndroidAppId\"")
         buildConfigField("String", "BUGLY_ANDROID_APP_KEY", "\"$buglyAndroidAppKey\"")
+        buildConfigField("String", "BUILD_TIME", "\"${slockBuildTime()}\"")
+        buildConfigField("String", "GIT_COMMIT", "\"${slockGitCommit()}\"")
     }
 
     buildTypes {

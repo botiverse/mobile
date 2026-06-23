@@ -101,7 +101,9 @@ internal class BridgeSettingsPlatformCapabilities(
                 socketStatusLabel = response.optString("socketStatusLabel"),
                 notificationStatusLabel = response.optString("notificationStatusLabel"),
                 deviceLabel = response.optString("deviceLabel"),
-                platformLabel = response.optString("platformLabel")
+                platformLabel = response.optString("platformLabel"),
+                buildTime = response.optString("buildTime"),
+                gitCommit = response.optString("gitCommit")
             )
         )
     }
