@@ -398,6 +398,7 @@ class SharedActivityStore(
                         valueTransform = {
                             InboxSenderAvatarProfile(
                                 kind = it.kind,
+                                displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } },
                                 avatarWireValue = it.avatarWireValueForActivity()
                             )
                         }
@@ -461,6 +462,7 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
 
 private data class InboxSenderAvatarProfile(
     val kind: MemberKind,
+    val displayName: String,
     val avatarWireValue: String?
 )
 
@@ -482,8 +484,10 @@ private fun List<InboxItem>.withSenderAvatarProfiles(
         val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
         item.copy(
             lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
+            lastMessageSenderName = item.lastMessageSenderName ?: lastSender?.displayName,
             lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
             latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
+            latestActivitySenderName = item.latestActivitySenderName ?: latestSender?.displayName,
             latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
         )
     }
