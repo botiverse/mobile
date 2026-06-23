@@ -3034,7 +3034,8 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
 private val languageRegionLanguageOptions =
     listOf(
         SettingsMobileSelectionOptionSnapshot("other", "Others"),
-        SettingsMobileSelectionOptionSnapshot("en", "English")
+        SettingsMobileSelectionOptionSnapshot("en", "English"),
+        SettingsMobileSelectionOptionSnapshot("zh", "中文")
     )
 
 private val languageRegionTimeFormatOptions =

@@ -2543,6 +2543,12 @@ private fun SettingsAppShellContent(
                         onSettingsIntent(
                             SharedSettingsIntent.UpdateLanguageRegionPreference(request)
                         )
+                        // Switch app locale when Chinese is selected.
+                        if (selected == "zh") {
+                            onSettingsIntent(SharedSettingsIntent.SetLocale("zh-Hans"))
+                        } else if (selected == "en") {
+                            onSettingsIntent(SharedSettingsIntent.SetLocale("en"))
+                        }
                     },
                     onSaveTime = {
                         val timezone = languageRegionTimezoneDraft.takeIf { it.isNotBlank() }
