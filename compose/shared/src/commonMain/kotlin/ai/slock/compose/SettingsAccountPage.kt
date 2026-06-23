@@ -246,7 +246,7 @@ private fun SettingsAccountProfileCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                profile.handle.takeIf { it.isNotBlank() }?.let {
+                settingsAccountHeaderHandleLabel(profile.handle)?.let {
                     Text(
                         it,
                         style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
@@ -335,6 +335,18 @@ private fun SettingsAccountProfileCard(
                 }
             )
         }
+    }
+}
+
+internal fun settingsAccountHeaderHandleLabel(handle: String): String? {
+    val trimmed = handle.trim()
+    if (trimmed.isBlank()) {
+        return null
+    }
+    return when {
+        trimmed.startsWith("@") -> trimmed
+        trimmed.contains("@") -> trimmed
+        else -> "@$trimmed"
     }
 }
 
