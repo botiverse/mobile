@@ -2432,7 +2432,11 @@ internal fun SharedThreadRouteContent(
                     "asTask" to context.asTask.toString(),
                     "attachments" to context.attachmentIds.size.toString(),
                     "hasText" to context.body.isNotBlank().toString(),
-                    "localMessageId" to localMessageId
+                    "bodyLength" to context.body.length.toString(),
+                    "localMessageId" to localMessageId,
+                    "parentMessageId" to context.parentMessageId.orEmpty(),
+                    "streamChannelId" to context.streamChannelId.orEmpty(),
+                    "mentionChannelId" to context.mentionChannelId.orEmpty()
                 )
         )
         coroutineScope.launch {
@@ -2481,6 +2485,9 @@ internal fun SharedThreadRouteContent(
                                 mapOf(
                                     "result" to "failure",
                                     "code" to errorCode,
+                                    "httpCode" to sendResponse.code.toString(),
+                                    "contractCode" to sendResponse.contractCode.orEmpty(),
+                                    "errorBytes" to (sendResponse.errorBodyText?.length ?: 0).toString(),
                                     "localMessageId" to localMessageId
                                 )
                         )
@@ -3217,11 +3224,36 @@ internal fun SharedThreadRouteContent(
                     val draftText = currentDraftState.seedText.trim()
                     val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
                     val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
-                    if (!payload.canSend || threadId == null ||
-                        (draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload)
-                    ) {
+                    val gateBlockReason =
+                        when {
+                            !payload.canSend -> "payload_can_send_false"
+                            threadId == null -> "missing_send_channel"
+                            draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload -> "empty_draft"
+                            else -> null
+                        }
+                    if (gateBlockReason != null) {
+                        bridge.log(
+                            "thread_composer_send_gate result=blocked reason=$gateBlockReason " +
+                                "surface=${payload.surfaceKind} status=${payload.status} canSend=${payload.canSend} " +
+                                "sourceThreadId=${payload.sourceThreadId.orEmpty()} streamChannelId=${payload.streamChannelId.orEmpty()} " +
+                                "resolvedAuxiliaryThreadId=${resolvedAuxiliaryThreadId.orEmpty()} sendChannelId=${threadId.orEmpty()} " +
+                                "parentChannelId=${payload.parentChannelId.orEmpty()} parentMessageId=${payload.parentMessageId.orEmpty()} " +
+                                "composerStreamChannelId=${composerSurface.streamChannelId.orEmpty()} " +
+                                "hasText=${draftText.isNotBlank()} attachments=${attachmentIds.size} " +
+                                "blockingAttachments=$hasBlockingAttachmentUpload"
+                        )
                         return@ThreadPageContent
                     }
+                    bridge.log(
+                        "thread_composer_send_gate result=allowed " +
+                            "surface=${payload.surfaceKind} status=${payload.status} canSend=${payload.canSend} " +
+                            "sourceThreadId=${payload.sourceThreadId.orEmpty()} streamChannelId=${payload.streamChannelId.orEmpty()} " +
+                            "resolvedAuxiliaryThreadId=${resolvedAuxiliaryThreadId.orEmpty()} sendChannelId=${threadId.orEmpty()} " +
+                            "parentChannelId=${payload.parentChannelId.orEmpty()} parentMessageId=${payload.parentMessageId.orEmpty()} " +
+                            "composerStreamChannelId=${composerSurface.streamChannelId.orEmpty()} " +
+                            "hasText=${draftText.isNotBlank()} attachments=${attachmentIds.size} " +
+                            "blockingAttachments=$hasBlockingAttachmentUpload"
+                    )
                     val draftAsTask = currentDraftState.seedAsTask
                     val pendingAttachments =
                         if (hasBlockingAttachmentUpload) {
