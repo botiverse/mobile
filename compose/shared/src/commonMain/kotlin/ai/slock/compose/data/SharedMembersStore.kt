@@ -662,10 +662,13 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
 private fun String?.preferConcreteSuggestionAvatar(candidate: String?): String? =
     when {
         isNullOrBlank() -> candidate
-        startsWith("random:", ignoreCase = true) && !candidate.isNullOrBlank() &&
-            !candidate.startsWith("random:", ignoreCase = true) -> candidate
+        isAgentFallbackSuggestionAvatar() && !candidate.isNullOrBlank() &&
+            !candidate.isAgentFallbackSuggestionAvatar() -> candidate
         else -> this
     }
+
+private fun String?.isAgentFallbackSuggestionAvatar(): Boolean =
+    this?.equals("pixel:robot", ignoreCase = true) == true || this?.startsWith("random:", ignoreCase = true) == true
 
 private fun MemberProfile.remoteSourceServerLabel(localServerId: String?): String? {
     val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null

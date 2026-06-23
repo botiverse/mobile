@@ -110,7 +110,7 @@ class SharedMembersStoreTest {
                     "build",
                     inMentionChannel = false,
                     kind = MemberKind.Agent,
-                    avatarWireValue = "random:u2"
+                    avatarWireValue = "pixel:robot"
                 ),
                 SharedMembersMemberSuggestion(
                     "Remote User",
@@ -147,7 +147,7 @@ class SharedMembersStoreTest {
                     "outside",
                     inMentionChannel = false,
                     kind = MemberKind.Agent,
-                    avatarWireValue = "random:u2"
+                    avatarWireValue = "pixel:robot"
                 )
             ),
             store.state.value.memberSuggestions
@@ -371,7 +371,7 @@ class SharedMembersStoreTest {
                     "Build Agent",
                     "build-agent",
                     kind = MemberKind.Agent,
-                    avatarWireValue = "random:u2"
+                    avatarWireValue = "pixel:robot"
                 )
             ),
             store.state.value.memberSuggestions

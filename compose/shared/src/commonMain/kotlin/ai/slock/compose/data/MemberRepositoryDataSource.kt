@@ -807,6 +807,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         machineId = machineId,
         machineName = machineName,
         daemonVersion = daemonVersion,
+        avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
         envVarNames = envVarNames,

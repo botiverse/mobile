@@ -8061,6 +8061,8 @@ private fun SharedMembersScreen(
                         kind = MemberKind.Agent,
                         description = result.data.activityDetail,
                         roleDescription = result.data.model,
+                        avatarUrl = result.data.avatarUrl,
+                        avatar = AvatarReference.fromWireValue(result.data.avatarUrl),
                         presence = Presence.Offline,
                         agentStatus = AgentStatus.Online
                     )

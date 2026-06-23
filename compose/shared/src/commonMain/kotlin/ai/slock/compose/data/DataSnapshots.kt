@@ -179,6 +179,7 @@ data class AgentDetailSummary(
     val machineId: String? = null,
     val machineName: String? = null,
     val daemonVersion: String? = null,
+    val avatarUrl: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
     val envVarNames: List<String> = emptyList(),
