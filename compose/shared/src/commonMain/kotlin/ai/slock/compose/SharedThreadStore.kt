@@ -1319,6 +1319,16 @@ internal class SharedThreadDataSource(
         threadId: ThreadId
     ): DataResult<KuiklyThreadScreenPayload> {
         val headerFallback = resolveConversationHeaderFallback(basePayload, session)
+        val focusedContext =
+            fetchFocusedInitialThreadPayloadFromRepository(
+                session = session,
+                basePayload = basePayload,
+                routeThreadId = threadId,
+                headerFallback = headerFallback
+            )
+        if (focusedContext != null) {
+            return focusedContext
+        }
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network") { repository ->
                 repository.getThread(threadId, limit = SharedThreadPaging.initialPageSize)
@@ -1352,6 +1362,29 @@ internal class SharedThreadDataSource(
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
         }
+    }
+
+    private suspend fun fetchFocusedInitialThreadPayloadFromRepository(
+        session: StoredAuthSession,
+        basePayload: KuiklyThreadScreenPayload,
+        routeThreadId: ThreadId,
+        headerFallback: ConversationSummary?
+    ): DataResult<KuiklyThreadScreenPayload>? {
+        val focusedMessageId = basePayload.focusedMessageId?.takeIf { it.isNotBlank() } ?: return null
+        val contextResult =
+            fetchThreadSnapshotFromRepository("thread_focused_context") { repository ->
+                repository.getMessageContext(MessageId(focusedMessageId))
+            }
+        val context = (contextResult as? DataResult.Content)?.data ?: return null
+        if (!context.matchesFocusedThreadRoute(routeThreadId, focusedMessageId)) {
+            return null
+        }
+        return DataResult.Content(
+            context
+                .withConversationHeaderFallback(headerFallback)
+                .toKuiklyThreadPayload(basePayload, session.user.id)
+                .withCachedSenderProfiles(session)
+        )
     }
 
     private suspend fun ThreadSnapshot.withReplyParentMessageFromContext(
@@ -3640,6 +3673,18 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
         dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
     )
+}
+
+private fun ThreadSnapshot.matchesFocusedThreadRoute(
+    routeThreadId: ThreadId,
+    focusedMessageId: String
+): Boolean {
+    val routeId = routeThreadId.value.takeIf { it.isNotBlank() } ?: return false
+    val focusedMessage =
+        messages.firstOrNull { message -> message.id.value == focusedMessageId }
+            ?: parentMessage?.takeIf { message -> message.id.value == focusedMessageId }
+            ?: return false
+    return focusedMessage.channelId.value == routeId || focusedMessage.threadId.value == routeId
 }
 
 private fun ThreadSnapshot.withConversationHeaderFallback(

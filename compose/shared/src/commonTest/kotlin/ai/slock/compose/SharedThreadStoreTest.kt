@@ -1305,6 +1305,80 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadUsesFocusedMessageContextWhenRouteCarriesFocusedMessage() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository = FakeConversationRepository(
+            threadResult = DataResult.Content(threadSnapshot(body = "latest body", id = "latest", seq = 30)),
+            messageContextResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        messages =
+                            listOf(
+                                message(threadId = "channel-1", id = "older", seq = 18, body = "older body"),
+                                message(threadId = "channel-1", id = "target", seq = 19, body = "target body"),
+                                message(threadId = "channel-1", id = "newer", seq = 20, body = "newer body")
+                            )
+                    ).copy(
+                        canLoadMoreBefore = true,
+                        canLoadMoreAfter = true,
+                        highlightedMessageId = MessageId("target")
+                    )
+                )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload =
+            (dataSource.fetchThreadPayload(basePayload().copy(focusedMessageId = "target")) as DataResult.Content).data
+
+        assertEquals(listOf(MessageId("target")), repository.getMessageContextRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals(listOf("older", "target", "newer"), payload.messages.map { it.id })
+        assertEquals("target", payload.focusedMessageId)
+        assertTrue(payload.canLoadMoreBefore)
+        assertTrue(payload.canLoadMoreAfter)
+    }
+
+    @Test
+    fun fetchThreadPayloadFallsBackWhenFocusedMessageContextDoesNotMatchRouteThread() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository = FakeConversationRepository(
+            threadResult = DataResult.Content(threadSnapshot(body = "repository body")),
+            messageContextResult =
+                DataResult.Content(
+                    threadSnapshot(
+                        threadId = "channel-2",
+                        messages =
+                            listOf(
+                                message(threadId = "channel-2", id = "target", seq = 19, body = "wrong channel body")
+                            ),
+                        conversation = conversationSummary("channel-2")
+                    ).copy(highlightedMessageId = MessageId("target"))
+                )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload =
+            (dataSource.fetchThreadPayload(basePayload().copy(focusedMessageId = "target")) as DataResult.Content).data
+
+        assertEquals(listOf(MessageId("target")), repository.getMessageContextRequests)
+        assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals(listOf("repository body"), payload.messages.map { it.body })
+        assertEquals("target", payload.focusedMessageId)
+    }
+
+    @Test
     fun fetchThreadPayloadUsesHomeHeaderWhenRepositorySnapshotTitleIsIdentity() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
