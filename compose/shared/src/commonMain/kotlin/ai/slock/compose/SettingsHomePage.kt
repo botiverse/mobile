@@ -8320,7 +8320,7 @@ private fun SharedMembersScreen(
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
                 SlockTopPageHeader(
                     title = "Members",
-                    subtitle = "Workspace members",
+                    subtitle = null,
                     iconName = SlockLucideIconName.Users
                 )
                 SlockCenteredLoading()
@@ -8328,7 +8328,7 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Error ->
             PageErrorContent(
                 title = "Members",
-                subtitle = "Workspace members",
+                subtitle = null,
                 iconName = SlockLucideIconName.Users,
                 message = "Could not load members",
                 code = current.code
@@ -13190,7 +13190,7 @@ internal fun SettingsHomeContent(
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = payload.title,
-            subtitle = payload.subtitle.takeIf { it.isNotBlank() } ?: "Preferences",
+            subtitle = null,
             iconName = SlockLucideIconName.Settings
         )
         LazyColumn(
