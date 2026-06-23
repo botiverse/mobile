@@ -12,7 +12,6 @@ interface SharedPreferenceStore {
 interface SlockKeyValueStore : SharedPreferenceStore
 
 object SlockLocalPreferenceStore {
-    const val AndroidPreferencesName = "slock_local_preferences"
     const val KuiklyNamespace = "slockLocal"
 }
 
