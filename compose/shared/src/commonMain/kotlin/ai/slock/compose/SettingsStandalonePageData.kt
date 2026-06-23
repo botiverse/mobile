@@ -35,8 +35,7 @@ internal data class WireSettingsComputersLaunchPayload(
 internal data class WireSettingsComputerDetailLaunchPayload(
     val instanceId: String = "",
     val computerId: String? = null,
-    val machineId: String? = null,
-    val computerName: String? = null
+    val machineId: String? = null
 )
 
 internal fun parseSettingsHomePayload(
@@ -127,12 +126,11 @@ internal fun parseSettingsComputerDetailPayload(
         default = WireSettingsComputerDetailLaunchPayload(instanceId = instanceId)
     )
     val computerId = launch.computerId?.takeIf { it.isNotBlank() } ?: launch.machineId?.takeIf { it.isNotBlank() }
-    val computerName = launch.computerName?.takeIf { it.isNotBlank() } ?: "Computer"
     return KuiklySettingsComputerDetailPayload(
         instanceId = launch.instanceId.ifBlank { instanceId },
         computer = KuiklySettingsComputerItem(
             id = computerId.orEmpty(),
-            name = computerName
+            name = "Computer"
         )
     )
 }

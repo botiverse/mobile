@@ -49,7 +49,6 @@ import ai.slock.compose.data.CONNECTED_APPS_ACTION_PUBLISH
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_REGISTER
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_UNINSTALL
 import ai.slock.compose.data.CONNECTED_APPS_ACTION_UPDATE
-import ai.slock.compose.data.SettingsComputerRenameRequest
 import ai.slock.compose.data.SharedSettingsActionState
 import ai.slock.compose.data.NetworkSlockAnnouncementsRemindersApi
 import ai.slock.compose.data.NetworkSlockTasksApi
@@ -194,7 +193,6 @@ import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.savedMessageIdOrNull
-import ai.slock.compose.data.SettingsComputerAgentSnapshot
 import ai.slock.compose.data.SettingsAppearanceSnapshot
 import ai.slock.compose.data.SettingsAppearanceUpdateRequest
 import ai.slock.compose.data.SettingsBillingActionSnapshot
@@ -210,10 +208,6 @@ import ai.slock.compose.data.SettingsConnectedAppRegisterRequest
 import ai.slock.compose.data.SettingsConnectedAppSecretSnapshot
 import ai.slock.compose.data.SettingsConnectedAppUpdateRequest
 import ai.slock.compose.data.SettingsConnectedAppsSnapshot
-import ai.slock.compose.data.SettingsComputerDetailSnapshot
-import ai.slock.compose.data.SettingsComputerSnapshot
-import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
-import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsDiagnosticsFeedbackDraft
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionOptionSnapshot
@@ -394,7 +388,6 @@ private val homeSecondaryDestinationKeys =
 private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
-private const val SettingsDestinationComputerDetail = "computerDetail"
 private const val SettingsDestinationServer = "server"
 private const val SettingsDestinationConnectedApps = "connected-apps"
 private const val SettingsDestinationBilling = "billing"
@@ -1191,7 +1184,6 @@ private fun SlockAppShellContent() {
     var selectedTab by remember { mutableStateOf("home") }
     var retainedAppShellTabs by remember { mutableStateOf(setOf("home")) }
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
-    var selectedSettingsComputerId by remember { mutableStateOf<String?>(null) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
@@ -1539,7 +1531,6 @@ private fun SlockAppShellContent() {
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
-        selectedSettingsComputerId = null
         homeShellStore.reset()
         pendingDiagnosticsFeedback = null
         pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
@@ -1780,12 +1771,7 @@ private fun SlockAppShellContent() {
             return true
         }
         if (selectedTab == "settings" && selectedSettingsDestination != SettingsDestinationHome) {
-            if (selectedSettingsDestination == SettingsDestinationComputerDetail) {
-                selectedSettingsDestination = SettingsDestinationComputers
-            } else {
-                selectedSettingsDestination = SettingsDestinationHome
-            }
-            selectedSettingsComputerId = null
+            selectedSettingsDestination = SettingsDestinationHome
             return true
         }
         if (selectedTab == "home" && selectedHomeDestination != null) {
@@ -1795,7 +1781,6 @@ private fun SlockAppShellContent() {
         if (selectedTab != "home") {
             selectedTab = "home"
             selectedSettingsDestination = SettingsDestinationHome
-            selectedSettingsComputerId = null
             homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
             return true
         }
@@ -2224,7 +2209,6 @@ private fun SlockAppShellContent() {
                 }
                 if (nextTab != "settings") {
                     selectedSettingsDestination = SettingsDestinationHome
-                    selectedSettingsComputerId = null
                     pendingDiagnosticsFeedback = null
                     pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
                 }
@@ -2306,16 +2290,11 @@ private fun SlockAppShellContent() {
                             },
                             onSettingsIntent = settingsViewModel::dispatch,
                             selectedDestination = selectedSettingsDestination,
-                            selectedComputerId = selectedSettingsComputerId,
                             onDestinationChange = {
                                 selectedSettingsDestination = it
-                                if (it != SettingsDestinationComputerDetail) {
-                                    selectedSettingsComputerId = null
-                                }
                             },
                             onOpenComputer = { computerId ->
-                                selectedSettingsComputerId = computerId
-                                selectedSettingsDestination = SettingsDestinationComputerDetail
+                                pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
                             onMessageAlignmentSelected = {
@@ -2419,7 +2398,6 @@ private fun SettingsAppShellContent(
     onToggleNotificationPreference: () -> Unit,
     onSettingsIntent: (SharedSettingsIntent) -> Unit,
     selectedDestination: String,
-    selectedComputerId: String?,
     onDestinationChange: (String) -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
@@ -2435,15 +2413,9 @@ private fun SettingsAppShellContent(
     timeContext: SlockTimeContext?,
     onLogout: () -> Unit
 ) {
-    LaunchedEffect(selectedDestination, selectedComputerId) {
-        if (selectedDestination == SettingsDestinationComputerDetail) {
-            selectedComputerId?.takeIf { it.isNotBlank() }?.let { computerId ->
-                onSettingsIntent(SharedSettingsIntent.OpenComputer(computerId))
-            }
-        } else {
-            selectedDestination.toSharedSettingsDestination()?.let { destination ->
-                onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
-            }
+    LaunchedEffect(selectedDestination) {
+        selectedDestination.toSharedSettingsDestination()?.let { destination ->
+            onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
         }
     }
 
@@ -2681,8 +2653,6 @@ private fun SettingsAppShellContent(
         onBack = {
             if (selectedDestination == SettingsDestinationDiagnosticsFeedbackChannel) {
                 onDiagnosticsFeedbackBack()
-            } else if (selectedDestination == SettingsDestinationComputerDetail) {
-                onDestinationChange(SettingsDestinationComputers)
             } else {
                 onDestinationChange(SettingsDestinationHome)
             }
@@ -2745,50 +2715,6 @@ private fun SettingsAppShellContent(
                     when (action) {
                         "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
                         "addComputer" -> onSettingsAction(action, itemId)
-                        else -> onSettingsAction(action, itemId)
-                    }
-                }
-            SettingsDestinationComputerDetail ->
-                SettingsComputerDetailContent(
-                    payload = settingsState.computerDetail.toComputerDetailPayload(selectedComputerId, timeContext),
-                    actionState = settingsState.actionState?.toComputerActionState(),
-                    bottomContentPadding = bottomContentPadding
-                ) { action, itemId ->
-                    when (action) {
-                        "retryWorkspaces", "retryAgents" ->
-                            selectedComputerId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.OpenComputer(it)) }
-                        "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { payload ->
-                            val parts = payload.split("|", limit = 2)
-                            val machineId = parts[0]
-                            val name = parts.getOrElse(1) { "" }
-                            onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = name)))
-                        }
-                        "deleteComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
-                            onSettingsIntent(SharedSettingsIntent.DeleteComputer(machineId))
-                        }
-                        "rotateComputerKey" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
-                            onSettingsIntent(SharedSettingsIntent.RotateComputerKey(machineId))
-                        }
-                        "retryComputerAction" -> {
-                            val lastAction = settingsState.actionState?.action
-                            val lastItemId = settingsState.actionState?.itemId
-                            when (lastAction) {
-                                "renameComputer" -> lastItemId?.let { payload ->
-                                    val parts = payload.split("|", limit = 2)
-                                    val id = parts[0]
-                                    val name = parts.getOrElse(1) { "" }
-                                    onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = id, name = name)))
-                                }
-                                "deleteComputer" -> lastItemId?.let { id ->
-                                    onSettingsIntent(SharedSettingsIntent.DeleteComputer(id))
-                                }
-                                "rotateComputerKey" -> lastItemId?.let { id ->
-                                    onSettingsIntent(SharedSettingsIntent.RotateComputerKey(id))
-                                }
-                                else -> Unit
-                            }
-                        }
-                        "openAgent" -> onSettingsAction(action, itemId)
                         else -> onSettingsAction(action, itemId)
                     }
                 }
@@ -6157,175 +6083,6 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
     )
 }
 
-private fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
-    refreshing: Boolean,
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputersPayload =
-    when (this) {
-        is ScreenLoadState.Content ->
-            data.toComputersPayload(refreshing, timeContext)
-        is ScreenLoadState.Error ->
-            KuiklySettingsComputersPayload(
-                instanceId = "shared-shell-settings-computers",
-                status = "error",
-                emptyTitle = "Unable to load computers",
-                emptyDetail = error.code
-            )
-        is ScreenLoadState.NoPermission ->
-            KuiklySettingsComputersPayload(
-                instanceId = "shared-shell-settings-computers",
-                status = "error",
-                emptyTitle = "No access to computers",
-                emptyDetail = blocker.code
-            )
-        is ScreenLoadState.Empty ->
-            KuiklySettingsComputersPayload(
-                instanceId = "shared-shell-settings-computers",
-                status = "empty",
-                emptyTitle = "No computers yet",
-                emptyDetail = "Connect a desktop daemon to see it here."
-            )
-        ScreenLoadState.Loading ->
-            KuiklySettingsComputersPayload(
-                instanceId = "shared-shell-settings-computers",
-                status = "loading",
-                emptyTitle = "Loading computers",
-                emptyDetail = "Fetching connected machines from this server."
-            )
-    }
-
-private fun SettingsComputersSnapshot.toComputersPayload(
-    refreshing: Boolean,
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputersPayload =
-    KuiklySettingsComputersPayload(
-        instanceId = "shared-shell-settings-computers",
-        status = if (refreshing) "refreshing" else "content",
-        computers = computers.map { it.toComputerItem(timeContext) },
-        canAddComputer = canAddComputer,
-        addComputerUnavailableReason = addComputerUnavailableReason,
-        latestDaemonVersion = latestDaemonVersion
-    )
-
-private fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayload(
-    selectedComputerId: String?,
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputerDetailPayload =
-    when (this) {
-        is ScreenLoadState.Content ->
-            data.toComputerDetailPayload(timeContext)
-        is ScreenLoadState.Error ->
-            loadingComputerDetailPayload(
-                selectedComputerId = selectedComputerId,
-                name = "Unable to load computer",
-                workspacesErrorCode = error.code,
-                workspacesRetryable = error.retryable,
-                agentsErrorCode = error.code,
-                agentsRetryable = error.retryable
-            )
-        is ScreenLoadState.NoPermission ->
-            loadingComputerDetailPayload(
-                selectedComputerId = selectedComputerId,
-                name = "No access to computer",
-                workspacesErrorCode = blocker.code,
-                workspacesRetryable = false,
-                agentsErrorCode = blocker.code,
-                agentsRetryable = false
-            )
-        is ScreenLoadState.Empty ->
-            loadingComputerDetailPayload(
-                selectedComputerId = selectedComputerId,
-                name = "Computer unavailable"
-            )
-        ScreenLoadState.Loading ->
-            loadingComputerDetailPayload(
-                selectedComputerId = selectedComputerId,
-                name = "Loading computer"
-            )
-    }
-
-private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputerDetailPayload =
-    KuiklySettingsComputerDetailPayload(
-        instanceId = "shared-shell-settings-computer-${computer.id}",
-        computer = computer.toComputerItem(timeContext),
-        workspaces = workspaces.map { it.toWorkspaceItem(timeContext) },
-        agents = agents.map { it.toAgentItem() },
-        workspacesErrorCode = workspacesError?.code,
-        workspacesRetryable = workspacesError?.retryable ?: false,
-        agentsErrorCode = agentsError?.code,
-        agentsRetryable = agentsError?.retryable ?: false
-    )
-
-private fun loadingComputerDetailPayload(
-    selectedComputerId: String?,
-    name: String,
-    workspacesErrorCode: String? = null,
-    workspacesRetryable: Boolean = false,
-    agentsErrorCode: String? = null,
-    agentsRetryable: Boolean = false
-): KuiklySettingsComputerDetailPayload =
-    KuiklySettingsComputerDetailPayload(
-        instanceId = "shared-shell-settings-computer-${selectedComputerId.orEmpty()}",
-        computer = KuiklySettingsComputerItem(id = selectedComputerId.orEmpty(), name = name),
-        workspacesErrorCode = workspacesErrorCode,
-        workspacesRetryable = workspacesRetryable,
-        agentsErrorCode = agentsErrorCode,
-        agentsRetryable = agentsRetryable
-    )
-
-private fun SettingsComputerSnapshot.toComputerItem(
-    timeContext: SlockTimeContext?
-): KuiklySettingsComputerItem =
-    KuiklySettingsComputerItem(
-        id = id,
-        name = name,
-        daemonVersion = daemonVersion,
-        online = online,
-        hostname = hostname,
-        platform = platform,
-        lastSeenLabel = formatSettingsTimestampLabel(lastSeenLabel, timeContext),
-        runtimes = runtimes,
-        createdAt = formatSettingsTimestampLabel(createdAt, timeContext),
-        apiKeyPrefix = apiKeyPrefix,
-        statusVersion = statusVersion
-    )
-
-private fun SharedSettingsActionState.toComputerActionState(): KuiklySettingsComputerActionState =
-    KuiklySettingsComputerActionState(
-        action = action,
-        itemId = itemId,
-        inProgress = inProgress,
-        errorCode = errorCode
-    )
-
-private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
-    timeContext: SlockTimeContext?
-): KuiklySettingsWorkspaceItem =
-    KuiklySettingsWorkspaceItem(
-        id = id,
-        name = name,
-        path = path,
-        statusLabel = statusLabel,
-        lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext)
-    )
-
-private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
-    val profile = memberProfile
-    return KuiklySettingsAgentItem(
-        id = id,
-        name = name,
-        statusLabel = statusLabel,
-        ownerLabel = ownerLabel,
-        displayName = profile?.displayName,
-        handle = profile?.handle,
-        description = profile?.description,
-        presenceLabel = profile?.presence?.name,
-        roleLabel = profile?.roleDescription
-    )
-}
-
 private fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
     refreshing: Boolean
@@ -7533,7 +7290,6 @@ private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Account"
         SettingsDestinationComputers -> "Computers"
-        SettingsDestinationComputerDetail -> "Computer"
         SettingsDestinationServer -> "Server"
         SettingsDestinationConnectedApps -> "Connected Apps"
         SettingsDestinationBilling -> "Billing"
@@ -7552,7 +7308,6 @@ private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Profile and sign out"
         SettingsDestinationComputers -> "Connected machines"
-        SettingsDestinationComputerDetail -> "Machine details"
         SettingsDestinationServer -> "Workspace controls"
         SettingsDestinationConnectedApps -> "Marketplace, installed apps, OAuth clients"
         SettingsDestinationBilling -> "Plan and usage"
@@ -7571,7 +7326,6 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
     when (destination) {
         SettingsDestinationAccount -> SlockLucideIconName.User
         SettingsDestinationComputers -> SlockLucideIconName.Monitor
-        SettingsDestinationComputerDetail -> SlockLucideIconName.Monitor
         SettingsDestinationServer -> SlockLucideIconName.Users
         SettingsDestinationConnectedApps -> SlockLucideIconName.Blocks
         SettingsDestinationBilling -> SlockLucideIconName.ShieldCheck
@@ -7590,7 +7344,6 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
     when (this) {
         SettingsDestinationAccount -> SharedSettingsDestination.Account
         SettingsDestinationComputers -> SharedSettingsDestination.Computers
-        SettingsDestinationComputerDetail -> SharedSettingsDestination.ComputerDetail
         SettingsDestinationServer -> SharedSettingsDestination.Server
         SettingsDestinationConnectedApps -> SharedSettingsDestination.ConnectedApps
         SettingsDestinationBilling -> SharedSettingsDestination.Billing

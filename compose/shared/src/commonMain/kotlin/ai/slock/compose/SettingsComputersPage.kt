@@ -1,16 +1,50 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
+import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
+import ai.slock.compose.data.KeyValueLocalePreferenceStore
+import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
+import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
+import ai.slock.compose.data.PersistentLocaleRepository
+import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
+import ai.slock.compose.data.RealSettingsRepository
+import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.SettingsComputerAgentSnapshot
+import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputerRenameRequest
+import ai.slock.compose.data.SettingsComputerSnapshot
+import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
+import ai.slock.compose.data.SettingsComputersSnapshot
+import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedSettingsActionState
+import ai.slock.compose.data.SharedSettingsDataSource
+import ai.slock.compose.data.SharedSettingsEffect
+import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsState
+import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.data.SlockComputersApiClient
+import ai.slock.compose.data.SlockComputersNetworkApi
+import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
 import ai.slock.compose.SlockLucideIconName
 import ai.slock.compose.SlockLucideIcon
+import ai.slock.compose.model.SlockTimeContext
+import ai.slock.compose.model.SlockTimeFormat24Hour
+import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
@@ -40,7 +74,10 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_COMPUTERS_PAGE = "compose_settings_computers"
@@ -146,16 +183,53 @@ private fun SettingsComputersScreen() {
 private fun SettingsComputerDetailScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberComputerDetailPayload(
+    val launchPayload = rememberComputerDetailPayload(
         pager.pageData.params.optString("payload"),
         pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
-    LaunchedEffect(payload) {
-        bridge.log("settings_computer_detail_render instanceId=${payload.instanceId} workspaces=${payload.workspaces.size} agents=${payload.agents.size}")
+    val computerId = launchPayload.computer.id
+    val timeContext = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.settingsStandaloneTimeContext()
     }
-    SettingsComputerDetailContent(payload) { action, itemId ->
-        bridge.settingsEvent(payload.instanceId, action, itemId)
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-computer-detail-${computerId.ifBlank { "missing" }}") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(computerId) {
+        bridge.log("settings_computer_detail_open instanceId=${launchPayload.instanceId} computerId=$computerId")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenComputer(computerId))
+    }
+    LaunchedEffect(settingsState.effect) {
+        val effect = settingsState.effect ?: return@LaunchedEffect
+        when (effect) {
+            is SharedSettingsEffect.OpenUrl -> environment.settingsCapabilities.openUrl(effect.url)
+            else -> Unit
+        }
+        settingsViewModel.dispatch(SharedSettingsIntent.ConsumeEffect)
+    }
+    SettingsComputerDetailRouteShell(
+        title = settingsState.computerDetail.currentComputerTitle(),
+        onBack = { pager.closeSettingsComputerDetailPage() }
+    ) {
+        SettingsComputerDetailContent(
+            payload = settingsState.computerDetail.toComputerDetailPayload(computerId, timeContext),
+            actionState = settingsState.actionState?.toComputerActionState(),
+            bottomContentPadding = SlockSpacing.Lg
+        ) { action, itemId ->
+            handleSettingsComputerDetailAction(
+                action = action,
+                itemId = itemId,
+                computerId = computerId,
+                settingsState = settingsState,
+                dispatch = settingsViewModel::dispatch,
+                fallbackEvent = { fallbackAction, fallbackItem ->
+                    bridge.settingsEvent(launchPayload.instanceId, fallbackAction, fallbackItem)
+                }
+            )
+        }
     }
 }
 
@@ -178,6 +252,146 @@ private fun rememberComputerDetailPayload(
     androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
         parseSettingsComputerDetailPayload(payload, fallbackPageData, instanceId)
     }
+
+private data class StandaloneSettingsEnvironment(
+    val dataSource: SharedSettingsDataSource,
+    val settingsCapabilities: BridgeSettingsPlatformCapabilities
+)
+
+@Composable
+private fun rememberStandaloneSettingsEnvironment(
+    pager: Pager,
+    bridge: BridgeModule
+): StandaloneSettingsEnvironment {
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
+    val networkClient =
+        remember(authStore, pager) {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("settings_standalone_network $message") }
+            )
+        }
+    val computersApiClient =
+        remember(networkClient) {
+            SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
+        }
+    val scope = rememberCoroutineScope()
+    val computersStore =
+        remember(computersApiClient, scope) {
+            SharedComputersStore(
+                computersApiClient = computersApiClient,
+                scope = scope,
+                logger = { message -> bridge.log("settings_standalone_$message") }
+            )
+        }
+    val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
+    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val dataSource =
+        remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {
+            SharedSettingsDataSource(
+                sessionStore = authStore,
+                settingsRepository =
+                    RealSettingsRepository(
+                        sessionStore = authStore,
+                        networkClient = networkClient,
+                        logger = { message -> bridge.log("settings_standalone_repository $message") },
+                        warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
+                    ),
+                computersSource = computersStore,
+                localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
+                chatLayoutPreferenceRepository =
+                    PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
+                recompositionProfilerPreferenceRepository =
+                    PersistentRecompositionProfilerPreferenceRepository(
+                        KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
+                    ),
+                platformCapabilities = settingsCapabilities,
+                diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
+            )
+        }
+    return remember(dataSource, settingsCapabilities) {
+        StandaloneSettingsEnvironment(
+            dataSource = dataSource,
+            settingsCapabilities = settingsCapabilities
+        )
+    }
+}
+
+@Composable
+private fun SettingsComputerDetailRouteShell(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)
+    ) {
+        SlockTopPageHeader(
+            title = title,
+            subtitle = "Machine details",
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = onBack,
+                    size = 34.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        )
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            content()
+        }
+    }
+}
+
+private fun handleSettingsComputerDetailAction(
+    action: String,
+    itemId: String?,
+    computerId: String,
+    settingsState: SharedSettingsState,
+    dispatch: (SharedSettingsIntent) -> Unit,
+    fallbackEvent: (String, String?) -> Unit
+) {
+    when (action) {
+        "retryWorkspaces", "retryAgents" ->
+            computerId.takeIf { it.isNotBlank() }?.let { dispatch(SharedSettingsIntent.OpenComputer(it)) }
+        "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { payload ->
+            val parts = payload.split("|", limit = 2)
+            val machineId = parts[0]
+            val name = parts.getOrElse(1) { "" }
+            dispatch(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = name)))
+        }
+        "deleteComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
+            dispatch(SharedSettingsIntent.DeleteComputer(machineId))
+        }
+        "rotateComputerKey" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
+            dispatch(SharedSettingsIntent.RotateComputerKey(machineId))
+        }
+        "retryComputerAction" -> {
+            val lastAction = settingsState.actionState?.action
+            val lastItemId = settingsState.actionState?.itemId
+            when (lastAction) {
+                "renameComputer" -> lastItemId?.let { payload ->
+                    val parts = payload.split("|", limit = 2)
+                    dispatch(
+                        SharedSettingsIntent.RenameComputer(
+                            SettingsComputerRenameRequest(
+                                machineId = parts[0],
+                                name = parts.getOrElse(1) { "" }
+                            )
+                        )
+                    )
+                }
+                "deleteComputer" -> lastItemId?.let { dispatch(SharedSettingsIntent.DeleteComputer(it)) }
+                "rotateComputerKey" -> lastItemId?.let { dispatch(SharedSettingsIntent.RotateComputerKey(it)) }
+                else -> Unit
+            }
+        }
+        else -> fallbackEvent(action, itemId)
+    }
+}
 
 @Composable
 internal fun SettingsComputersContent(
@@ -364,6 +578,225 @@ internal data class KuiklySettingsComputerActionState(
     val inProgress: Boolean = false,
     val errorCode: String? = null
 )
+
+internal fun ScreenLoadState<SettingsComputersSnapshot>.toComputersPayload(
+    refreshing: Boolean,
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputersPayload =
+    when (this) {
+        is ScreenLoadState.Content ->
+            data.toComputersPayload(refreshing = refreshing, timeContext = timeContext)
+        is ScreenLoadState.Error ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "error",
+                addComputerUnavailableReason = error.code,
+                emptyTitle = "Unable to load computers",
+                emptyDetail = if (error.retryable) "Pull to refresh or try again." else "Settings cannot load connected machines right now."
+            )
+        is ScreenLoadState.NoPermission ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "blocked",
+                addComputerUnavailableReason = blocker.code,
+                emptyTitle = "No access to computers",
+                emptyDetail = "You do not have permission to view connected machines."
+            )
+        is ScreenLoadState.Empty ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "empty",
+                emptyTitle = "No computers yet",
+                emptyDetail = "Connect a desktop daemon to see it here."
+            )
+        ScreenLoadState.Loading ->
+            KuiklySettingsComputersPayload(
+                instanceId = "shared-shell-settings-computers",
+                status = "loading",
+                emptyTitle = "Loading computers",
+                emptyDetail = "Fetching connected machines from this server."
+            )
+    }
+
+private fun SettingsComputersSnapshot.toComputersPayload(
+    refreshing: Boolean,
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputersPayload =
+    KuiklySettingsComputersPayload(
+        instanceId = "shared-shell-settings-computers",
+        status = if (refreshing) "refreshing" else "content",
+        computers = computers.map { it.toComputerItem(timeContext) },
+        canAddComputer = canAddComputer,
+        addComputerUnavailableReason = addComputerUnavailableReason,
+        latestDaemonVersion = latestDaemonVersion
+    )
+
+internal fun ScreenLoadState<SettingsComputerDetailSnapshot>.toComputerDetailPayload(
+    selectedComputerId: String?,
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerDetailPayload =
+    when (this) {
+        is ScreenLoadState.Content ->
+            data.toComputerDetailPayload(timeContext)
+        is ScreenLoadState.Error ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Unable to load computer",
+                workspacesErrorCode = error.code,
+                workspacesRetryable = error.retryable,
+                agentsErrorCode = error.code,
+                agentsRetryable = error.retryable
+            )
+        is ScreenLoadState.NoPermission ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "No access to computer",
+                workspacesErrorCode = blocker.code,
+                workspacesRetryable = false,
+                agentsErrorCode = blocker.code,
+                agentsRetryable = false
+            )
+        is ScreenLoadState.Empty ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Computer unavailable"
+            )
+        ScreenLoadState.Loading ->
+            loadingComputerDetailPayload(
+                selectedComputerId = selectedComputerId,
+                name = "Loading computer"
+            )
+    }
+
+private fun ScreenLoadState<SettingsComputerDetailSnapshot>.currentComputerTitle(): String =
+    when (this) {
+        is ScreenLoadState.Content -> data.computer.name.takeIf { it.isNotBlank() } ?: "Computer"
+        is ScreenLoadState.Error -> "Unable to load computer"
+        is ScreenLoadState.NoPermission -> "No access to computer"
+        is ScreenLoadState.Empty -> "Computer unavailable"
+        ScreenLoadState.Loading -> "Computer"
+    }
+
+private fun SettingsComputerDetailSnapshot.toComputerDetailPayload(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerDetailPayload =
+    KuiklySettingsComputerDetailPayload(
+        instanceId = "shared-shell-settings-computer-${computer.id}",
+        computer = computer.toComputerItem(timeContext),
+        workspaces = workspaces.map { it.toWorkspaceItem(timeContext) },
+        agents = agents.map { it.toAgentItem() },
+        workspacesErrorCode = workspacesError?.code,
+        workspacesRetryable = workspacesError?.retryable ?: false,
+        agentsErrorCode = agentsError?.code,
+        agentsRetryable = agentsError?.retryable ?: false
+    )
+
+private fun loadingComputerDetailPayload(
+    selectedComputerId: String?,
+    name: String,
+    workspacesErrorCode: String? = null,
+    workspacesRetryable: Boolean = false,
+    agentsErrorCode: String? = null,
+    agentsRetryable: Boolean = false
+): KuiklySettingsComputerDetailPayload =
+    KuiklySettingsComputerDetailPayload(
+        instanceId = "shared-shell-settings-computer-${selectedComputerId.orEmpty()}",
+        computer = KuiklySettingsComputerItem(id = selectedComputerId.orEmpty(), name = name),
+        workspacesErrorCode = workspacesErrorCode,
+        workspacesRetryable = workspacesRetryable,
+        agentsErrorCode = agentsErrorCode,
+        agentsRetryable = agentsRetryable
+    )
+
+internal fun SettingsComputerSnapshot.toComputerItem(
+    timeContext: SlockTimeContext?
+): KuiklySettingsComputerItem =
+    KuiklySettingsComputerItem(
+        id = id,
+        name = name,
+        daemonVersion = daemonVersion,
+        online = online,
+        hostname = hostname,
+        platform = platform,
+        lastSeenLabel = formatSettingsTimestampLabel(lastSeenLabel, timeContext),
+        runtimes = runtimes,
+        createdAt = formatSettingsTimestampLabel(createdAt, timeContext),
+        apiKeyPrefix = apiKeyPrefix,
+        statusVersion = statusVersion
+    )
+
+internal fun SharedSettingsActionState.toComputerActionState(): KuiklySettingsComputerActionState =
+    KuiklySettingsComputerActionState(
+        action = action,
+        itemId = itemId,
+        inProgress = inProgress,
+        errorCode = errorCode
+    )
+
+private fun SettingsComputerWorkspaceSnapshot.toWorkspaceItem(
+    timeContext: SlockTimeContext?
+): KuiklySettingsWorkspaceItem =
+    KuiklySettingsWorkspaceItem(
+        id = id,
+        name = name,
+        path = path,
+        statusLabel = statusLabel,
+        lastActiveLabel = formatSettingsTimestampLabel(lastActiveLabel, timeContext)
+    )
+
+private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem {
+    val profile = memberProfile
+    return KuiklySettingsAgentItem(
+        id = id,
+        name = name,
+        statusLabel = statusLabel,
+        ownerLabel = ownerLabel,
+        displayName = profile?.displayName,
+        handle = profile?.handle,
+        description = profile?.description,
+        presenceLabel = profile?.presence?.name,
+        roleLabel = profile?.roleDescription
+    )
+}
+
+private fun JSONObject.settingsStandaloneTimeContext(): SlockTimeContext? {
+    val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
+    val today = optString("todayEpochDay").toLongOrNull()
+    val now = optString("nowEpochMillis").toLongOrNull()
+    return SlockTimeContext(offset, today, now).withTimeFormat(optString("timeFormat").takeIf { it.isNotBlank() })
+}
+
+internal fun Pager.openSettingsComputerDetailPage(
+    computerId: String,
+    timeContext: SlockTimeContext?
+) {
+    val id = computerId.takeIf { it.isNotBlank() } ?: return
+    val pageData =
+        settingsComputerDetailPageData(
+            computerId = id,
+            timeContext = timeContext
+        )
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SETTINGS_COMPUTER_DETAIL_PAGE, pageData)
+}
+
+internal fun settingsComputerDetailPageData(
+    computerId: String,
+    timeContext: SlockTimeContext?
+): JSONObject =
+    JSONObject().apply {
+        put("pageName", SETTINGS_COMPUTER_DETAIL_PAGE)
+        put("instanceId", "settings-computer-detail-$computerId")
+        put("computerId", computerId)
+        put("machineId", computerId)
+        put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
+        timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
+        timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+    }
+
+private fun Pager.closeSettingsComputerDetailPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+}
 
 private fun settingsComputerErrorTitle(code: String): String = when (code) {
     "computer_has_agents" -> "Cannot delete computer"

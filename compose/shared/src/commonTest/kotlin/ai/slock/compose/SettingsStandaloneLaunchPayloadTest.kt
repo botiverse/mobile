@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.SlockTimeContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlin.test.Test
@@ -40,7 +41,7 @@ class SettingsStandaloneLaunchPayloadTest {
         )
         assertDescriptorExcludes(
             descriptor = WireSettingsComputerDetailLaunchPayload.serializer().descriptor,
-            fields = listOf("computer", "workspaces", "agents", "canOpenAgents", "canManageMachines")
+            fields = listOf("computer", "computerName", "workspaces", "agents", "canOpenAgents", "canManageMachines")
         )
     }
 
@@ -253,7 +254,7 @@ class SettingsStandaloneLaunchPayloadTest {
 
         assertEquals("settings-computer-detail-explicit", payload.instanceId)
         assertEquals("machine-1", payload.computer.id)
-        assertEquals("Build Host", payload.computer.name)
+        assertEquals("Computer", payload.computer.name)
         assertEquals(emptyList(), payload.workspaces)
         assertEquals(emptyList(), payload.agents)
         assertEquals(false, payload.canManageMachines)
@@ -358,10 +359,31 @@ class SettingsStandaloneLaunchPayloadTest {
 
         assertEquals("settings-computer-detail-launch", payload.instanceId)
         assertEquals("machine-1", payload.computer.id)
-        assertEquals("Build Host", payload.computer.name)
+        assertEquals("Computer", payload.computer.name)
         assertEquals(emptyList(), payload.workspaces)
         assertEquals(emptyList(), payload.agents)
         assertEquals(false, payload.canManageMachines)
+    }
+
+    @Test
+    fun settingsComputerDetailPageDataCarriesIdentityOnly() {
+        val pageData =
+            settingsComputerDetailPageData(
+                computerId = "machine-1",
+                timeContext = SlockTimeContext(localOffsetMinutes = 480, todayEpochDay = 20628, nowEpochMillis = 1_782_222_000_000)
+            )
+
+        assertEquals(SETTINGS_COMPUTER_DETAIL_PAGE, pageData.optString("pageName"))
+        assertEquals("machine-1", pageData.optString("computerId"))
+        assertEquals("machine-1", pageData.optString("machineId"))
+        assertEquals("480", pageData.optString("localOffsetMinutes"))
+        assertEquals("20628", pageData.optString("todayEpochDay"))
+        assertEquals("1782222000000", pageData.optString("nowEpochMillis"))
+        assertEquals("24h", pageData.optString("timeFormat"))
+        assertEquals("", pageData.optString("payload"))
+        assertEquals("", pageData.optString("computerName"))
+        assertEquals("", pageData.optString("workspaces"))
+        assertEquals("", pageData.optString("agents"))
     }
 
     @OptIn(ExperimentalSerializationApi::class)
