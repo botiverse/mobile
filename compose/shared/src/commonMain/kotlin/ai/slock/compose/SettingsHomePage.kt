@@ -4849,7 +4849,17 @@ private fun SettingsServerDeleteConfirmationDialog(
                     }
                     SettingsServerDeleteWarningBanner(serverName = resolvedName)
                     Text(
-                        "Type $resolvedSlug to confirm:",
+                        "Type ",
+                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                        color = SlockColor.TextMutedGray
+                    )
+                    Text(
+                        resolvedSlug,
+                        style = SlockType.Body.withSlockFontWeight(com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack
+                    )
+                    Text(
+                        " to confirm:",
                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
                         color = SlockColor.TextMutedGray
                     )
@@ -4933,56 +4943,14 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
-    var focused by remember { mutableStateOf(false) }
-    val shadowOffset = if (focused && enabled) 4.dp else 3.dp
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(46.dp)
-    ) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .offset(x = shadowOffset, y = shadowOffset)
-                    .background(SlockColor.ShadowBlack)
-        )
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .background(if (enabled) SlockColor.SurfaceWhite else SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier =
-                    Modifier
-                        .height(42.dp)
-                        .width(42.dp)
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
-            }
-            TextField(
-                value = value,
-                onValueChange = { if (enabled) onValueChange(it) },
-                placeholder = placeholder,
-                placeholderColor = SlockColor.TextMutedGray,
-                autoFocus = false,
-                onFocus = { focused = true },
-                onBlur = { focused = false },
-                maxLines = 1,
-                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
-            )
-        }
-    }
+    SlockBrutalTextField(
+        label = "Server slug",
+        value = value,
+        placeholder = placeholder,
+        onValueChange = onValueChange,
+        enabled = enabled,
+        required = true
+    )
 }
 
 @Composable
