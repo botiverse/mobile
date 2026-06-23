@@ -17,6 +17,8 @@ The current Android app-owned path is too memory-heavy:
 - `SlockDiagnosticsLogger` writes to Android `Log.*`.
 - `SanitizedDiagnosticsLogBuffer` stores up to `100_000` sanitized entries in memory.
 - Feedback/export writes a temporary cache file only when the user taps an action.
+- `SlockAndroidBuglyDiagnostics` is already integrated through `libs.bugly.pro`, initialized from `SLOCK_BUGLY_ANDROID_APP_ID` / `SLOCK_BUGLY_ANDROID_APP_KEY`, and reports launch, user context, caught exceptions, scenes, test crashes, and Kuikly performance snapshots to Bugly.
+- Android Settings feedback already prepares a channel-ready text attachment (`bodyBase64`) from the memory export, but that file is not backed by a durable rolling log yet and is not paired with a Bugly upload action.
 
 OHOS is closer to the desired long-term shape but still needs clearer boundaries:
 
@@ -98,7 +100,7 @@ Feedback actions must be separated by product destination:
   - `mimeType=text/plain`
   - `sizeBytes`
   - `bodyBase64`
-- **Crash/observability upload**: host requests Bugly/TDDiag upload and returns upload metadata such as `queryKey`.
+- **Crash/observability upload**: host requests Bugly/TDDiag upload and returns upload metadata such as `queryKey` or a platform-specific request id/status.
 
 Do not overload a single `sendFeedback` action to mean both. If the UI entry point says "send diagnostics to channel", the host must return a local attachment draft. If the UI entry point says "upload to Bugly", the host may call TDDiag directly.
 
@@ -138,6 +140,18 @@ interface AppDiagnosticsRecorder {
 - `SanitizedDiagnosticsLogBuffer` stores up to `100_000` entries in memory.
 - Settings copy/share/feedback uses `SanitizedDiagnosticsLogBuffer.exportText()`.
 - Feedback creates cache files under `cacheDir/slock-feedback`.
+- `SlockAndroidBuglyDiagnostics` initializes Bugly Pro when app id/key are configured:
+  - app version/build/channel/device/debug mode
+  - Bugly Pro server host type
+  - Java/native/ANR crash hooks through Bugly
+  - looper metric and stack monitors
+- Android currently forwards selected observability events to Bugly:
+  - full launch via `AppLaunchProxy`
+  - user/server context via `Bugly.updateUserId()` and `Bugly.putUserData()`
+  - caught exceptions via `Bugly.postException(...)`
+  - scene enter/exit + labels
+  - Kuikly performance snapshots via `Bugly.monitorEvent(...)`
+- This is a crash/observability sink. It is not a replacement for the user-facing Settings feedback file, because a Raft channel needs a local attachment draft.
 
 ### Target state
 
@@ -165,6 +179,16 @@ Suggested JSONL line:
 
 Do not include body text, bearer tokens, raw URLs with query secrets, request payloads, or full emails.
 
+Keep `SlockAndroidBuglyDiagnostics` as the Android crash/observability upload sink:
+
+- Continue to initialize Bugly Pro only when `BUGLY_ANDROID_APP_ID` and `BUGLY_ANDROID_APP_KEY` are configured.
+- Continue to report caught exceptions, scenes, launch, user context, and Kuikly performance snapshots.
+- Add an explicit Settings action for Bugly upload/reporting if the SDK supports uploading/attaching the generated diagnostics file. If the Android Bugly SDK does not expose a direct arbitrary-log upload API equivalent to OHOS `TDDiag.uploadLogFiles`, the action should still:
+  - flush/record a Bugly breadcrumb that a diagnostics bundle was generated.
+  - attach summary metadata through Bugly user data or monitor event where appropriate.
+  - return a clear `status=unsupported` / `code=bugly_file_upload_unsupported` for file upload, while channel feedback still succeeds.
+- Do not use Bugly console upload as the only feedback path. Settings channel feedback must always generate a local text attachment draft.
+
 Update `SlockDiagnosticsLogger`:
 
 - Keep writing to `Log.*` for console visibility.
@@ -185,6 +209,11 @@ Update Settings actions:
 - `copyDiagnostics`: export bounded text from rolling files, newest first up to `2MB`.
 - `shareDiagnostics`: attach a generated bundle file, not a huge clipboard string.
 - `prepareDiagnosticsFeedback`: attach generated bundle file.
+- `sendFeedback` / channel feedback:
+  - write a local feedback text file from app-owned rolling logs.
+  - return `fileName`, `mimeType`, `sizeBytes`, and `bodyBase64` to shared.
+  - also trigger/report Bugly upload when available, but do not block the channel attachment on Bugly upload success.
+- `uploadDiagnosticsToBugly`: explicit action for Bugly platform upload/reporting; return request id/status if the SDK exposes one, otherwise return unsupported with explanation.
 - `clearDiagnostics`: clear recent memory and delete `filesDir/slock-diagnostics`.
 
 ## OHOS Plan
@@ -339,12 +368,18 @@ For OHOS with Bugly enabled:
 2. Wire `SlockDiagnosticsLogger` to recent memory + file sink + `Log.*`.
 3. Lower `SanitizedDiagnosticsLogBuffer.MaxEntries` to `1_000`.
 4. Update Settings copy/share/feedback/clear to use file export.
-5. Add tests:
+5. Integrate Android Bugly as a peer sink/action:
+   - keep existing `SlockAndroidBuglyDiagnostics` crash/perf reporting.
+   - add explicit Settings action for Bugly diagnostics upload/reporting.
+   - channel feedback still returns a local file draft even if Bugly is disabled or upload is unsupported.
+6. Add tests:
    - rotation by size
    - max file count
    - clear deletes files and memory
    - sanitization before file write
    - export truncates newest tail with truncation notice
+   - channel feedback returns attachment draft when Bugly disabled
+   - Bugly upload action reports configured / missing-config / unsupported-file-upload states correctly
 
 ### Phase 2: OHOS fallback + cleanup
 
@@ -379,6 +414,7 @@ Android:
 - `./gradlew :shared:compileDebugKotlinAndroid :androidApp:compileDebugKotlin`
 - Manual:
   - trigger network probe, copy/share diagnostics, send feedback
+  - trigger Bugly diagnostics action with config present and missing
   - verify exported file contains recent lines after app restart
   - verify no token/email/raw body leakage
   - verify clear removes file-backed logs
@@ -402,6 +438,8 @@ Cross-platform:
 
 - Android no longer depends on a `100_000` entry in-memory diagnostics history.
 - Android feedback/copy/share reads from app-owned rolling files.
+- Android keeps Bugly as a first-class crash/observability sink and exposes a separate diagnostics upload/report action when supported.
+- Android channel feedback still produces a local attachment draft independent of Bugly availability.
 - OHOS has a documented durable primary sink, channel attachment export path, and fallback path.
 - OHOS channel feedback returns a local file draft; Bugly/TDDiag upload remains a separate action.
 - Settings Diagnostics can show recent entries quickly but exports durable file history.
@@ -411,7 +449,7 @@ Cross-platform:
 
 ## Open Questions
 
-- Should Android also use Bugly Android logs as the crash/upload sink, or is app-owned rolling file enough for phase 1?
+- Does the Android Bugly Pro SDK expose an arbitrary file/log upload API comparable to OHOS `TDDiag.uploadLogFiles`, or should Android only report bundle metadata/events while channel feedback carries the actual text file?
 - Should file format be JSONL only, or JSONL internal + text export for users?
 - What exact retention should product want: 7 days / 10MB, or shorter for release builds?
 - Should debug builds keep larger recent memory buffers, or should both debug/release use the same bounded design?
