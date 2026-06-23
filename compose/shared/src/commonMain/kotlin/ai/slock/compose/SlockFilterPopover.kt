@@ -110,9 +110,9 @@ internal fun SlockFilterPopover(
         viewportGap = viewportGapPx,
         horizontalOffset = horizontalOffsetPx,
         verticalOffset = verticalOffsetPx,
-        // #327: auto-avoid screen edges so filter popovers don't overflow
-        // the viewport on narrow screens or near the right/bottom edge.
-        horizontalAutoFlip = true,
+        // Filter chip anchors are their left edge; clamp to the viewport
+        // instead of flipping the popover entirely to the chip's left.
+        horizontalAutoFlip = false,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
     ) { popoverModifier, _ ->
         Box(

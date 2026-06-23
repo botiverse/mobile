@@ -266,6 +266,19 @@ class ThreadPayloadTest {
                 verticalPlacement = SlockFloatingVerticalPlacement.Auto
             )
         )
+
+        val rightEdgeFilter = SlockFloatingOverlayLayout(size = Size(width = 390f, height = 844f))
+        assertEquals(
+            Offset(162f, 108f),
+            rightEdgeFilter.positionContent(
+                anchor = Offset(318f, 100f),
+                contentSize = Size(width = 220f, height = 360f),
+                viewportGap = 8f,
+                verticalOffset = 8f,
+                verticalPlacement = SlockFloatingVerticalPlacement.Auto,
+                horizontalAutoFlip = false
+            )
+        )
     }
 
     @Test
