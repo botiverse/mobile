@@ -2,6 +2,7 @@ package ai.slock.compose.base
 
 import ai.slock.compose.slockLogError
 import ai.slock.compose.slockLogInfo
+import ai.slock.compose.data.KuiklyMMKVModule
 import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
@@ -15,6 +16,7 @@ internal abstract class BasePager : ComposeContainer() {
     override fun createExternalModules(): Map<String, Module>? {
         val externalModules = hashMapOf<String, Module>()
         externalModules[BridgeModule.MODULE_NAME] = BridgeModule()
+        externalModules[KuiklyMMKVModule.MODULE_NAME] = KuiklyMMKVModule()
         externalModules[SlockNetworkModule.MODULE_NAME] = SlockNetworkModule()
         return externalModules
     }
