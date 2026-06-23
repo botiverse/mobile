@@ -146,6 +146,27 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun accountFallbackPreservesSessionAvatarUrl() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val baseSession = sampleSession()
+        val session =
+            baseSession.copy(
+                user = baseSession.user.copy(avatarUrl = "https://avatars.example.test/artin.png")
+            )
+        val store =
+            SharedSettingsStore(
+                dataSource = SharedSettingsDataSource(InMemorySlockAuthSessionStore(session)),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
+
+        val account = assertIs<ScreenLoadState.Content<AccountSettingsSnapshot>>(store.state.value.account).data
+        assertEquals("https://avatars.example.test/artin.png", account.profile.avatarUrl)
+        scope.cancel()
+    }
+
+    @Test
     fun connectedAppsLoadAndRegisterUseTypedRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val block = BlockingCall()

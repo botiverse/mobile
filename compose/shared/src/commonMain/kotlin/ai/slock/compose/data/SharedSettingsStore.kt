@@ -2035,6 +2035,7 @@ private fun StoredAuthSession.toAccountSettingsSnapshot(): AccountSettingsSnapsh
                 handle = user.email,
                 email = user.email,
                 avatarLabel = user.bestDisplayName.take(2).uppercase(),
+                avatarUrl = user.avatarUrl,
                 verified = user.emailVerified == true,
                 roleLabel = currentServer()?.role
         ),

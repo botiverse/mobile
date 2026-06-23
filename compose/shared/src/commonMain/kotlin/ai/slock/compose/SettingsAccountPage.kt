@@ -137,7 +137,6 @@ internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
         handle = "@artin",
         email = "artin@raft.build",
         avatarLabel = "AR",
-        avatarUrl = "pixel:diamond",
         verified = true,
         roleLabel = "Workspace owner"
     ),
@@ -353,31 +352,12 @@ private fun SettingsProfileAvatar(
         contentAlignment = Alignment.Center
     ) {
         val avatarWireValue = profile.avatarUrl?.takeIf { it.isNotBlank() }
-        if (avatarWireValue != null) {
-            SlockAvatar(
-                avatarWireValue = avatarWireValue,
-                label = profile.avatarLabel,
-                avatarSize = 56.dp,
-                borderWidth = SlockStroke.Default
-            )
-        } else {
-            Box(
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .background(SlockColor.AccentPink)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    profile.avatarLabel.ifBlank { profile.displayName }.take(2).uppercase().ifBlank { "?" },
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-        }
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = profile.avatarLabel,
+            avatarSize = 56.dp,
+            borderWidth = SlockStroke.Default
+        )
         if (payload.avatarInProgress) {
             Box(
                 modifier =
@@ -674,7 +654,13 @@ private fun SettingsStatusBadge(text: String, color: Color, iconName: SlockLucid
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         iconName?.let { SlockLucideIcon(it, modifier = Modifier.size(12.dp)) }
-        Text(text, style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            text,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 

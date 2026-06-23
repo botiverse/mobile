@@ -629,7 +629,7 @@ private fun HomeSecondaryRouterContent(destination: String) {
     val retainedDestination = retainedHomeSecondaryDestination(destination)
     PerformanceSceneEffect(
         bridge = environment.bridge,
-        routeName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
+        sceneName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
         active = true
     )
     when (retainedDestination) {
