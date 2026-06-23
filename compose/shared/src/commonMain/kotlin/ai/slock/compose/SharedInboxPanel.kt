@@ -437,7 +437,13 @@ private fun SharedActivityList(
             pullToRefreshItem(
                 state = pullToRefreshState,
                 scrollState = listState,
-                onRefresh = { onIntent(SharedActivityIntent.Refresh) }
+                onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                content = { pullProgress, isRefreshing, _ ->
+                    SlockRaftPullRefreshIndicator(
+                        pullProgress = pullProgress,
+                        isRefreshing = isRefreshing
+                    )
+                }
             )
             items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
                 val item = snapshot.items[index]
@@ -779,7 +785,13 @@ private fun SharedActivityRefreshableStateBody(
         pullToRefreshItem(
             state = pullToRefreshState,
             scrollState = listState,
-            onRefresh = onRefresh
+            onRefresh = onRefresh,
+            content = { pullProgress, isRefreshing, _ ->
+                SlockRaftPullRefreshIndicator(
+                    pullProgress = pullProgress,
+                    isRefreshing = isRefreshing
+                )
+            }
         )
         item(key = "activity_state") {
             SharedActivityStateBody(

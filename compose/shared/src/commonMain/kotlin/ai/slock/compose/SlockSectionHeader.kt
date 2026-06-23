@@ -24,6 +24,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.material3.Text
@@ -42,6 +43,10 @@ private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
 private val HeaderRefreshIndicatorSize = 28.dp
 private val HeaderRefreshIconSize = 14.dp
+private val RaftPullRefreshBadgeWidth = 70.dp
+private val RaftPullRefreshBadgeHeight = 28.dp
+private val RaftPullRefreshShadowOffset = 2.dp
+private val RaftPullRefreshJumpHeight = 7f
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -154,6 +159,72 @@ internal fun SlockHeaderRefreshIndicator(
                     .graphicsLayer(rotationZ = rotation),
             color = "#FF000000"
         )
+    }
+}
+
+@Composable
+internal fun SlockRaftPullRefreshIndicator(
+    pullProgress: Float,
+    isRefreshing: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val transition = rememberInfiniteTransition(label = "slock-raft-refresh-bounce")
+    val wave by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 780),
+                repeatMode = RepeatMode.Restart
+            ),
+        label = "slock-raft-refresh-bounce-wave"
+    )
+    Box(
+        modifier = modifier.fillMaxWidth().height(48.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .width(RaftPullRefreshBadgeWidth)
+                    .height(RaftPullRefreshBadgeHeight)
+                    .padding(end = RaftPullRefreshShadowOffset, bottom = RaftPullRefreshShadowOffset)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .offset(x = RaftPullRefreshShadowOffset, y = RaftPullRefreshShadowOffset)
+                        .background(SlockColor.ShadowBlack)
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.TextBlack)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                "RAFT".forEachIndexed { index, char ->
+                    val phase = (wave + (index * 0.18f)) % 1f
+                    val bounce = 1f - kotlin.math.abs((phase * 2f) - 1f)
+                    val jump =
+                        if (isRefreshing) {
+                            bounce * RaftPullRefreshJumpHeight
+                        } else {
+                            pullProgress.coerceIn(0f, 1f) * 3f
+                        }
+                    Text(
+                        text = char.toString(),
+                        style = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 15.sp),
+                        color = SlockColor.BrandYellow,
+                        maxLines = 1,
+                        modifier = Modifier.offset(y = (-jump).dp)
+                    )
+                }
+            }
+        }
     }
 }
 

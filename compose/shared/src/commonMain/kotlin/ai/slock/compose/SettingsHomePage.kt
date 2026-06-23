@@ -312,6 +312,8 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -9621,6 +9623,7 @@ private fun SharedHomeSavedPanel(
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
     }
+    val pullToRefreshState = rememberPullToRefreshState(state.refreshing)
     LazyColumn(
         state = listState,
         modifier =
@@ -9629,6 +9632,17 @@ private fun SharedHomeSavedPanel(
                 .background(SlockColor.SurfaceWhite),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
+        pullToRefreshItem(
+            state = pullToRefreshState,
+            scrollState = listState,
+            onRefresh = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) },
+            content = { pullProgress, isRefreshing, _ ->
+                SlockRaftPullRefreshIndicator(
+                    pullProgress = pullProgress,
+                    isRefreshing = isRefreshing
+                )
+            }
+        )
         item {
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
