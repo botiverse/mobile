@@ -700,41 +700,6 @@ internal data class KuiklyThreadMessageCommentHostSource(
     val rootThreadChannelId: String? = null
 )
 
-internal data class SlockQuotedMessagePermalink(
-    val rawUrl: String,
-    val serverSlug: String,
-    val routeKind: String,
-    val channelId: String,
-    val messageId: String,
-    val threadParentMessageId: String? = null
-) {
-    val key: String
-        get() = "$channelId:${threadParentMessageId.orEmpty()}:$messageId"
-}
-
-internal data class ThreadQuotedMessagePreviewUiState(
-    val status: String,
-    val permalink: SlockQuotedMessagePermalink,
-    val channelName: String = "",
-    val channelKind: String = "channel",
-    val isThread: Boolean = false,
-    val isArchived: Boolean = false,
-    val timestampLabel: String = "",
-    val authorName: String = "",
-    val authorKind: String = "human",
-    val authorSubtitle: String? = null,
-    val content: String = "",
-    val attachmentLabel: String? = null
-) {
-    companion object {
-        fun loading(permalink: SlockQuotedMessagePermalink): ThreadQuotedMessagePreviewUiState =
-            ThreadQuotedMessagePreviewUiState(status = "loading", permalink = permalink)
-
-        fun unavailable(permalink: SlockQuotedMessagePermalink): ThreadQuotedMessagePreviewUiState =
-            ThreadQuotedMessagePreviewUiState(status = "unavailable", permalink = permalink)
-    }
-}
-
 @Serializable
 internal data class KuiklyThreadReactionItem(
     val emoji: String,
@@ -1666,9 +1631,6 @@ internal fun SharedThreadRouteContent(
     var attachmentCommentsDialogState by remember(initialPayload.instanceId) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
-    var quotedPreviewStates by remember(initialPayload.instanceId) {
-        mutableStateOf<Map<String, ThreadQuotedMessagePreviewUiState>>(emptyMap())
-    }
     var currentSession by remember(initialPayload.instanceId) {
         mutableStateOf<StoredAuthSession?>(null)
     }
@@ -1710,7 +1672,6 @@ internal fun SharedThreadRouteContent(
         createAgentDialogState = null
         attachmentOpenStates = emptyMap()
         attachmentCommentsDialogState = null
-        quotedPreviewStates = emptyMap()
         threadViewModel.dispatch(SharedThreadIntent.Start(initialPayload))
     }
     LaunchedEffect(threadRouteKey, payload.status, payload.messages.size) {
@@ -2249,46 +2210,6 @@ internal fun SharedThreadRouteContent(
         }
     }
 
-    fun ensureQuotedPreview(permalink: SlockQuotedMessagePermalink) {
-        val currentStatus = quotedPreviewStates[permalink.key]?.status
-        if (currentStatus == "loading" || currentStatus == "loaded" || currentStatus == "unavailable") return
-        quotedPreviewStates = quotedPreviewStates + (permalink.key to ThreadQuotedMessagePreviewUiState.loading(permalink))
-        coroutineScope.launch {
-            val nextState =
-                when (val result = dataSource.fetchQuotedPermalinkPreview(permalink)) {
-                    is DataResult.Content -> result.data
-                    is DataResult.Empty,
-                    is DataResult.Error,
-                    is DataResult.NoPermission -> ThreadQuotedMessagePreviewUiState.unavailable(permalink)
-                }
-            quotedPreviewStates = quotedPreviewStates + (permalink.key to nextState)
-        }
-    }
-
-    fun openQuotedPermalink(permalink: SlockQuotedMessagePermalink) {
-        val loadingPayload = renderedThread.quotedPermalinkLoadingPayload(permalink)
-        onOpenThreadPayload(loadingPayload)
-        coroutineScope.launch {
-            when (val result = dataSource.openMessageContext(permalink.messageId, loadingPayload)) {
-                is DataResult.Content -> onReplaceThreadPayload(result.data)
-                is DataResult.Empty,
-                is DataResult.Error -> {
-                    onReplaceThreadPayload(
-                        loadingPayload.copy(status = "error", errorCode = "thread_permalink_open_failed")
-                    )
-                    bridge.toast("Unable to open quoted message")
-                }
-                is DataResult.NoPermission -> {
-                    if (routeAuthRequired(result)) return@launch
-                    onReplaceThreadPayload(
-                        loadingPayload.copy(status = "error", errorCode = "thread_permalink_open_failed")
-                    )
-                    bridge.toast("Unable to open quoted message")
-                }
-            }
-        }
-    }
-
     LaunchedEffect(
         renderedThread.status,
         renderedThread.errorCode,
@@ -2657,9 +2578,6 @@ internal fun SharedThreadRouteContent(
             attachmentOpenStates = attachmentOpenStates,
             attachmentCommentsEnabled = attachmentCommentsEnabled,
             currentServerSlug = currentServerSlug,
-            quotedPreviewStates = quotedPreviewStates,
-            onEnsureQuotedPreview = ::ensureQuotedPreview,
-            onOpenQuotedPermalink = ::openQuotedPermalink,
             onBack = onBack,
             onThreadEvent = { action, itemId, attachmentId, tab ->
                 when {
@@ -3813,85 +3731,6 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
     ).withLaunchHeaderContext()
 }
 
-private fun KuiklyThreadScreenPayload.quotedPermalinkLoadingPayload(
-    permalink: SlockQuotedMessagePermalink
-): KuiklyThreadScreenPayload {
-    val opensThread = !permalink.threadParentMessageId.isNullOrBlank()
-    if (opensThread) {
-        val parentMessageId = permalink.threadParentMessageId.orEmpty()
-        return copy(
-            instanceId = "shared-shell-thread-permalink-${permalink.channelId}-$parentMessageId",
-            title = ThreadReplyPageTitle,
-            subtitle = replyThreadHeaderSubtitle(),
-            status = "loading",
-            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-            sourceThreadId = null,
-            streamChannelId = null,
-            parentChannelId = permalink.channelId,
-            parentMessageId = parentMessageId,
-            navigationLabel = "Close",
-            selectedTab = KuiklyThreadTab.Chat.wireValue,
-            showModeTabs = false,
-            showReplyActions = false,
-            showOpenInChannelAction = true,
-            originMessage = null,
-            originPreview = null,
-            originParentMessageId = parentMessageId,
-            focusedMessageId = permalink.messageId,
-            originStatus = "loading",
-            originErrorCode = null,
-            messages = emptyList(),
-            canLoadMoreBefore = false,
-            canLoadMoreAfter = false,
-            errorCode = null,
-            filesPayload = "{}",
-            composer =
-                buildThreadSurfaceComposerPayload(
-                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                    displayName = ThreadReplyPageTitle,
-                    fallbackId = parentMessageId,
-                    enabled = canSend,
-                    mentionChannelId = permalink.channelId,
-                    parentMessageId = parentMessageId,
-                    streamChannelId = null
-                )
-        )
-    }
-    val surfaceKind =
-        if (permalink.routeKind == "dm") {
-            KuiklyThreadSurfaceKind.DirectMessage
-        } else {
-            KuiklyThreadSurfaceKind.Channel
-        }
-    return copy(
-        instanceId = "shared-shell-thread-${permalink.channelId}",
-        title = SharedThreadHeaderContextStore.launchContext(surfaceKind, null).title,
-        subtitle = null,
-        status = "loading",
-        surfaceKind = surfaceKind,
-        sourceThreadId = permalink.channelId,
-        streamChannelId = permalink.channelId,
-        parentChannelId = null,
-        parentMessageId = null,
-        selectedTab = KuiklyThreadTab.Chat.wireValue,
-        messages = emptyList(),
-        originMessage = null,
-        originPreview = null,
-        originParentMessageId = null,
-        focusedMessageId = permalink.messageId,
-        originStatus = "none",
-        originErrorCode = null,
-        errorCode = null,
-        filesPayload = "{}",
-        composer =
-            KuiklyThreadComposerPayload(
-                surfaceKind = surfaceKind,
-                enabled = canSend,
-                streamChannelId = permalink.channelId
-            )
-    ).withLaunchHeaderContext()
-}
-
 private fun KuiklyThreadScreenPayload.findThreadImageAttachmentGroup(attachmentId: String): ThreadImageAttachmentGroup? {
     val messageCandidates = (listOfNotNull(originMessage) + messages).distinctBy { it.id }
     messageCandidates.forEach { message ->
@@ -4660,9 +4499,6 @@ private fun ThreadPageContent(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
-    quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
-    onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
-    onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onBack: () -> Unit,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
@@ -4768,10 +4604,7 @@ private fun ThreadPageContent(
                             attachmentOpenStates = attachmentOpenStates,
                             attachmentCommentsEnabled = attachmentCommentsEnabled,
                             currentServerSlug = currentServerSlug,
-                            quotedPreviewStates = quotedPreviewStates,
                             contentExtrasVisible = contentExtrasVisible,
-                            onEnsureQuotedPreview = onEnsureQuotedPreview,
-                            onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onThreadEvent = onThreadEvent,
                             onOpenMember = {},
                             onOpenMarkdownTag = openMarkdownTag,
@@ -5093,10 +4926,7 @@ private fun ThreadChatTab(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
-    quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
     contentExtrasVisible: Boolean = true,
-    onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
-    onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -5115,10 +4945,7 @@ private fun ThreadChatTab(
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
-                    quotedPreviewStates = quotedPreviewStates,
                     contentExtrasVisible = contentExtrasVisible,
-                    onEnsureQuotedPreview = onEnsureQuotedPreview,
-                    onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -5147,10 +4974,7 @@ private fun ThreadChatTab(
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
-                    quotedPreviewStates = quotedPreviewStates,
                     contentExtrasVisible = contentExtrasVisible,
-                    onEnsureQuotedPreview = onEnsureQuotedPreview,
-                    onOpenQuotedPermalink = onOpenQuotedPermalink,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onOpenMarkdownTag = onOpenMarkdownTag,
@@ -5170,10 +4994,7 @@ private fun ThreadChatTab(
                 attachmentOpenStates = attachmentOpenStates,
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
-                quotedPreviewStates = quotedPreviewStates,
                 contentExtrasVisible = contentExtrasVisible,
-                onEnsureQuotedPreview = onEnsureQuotedPreview,
-                onOpenQuotedPermalink = onOpenQuotedPermalink,
                 onThreadEvent = onThreadEvent,
                 onOpenMember = onOpenMember,
                 onOpenMarkdownTag = onOpenMarkdownTag,
@@ -5193,10 +5014,7 @@ private fun ThreadMessagesList(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
-    quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
     contentExtrasVisible: Boolean = true,
-    onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
-    onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
@@ -5501,10 +5319,7 @@ private fun ThreadMessagesList(
                         attachmentOpenStates = attachmentOpenStates,
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
-                        quotedPreviewStates = quotedPreviewStates,
                         contentExtrasVisible = contentExtrasVisible,
-                        onEnsureQuotedPreview = onEnsureQuotedPreview,
-                        onOpenQuotedPermalink = onOpenQuotedPermalink,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
                         onShowActions = { message, anchor ->
@@ -5679,14 +5494,6 @@ private fun ThreadMessagesList(
                             pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             currentServerSlug = currentServerSlug,
-                            quotedPreviewState =
-                                if (contentExtrasVisible) {
-                                    displayMessage.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates)
-                                } else {
-                                    null
-                                },
-                            onEnsureQuotedPreview = onEnsureQuotedPreview,
-                            onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
                             richContentEnabled = contentExtrasVisible
@@ -6433,9 +6240,6 @@ private fun ThreadMessageCard(
     pendingActionCardIds: Set<String> = emptySet(),
     onCommitActionCard: (String) -> Unit = {},
     currentServerSlug: String? = null,
-    quotedPreviewState: ThreadQuotedMessagePreviewUiState? = null,
-    onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
-    onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     richContentEnabled: Boolean = true,
@@ -6560,19 +6364,6 @@ private fun ThreadMessageCard(
                                         text = message.body,
                                         style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
                                         color = SlockColor.TextBlack
-                                    )
-                                }
-                            }
-                            if (richContentEnabled) {
-                                quotedPreviewState?.let { previewState ->
-                                    LaunchedEffect(previewState.permalink.key, currentServerSlug) {
-                                        onEnsureQuotedPreview(previewState.permalink)
-                                    }
-                                    ThreadQuotedMessagePreviewCard(
-                                        state = previewState,
-                                        timestampLabel = previewState.timestampLabel,
-                                        modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction),
-                                        onOpen = { onOpenQuotedPermalink(previewState.permalink) }
                                     )
                                 }
                             }
@@ -7686,10 +7477,7 @@ private fun ThreadOriginCard(
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
-    quotedPreviewStates: Map<String, ThreadQuotedMessagePreviewUiState> = emptyMap(),
     contentExtrasVisible: Boolean = true,
-    onEnsureQuotedPreview: (SlockQuotedMessagePermalink) -> Unit = {},
-    onOpenQuotedPermalink: (SlockQuotedMessagePermalink) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
@@ -7783,14 +7571,6 @@ private fun ThreadOriginCard(
                             pendingActionCardIds = if (contentExtrasVisible) pendingActionCardIds else emptySet(),
                             onCommitActionCard = { onThreadEvent("commitActionCard", it, null, null) },
                             currentServerSlug = currentServerSlug,
-                            quotedPreviewState =
-                                if (contentExtrasVisible) {
-                                    origin.quotedPermalinkPreviewState(currentServerSlug, quotedPreviewStates)
-                                } else {
-                                    null
-                                },
-                            onEnsureQuotedPreview = onEnsureQuotedPreview,
-                            onOpenQuotedPermalink = onOpenQuotedPermalink,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
                             richContentEnabled = contentExtrasVisible
@@ -8048,261 +7828,8 @@ private fun KuiklyThreadMessageCommentRef.hasThreadCommentHostSource(): Boolean 
     }
 }
 
-private val SlockPermalinkUrlRegex =
-    Regex("https?://[^\\s<>\"'，。、；：！？）》」』】》〉”’（《「『【〈“‘]+")
-private val SlockPermalinkTrailingPunctuationRegex =
-    Regex("[),.!?;:，。！？；：]+$")
-private val SlockPermalinkCodeRegex =
-    Regex("```[\\s\\S]*?```|``[^`]+``|`[^`]+`")
-private val SlockPermalinkAllowedHosts = setOf("app.slock.ai", "staging.slock.ai", "app.raft.build")
-
-internal fun extractFirstQuotedMessagePermalink(
-    content: String,
-    currentServerSlug: String?
-): SlockQuotedMessagePermalink? {
-    val serverSlug = currentServerSlug?.takeIf { it.isNotBlank() } ?: return null
-    if (!content.contains("http")) return null
-    val protectedContent = content.replace(SlockPermalinkCodeRegex) { match ->
-        " ".repeat(match.value.length)
-    }
-    return SlockPermalinkUrlRegex.findAll(protectedContent)
-        .firstNotNullOfOrNull { match ->
-            val start = match.range.first
-            if (start > 0 && protectedContent[start - 1] == '(') {
-                return@firstNotNullOfOrNull null
-            }
-            val raw = match.value.replace(SlockPermalinkTrailingPunctuationRegex, "")
-            parseSlockQuotedMessagePermalink(raw)
-                ?.takeIf { it.serverSlug == serverSlug }
-                ?.copy(rawUrl = raw)
-        }
-}
-
-private fun parseSlockQuotedMessagePermalink(url: String): SlockQuotedMessagePermalink? {
-    val schemeIndex = url.indexOf("://")
-    if (schemeIndex <= 0) return null
-    val scheme = url.substring(0, schemeIndex).lowercase()
-    if (scheme != "http" && scheme != "https") return null
-    val afterScheme = url.substring(schemeIndex + 3)
-    val pathStart = afterScheme.indexOf('/')
-    val host = (if (pathStart >= 0) afterScheme.substring(0, pathStart) else afterScheme)
-        .substringBefore(':')
-        .lowercase()
-    if (host !in SlockPermalinkAllowedHosts) return null
-    val pathAndQuery = if (pathStart >= 0) afterScheme.substring(pathStart) else return null
-    val path = pathAndQuery.substringBefore('?')
-    val query = pathAndQuery.substringAfter('?', missingDelimiterValue = "")
-    val segments = path.split('/').filter { it.isNotBlank() }
-    if (segments.size != 4 || segments[0] != "s") return null
-    val routeKind = segments[2].lowercase().takeIf { it == "channel" || it == "dm" } ?: return null
-    val channelId = segments[3].takeIf { it.isNotBlank() } ?: return null
-    val params = query.toSlockQueryParams()
-    val threadParentMessageId =
-        params["thread"]?.let { threadParam ->
-            val parts = threadParam.split(':', limit = 2)
-            val threadChannel = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return null
-            val parent = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: return null
-            if (threadChannel != channelId) return null
-            parent
-        }
-    val messageId = params["msg"]?.takeIf { it.isNotBlank() } ?: threadParentMessageId ?: return null
-    return SlockQuotedMessagePermalink(
-        rawUrl = url,
-        serverSlug = percentDecodeSlockUrlComponent(segments[1]),
-        routeKind = routeKind,
-        channelId = channelId,
-        messageId = messageId,
-        threadParentMessageId = threadParentMessageId
-    )
-}
-
-private fun String.toSlockQueryParams(): Map<String, String> =
-    split('&')
-        .mapNotNull { part ->
-            if (part.isBlank()) return@mapNotNull null
-            val pieces = part.split('=', limit = 2)
-            val key = pieces.getOrNull(0)?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
-            val value = pieces.getOrNull(1).orEmpty()
-            percentDecodeSlockUrlComponent(key) to percentDecodeSlockUrlComponent(value)
-        }
-        .toMap()
-
-private fun percentDecodeSlockUrlComponent(value: String): String {
-    val bytes = mutableListOf<Byte>()
-    val output = StringBuilder()
-    var index = 0
-    fun flushBytes() {
-        if (bytes.isNotEmpty()) {
-            output.append(bytes.toByteArray().decodeToString())
-            bytes.clear()
-        }
-    }
-    while (index < value.length) {
-        val c = value[index]
-        if (c == '%' && index + 2 < value.length) {
-            val hex = value.substring(index + 1, index + 3)
-            val byte = hex.toIntOrNull(16)
-            if (byte != null) {
-                bytes.add(byte.toByte())
-                index += 3
-                continue
-            }
-        }
-        flushBytes()
-        output.append(if (c == '+') ' ' else c)
-        index += 1
-    }
-    flushBytes()
-    return output.toString()
-}
-
-private fun KuiklyThreadMessageItem.quotedPermalinkPreviewState(
-    currentServerSlug: String?,
-    states: Map<String, ThreadQuotedMessagePreviewUiState>
-): ThreadQuotedMessagePreviewUiState? {
-    val permalink = extractFirstQuotedMessagePermalink(body, currentServerSlug) ?: return null
-    return states[permalink.key] ?: ThreadQuotedMessagePreviewUiState.loading(permalink)
-}
-
 @Composable
-private fun ThreadQuotedMessagePreviewCard(
-    state: ThreadQuotedMessagePreviewUiState,
-    timestampLabel: String,
-    modifier: Modifier = Modifier,
-    onOpen: () -> Unit
-) {
-    val clickableModifier =
-        if (state.status == "loaded") {
-            Modifier.clickable(onClick = onOpen)
-        } else {
-            Modifier
-        }
-    Column(
-        modifier =
-            modifier
-                .then(clickableModifier)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .background(if (state.status == "unavailable") SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
-                .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(5.dp)
-    ) {
-        when (state.status) {
-            "loading" -> {
-                Text(
-                    text = "Loading quoted message...",
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(10.dp).background(SlockColor.EmptyStateGray)
-                )
-                Box(
-                    modifier = Modifier.fillMaxWidth(0.72f).height(10.dp).background(SlockColor.EmptyStateGray)
-                )
-            }
-            "unavailable" -> {
-                Text(
-                    text = "Message unavailable",
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            else -> {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    SlockLucideIcon(
-                        state.channelKind.quotedPreviewChannelIcon(),
-                        modifier = Modifier.size(11.dp),
-                        color = "#FF6B7280"
-                    )
-                    Text(
-                        text = if (state.channelKind == "dm") "@${state.channelName}" else state.channelName,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    if (state.isThread) {
-                        ThreadQuotedPreviewTag("Thread")
-                    }
-                    if (state.isArchived) {
-                        ThreadQuotedPreviewTag("Archived")
-                    }
-                    timestampLabel.takeIf { it.isNotBlank() }?.let { label ->
-                        Text(
-                            text = label,
-                            style = SlockType.Caption.copy(
-                                fontFamily = FontFamily.Monospace,
-                                color = SlockColor.TextBlack.copy(alpha = 0.4f)
-                            ),
-                            color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Text(
-                        text = state.authorName.ifBlank { if (state.authorKind == "agent") "Agent" else "User" },
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    state.authorSubtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
-                        Text(
-                            text = subtitle,
-                            style = SlockType.Caption.copy(
-                                fontFamily = FontFamily.Monospace,
-                                color = SlockColor.TextMutedGray
-                            ),
-                            color = SlockColor.TextMutedGray,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-                state.content.takeIf { it.isNotBlank() }?.let { content ->
-                    Text(
-                        text = content,
-                        style = SlockType.Caption.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                state.attachmentLabel?.takeIf { it.isNotBlank() }?.let { attachmentLabel ->
-                    ThreadQuotedPreviewTag(attachmentLabel)
-                }
-            }
-        }
-    }
-}
-
-private fun String?.quotedPreviewChannelIcon(): SlockLucideIconName =
-    when (this?.lowercase()) {
-        "dm" -> SlockLucideIconName.AtSign
-        "private" -> SlockLucideIconName.Lock
-        "joint" -> SlockLucideIconName.GitBranch
-        else -> SlockLucideIconName.Hash
-    }
-
-@Composable
-private fun ThreadQuotedPreviewTag(label: String) {
+private fun ThreadInlineMetaTag(label: String) {
     Text(
         text = label,
         style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
@@ -8770,7 +8297,7 @@ private fun ThreadAttachmentCommentRow(
             }
         }
         comment.anchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-            ThreadQuotedPreviewTag("Anchor: $label")
+            ThreadInlineMetaTag("Anchor: $label")
         }
         Text(
             text = comment.content,
@@ -8836,10 +8363,10 @@ private fun ThreadAttachmentCommentComposer(
             verticalAlignment = Alignment.CenterVertically
         ) {
             state.pendingAnchorLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadQuotedPreviewTag("Anchor: $label")
+                ThreadInlineMetaTag("Anchor: $label")
             }
             state.pendingQuoteLabel?.takeIf { it.isNotBlank() }?.let { label ->
-                ThreadQuotedPreviewTag("Quote: $label")
+                ThreadInlineMetaTag("Quote: $label")
             }
         }
         if (!canComment) {

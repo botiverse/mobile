@@ -1233,40 +1233,6 @@ internal class SharedThreadDataSource(
         return openMessageContext(hostMessageId, basePayload)
     }
 
-    suspend fun fetchQuotedPermalinkPreview(
-        permalink: SlockQuotedMessagePermalink
-    ): DataResult<ThreadQuotedMessagePreviewUiState> {
-        val repository =
-            conversationRepository
-                ?: return DataResult.Error(ScreenError(code = "thread_permalink_context_unavailable", retryable = false))
-        val session =
-            readSession()
-                ?: return authSessionRequiredResult()
-        if (permalink.serverSlug != session.currentServerSlug()) {
-            return DataResult.Empty(EmptyReason.NoMessages)
-        }
-        val snapshot =
-            try {
-                repository.getMessageContext(MessageId(permalink.messageId))
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return DataResult.Error(ScreenError(code = "thread_permalink_context_network", retryable = true))
-            }
-        return when (snapshot) {
-            is DataResult.Content -> {
-                val target =
-                    snapshot.data.messages.firstOrNull { it.id.value == permalink.messageId }
-                        ?: snapshot.data.parentMessage?.takeIf { it.id.value == permalink.messageId }
-                        ?: return DataResult.Empty(EmptyReason.NoMessages)
-                DataResult.Content(target.toQuotedMessagePreview(permalink, snapshot.data.conversation))
-            }
-            is DataResult.Empty -> snapshot
-            is DataResult.Error -> snapshot
-            is DataResult.NoPermission -> snapshot
-        }
-    }
-
     private suspend fun fetchThreadPage(
         basePayload: KuiklyThreadScreenPayload,
         source: String,
@@ -3738,51 +3704,6 @@ internal fun StoredAuthSession.currentServerSlug(): String? =
             ?.let { selectedId -> servers.firstOrNull { it.id == selectedId }?.slug }
             ?.takeIf { it.isNotBlank() }
         ?: servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
-
-private fun Message.toQuotedMessagePreview(
-    permalink: SlockQuotedMessagePermalink,
-    conversation: ConversationSummary
-): ThreadQuotedMessagePreviewUiState =
-    ThreadQuotedMessagePreviewUiState(
-        status = "loaded",
-        permalink = permalink,
-        channelName = conversation.quotedPreviewChannelName(permalink),
-        channelKind = conversation.quotedPreviewChannelKind(permalink),
-        isThread = permalink.threadParentMessageId != null || conversation.kind == ConversationKind.Thread,
-        isArchived = conversation.archived,
-        timestampLabel = timestampLabel,
-        authorName = author.displayName,
-        authorKind = if (author.kind == MemberKind.Agent) "agent" else "human",
-        authorSubtitle = author.description ?: author.roleDescription,
-        content = body,
-        attachmentLabel = attachments.quotedPreviewAttachmentLabel()
-    )
-
-private fun ConversationSummary.quotedPreviewChannelName(permalink: SlockQuotedMessagePermalink): String =
-    name.takeIf { it.isNotBlank() }
-        ?: if (kind == ConversationKind.DirectMessage || permalink.routeKind == "dm") {
-            "Direct message"
-        } else {
-            "Channel"
-        }
-
-private fun ConversationSummary.quotedPreviewChannelKind(permalink: SlockQuotedMessagePermalink): String =
-    when {
-        kind == ConversationKind.DirectMessage || permalink.routeKind == "dm" -> "dm"
-        !channelType.isNullOrBlank() -> channelType
-        else -> kind.name.lowercase()
-    }
-
-private fun List<Attachment>.quotedPreviewAttachmentLabel(): String? {
-    if (isEmpty()) return null
-    val imageCount = count { it.mimeType.startsWith("image/", ignoreCase = true) }
-    return when {
-        size == 1 && imageCount == 1 -> "1 image"
-        size == 1 -> "1 file"
-        imageCount == size -> "$imageCount images"
-        else -> "$size attachments"
-    }
-}
 
 private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentRef? {
     val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null
