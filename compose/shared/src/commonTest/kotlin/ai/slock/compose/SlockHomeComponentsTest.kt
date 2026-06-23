@@ -23,6 +23,13 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeActivitySidebarUnreadCountUsesActivityCountWhenItIsHigher() {
+        assertEquals(14, homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 14))
+        assertEquals(9, homeActivitySidebarUnreadCount(homeUnreadCount = 9, activityUnreadCount = 0))
+        assertEquals(12, homeActivitySidebarUnreadCount(homeUnreadCount = 8, activityUnreadCount = 12))
+    }
+
+    @Test
     fun homeSidebarSelectionPrefersTopActionOverConversation() {
         assertEquals(
             SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Activity),

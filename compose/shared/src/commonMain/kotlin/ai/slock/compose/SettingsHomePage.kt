@@ -1198,6 +1198,7 @@ private fun SlockAppShellContent() {
         }
     val settingsState by settingsViewModel.state.collectAsState()
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
+    val readyServerId = readySession?.currentServerId
     val latestHomeState by rememberUpdatedState(homeState)
     val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
     val latestReadySession by rememberUpdatedState(readySession)
@@ -1207,6 +1208,7 @@ private fun SlockAppShellContent() {
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
+    val latestHomeSurfaceVisible by rememberUpdatedState(homeSurfaceVisible)
     val homeActivityRouteActive =
         selectedTab == "home" &&
             selectedHomeDestination == HomeDestinationActivity
@@ -1217,6 +1219,12 @@ private fun SlockAppShellContent() {
             delay(delayMs)
         }
         homeViewModel.dispatch(SharedHomeIntent.SetSurfaceVisible(homeSurfaceVisible))
+    }
+    LaunchedEffect(homeSurfaceVisible, readyServerId) {
+        if (homeSurfaceVisible && readyServerId != null) {
+            homeActivityStore.dispatch(SharedActivityIntent.LoadInitial)
+            homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        }
     }
     LaunchedEffect(homeActivityRouteActive) {
         if (homeActivityRouteActive) {
@@ -1836,7 +1844,7 @@ private fun SlockAppShellContent() {
                         )
                     }
                     homeViewModel.dispatch(SharedHomeIntent.ApplyRealtimeEvent(serverId, event))
-                    if (latestHomeActivityRouteActive) {
+                    if (latestHomeActivityRouteActive || latestHomeSurfaceVisible) {
                         homeActivityStore.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
                     }
                     // #79: forward machine-scope realtime events to the
@@ -1921,6 +1929,8 @@ private fun SlockAppShellContent() {
                                     bridge = bridge,
                                     state = homeState,
                                     active = active,
+                                    activityUnreadCount = homeActivityState.totalUnreadCount,
+                                    savedCount = homeSearchSavedState.saved.totalCount,
                                     onIntent = homeViewModel::dispatch,
                                     selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
                                     onSelectedConversationCleared = {
@@ -8448,6 +8458,8 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
+    activityUnreadCount: Int = 0,
+    savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
@@ -8548,7 +8560,8 @@ private fun SharedHomeScreen(
                 directMessages = directMessageItems,
                 selectedChannelId = selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
-                inboxUnreadCount = snapshot.unreadTotal,
+                inboxUnreadCount = homeActivitySidebarUnreadCount(snapshot.unreadTotal, activityUnreadCount),
+                savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 pendingServerId = serverSwitchState.pendingServerId,
                 activitySelected = state.selectedTopAction == SharedHomeTopAction.Activity,
