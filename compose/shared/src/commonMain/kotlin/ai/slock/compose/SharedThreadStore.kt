@@ -3583,6 +3583,8 @@ private fun KuiklyThreadMessageItem.withHomeDirectMessageAvatar(avatarWireValue:
         avatarWireValue =
             if (currentWireValue == null || currentWireValue.isGravatarAvatarWireValue()) {
                 wireValue
+            } else if (currentWireValue.isAgentFallbackAvatarWireValue()) {
+                wireValue
             } else {
                 currentWireValue
             },

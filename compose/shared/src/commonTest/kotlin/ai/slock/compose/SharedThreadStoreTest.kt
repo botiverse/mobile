@@ -1389,6 +1389,57 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun cachedHomeDirectMessageAvatarReplacesAgentFallbackAvatar() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels = emptyList(),
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-agent-1"),
+                            channelId = ChannelId("dm-agent-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Product-UX-Designer",
+                            avatar = AvatarReference.fromWireValue("pixel:tree"),
+                            presenceMemberId = MemberId("agent-1")
+                        )
+                    ),
+                unreadTotal = 0
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val payload =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "Product UX",
+                            authorKind = "agent",
+                            avatarWireValue = "random:agent-1",
+                            body = "agent body"
+                        )
+                    )
+            )
+
+        val enriched = dataSource.enrichCachedSenderProfiles(payload)
+
+        val message = enriched.messages.single()
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
+    }
+
+    @Test
     fun fetchThreadPayloadWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
