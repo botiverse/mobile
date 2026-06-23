@@ -2,6 +2,7 @@ package ai.slock.compose.base
 
 import ai.slock.compose.data.SLOCK_SOCKET_BASE_URL
 import com.tencent.kuikly.core.base.toInt
+import com.tencent.kuikly.core.module.CallbackRef
 import com.tencent.kuikly.core.module.CallbackFn
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.module.PerformanceData
@@ -9,6 +10,7 @@ import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 internal enum class BridgeLogLevel(
     val wireValue: String
@@ -290,16 +292,40 @@ internal class BridgeModule : Module() {
         url: String,
         attachmentId: String,
         fileName: String,
-        mimeType: String? = null
+        mimeType: String? = null,
+        onProgress: ((BridgeAttachmentDownloadProgress) -> Unit)? = null
     ): JSONObject? =
-        suspendCoroutine { continuation ->
+        suspendCancellableCoroutine { continuation ->
             val methodArgs = JSONObject()
             methodArgs.put("url", url)
             methodArgs.put("attachmentId", attachmentId)
             methodArgs.put("fileName", fileName)
+            methodArgs.put("trackProgress", onProgress != null)
             mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
-            callNativeMethod(OPEN_ATTACHMENT, methodArgs) {
-                continuation.resume(it)
+            var callbackRef: CallbackRef? = null
+            var completed = false
+            val result =
+                toNative(
+                    keepCallbackAlive = onProgress != null,
+                    methodName = OPEN_ATTACHMENT,
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (!continuation.isActive || completed) {
+                            return@toNative
+                        }
+                        if (payload?.optString("status") == "progress") {
+                            onProgress?.invoke(payload.toBridgeAttachmentDownloadProgress())
+                            return@toNative
+                        }
+                        completed = true
+                        callbackRef?.let { removeCallback(it) }
+                        continuation.resume(payload)
+                    },
+                    syncCall = false
+                )
+            callbackRef = result.callbackRef
+            continuation.invokeOnCancellation {
+                callbackRef?.let { removeCallback(it) }
             }
         }
 
@@ -727,4 +753,26 @@ internal class BridgeModule : Module() {
         const val HUMAN_VERIFICATION = "humanVerification"
     }
 
+}
+
+internal data class BridgeAttachmentDownloadProgress(
+    val percent: Int?,
+    val downloadedBytes: Long,
+    val totalBytes: Long?
+)
+
+private fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
+    val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
+    val downloadedBytes = optString("downloadedBytes").toLongOrNull() ?: 0L
+    val percent =
+        optString("percent").toIntOrNull()
+            ?.coerceIn(0, 100)
+            ?: totalBytes?.let { total ->
+                if (total <= 0L) null else ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
+            }
+    return BridgeAttachmentDownloadProgress(
+        percent = percent,
+        downloadedBytes = downloadedBytes,
+        totalBytes = totalBytes
+    )
 }
