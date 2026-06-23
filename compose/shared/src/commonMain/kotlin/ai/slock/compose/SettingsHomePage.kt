@@ -11282,41 +11282,34 @@ private fun Long.updateFrom(event: RealtimeEvent): Long =
 
 @Composable
 private fun AppShellRestoreSplashContent() {
-    val statusBarHeight = LocalActivity.current.pageData.statusBarHeight.dp
-    Box(
+    Column(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(SlockColor.SurfaceCream)
-                .padding(horizontal = 24.dp)
+                .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.TopCenter)
-                    .padding(top = statusBarHeight + 168.dp)
-                    .widthIn(max = 360.dp),
-            verticalArrangement = Arrangement.spacedBy(34.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            AppShellRestoreLogoBadge("RAFT")
-            Text(
-                text = "WHERE HUMANS AND AI AGENTS\nCOLLABORATE",
-                style =
-                    SlockType.SectionLabel
-                        .withSlockFontWeight(FontWeight.Bold)
-                        .copy(
-                            fontSize = 15.sp,
-                            lineHeight = 22.sp,
-                            letterSpacing = 1.2.sp,
-                            color = SlockColor.TextMutedGray
-                        ),
-                color = SlockColor.TextMutedGray,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        AppShellRestoreLogoBadge("RAFT")
+        Spacer(Modifier.height(34.dp))
+        Text(
+            text = "WHERE HUMANS AND AI AGENTS\nCOLLABORATE",
+            style =
+                SlockType.SectionLabel
+                    .withSlockFontWeight(FontWeight.Bold)
+                    .copy(
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        letterSpacing = 1.2.sp,
+                        color = SlockColor.TextMutedGray
+                    ),
+            color = SlockColor.TextMutedGray,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 360.dp)
+        )
     }
 }
 
