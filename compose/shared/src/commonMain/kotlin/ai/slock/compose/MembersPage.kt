@@ -921,7 +921,8 @@ private class MemberDetailRouteProvider(
         agentDetailStore.dispatch(
             SharedAgentDetailIntent.SetDetail(
                 agentId,
-                detail.withMemberDetailLifecycleResult(action)
+                detail.withMemberDetailLifecycleResult(action),
+                preserveSequencedActivity = false
             )
         )
     }

@@ -1,7 +1,11 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.MembersAgentLifecycleAction
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Presence
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,6 +21,33 @@ class SharedAgentDetailStoreTest {
         directMessages = emptyList(),
         reminders = emptyList(),
         activity = emptyList()
+    )
+
+    private fun detailWithSummary(
+        status: String? = null,
+        activity: String? = null,
+        activityDetail: String? = null
+    ) = testDetail.copy(
+        summary = AgentDetailSummary(
+            id = testMemberId.value,
+            name = "Agent One",
+            status = status,
+            activity = activity,
+            activityDetail = activityDetail
+        )
+    )
+
+    private fun activityEvent(
+        status: AgentStatus?,
+        detail: String? = null,
+        serverSeq: Long? = null
+    ) = MemberPresenceUpdated(
+        memberId = testMemberId,
+        presence = status?.presence ?: Presence.Offline,
+        kind = MemberKind.Agent,
+        agentStatus = status,
+        statusLabel = detail,
+        serverSeq = serverSeq
     )
 
     @Test
@@ -218,5 +249,107 @@ class SharedAgentDetailStoreTest {
         assertEquals("Deleted", s.state.value.lastActionResult?.successLabel)
         s.dispatch(SharedAgentDetailIntent.ClearActionResult)
         assertNull(s.state.value.lastActionResult)
+    }
+
+    @Test
+    fun staleAgentActivitySeqIsIgnored() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building", serverSeq = 10L),
+                observedAtMillis = 100L
+            )
+        )
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Offline, detail = "Stopped", serverSeq = 9L),
+                observedAtMillis = 200L
+            )
+        )
+
+        val state = s.state.value
+        assertEquals("Working", state.detail?.summary?.status)
+        assertEquals("Working", state.detail?.summary?.activity)
+        assertEquals("Building", state.detail?.summary?.activityDetail)
+        assertEquals(10L, state.agentActivitySeq[testMemberId])
+        assertEquals(100L, state.agentActivityObservedAt[testMemberId])
+        assertEquals(1L, state.agentActivityVersions[testMemberId])
+    }
+
+    @Test
+    fun sequencedAgentActivitySurvivesUnsequencedRestDetail() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, detail = "Building", serverSeq = 10L),
+                observedAtMillis = 100L
+            )
+        )
+
+        s.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                testMemberId,
+                detailWithSummary(status = "Offline", activity = "Offline", activityDetail = "Old REST")
+            )
+        )
+
+        val summary = s.state.value.detail?.summary
+        assertEquals("Working", summary?.status)
+        assertEquals("Working", summary?.activity)
+        assertEquals("Building", summary?.activityDetail)
+    }
+
+    @Test
+    fun resetAgentActivitySeqAllowsNewSocketSequence() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Working, serverSeq = 10L),
+                observedAtMillis = 100L
+            )
+        )
+
+        s.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Offline, detail = "Disconnected", serverSeq = 1L),
+                observedAtMillis = 200L
+            )
+        )
+
+        val state = s.state.value
+        assertEquals("Offline", state.detail?.summary?.status)
+        assertEquals("Offline", state.detail?.summary?.activity)
+        assertEquals("Disconnected", state.detail?.summary?.activityDetail)
+        assertEquals(1L, state.agentActivitySeq[testMemberId])
+        assertEquals(2L, state.agentActivityVersions[testMemberId])
+    }
+
+    @Test
+    fun unsequencedAgentActivityAppliesBeforeSequenceBaseline() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Offline", activity = "Offline")))
+
+        s.dispatch(
+            SharedAgentDetailIntent.ApplyAgentActivityUpdate(
+                event = activityEvent(AgentStatus.Thinking, detail = "Reading context"),
+                observedAtMillis = 100L
+            )
+        )
+
+        val state = s.state.value
+        assertEquals("Thinking", state.detail?.summary?.status)
+        assertEquals("Thinking", state.detail?.summary?.activity)
+        assertEquals("Reading context", state.detail?.summary?.activityDetail)
+        assertNull(state.agentActivitySeq[testMemberId])
+        assertEquals(1L, state.agentActivityVersions[testMemberId])
     }
 }

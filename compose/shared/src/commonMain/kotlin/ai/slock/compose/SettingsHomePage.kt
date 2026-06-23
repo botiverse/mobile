@@ -164,6 +164,7 @@ import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.data.SharedAgentDetailActions
+import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSearchPanelState
@@ -1631,6 +1632,7 @@ private fun SlockAppShellContent() {
                     realtimeLastSeq
                 }
             realtimeSessionKey = nextSessionKey
+            sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
             bridge.realtimeConnect(
                 serverId = serverId,
                 accessToken = accessToken,
@@ -1951,6 +1953,7 @@ private fun SlockAppShellContent() {
                     }
                     authGateViewModel.dispatch(SharedAuthGateIntent.ServerReady(refreshed))
                     realtimeSessionKey = "${refreshed.accessToken}|$refreshedServerId"
+                    sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.ResetAgentActivitySeq)
                     bridge.realtimeConnect(
                         serverId = refreshedServerId,
                         accessToken = refreshed.accessToken,
@@ -2057,7 +2060,16 @@ private fun SlockAppShellContent() {
                     }
                     val shouldRefreshMemberDetail =
                         when (event) {
-                            is MemberPresenceUpdated -> event.kind == MemberKind.Agent
+                            is MemberPresenceUpdated -> {
+                                if (event.kind == MemberKind.Agent) {
+                                    sharedStores.agentDetailStore.dispatch(
+                                        SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
+                                    )
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
                             is AgentCreated -> true
                             is RealtimeRefreshRequired ->
                                 (

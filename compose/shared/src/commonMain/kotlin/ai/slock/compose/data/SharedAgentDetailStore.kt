@@ -3,6 +3,8 @@ package ai.slock.compose.data
 import ai.slock.compose.MembersAgentLifecycleAction
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,6 +36,9 @@ import kotlinx.coroutines.flow.asStateFlow
 internal data class SharedAgentDetailState(
     val agentId: MemberId? = null,
     val detail: AgentDetailSnapshot? = null,
+    val agentActivityObservedAt: Map<MemberId, Long> = emptyMap(),
+    val agentActivityVersions: Map<MemberId, Long> = emptyMap(),
+    val agentActivitySeq: Map<MemberId, Long> = emptyMap(),
     val detailLoadStatus: SharedAgentDetailLoadStatus = SharedAgentDetailLoadStatus.Idle,
     val detailErrorCode: String? = null,
     val lifecycleActionInFlight: String? = null,
@@ -83,10 +88,19 @@ internal sealed interface SharedAgentDetailIntent {
     data object DeselectMember : SharedAgentDetailIntent
 
     data class SetDetailLoading(val agentId: MemberId) : SharedAgentDetailIntent
-    data class SetDetail(val agentId: MemberId, val detail: AgentDetailSnapshot) : SharedAgentDetailIntent
+    data class SetDetail(
+        val agentId: MemberId,
+        val detail: AgentDetailSnapshot,
+        val preserveSequencedActivity: Boolean = true
+    ) : SharedAgentDetailIntent
     data class SetDetailNoPermission(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailError(val agentId: MemberId, val code: String) : SharedAgentDetailIntent
     data class SetDetailEmpty(val agentId: MemberId) : SharedAgentDetailIntent
+    data class ApplyAgentActivityUpdate(
+        val event: MemberPresenceUpdated,
+        val observedAtMillis: Long = defaultNowMillis()
+    ) : SharedAgentDetailIntent
+    data object ResetAgentActivitySeq : SharedAgentDetailIntent
 
     data class StartLifecycleAction(val actionKey: String) : SharedAgentDetailIntent
     data class FinishLifecycleAction(
@@ -135,9 +149,18 @@ internal class SharedAgentDetailStore(
                 if (current.agentId == intent.memberId) {
                     current
                 } else {
-                    SharedAgentDetailState(agentId = intent.memberId)
+                    SharedAgentDetailState(
+                        agentId = intent.memberId,
+                        agentActivityObservedAt = current.agentActivityObservedAt,
+                        agentActivityVersions = current.agentActivityVersions,
+                        agentActivitySeq = current.agentActivitySeq
+                    )
                 }
-            SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState()
+            SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState(
+                agentActivityObservedAt = current.agentActivityObservedAt,
+                agentActivityVersions = current.agentActivityVersions,
+                agentActivitySeq = current.agentActivitySeq
+            )
 
             is SharedAgentDetailIntent.SetDetailLoading ->
                 if (current.agentId == intent.agentId) {
@@ -150,8 +173,13 @@ internal class SharedAgentDetailStore(
                 }
             is SharedAgentDetailIntent.SetDetail ->
                 if (current.agentId == intent.agentId) {
+                    val detail = current.mergeSequencedActivityIntoDetail(
+                        agentId = intent.agentId,
+                        incoming = intent.detail,
+                        preserveSequencedActivity = intent.preserveSequencedActivity
+                    )
                     current.copy(
-                        detail = intent.detail,
+                        detail = detail,
                         detailLoadStatus = SharedAgentDetailLoadStatus.Content,
                         detailErrorCode = null
                     )
@@ -185,6 +213,11 @@ internal class SharedAgentDetailStore(
                 } else {
                     current
                 }
+            is SharedAgentDetailIntent.ApplyAgentActivityUpdate ->
+                current.applyAgentActivityUpdate(intent.event, intent.observedAtMillis)
+            SharedAgentDetailIntent.ResetAgentActivitySeq -> current.copy(
+                agentActivitySeq = emptyMap()
+            )
 
             is SharedAgentDetailIntent.StartLifecycleAction -> current.copy(
                 lifecycleActionInFlight = intent.actionKey,
@@ -357,3 +390,63 @@ internal class SharedAgentDetailStore(
             is DataResult.NoPermission -> blocker.code
         }
 }
+
+private fun SharedAgentDetailState.applyAgentActivityUpdate(
+    event: MemberPresenceUpdated,
+    observedAtMillis: Long
+): SharedAgentDetailState {
+    if (event.kind != MemberKind.Agent) return this
+    val agentId = event.memberId
+    if (!event.shouldApplyAfter(agentActivitySeq[agentId])) return this
+    val nextDetail =
+        if (this.agentId == agentId) {
+            detail?.withAgentActivity(event)
+        } else {
+            detail
+        }
+    return copy(
+        detail = nextDetail,
+        agentActivityObservedAt = agentActivityObservedAt + (agentId to observedAtMillis),
+        agentActivityVersions = agentActivityVersions + (agentId to ((agentActivityVersions[agentId] ?: 0L) + 1L)),
+        agentActivitySeq = event.serverSeq?.let { agentActivitySeq + (agentId to it) } ?: agentActivitySeq
+    )
+}
+
+private fun MemberPresenceUpdated.shouldApplyAfter(previousSeq: Long?): Boolean {
+    val nextSeq = serverSeq
+    if (nextSeq != null && previousSeq != null && nextSeq <= previousSeq) return false
+    return true
+}
+
+private fun SharedAgentDetailState.mergeSequencedActivityIntoDetail(
+    agentId: MemberId,
+    incoming: AgentDetailSnapshot,
+    preserveSequencedActivity: Boolean
+): AgentDetailSnapshot {
+    if (!preserveSequencedActivity || agentActivitySeq[agentId] == null) return incoming
+    val currentDetail = detail
+    if (currentDetail?.agentId != agentId) return incoming
+    val currentSummary = currentDetail.summary ?: return incoming
+    val incomingSummary = incoming.summary ?: return incoming
+    return incoming.copy(
+        summary = incomingSummary.copy(
+            status = currentSummary.status ?: incomingSummary.status,
+            activity = currentSummary.activity ?: incomingSummary.activity,
+            activityDetail = currentSummary.activityDetail ?: incomingSummary.activityDetail
+        )
+    )
+}
+
+private fun AgentDetailSnapshot.withAgentActivity(event: MemberPresenceUpdated): AgentDetailSnapshot {
+    val currentSummary = summary ?: return this
+    val activityLabel = event.agentStatus?.label
+    return copy(
+        summary = currentSummary.copy(
+            status = activityLabel ?: currentSummary.status,
+            activity = activityLabel ?: currentSummary.activity,
+            activityDetail = event.statusLabel.nonBlankOrNull() ?: currentSummary.activityDetail
+        )
+    )
+}
+
+private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
