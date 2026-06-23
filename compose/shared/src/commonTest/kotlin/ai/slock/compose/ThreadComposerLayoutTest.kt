@@ -24,4 +24,30 @@ class ThreadComposerLayoutTest {
     fun threadLoadingComposerPlaceholderReservesClosedComposerHeight() {
         assertEquals(118.dp, threadLoadingComposerPlaceholderHeight(bottomSafeArea = 24.dp))
     }
+
+    @Test
+    fun mentionSuggestionInsertMovesCursorAfterInsertedMention() {
+        val edit = applyKuiklyComposerSuggestionEdit(
+            text = "ping @ar",
+            selectionStart = 8,
+            selectionEnd = 8,
+            triggerStart = 5,
+            replacement = "@artin "
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @artin ", cursor = 12), edit)
+    }
+
+    @Test
+    fun mentionSuggestionInsertPreservesSuffixWithoutDoubleSpace() {
+        val edit = applyKuiklyComposerSuggestionEdit(
+            text = "ping @ar world",
+            selectionStart = 8,
+            selectionEnd = 8,
+            triggerStart = 5,
+            replacement = "@artin "
+        )
+
+        assertEquals(KuiklyComposerSuggestionEdit(text = "ping @artin world", cursor = 12), edit)
+    }
 }
