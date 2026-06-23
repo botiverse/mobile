@@ -4952,9 +4952,9 @@ private fun SettingsServerSlugInput(
             Box(
                 modifier = Modifier
                     .height(42.dp)
-                    .width(42.dp)
                     .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
