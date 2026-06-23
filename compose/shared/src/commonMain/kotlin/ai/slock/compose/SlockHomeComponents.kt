@@ -1569,66 +1569,69 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
 
 @Composable
 private fun SidebarActivityRow(label: String, count: String?, selected: Boolean = false, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
-    if (!selected) {
-        SidebarActionRow(
-            icon = SlockLucideIconName.Activity,
-            label = label,
-            modifier = modifier,
-            badge = count,
-            onClick = onClick
-        )
-        return
-    }
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().padding(end = HomeSmallShadowOffset, bottom = HomeSmallShadowOffset)) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = SidebarActionRowHeight)
-                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
-                    .background(SlockColor.ShadowBlack)
-            )
-            com.tencent.kuikly.compose.foundation.layout.Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = SidebarActionRowHeight)
-                    .background(SlockColor.AccentPink)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-                    .padding(horizontal = SidebarRowHorizontalPadding, vertical = SlockSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) {
-                    SlockLucideIcon(SlockLucideIconName.Activity, Modifier.size(SidebarActionIconSize))
-                }
-                Text(
-                    label,
-                    style = SlockType.ButtonBold,
-                    color = SlockColor.TextBlack,
-                    modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (count != null) {
-                    SidebarTrailingNumberText(count, color = SlockColor.TextBlack.copy(alpha = 0.4f))
-                }
-            }
-        }
-    }
+    SidebarActionRow(
+        icon = SlockLucideIconName.Activity,
+        label = label,
+        selected = selected,
+        modifier = modifier,
+        badge = count,
+        onClick = onClick
+    )
 }
 
 @Composable
 private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier: Modifier = Modifier, selected: Boolean = false, badge: String? = null, trailingText: String? = null, onClick: (() -> Unit)? = null) {
-    Box(modifier = modifier.fillMaxWidth()) {
-        if (selected) {
+    val hoverInteractionSource = remember { MutableInteractionSource() }
+    val isHovered by hoverInteractionSource.collectIsHoveredAsState()
+    var pressed by remember { mutableStateOf(false) }
+    val effectiveInteractionState = when {
+        selected -> ChannelRowInteractionState.Selected
+        pressed -> ChannelRowInteractionState.Pressed
+        isHovered -> ChannelRowInteractionState.Hovered
+        else -> ChannelRowInteractionState.Default
+    }
+    val rowBackground = when (effectiveInteractionState) {
+        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
+        ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
+        ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
+    }
+    val borderColor = when (effectiveInteractionState) {
+        ChannelRowInteractionState.Default -> Color.Transparent
+        ChannelRowInteractionState.Hovered, ChannelRowInteractionState.Pressed, ChannelRowInteractionState.Selected, ChannelRowInteractionState.Focused -> SlockColor.BorderBlack
+    }
+    val clickModifier =
+        if (onClick != null) {
+            Modifier.pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        pressed = true
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            pressed = false
+                        }
+                    },
+                    onTap = { onClick.invoke() }
+                )
+            }
+        } else {
+            Modifier
+        }
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (selected) Modifier.padding(end = ChannelRowShadowOffset, bottom = ChannelRowShadowOffset) else Modifier)
+            .then(clickModifier)
+            .hoverable(hoverInteractionSource)
+    ) {
+        if (selected || pressed) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = SidebarActionRowHeight)
-                    .offset(x = HomeSmallShadowOffset, y = HomeSmallShadowOffset)
+                    .height(SidebarActionRowHeight)
+                    .offset(x = ChannelRowShadowOffset, y = ChannelRowShadowOffset)
                     .background(SlockColor.ShadowBlack)
             )
         }
@@ -1636,15 +1639,14 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = SidebarActionRowHeight)
-                    .background(if (selected) SlockColor.AccentPink else Color.Transparent)
-                    .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
-                    .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+                    .height(SidebarActionRowHeight)
+                    .background(rowBackground)
+                    .border(SlockStroke.Default, borderColor)
                     .padding(horizontal = SidebarRowHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.size(SidebarActionIconBoxSize), contentAlignment = Alignment.Center) { SlockLucideIcon(icon, Modifier.size(SidebarActionIconSize)) }
-            Text(label, style = if (selected) SlockType.ButtonBold else SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(label, style = SlockType.Button, color = SlockColor.TextBlack, modifier = Modifier.padding(start = SidebarActionLabelGap).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (badge != null) CountPill(badge, SlockColor.AccentPink) else if (trailingText != null) SidebarTrailingNumberText(trailingText, color = SlockColor.TextBlack)
         }
     }
