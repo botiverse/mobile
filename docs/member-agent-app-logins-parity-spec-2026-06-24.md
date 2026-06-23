@@ -158,12 +158,28 @@ React order is defined by `AGENT_PANEL_TABS` in `AgentDetailPanel.tsx:118-126`:
 
 `Profile -> Permissions -> Agent DMs -> Reminders -> Workspace -> Apps -> Activity`
 
-Android currently defines the same enum order in `MembersPage.kt:155-166`, and `membersVisibleAgentTabs(...)` uses `MembersAgentDetailTab.entries` as-is. The Apps repair should preserve this order. If QA still sees a different order, investigate the specific route/fixture that launched member detail before changing the enum:
+This is only the default order. React also lets users drag the tab bar and persists the custom order:
+
+- `AgentDetailPanel.tsx:1813-1818` reads `serverStore.sidebarOrder.agentPanelTabOrder` and writes reorder updates through `updateSidebarOrder({ agentPanelTabOrder: nextOrder })`.
+- `ReorderablePanelTabs.tsx:98-145` implements the drag/drop tab bar and calls `onReorderTabs(...)`.
+- `serverStore.ts:55-56` includes `agentPanelTabOrder` in sidebar order preferences.
+- `serverStore.ts:309-310` loads `agentPanelTabOrder` from server data.
+- `serverStore.ts:319-340` persists updates with `PATCH /servers/:serverId/sidebar-order`.
+
+Android currently defines the same default enum order in `MembersPage.kt:155-166`, and `membersVisibleAgentTabs(...)` uses `MembersAgentDetailTab.entries` as-is. That is correct only before a user reorders tabs on React. Parity requires Android to consume the server-backed `agentPanelTabOrder` preference and reconcile it with currently visible tabs the same way React does:
+
+1. Start from `membersVisibleAgentTabs(canViewPrivateSurfaces, deleted)`.
+2. Read `agentPanelTabOrder` from the shared server/sidebar-order preference model.
+3. Apply stored ids first, skipping unknown/hidden/duplicate ids.
+4. Append any visible tabs missing from stored order in default enum order.
+5. If Android later supports drag reorder, persist the same `agentPanelTabOrder` field via the sidebar-order API.
+
+Until Android consumes `agentPanelTabOrder`, a user who reordered tabs on React will see a different Android order. If QA still sees an order mismatch after this is implemented, investigate the specific route/fixture that launched member detail:
 
 1. Check whether private tab filtering removed a tab for the current user/deleted agent.
 2. Check whether a stale preview/pageData route supplies an initial tab or alternate tab list.
 3. Check whether horizontal tab scroll position makes the visible first tab appear different without changing order.
-4. Do not reorder Apps as part of this spec unless React changes first.
+4. Check whether the stored server order includes old/unknown tab ids that must be reconciled, not rendered raw.
 
 ## Permission And Error Semantics
 
@@ -210,7 +226,7 @@ This task is done when:
 2. Android/KMP `Apps` tab fetches and renders `GET /api/integrations/agents/:agentId`.
 3. Skills remain visible only in Profile `SKILLS`.
 4. React and Android visible copy agree on the Raft Agent Login concept.
-5. Tab order remains `Profile -> Permissions -> Agent DMs -> Reminders -> Workspace -> Apps -> Activity`.
+5. Android default tab order remains `Profile -> Permissions -> Agent DMs -> Reminders -> Workspace -> Apps -> Activity`, and server-backed React reorder preference `agentPanelTabOrder` is honored when present.
 6. No app-login error collapses unrelated agent detail tabs.
 7. `./gradlew :shared:allTests` or the narrower changed-module unit test set passes from `compose/`.
 8. Android visual fixture or real-device smoke includes both Profile Skills and Apps Connected Apps surfaces.
