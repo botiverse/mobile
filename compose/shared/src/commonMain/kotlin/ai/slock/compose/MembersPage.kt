@@ -4985,7 +4985,7 @@ private fun MembersPageHeader(
 ) {
     SlockTopPageHeader(
         title = title,
-        subtitle = "Workspace members",
+        subtitle = null,
         iconName = SlockLucideIconName.Users,
         refreshing = refreshing
     )
