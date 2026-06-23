@@ -2245,14 +2245,11 @@ private fun MembersDetailContent(
             val menuSummary = detail?.summary
             val menuStatus = member.membersAgentStatusDisplayState(menuSummary?.status, menuSummary?.activity).status
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
-            val menuMachineAssigned = menuSummary?.machineId?.isNotBlank() == true
             val menuItems = buildMembersManagementMenuItems(
                 primaryAction = menuPrimary,
-                machineAssigned = menuMachineAssigned,
                 canManage = canManage,
                 deleted = deleted,
-                hasReportIssue = agentDetailActions != null || onReportAgentIssue != null,
-                inProgress = lifecycleInFlight != null || diagnosticInFlight != null
+                inProgress = lifecycleInFlight != null
             )
             SlockBrutalDropdownMenu(
                 anchor = dropdownAnchor,
@@ -2261,9 +2258,7 @@ private fun MembersDetailContent(
                     handleMembersManagementMenuSelection(
                         id = id,
                         primaryAction = menuPrimary,
-                        runLifecycleAction = { runLifecycleAction(it) },
-                        copyDiagnostics = { copyDiagnostics() },
-                        reportIssue = { reportIssue() }
+                        runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
                 onDismiss = {
@@ -2315,12 +2310,10 @@ private fun DataResult<AgentLifecycleActionResult>.membersLifecycleErrorCode(act
         is DataResult.NoPermission -> blocker.code
     }
 
-private fun buildMembersManagementMenuItems(
+internal fun buildMembersManagementMenuItems(
     primaryAction: MembersAgentLifecycleAction?,
-    machineAssigned: Boolean,
     canManage: Boolean,
     deleted: Boolean,
-    hasReportIssue: Boolean,
     inProgress: Boolean
 ): List<SlockBrutalDropdownMenuItem> {
     if (deleted || !canManage) return emptyList()
@@ -2328,56 +2321,19 @@ private fun buildMembersManagementMenuItems(
     if (primaryAction != null) {
         items += SlockBrutalDropdownMenuItem(
             id = primaryAction.actionKey,
-            label = primaryAction.label,
+            label = when (primaryAction) {
+                MembersAgentLifecycleAction.Start -> "Start Agent"
+                MembersAgentLifecycleAction.Stop -> "Stop Agent"
+                else -> primaryAction.label
+            },
             icon = primaryAction.iconName,
             enabled = !inProgress
         )
     }
     items += SlockBrutalDropdownMenuItem(
         id = MembersAgentLifecycleAction.Restart.actionKey,
-        label = MembersAgentLifecycleAction.Restart.label,
-        icon = MembersAgentLifecycleAction.Restart.iconName,
-        enabled = !inProgress
-    )
-    items += SlockBrutalDropdownMenuItem(
-        id = MembersAgentLifecycleAction.ResetSession.actionKey,
-        label = MembersAgentLifecycleAction.ResetSession.label,
-        icon = MembersAgentLifecycleAction.ResetSession.iconName,
-        enabled = !inProgress
-    )
-    items += SlockBrutalDropdownMenuItem(
-        id = MembersAgentLifecycleAction.ResetFull.actionKey,
-        label = MembersAgentLifecycleAction.ResetFull.label,
-        icon = MembersAgentLifecycleAction.ResetFull.iconName,
-        enabled = !inProgress
-    )
-    if (machineAssigned) {
-        items += SlockBrutalDropdownMenuItem(
-            id = MembersAgentLifecycleAction.UnassignMachine.actionKey,
-            label = MembersAgentLifecycleAction.UnassignMachine.label,
-            icon = MembersAgentLifecycleAction.UnassignMachine.iconName,
-            enabled = !inProgress
-        )
-    }
-    items += SlockBrutalDropdownMenuItem(
-        id = "copy_diagnostics",
-        label = "Copy diagnostics",
-        icon = SlockLucideIconName.Clipboard,
-        enabled = !inProgress
-    )
-    if (hasReportIssue) {
-        items += SlockBrutalDropdownMenuItem(
-            id = "report_issue",
-            label = "Report issue",
-            icon = SlockLucideIconName.MessageSquarePlus,
-            enabled = !inProgress
-        )
-    }
-    items += SlockBrutalDropdownMenuItem(
-        id = MembersAgentLifecycleAction.Delete.actionKey,
-        label = MembersAgentLifecycleAction.Delete.label,
-        icon = MembersAgentLifecycleAction.Delete.iconName,
-        destructive = true,
+        label = "Restart / Reset",
+        icon = SlockLucideIconName.RotateCcw,
         enabled = !inProgress
     )
     return items
@@ -2386,20 +2342,12 @@ private fun buildMembersManagementMenuItems(
 private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
-    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit,
-    copyDiagnostics: () -> Unit,
-    reportIssue: () -> Unit
+    runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
 ) {
-    when (id) {
-        "copy_diagnostics" -> copyDiagnostics()
-        "report_issue" -> reportIssue()
-        else -> {
-            val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }
-                ?: primaryAction?.takeIf { it.actionKey == id }
-            if (action != null) {
-                runLifecycleAction(action)
-            }
-        }
+    val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }
+        ?: primaryAction?.takeIf { it.actionKey == id }
+    if (action != null) {
+        runLifecycleAction(action)
     }
 }
 

@@ -211,6 +211,55 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentManagementMenuMatchesReactHeaderActions() {
+        val onlineItems =
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = true,
+                deleted = false,
+                inProgress = false
+            )
+
+        assertEquals(listOf("stop", "restart"), onlineItems.map { it.id })
+        assertEquals(listOf("Stop Agent", "Restart / Reset"), onlineItems.map { it.label })
+        assertEquals(SlockLucideIconName.Square, onlineItems[0].icon)
+        assertEquals(SlockLucideIconName.RotateCcw, onlineItems[1].icon)
+
+        val offlineItems =
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Start,
+                canManage = true,
+                deleted = false,
+                inProgress = false
+            )
+
+        assertEquals(listOf("start", "restart"), offlineItems.map { it.id })
+        assertEquals(listOf("Start Agent", "Restart / Reset"), offlineItems.map { it.label })
+    }
+
+    @Test
+    fun agentManagementMenuHidesWhenUnavailable() {
+        assertEquals(
+            emptyList(),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = false,
+                deleted = false,
+                inProgress = false
+            )
+        )
+        assertEquals(
+            emptyList(),
+            buildMembersManagementMenuItems(
+                primaryAction = MembersAgentLifecycleAction.Stop,
+                canManage = true,
+                deleted = true,
+                inProgress = false
+            )
+        )
+    }
+
+    @Test
     fun agentStatusDisplayStateUsesActivityForColorAndPulse() {
         val member =
             MemberProfile(
