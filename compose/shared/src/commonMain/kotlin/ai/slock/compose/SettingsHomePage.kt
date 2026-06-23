@@ -8328,7 +8328,7 @@ private fun SharedMembersScreen(
         is SharedMembersUiState.Error ->
             PageErrorContent(
                 title = "Members",
-                subtitle = null,
+                subtitle = "Workspace members",
                 iconName = SlockLucideIconName.Users,
                 message = "Could not load members",
                 code = current.code
