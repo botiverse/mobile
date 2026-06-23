@@ -24,10 +24,12 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.hoverable
 import com.tencent.kuikly.compose.foundation.interaction.MutableInteractionSource
 import com.tencent.kuikly.compose.foundation.interaction.collectIsHoveredAsState
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.input.pointer.positionChanged
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -1238,7 +1240,24 @@ private fun HomeServerSwitcherDismissLayer(onDismiss: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(SlockColor.TextBlack.copy(alpha = 0.01f))
-            .clickable(onClick = onDismiss)
+            .pointerInput(onDismiss) {
+                forEachGesture {
+                    awaitPointerEventScope {
+                        var moved = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { change ->
+                                moved = moved || change.positionChanged()
+                                change.consume()
+                            }
+                            if (event.changes.all { !it.pressed }) break
+                        }
+                        if (!moved) {
+                            onDismiss()
+                        }
+                    }
+                }
+            }
     )
 }
 
