@@ -34,8 +34,9 @@ class SlockAppShellTest {
     }
 
     @Test
-    fun androidHostExcludedNavigationBarSuppressesBottomSafeArea() {
+    fun androidBottomSafeAreaKeepsGestureNavigationInsetUnlessHostExcludesIt() {
         assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
+        assertEquals(24f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 0f))
         assertEquals(48f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 48f))
     }
 

@@ -725,7 +725,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
-        private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
         private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
         private const val THREAD_SURFACE_CHANNEL = "channel"
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
@@ -806,7 +805,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                 JSONObject(toString()).apply {
                     putAndroidTimeContextIfMissing()
                     putKuiklyVerificationFlagsIfMissing()
-                    putAndroidWindowInsetFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {
                         put("slockSocialAuthProviders", "google")
                     }
@@ -832,12 +830,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             }
             if (!has(KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER)) {
                 put(KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER, BuildConfig.DEBUG)
-            }
-        }
-
-        private fun JSONObject.putAndroidWindowInsetFlagsIfMissing() {
-            if (!has(KEY_HOST_EXCLUDES_NAVIGATION_BAR)) {
-                put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, true)
             }
         }
 
