@@ -6,7 +6,9 @@ import android.os.Build
 import com.tencent.bugly.library.Bugly
 import com.tencent.bugly.library.BuglyAppVersionMode
 import com.tencent.bugly.library.BuglyBuilder
+import com.tencent.bugly.library.BuglyConstants
 import com.tencent.bugly.library.BuglyLogLevel
+import com.tencent.bugly.launch.AppLaunchProxy
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 
@@ -17,9 +19,11 @@ object SlockAndroidBuglyDiagnostics {
     private const val SnapshotEvent = "kuikly_perf_snapshot"
     private const val LooperMetricMonitor = "looper_metric"
     private const val LooperStackMonitor = "looper_stack"
+    private const val MaxBuglyValueLength = 512
 
     private val initialized = AtomicBoolean(false)
     private val initAttempted = AtomicBoolean(false)
+    private val fullLaunchReported = AtomicBoolean(false)
 
     fun init(context: Context) {
         if (!initAttempted.compareAndSet(false, true)) return
@@ -71,6 +75,112 @@ object SlockAndroidBuglyDiagnostics {
             }
         }.onFailure { error ->
             SlockDiagnosticsLogger.w(Tag, "init_failed ${error.javaClass.simpleName}:${error.message.orEmpty()}")
+        }
+    }
+
+    fun updateUserContext(
+        context: Context,
+        userId: String?,
+        selectedServerId: String?,
+        selectedServerSlug: String?
+    ) {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "user_context bugly=disabled")
+            return
+        }
+        val appContext = context.applicationContext
+        runCatching {
+            val cleanUserId = userId.buglyValueOrNull()
+            Bugly.updateUserId(appContext, cleanUserId.orEmpty())
+            putOrRemoveUserData(appContext, "slock_user_id", cleanUserId)
+            putOrRemoveUserData(appContext, "slock_server_id", selectedServerId.buglyValueOrNull())
+            putOrRemoveUserData(appContext, "slock_server_slug", selectedServerSlug.buglyValueOrNull())
+        }.onSuccess {
+            SlockDiagnosticsLogger.d(Tag, "user_context bugly=updated user=${userId.isNullOrBlank().not()}")
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "user_context bugly=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+        }
+    }
+
+    fun reportAppFullLaunch() {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "full_launch bugly=disabled")
+            return
+        }
+        if (!fullLaunchReported.compareAndSet(false, true)) return
+        runCatching {
+            AppLaunchProxy.getAppLaunch().reportAppFullLaunch()
+        }.onSuccess {
+            SlockDiagnosticsLogger.d(Tag, "full_launch bugly=reported")
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "full_launch bugly=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+        }
+    }
+
+    fun reportCaughtException(
+        name: String,
+        throwable: Throwable,
+        extraData: Map<String, String> = emptyMap()
+    ) {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "caught_exception name=$name bugly=disabled")
+            return
+        }
+
+        val safeName = name.ifBlank { throwable.javaClass.name }.take(MaxBuglyValueLength)
+        val message = throwable.message.orEmpty().take(MaxBuglyValueLength)
+        val stackTrace = android.util.Log.getStackTraceString(throwable)
+        val values =
+            buildMap {
+                put("exceptionClass", throwable.javaClass.name.take(MaxBuglyValueLength))
+                putAll(extraData.sanitizedForBugly())
+            }
+
+        runCatching {
+            Bugly.postException(
+                Thread.currentThread(),
+                BuglyConstants.ISSUE_TYPE_JAVA_CATCHED,
+                safeName,
+                message,
+                stackTrace,
+                values
+            )
+        }.onSuccess {
+            SlockDiagnosticsLogger.w(Tag, "caught_exception name=$safeName bugly=reported")
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "caught_exception name=$safeName bugly=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+        }
+    }
+
+    fun testCrash(kind: String = "java"): Boolean {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "test_crash kind=$kind bugly=disabled")
+            return false
+        }
+        val type =
+            when (kind.lowercase()) {
+                "native", "jni", "so" -> BuglyConstants.NATIVE_CRASH
+                "anr" -> BuglyConstants.ANR_CRASH
+                else -> BuglyConstants.JAVA_CRASH
+            }
+        return runCatching {
+            Bugly.testCrash(type)
+            true
+        }.getOrElse { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "test_crash kind=$kind bugly=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+            false
         }
     }
 
@@ -161,5 +271,29 @@ object SlockAndroidBuglyDiagnostics {
             }
         }
         return result
+    }
+
+    private fun Map<String, String>.sanitizedForBugly(): Map<String, String> =
+        entries
+            .asSequence()
+            .mapNotNull { (key, value) ->
+                val safeKey = key.buglyValueOrNull() ?: return@mapNotNull null
+                val safeValue = value.buglyValueOrNull() ?: return@mapNotNull null
+                safeKey to safeValue
+            }
+            .toMap()
+
+    private fun String?.buglyValueOrNull(): String? =
+        this
+            ?.trim()
+            ?.take(MaxBuglyValueLength)
+            ?.takeIf { it.isNotBlank() }
+
+    private fun putOrRemoveUserData(context: Context, key: String, value: String?) {
+        if (value.isNullOrBlank()) {
+            Bugly.removeUserData(context, key)
+        } else {
+            Bugly.putUserData(context, key, value)
+        }
     }
 }

@@ -12,9 +12,13 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve source and line number information for Bugly crash stack traces.
+-keepattributes SourceFile,LineNumberTable
+
+# Keep Bugly/RMonitor SDK entry points intact when release minification is enabled.
+-keep class com.tencent.bugly.** { *; }
+-keep class com.tencent.rmonitor.** { *; }
+-keep class com.tencent.feedback.** { *; }
 
 # If you keep the line number information, uncomment this to
 # hide the original source file name.

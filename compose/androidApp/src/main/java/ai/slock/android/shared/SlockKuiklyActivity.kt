@@ -152,6 +152,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateRoute(container, spec.pageName)
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
+        SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
         attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
         startRealtimeBridgeIfNeeded()
@@ -902,6 +903,15 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
 private object SlockKuiklyExceptionAdapter : IKRUncaughtExceptionHandlerAdapter {
     override fun uncaughtException(throwable: Throwable) {
         Log.e("SlockKuikly", "Kuikly render error", throwable)
+        SlockAndroidBuglyDiagnostics.reportCaughtException(
+            name = "KuiklyRenderException",
+            throwable = throwable,
+            extraData =
+                mapOf(
+                    "source" to "kuikly_render",
+                    "thread" to Thread.currentThread().name
+                )
+        )
     }
 }
 
@@ -1382,12 +1392,26 @@ internal class SlockKuiklyBridgeModule(
 
         val store = EncryptedAuthSessionStore(appContext)
         when {
-            sql.startsWith("DELETE", ignoreCase = true) -> runBlocking { store.clearSession() }
+            sql.startsWith("DELETE", ignoreCase = true) -> {
+                runBlocking { store.clearSession() }
+                SlockAndroidBuglyDiagnostics.updateUserContext(
+                    context = appContext,
+                    userId = null,
+                    selectedServerId = null,
+                    selectedServerSlug = null
+                )
+            }
             sql.contains("INSERT", ignoreCase = true) || sql.contains("REPLACE", ignoreCase = true) -> {
                 val encodedSession = bindArgs.getOrNull(1)?.toString().orEmpty()
                 if (encodedSession.isBlank()) return
                 val session = gson.fromJson(encodedSession, AuthSession::class.java)
                 runBlocking { store.saveSession(session) }
+                SlockAndroidBuglyDiagnostics.updateUserContext(
+                    context = appContext,
+                    userId = session.user.id,
+                    selectedServerId = session.currentServerId,
+                    selectedServerSlug = session.selectedServerSlug
+                )
             }
         }
     }
