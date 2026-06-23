@@ -211,7 +211,7 @@ internal fun SlockRaftPullRefreshIndicator(
                         if (isRefreshing) {
                             bounce * RaftPullRefreshJumpHeight
                         } else {
-                            pullProgress.coerceIn(0f, 1f) * 3f
+                            0f
                         }
                     Text(
                         text = char.toString(),
