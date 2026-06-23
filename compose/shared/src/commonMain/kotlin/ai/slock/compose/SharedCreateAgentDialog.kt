@@ -155,8 +155,15 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): ai.slock.comp
         description = description,
         machineId = machineId,
         runtimeConfig = runtimeConfig,
-        external = external
+        external = external,
+        avatarUrl = randomCreateAgentAvatarWireValue()
     )
+
+private fun randomCreateAgentAvatarWireValue(): String {
+    val keys = PixelAvatarPickerKeys
+    val key = if (keys.isEmpty()) PixelAvatarDefaultKey else keys.random()
+    return "pixel:$key"
+}
 
 internal data class SharedCreateAgentMachineOption(
     val id: String,

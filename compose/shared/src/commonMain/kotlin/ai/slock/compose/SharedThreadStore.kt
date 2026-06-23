@@ -3598,7 +3598,7 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
 }
 
 private fun String.isAgentFallbackAvatarWireValue(): Boolean =
-    startsWith("random:", ignoreCase = true)
+    equals("pixel:robot", ignoreCase = true) || startsWith("random:", ignoreCase = true)
 
 private fun KuiklyThreadScreenPayload.withSenderProfiles(
     profilesById: Map<String, MemberProfile>

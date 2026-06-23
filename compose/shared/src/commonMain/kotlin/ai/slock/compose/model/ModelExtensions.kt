@@ -214,7 +214,7 @@ fun resolveAvatarSlot(
 }
 
 fun agentAvatarFallbackWireValue(id: String): String =
-    "random:${id.ifBlank { "agent" }}"
+    "pixel:robot"
 
 fun String.isGravatarAvatarWireValue(): Boolean =
     contains("gravatar.com/avatar", ignoreCase = true)

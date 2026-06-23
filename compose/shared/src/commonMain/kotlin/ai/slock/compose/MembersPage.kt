@@ -644,6 +644,8 @@ internal fun MembersPageContent() {
                         kind = ai.slock.compose.model.MemberKind.Agent,
                         description = result.data.activityDetail,
                         roleDescription = result.data.model,
+                        avatarUrl = result.data.avatarUrl,
+                        avatar = ai.slock.compose.model.AvatarReference.fromWireValue(result.data.avatarUrl),
                         presence = ai.slock.compose.model.Presence.Offline,
                         agentStatus = ai.slock.compose.model.AgentStatus.Online
                     )
@@ -3544,7 +3546,6 @@ private fun MembersWorkspaceNodeRow(
     }
 }
 
-@Composable
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("Files", message)

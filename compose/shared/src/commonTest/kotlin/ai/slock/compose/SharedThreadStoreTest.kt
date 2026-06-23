@@ -1293,7 +1293,7 @@ class SharedThreadStoreTest {
         val payload = dataSource.readCachedPayload(basePayload())
 
         val message = payload?.messages?.single()
-        assertEquals("random:agent-1", message?.avatarWireValue)
+        assertEquals("pixel:robot", message?.avatarWireValue)
         assertEquals(null, message?.gravatarHash)
     }
 
@@ -1375,7 +1375,7 @@ class SharedThreadStoreTest {
                             authorId = "agent-1",
                             authorName = "Product UX",
                             authorKind = "agent",
-                            avatarWireValue = "random:agent-1",
+                            avatarWireValue = "pixel:robot",
                             body = "agent body"
                         )
                     )
@@ -1426,7 +1426,7 @@ class SharedThreadStoreTest {
                             authorId = "agent-1",
                             authorName = "Product UX",
                             authorKind = "agent",
-                            avatarWireValue = "random:agent-1",
+                            avatarWireValue = "pixel:robot",
                             body = "agent body"
                         )
                     )

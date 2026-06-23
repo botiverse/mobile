@@ -1,10 +1,14 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.buildRuntimeConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class AgentsApiTest {
     @Test
@@ -22,11 +26,14 @@ class AgentsApiTest {
         assertEquals("medium", detail.reasoning)
         assertEquals("local", detail.executionMode)
         assertEquals("0.57.1", detail.daemonVersion)
+        assertEquals("pixel:robot", detail.avatarUrl)
         assertEquals("user-1", detail.creatorId)
         assertEquals("human", detail.creatorType)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
         assertEquals("Helper", detail.createdAgents.single().displayName)
-        assertEquals("agent-2", assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data.id)
+        val created = assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data
+        assertEquals("agent-2", created.id)
+        assertEquals("pixel:tree", created.avatarUrl)
         assertEquals("Agent One", assertIs<DataResult.Content<AgentSummary>>(client.updateAgent(agentId, """{"displayName":"Agent One"}""")).data.name)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.startAgent(agentId)).data.ok)
         assertEquals(true, assertIs<DataResult.Content<AgentCommandResult>>(client.stopAgent(agentId)).data.ok)
@@ -67,6 +74,38 @@ class AgentsApiTest {
     }
 
     @Test
+    fun createAgentBodySerializesAvatarAndRuntimeSelectionFields() {
+        val body =
+            buildCreateAgentBody(
+                CreateAgentBody(
+                    name = "Noel",
+                    description = "Runs builds",
+                    model = "gpt-5.3-codex",
+                    runtime = "codex",
+                    reasoningEffort = "high",
+                    machineId = "machine-1",
+                    avatarUrl = "pixel:robot",
+                    runtimeConfig =
+                        buildRuntimeConfig(
+                            runtime = "codex",
+                            model = "gpt-5.3-codex",
+                            customModelMode = false,
+                            fastMode = true,
+                            reasoningEffort = "high"
+                        )
+                )
+            )
+        val json = Json.parseToJsonElement(body).jsonObject
+
+        assertEquals("Noel", json.getValue("name").jsonPrimitive.content)
+        assertEquals("pixel:robot", json.getValue("avatarUrl").jsonPrimitive.content)
+        assertEquals("codex", json.getValue("runtime").jsonPrimitive.content)
+        assertEquals("gpt-5.3-codex", json.getValue("model").jsonPrimitive.content)
+        assertEquals("high", json.getValue("reasoningEffort").jsonPrimitive.content)
+        assertEquals("machine-1", json.getValue("machineId").jsonPrimitive.content)
+    }
+
+    @Test
     fun typedAgentsApiRejectsGuessedWrappersAndAliases() = runBlocking {
         val client =
             SlockAgentsApiClient(
@@ -99,8 +138,8 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","creatorId":"user-1","creatorType":"human","daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
-        private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active"}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
         private val activityBody: String = """[{"id":"a1","type":"tool_start","timestamp":"2026-05-22T00:00:00.000Z"}]""",

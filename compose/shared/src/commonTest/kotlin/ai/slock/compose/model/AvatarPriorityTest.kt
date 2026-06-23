@@ -16,7 +16,7 @@ class AvatarPriorityTest {
             )
         assertEquals("pixel:tree", pixelAvatar.displayAvatarWireValue)
         assertNull(pixelAvatar.gravatarHash)
-        assertEquals("random:agent-1", pixelAvatar.fallbackAvatarWireValue)
+        assertEquals("pixel:robot", pixelAvatar.fallbackAvatarWireValue)
         assertEquals("pixel:tree", pixelAvatar.effectiveAvatarWireValue)
 
         assertEquals(
@@ -45,10 +45,10 @@ class AvatarPriorityTest {
             )
         assertNull(gravatarAvatar.displayAvatarWireValue)
         assertNull(gravatarAvatar.gravatarHash)
-        assertEquals("random:agent-1", gravatarAvatar.fallbackAvatarWireValue)
-        assertEquals("random:agent-1", gravatarAvatar.effectiveAvatarWireValue)
+        assertEquals("pixel:robot", gravatarAvatar.fallbackAvatarWireValue)
+        assertEquals("pixel:robot", gravatarAvatar.effectiveAvatarWireValue)
         assertEquals(
-            "random:agent-1",
+            "pixel:robot",
             avatarWireValueForAvatarSlot(
                 kind = MemberKind.Agent,
                 id = "agent-1",
@@ -106,8 +106,8 @@ class AvatarPriorityTest {
 
         assertNull(resolvedAgent.displayAvatarWireValue)
         assertNull(resolvedAgent.gravatarHash)
-        assertEquals("random:dm-agent", resolvedAgent.fallbackAvatarWireValue)
-        assertEquals("random:dm-agent", resolvedAgent.effectiveAvatarWireValue)
+        assertEquals("pixel:robot", resolvedAgent.fallbackAvatarWireValue)
+        assertEquals("pixel:robot", resolvedAgent.effectiveAvatarWireValue)
 
         val humanDm =
             ConversationSummary(

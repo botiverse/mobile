@@ -3,6 +3,7 @@ package ai.slock.compose
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class SharedCreateAgentDialogTest {
@@ -145,5 +146,19 @@ class SharedCreateAgentDialogTest {
             listOf("low", "medium", "high", "xhigh"),
             items.drop(1).map { it.id }
         )
+    }
+
+    @Test
+    fun createAgentDialogSubmitIncludesPixelAvatar() {
+        val request =
+            SharedCreateAgentDialogSubmit(
+                name = "Build Agent",
+                description = "Runs builds",
+                machineId = "machine-1"
+            ).toCreateAgentRequest()
+
+        val avatarUrl = assertNotNull(request.avatarUrl)
+        assertTrue(avatarUrl.startsWith("pixel:"))
+        assertTrue(avatarUrl.removePrefix("pixel:") in PixelAvatarPickerKeys)
     }
 }
