@@ -372,7 +372,7 @@ class SlockMarkdownTest {
 
         assertTrue(mentionWidth < 170f)
         assertTrue(selfMentionWidth < 70f)
-        assertTrue(taskWidth < 50f)
+        assertTrue(taskWidth < 54f)
     }
 
     @Test
@@ -381,9 +381,23 @@ class SlockMarkdownTest {
         val envVarWidth = slockMarkdownInlineCodeWidthSp("MIMO_API_KEY").value
         val pathWidth = slockMarkdownInlineCodeWidthSp("~/.pi/agent/auth.json").value
 
-        assertTrue(shortTokenWidth in 38f..43f)
-        assertTrue(envVarWidth in 96f..104f)
+        assertTrue(shortTokenWidth in 44f..48f)
+        assertTrue(envVarWidth in 102f..110f)
         assertTrue(pathWidth < 145f)
+    }
+
+    @Test
+    fun inlineTagAndCodePlaceholdersReserveVerticalPadding() {
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = "Ping @artin for #405 and `mimo`",
+                highlightedMentions = setOf("artin"),
+                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
+            ).inlineContent?.invoke().orEmpty()
+
+        assertEquals(24.sp, inlineContent.getValue("slock:5").placeholder.height)
+        assertEquals(24.sp, inlineContent.getValue("slock:16").placeholder.height)
+        assertEquals(24.sp, inlineContent.getValue("slock-code:25").placeholder.height)
     }
 
     @Test
@@ -391,12 +405,12 @@ class SlockMarkdownTest {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Use `mimo`",
-                inlineCodeWidths = mapOf("slock-code:4" to 44.sp),
+                inlineCodeWidths = mapOf("slock-code:4" to 48.sp),
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             ).inlineContent?.invoke().orEmpty()
 
-        assertEquals(44.sp, inlineContent.getValue("slock-code:4").placeholder.width)
-        assertEquals(20.sp, inlineContent.getValue("slock-code:4").placeholder.height)
+        assertEquals(48.sp, inlineContent.getValue("slock-code:4").placeholder.width)
+        assertEquals(24.sp, inlineContent.getValue("slock-code:4").placeholder.height)
     }
 
     @Test
@@ -434,7 +448,7 @@ class SlockMarkdownTest {
         plan.inlineCodeTokens().forEach { token ->
             val placeholder = inlineContent.getValue(token.id).placeholder
             assertEquals(slockMarkdownInlineCodeWidthSp(token.code!!), placeholder.width)
-            assertEquals(SlockType.Body.lineHeight, placeholder.height)
+            assertEquals(slockMarkdownInlineCodeChipHeightSp(SlockType.Body), placeholder.height)
         }
     }
 
