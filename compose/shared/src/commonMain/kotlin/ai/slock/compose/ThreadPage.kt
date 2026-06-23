@@ -59,6 +59,7 @@ import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -583,6 +584,67 @@ private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
         put("payload", threadPageJson.encodeToString(this@toThreadPageData))
         put("instanceId", instanceId)
     }
+
+private fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMemberId: String): JSONObject? {
+    val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
+    val memberProfiles = threadMemberProfilesForProfilePage(selected)
+    if (memberProfiles.none { it.id.value == selected }) return null
+    val membersPayload =
+        KuiklyMembersPayload(
+            instanceId = "thread-members-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected",
+            title = "Members",
+            members = memberProfiles,
+            selectedMemberId = selected,
+            localOffsetMinutes = localOffsetMinutes,
+            todayEpochDay = todayEpochDay,
+            nowEpochMillis = nowEpochMillis,
+            timeFormat = timeFormat,
+            canCreateAgents = false
+        )
+    return JSONObject().apply {
+        put("payload", threadPageJson.encodeToString(membersPayload))
+        put("instanceId", membersPayload.instanceId)
+    }
+}
+
+private fun KuiklyThreadScreenPayload.threadMemberProfilesForProfilePage(selectedMemberId: String): List<MemberProfile> =
+    (members.map { it.toMemberProfile() } + listOfNotNull(findThreadAuthorProfile(selectedMemberId)))
+        .distinctBy { it.id.value }
+
+private fun KuiklyThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
+    (listOfNotNull(originMessage) + messages)
+        .firstOrNull { it.authorId == memberId }
+        ?.toMemberProfile()
+
+private fun KuiklyThreadMemberItem.toMemberProfile(): MemberProfile =
+    MemberProfile(
+        id = MemberId(id),
+        displayName = displayName.ifBlank { handle.ifBlank { id } },
+        handle = handle.ifBlank { displayName.ifBlank { id } },
+        kind = threadMemberKind(),
+        description = roleLabel.takeIf { it.isNotBlank() },
+        avatarUrl = avatarUrl,
+        avatarLabel = avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } }.take(1).uppercase() },
+        serverId = sourceServerId?.takeIf { it.isNotBlank() }?.let(::ServerId),
+        serverName = sourceServerLabel?.takeIf { it.isNotBlank() }
+    )
+
+private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
+    MemberProfile(
+        id = MemberId(authorId),
+        displayName = authorName.ifBlank { authorId },
+        handle = authorName.ifBlank { authorId },
+        kind = threadAuthorKind(),
+        gravatarHash = gravatarHash,
+        avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
+        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() }
+    )
+
+private fun KuiklyThreadMemberItem.threadMemberKind(): MemberKind =
+    if (kind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human
+
+private fun KuiklyThreadMessageItem.threadAuthorKind(): MemberKind =
+    if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human
 
 internal fun KuiklyThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
     threadChannelHeaderSubtitle(title)
@@ -1607,7 +1669,8 @@ internal fun SharedThreadRouteContent(
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
     active: Boolean = true,
-    onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {}
+    onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
+    onOpenMemberProfile: (KuiklyThreadScreenPayload, String) -> Unit = { _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
@@ -2257,6 +2320,50 @@ internal fun SharedThreadRouteContent(
         }
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "markdown"))
     }
+
+    fun openComposerAttachmentPreview(attachmentId: String) {
+        val attachment = currentComposerPayload().pendingAttachments.firstOrNull { it.id == attachmentId } ?: return
+        val name = attachment.fileName.ifBlank { "Attachment" }
+        val meta = listOf(attachment.sizeLabel, attachment.mimeType.orEmpty()).filter { it.isNotBlank() }.joinToString(" · ")
+        if (!attachment.isReadyThreadAttachmentForSend()) {
+            pager.openSlockFilePreviewPage(
+                SlockFilePreviewPayload(
+                    kind = if (attachment.status == "failed") "error" else "loading",
+                    title = name,
+                    subtitle = meta,
+                    name = name,
+                    path = name,
+                    meta = meta,
+                    message =
+                        when (attachment.status) {
+                            "failed" -> "Attachment upload failed. Retry the upload from the composer."
+                            else -> "Preparing attachment preview..."
+                        },
+                    error =
+                        if (attachment.status == "failed") {
+                            "attachment_upload_failed"
+                        } else {
+                            null
+                        },
+                    externalFileName = name,
+                    externalMimeType = attachment.mimeType.orEmpty()
+                )
+            )
+            return
+        }
+        val threadAttachment =
+            KuiklyThreadAttachmentItem(
+                id = attachment.id,
+                name = name,
+                mimeType = attachment.mimeType.orEmpty(),
+                sizeLabel = attachment.sizeLabel
+            )
+        if (threadAttachment.isImageAttachment()) {
+            openImagePreview(ThreadImageAttachmentGroup(images = listOf(threadAttachment), currentIndex = 0))
+        } else {
+            openAttachmentNoPreview(threadAttachment)
+        }
+    }
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
     // are intentionally excluded so they do not retrigger the render log.
@@ -2487,6 +2594,7 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
+            onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
@@ -3270,6 +3378,9 @@ internal fun SharedThreadRouteContent(
                     attachmentId?.takeIf { it.isNotBlank() }?.let { id ->
                         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.RetryAttachment(id))
                     }
+                }
+                "previewAttachment" -> {
+                    attachmentId?.takeIf { it.isNotBlank() }?.let(::openComposerAttachmentPreview)
                 }
                 "blur" -> {
                     bridge.log(

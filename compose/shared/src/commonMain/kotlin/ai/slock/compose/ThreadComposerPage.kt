@@ -62,6 +62,9 @@ private val ThreadComposerTextFieldMinHeight = 20.dp
 private val ThreadComposerToolbarMinHeight = 28.dp
 private val ThreadComposerIconButtonSize = 26.dp
 private val ThreadComposerIconSize = 14.dp
+private val ThreadComposerAttachmentTileSize = 64.dp
+private val ThreadComposerAttachmentCloseSize = 22.dp
+private const val ThreadComposerAttachmentGridColumns = 4
 private val ThreadComposerDisabledSendBackground = Color(0xFFFFD8E5)
 private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
@@ -1155,52 +1158,111 @@ private fun ComposerAttachmentTray(
     onEvent: (action: String, attachmentId: String) -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack).background(SlockColor.SurfaceWhite),
-        verticalArrangement = Arrangement.spacedBy(0.dp)
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        attachments.forEach { attachment ->
+        attachments.chunked(ThreadComposerAttachmentGridColumns).forEach { rowAttachments ->
             Row(
-                modifier = Modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Box(
-                    modifier = Modifier.size(24.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (attachment.mimeType?.startsWith("image/") == true) "IMG" else "FILE",
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp),
-                        color = SlockColor.TextBlack
+                rowAttachments.forEach { attachment ->
+                    ComposerAttachmentTile(
+                        attachment = attachment,
+                        enabled = enabled,
+                        onPreview = { onEvent("previewAttachment", attachment.id) },
+                        onRemove = { onEvent("removeAttachment", attachment.id) },
+                        onRetry = { onEvent("retryAttachments", attachment.id) }
                     )
                 }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Text(
-                        text = attachment.fileName,
-                        style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = attachment.statusLabel(),
-                        style = SlockType.Caption.copy(
-                            color = if (attachment.status == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray
-                        ),
-                        color = if (attachment.status == "failed") SlockColor.AccentRed else SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                repeat(ThreadComposerAttachmentGridColumns - rowAttachments.size) {
+                    Box(modifier = Modifier.size(ThreadComposerAttachmentTileSize))
                 }
-                if (attachment.status == "failed" && enabled) {
-                    ComposerTextChip("Retry") { onEvent("retryAttachments", attachment.id) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComposerAttachmentTile(
+    attachment: KuiklyPendingAttachmentItem,
+    enabled: Boolean,
+    onPreview: () -> Unit,
+    onRemove: () -> Unit,
+    onRetry: () -> Unit
+) {
+    val isFailed = attachment.status == "failed"
+    val isUploading = attachment.status != "ready" && !isFailed
+    Box(modifier = Modifier.size(ThreadComposerAttachmentTileSize)) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .clickable(enabled = enabled, onClick = onPreview)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            val icon =
+                when {
+                    isFailed -> SlockLucideIconName.TriangleAlert
+                    isUploading -> SlockLucideIconName.Loader
+                    attachment.mimeType?.startsWith("image/") == true -> SlockLucideIconName.Image
+                    else -> SlockLucideIconName.File
                 }
-                if (enabled) {
-                    ComposerTextChip("Remove") { onEvent("removeAttachment", attachment.id) }
-                }
+            SlockLucideIcon(
+                icon,
+                modifier = Modifier.size(18.dp),
+                color = if (isFailed) "#FFF97264" else "#FF000000"
+            )
+            Text(
+                text = attachment.fileName,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 11.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = attachment.statusLabel(),
+                style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
+                color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        if (enabled) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(ThreadComposerAttachmentCloseSize)
+                        .align(Alignment.TopEnd)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack)
+                        .clickable(onClick = onRemove),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(SlockLucideIconName.X, modifier = Modifier.size(12.dp), color = "#FF000000")
+            }
+        }
+        if (isFailed && enabled) {
+            Box(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                        .clickable(onClick = onRetry)
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Retry",
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 8.sp, lineHeight = 10.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1
+                )
             }
         }
     }
