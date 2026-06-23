@@ -542,8 +542,8 @@ internal data class WireThreadLaunchPayload(
             showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null,
-            emptyTitle = "Loading conversation",
-            emptyDetail = "Loading messages from this conversation."
+            emptyTitle = "Loading...",
+            emptyDetail = ""
         ).withLaunchHeaderContext()
     }
 }
@@ -4223,8 +4223,8 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         messages = emptyList(),
         canLoadMoreBefore = false,
         canLoadMoreAfter = false,
-        emptyTitle = "Opening replies",
-        emptyDetail = "Loading the message thread.",
+        emptyTitle = "Loading...",
+        emptyDetail = "",
         composer = composer
     )
 }
@@ -4276,8 +4276,8 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
                 enabled = canSend,
                 streamChannelId = parentThreadId
             ),
-        emptyTitle = "Opening conversation",
-        emptyDetail = "Loading the parent message context."
+        emptyTitle = "Loading...",
+        emptyDetail = ""
     ).withLaunchHeaderContext()
 }
 
@@ -4776,7 +4776,7 @@ private fun ThreadPageContent(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
             ) {
                 if (renderEarlyLoadingShell) {
-                    ThreadStateMessage("Loading thread…", null)
+                    ThreadStateMessage("Loading...", null)
                 } else when (selectedTab) {
                     KuiklyThreadTab.Chat ->
                         ThreadChatTab(
@@ -5214,7 +5214,7 @@ private fun ThreadChatTab(
                     diagnosticsLogger = diagnosticsLogger
                 )
             } else {
-                ThreadStateMessage("Loading thread…", null)
+                ThreadStateMessage("Loading...", null)
             }
         "error" ->
             ThreadStateActionMessage(
@@ -5838,7 +5838,7 @@ private fun ThreadMessagesList(
             }
         }
         if (!initialBottomAnchorReady && latestItemIndex >= 0) {
-            ThreadStateMessage("Loading messages", "Rendering conversation layout.")
+            ThreadStateMessage("Loading...", null)
         }
         if (!topAnchoredOriginContent &&
             initialBottomAnchorReady &&

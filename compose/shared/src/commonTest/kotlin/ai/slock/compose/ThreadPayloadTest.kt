@@ -1614,7 +1614,7 @@ class ThreadPayloadTest {
         assertEquals("loaded", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(true, payload.showOpenInChannelAction)
-        assertEquals("Opening replies", payload.emptyTitle)
+        assertEquals("Loading...", payload.emptyTitle)
     }
 
     @Test
@@ -1699,7 +1699,7 @@ class ThreadPayloadTest {
         assertEquals("parent-message-1", payload.focusedMessageId)
         assertEquals(false, payload.showOpenInChannelAction)
         assertEquals(true, payload.showModeTabs)
-        assertEquals("Opening conversation", payload.emptyTitle)
+        assertEquals("Loading...", payload.emptyTitle)
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.resolveThreadComposer().surfaceKind)
     }
 
