@@ -1,4 +1,4 @@
-# Realtime Single Source / Cross-Runtime Store Spec
+# Realtime Single Owner / Domain Projection Spec
 
 Date: 2026-06-23
 Status: draft
@@ -13,7 +13,7 @@ The current Android mitigation (`f928da00 fix(android): limit realtime fanout to
 - paused/background Kuikly Activities detach as raw consumers;
 - heartbeat raw fanout is skipped because native typed realtime already updates cursor/health.
 
-That mitigation is not the final architecture. The correct model is one source that accepts socket events, advances cursor, updates durable/cache state, and publishes typed state/projection changes. Kuikly pages should subscribe to that state/projection, not act as independent raw realtime writers.
+That mitigation is not the final architecture. The correct model is one long-lived owner that accepts socket events, advances cursor, and updates existing domain stores/repositories. Kuikly pages should subscribe to narrow domain projections/selectors from those stores, not act as independent raw realtime writers.
 
 ## Kuikly Runtime Findings
 
@@ -26,41 +26,56 @@ From the inspected Slock/Kuikly integration:
 - OHOS `SlockOhosRealtimeBridge` is a platform singleton object, but it currently owns one `KRNativeRenderController` and forwards raw `slockRealtimeEvent` to that controller. That mirrors the same raw page-event model and should not become the canonical shared store boundary by itself.
 - Existing Slock process-level mechanisms are Kotlin/native singletons and durable shared stores. In shared KMP, `SlockSharedStoreRegistry` already exposes a process-level provider containing `authStore` and `localDataStore`; on Android, `AndroidRealtimeBridgeManager` is a process-level singleton around the socket repository/client.
 
-Conclusion: Kuikly does not appear to provide an app-wide cross-runtime store/event bus in the inspected APIs. The app should build the single-source boundary in Slock's shared/native store layer, then let each Kuikly runtime observe projections from that layer.
+Conclusion: Kuikly does not appear to provide an app-wide cross-runtime store/event bus in the inspected APIs. The single-source boundary must therefore be a Slock-owned process/session owner. It should feed existing domain stores (`Home`, `Tasks`, `Members`, `Settings`, `Thread` projections) rather than introduce a generic realtime store as a second state graph.
 
 ## Target Architecture
 
 Canonical realtime flow:
 
 1. A platform process/session owner receives socket events once.
-   - Android: `AndroidRealtimeBridgeManager` via `SocketIoRealtimeClient.observeEvents`.
-   - OHOS: `SlockOhosRealtimeBridge` equivalent typed event owner.
-2. The owner decodes/maps the event once, updates `RealtimeCursorPolicy` once, joins any derived rooms once, and passes the typed event to a shared realtime store.
-3. The shared realtime store writes local durable/cache state once through `ComposeLocalWriteThrough` or a successor with the same local-first contract.
-4. The shared realtime store emits typed projections/invalidations after the write.
-5. AppShell, Home, Settings, Thread, Activity, Search, and Saved stores observe projections or reload from local cache/repositories.
+   - Preferred shared owner: AppShell while it is the long-lived page/runtime.
+   - Native owner must remain the fallback for cold-start standalone Thread or if AppShell is absent.
+   - Android: `AndroidRealtimeBridgeManager` remains the socket lifecycle/transport owner, but must forward accepted typed events to exactly one shared/domain owner.
+   - OHOS: `SlockOhosRealtimeBridge` must follow the same single-owner rule.
+2. The owner decodes/maps the event once, updates `RealtimeCursorPolicy` once, joins any derived rooms once, and dispatches typed domain intents.
+3. Domain stores/repositories consume their own event slice:
+   - `SharedHomeShellStore` / `SharedHomeStore` updates Home, Activity, Inbox/Saved/Search projections and durable `ComposeLocalWriteThrough`.
+   - `SharedTasksStore` consumes `TaskCreated` / `TaskUpdated` / `TaskDeleted` and exposes task selectors.
+   - `SharedSettingsStore` consumes machine/settings/session relevant invalidations.
+   - `SharedMembersStore` / agent detail stores consume member, presence, agent, and machine projections.
+   - Thread screens consume only route-matching projections from the domain stores. They do not persist the socket event again.
+4. UI code subscribes to narrow selectors, e.g. `subscribeTaskById(taskId)`, `subscribeThreadProjection(threadId)`, `subscribeHomeConversation(conversationId)`, instead of reading a full raw event stream.
+5. Durable/cache writes happen once in the owning domain repository/write-through path. Projection subscribers are read-side consumers only.
 
 Non-goals:
 
 - Do not use route/pageData to pass product realtime state.
 - Do not let every Kuikly runtime decode raw socket events and write the same store independently.
 - Do not make Thread's visible reducer responsible for durable persistence of socket events.
+- Do not add a generic `SharedRealtimeStore` as a new source of truth. Realtime is an input transport; domain stores remain the owners of domain state.
 
-## Shared Realtime Store
+## Domain Owner And Selectors
 
-Add a shared `SharedRealtimeStore` owned by `SlockSharedStoreProvider`, or a sibling registry keyed by session/server if provider lifetime needs to remain smaller.
+The implementation should add a small owner/coordinator, not a new data store. Suggested naming: `RealtimeDomainEventOwner` or `AppShellRealtimeEventOwner`. It can live beside AppShell wiring first, then move behind a provider only if cold-start standalone routes require it.
 
 Suggested API shape:
 
 ```kotlin
-internal interface SharedRealtimeStore {
-    val projections: Flow<SharedRealtimeProjection>
-
+internal interface RealtimeDomainEventOwner {
     suspend fun accept(
         serverId: ServerId,
         event: RealtimeEvent,
         activeConversationId: ChannelId? = null
     )
+}
+
+internal interface TaskProjectionSource {
+    fun subscribeTaskById(taskId: TaskId): StateFlow<TaskSummary?>
+    fun subscribeTaskByNumber(channelId: ChannelId, taskNumber: Int): StateFlow<TaskSummary?>
+}
+
+internal interface ThreadProjectionSource {
+    fun subscribeThreadProjection(identity: ThreadProjectionIdentity): StateFlow<ThreadProjection>
 }
 ```
 
@@ -68,48 +83,80 @@ Responsibilities:
 
 - keep and advance the applied realtime cursor;
 - dedupe by event identity/sequence where available;
-- call `ComposeLocalWriteThrough.writeRealtimeEvents(...)` exactly once per accepted event/batch;
-- publish typed projections such as home invalidation, thread message update, task update, member/presence update, settings/machine update, and auth/session invalidation;
-- keep UI-thread work small by batching noisy projections such as presence and member activity;
-- expose enough diagnostics to prove one accept/write with N subscribers.
+- route each event to existing domain stores, not to a generic realtime store;
+- call durable write-through exactly once through the domain owner that owns that entity;
+- expose narrow selectors/projections for UI consumers;
+- keep UI-thread work small by batching noisy projections such as presence/member activity and by avoiding full payload recomposition for one task/status change;
+- expose enough diagnostics to prove one accept, one write owner, and bounded projection emissions.
 
 Subscriber responsibilities:
 
-- AppShell/Home subscribes to Home/Activity/Search/Saved projections or reloads its local store after invalidation.
+- AppShell/Home owns broad realtime ingestion and subscribes to its own Home/Activity/Search/Saved state.
 - Settings subscribes only to settings/machine/auth relevant projections.
-- Thread subscribes to projections matching its route identity (`sourceThreadId`, `streamChannelId`, or parent channel/message pair). It updates visible state but does not persist the same realtime event again.
+- Thread subscribes to projections matching its route identity (`sourceThreadId`, `streamChannelId`, or parent channel/message pair) and to per-row task selectors (`subscribeTaskById` / `subscribeTaskByNumber`). It updates visible state but does not persist the same realtime event again.
 - Members and computer detail pages subscribe to member/machine projections or reload through their existing stores.
+
+Example Thread row usage:
+
+```kotlin
+@Composable
+fun ThreadTaskChip(message: KuiklyThreadMessageItem, tasks: TaskProjectionSource) {
+    val task by remember(message.taskId, message.taskNumber) {
+        when {
+            message.taskId != null -> tasks.subscribeTaskById(TaskId(message.taskId))
+            message.taskNumber != null -> tasks.subscribeTaskByNumber(message.channelId, message.taskNumber)
+            else -> flowOf(null)
+        }
+    }.collectAsState(null)
+
+    val status = task?.status ?: message.taskStatus
+    val assignee = task?.assignee?.displayName ?: message.taskAssigneeName
+    TaskMetaChip(status = status, assignee = assignee)
+}
+```
+
+This is intentionally selector-shaped. A task status update should invalidate only rows that subscribe to that task identity, not the full Thread payload.
 
 ## Migration Plan
 
-Phase 0: keep the current Android mitigation in place while the store contract lands. It is a pressure reduction, not the final model.
+Phase 0: update this spec and keep the current Android mitigation in place. It is a pressure reduction, not the final model.
 
-Phase 1: introduce `SharedRealtimeStore` and diagnostics while raw page fanout still exists. Gate durable writes through the shared store so two page subscribers cannot double-write.
+Phase 1: remove the `SharedRealtimeStore` direction. Keep `SlockSharedStoreProvider` as auth/local-data provider only. Do not add generic realtime state there.
 
-Phase 2: move Android socket typed events into `SharedRealtimeStore.accept(...)`. Keep `sendEvent("slockRealtimeEvent")` only for lifecycle/control actions that are page-local, such as auth refresh and app foreground.
+Phase 2: make AppShell the single shared realtime consumer when present. Its `IPagerEventObserver` should decode raw `slockRealtimeEvent` once and call `RealtimeDomainEventOwner.accept(...)` / domain store intents once.
 
-Phase 3: update Thread to observe shared projections/cache. Remove `SharedThreadStore` realtime persistence from `ApplyRealtimeEvent`; visible state becomes projection-driven.
+Phase 3: remove `SharedThreadStore` realtime persistence from `ApplyRealtimeEvent`. The Thread reducer may keep a temporary visible projection for route-matching events, but durable writes must already have happened in the AppShell/domain owner path.
 
-Phase 4: update AppShell/Home/Settings to observe projections instead of decoding raw socket payloads from `IPagerEventObserver`.
+Phase 4: add domain selectors:
 
-Phase 5: apply the same owner/write/projection model to OHOS. `SlockOhosRealtimeBridge` should be the platform ingress/control owner, but typed accepted state should still flow into the shared store boundary rather than raw page events.
+- task selectors by id / number for Thread footer chips;
+- thread projection selectors by route identity;
+- conversation/unread selectors by conversation id;
+- member/agent/machine selectors by member/machine id.
 
-Phase 6: remove legacy raw socket page observers once Android and OHOS both use shared projections. Keep per-Pager events for route-local lifecycle, pageData updates, and host control messages only.
+Phase 5: update Thread UI to subscribe to selectors instead of deriving footer/status from a full `payload.tasks` list. This addresses the performance concern behind `const taskStatus = subscribeByTaskId()`.
+
+Phase 6: keep raw page fanout only for temporary visual compatibility while migrating. When a route receives a raw event, it must treat it as a read-side projection signal only and must not write local cache.
+
+Phase 7: apply the same owner/write/projection model to OHOS. `SlockOhosRealtimeBridge` should be the platform ingress/control owner, while typed accepted state flows into the same domain owner/selector boundary rather than raw page events.
+
+Phase 8: remove legacy raw socket page observers once Android and OHOS both use domain projections. Keep per-Pager events for route-local lifecycle, pageData updates, and host control messages only.
 
 ## Validation
 
 Automated checks:
 
-- shared store unit test: accepting one event with two subscribers performs one write-through and emits two projections;
+- owner unit test: accepting one event with two visible subscribers calls the domain write owner once and emits bounded projections;
 - duplicate sequence/event test: the same event delivered twice does not double-write;
 - Thread route identity tests: thread projections only reach matching channel/thread/reply routes;
+- task selector tests: changing task #N updates only subscribers for that task id/number;
 - heartbeat test: cursor/health updates do not create UI raw events or durable home/thread writes;
 - presence/member activity batching test: noisy facts produce bounded projection emissions.
 
 Android diagnostics:
 
 - expected: `event_dispatch listeners=1` remains true in socket client logs;
-- expected: new `shared_realtime_accept event=... writes=1 subscribers=N` or equivalent;
+- expected: new `realtime_domain_accept event=... owner=app_shell writes=1 projections=N` or equivalent;
 - expected: no socket-event `raw_event_forwarded` for normal realtime payloads after migration;
 - expected: opening AppShell plus multiple Thread Activities does not increase durable writes per event.
 
@@ -127,7 +174,7 @@ Manual smoke:
 
 ## Open Questions
 
-- `SlockSharedStoreRegistry` is currently one process-wide provider. If multiple accounts, servers, or app runtimes can coexist in one process, the realtime store/provider should be keyed by active session/server rather than a single nullable provider.
-- Kuikly thread confinement must be explicit. Shared store writes can run off the page runtime, but each Kuikly runtime must collect projections on its own valid Kuikly/Compose coroutine boundary before mutating UI state.
-- Cold-start standalone Thread must not depend on AppShell existing first. Native ingress and shared store creation must be lazy and independent of any specific page.
+- AppShell is the preferred owner, but cold-start standalone Thread must not depend on AppShell existing first. If standalone Thread can exist without AppShell, native ingress must host the same `RealtimeDomainEventOwner` and expose selectors to the page.
+- `SlockSharedStoreRegistry` is currently one process-wide provider. Domain owner/projection sources must be scoped by active session/server if multiple sessions can coexist.
+- Kuikly thread confinement must be explicit. Domain writes can run off the page runtime, but each Kuikly runtime must collect projections on its own valid Kuikly/Compose coroutine boundary before mutating UI state.
 - OHOS needs parity proof because its current bridge owns one controller and raw event dispatch path; migration should verify how multiple page controllers are represented before changing lifecycle ownership.
