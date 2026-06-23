@@ -106,6 +106,47 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun attachmentChipMetaMatchesReactPreviewLabels() {
+        val pdf =
+            KuiklyThreadAttachmentItem(
+                id = "att-pdf",
+                name = "visual-parity-notes.pdf",
+                sizeLabel = "184 KB",
+                mimeType = "application/pdf"
+            )
+        val html =
+            KuiklyThreadAttachmentItem(
+                id = "att-html",
+                name = "thread-screen-preview.html",
+                sizeLabel = "32 KB",
+                mimeType = "text/html"
+            )
+
+        assertEquals("application/pdf · 184 KB", pdf.threadAttachmentChipMetaLine())
+        assertEquals("Document preview", pdf.threadAttachmentSummaryLine())
+        assertEquals("HTML preview · 32 KB", html.threadAttachmentChipMetaLine())
+        assertEquals(null, html.threadAttachmentSummaryLine())
+    }
+
+    @Test
+    fun authSessionSelfMentionNamesIncludeBareHandle() {
+        val session =
+            StoredAuthSession(
+                user =
+                    StoredAuthUser(
+                        id = "user-artin",
+                        email = "artin@example.com",
+                        name = "@artin",
+                        displayName = "Artin"
+                    ),
+                accessToken = "token",
+                refreshToken = "refresh"
+            )
+
+        assertTrue("artin" in session.threadSelfMentionNames())
+    }
+
+    @Test
     fun threadMessagesLazyItemCountTracksScrollableRows() {
         assertEquals(
             4,

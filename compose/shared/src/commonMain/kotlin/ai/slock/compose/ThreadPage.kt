@@ -1325,13 +1325,17 @@ private fun ThreadMessageVisualScreen() {
     val payload =
         remember(visualFixture, instanceId) {
             threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
-    }
+        }
+    val highlightedMentions =
+        remember(visualFixture) {
+            if (visualFixture == THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT) setOf("artin") else emptySet()
+        }
     val message = payload.messages.firstOrNull()
     Column(modifier = Modifier.width(342.dp).background(SlockColor.SurfaceWhite).padding(SlockSpacing.Md)) {
         if (message != null) {
             ThreadMessageCard(
                 message = message,
-                highlightedMentions = emptySet(),
+                highlightedMentions = highlightedMentions,
                 alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                 showReplyAction = payload.showReplyActions,
                 resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(
@@ -6972,7 +6976,7 @@ private fun ThreadMessageFooterMeta(
                 label = replyLabel,
                 iconName = SlockLucideIconName.MessageSquare,
                 iconSize = 12.dp,
-                color = SlockColor.AccentCyan.copy(alpha = 0.2f),
+                color = SlockColor.SurfaceWhite,
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
                 onClick = if (showReplyAction) { _ -> onOpenThread() } else null
@@ -7984,6 +7988,8 @@ private fun ThreadMessageCommentRefChip(
 }
 
 private val SharedThreadAttachmentImageSize = 92.dp
+private val ThreadAttachmentChipWidth = 176.dp
+private val ThreadAttachmentChipHeight = 80.dp
 
 private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
     mimeType.startsWith("image/", ignoreCase = true)
@@ -7991,18 +7997,50 @@ private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
 private fun KuiklyThreadAttachmentItem.isPdfAttachment(): Boolean =
     mimeType.substringBefore(';').trim().equals("application/pdf", ignoreCase = true)
 
+private fun KuiklyThreadAttachmentItem.normalizedMimeType(): String =
+    mimeType.substringBefore(';').trim().lowercase()
+
 private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
-    mimeType.substringBefore(';').trim().let { normalizedMime ->
+    normalizedMimeType().let { normalizedMime ->
         normalizedMime.equals("text/markdown", ignoreCase = true) ||
             normalizedMime.equals("text/x-markdown", ignoreCase = true)
     } ||
         name.endsWith(".md", ignoreCase = true) ||
         name.endsWith(".markdown", ignoreCase = true)
 
+private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
+    isPdfAttachment() ||
+        isMarkdownAttachment() ||
+        normalizedMimeType() in setOf("text/plain", "text/csv", "application/csv", "application/json")
+
+private fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
+    normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
+
+private fun KuiklyThreadAttachmentItem.threadAttachmentUsesPreviewAffordance(): Boolean =
+    isPreviewableDocumentAttachment() || isHtmlAttachment() || normalizedMimeType().startsWith("video/")
+
 internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     listOf(sizeLabel, mimeType)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
+    listOf(
+        when {
+            isHtmlAttachment() -> "HTML preview"
+            mimeType.isNotBlank() -> mimeType
+            else -> "file"
+        },
+        sizeLabel
+    )
+        .filter { it.isNotBlank() }
+        .joinToString(" · ")
+
+internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
+    when {
+        isPreviewableDocumentAttachment() -> "Document preview"
+        else -> null
+    }
 
 private fun KuiklyThreadAttachmentItem.toThreadAttachmentPreviewPayload(
     kind: String,
@@ -8124,67 +8162,76 @@ private fun ThreadAttachmentChip(
 ) {
     val isOpening = openState.threadAttachmentIsOpening()
     val canOpenComments = commentsEnabled && !attachment.isImageAttachment() && !attachment.isPdfAttachment()
+    val meta = attachment.threadAttachmentChipMetaLine()
+    val statusLabel = openState.threadAttachmentStatusLabel()
+    val summaryLabel = statusLabel ?: attachment.threadAttachmentSummaryLine()
+    val affordanceIcon =
+        if (attachment.threadAttachmentUsesPreviewAffordance()) SlockLucideIconName.Eye else SlockLucideIconName.Download
     Column(
-        modifier = Modifier.fillMaxWidth().border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(SlockColor.SurfaceWhite)
-            .padding(horizontal = SlockSpacing.Sm, vertical = SlockSpacing.Sm),
+        modifier = Modifier.width(ThreadAttachmentChipWidth),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth()
-                .clickable(onClick = if (isOpening) ({}) else onOpen),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        Box(
+            modifier =
+                Modifier
+                    .size(ThreadAttachmentChipWidth, ThreadAttachmentChipHeight)
+                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.15f))
+                    .background(if (isOpening) SlockColor.BrandYellow.copy(alpha = 0.3f) else SlockColor.SurfaceWhite)
+                    .clickable(onClick = if (isOpening) ({}) else onOpen)
+                    .padding(horizontal = 10.dp, vertical = SlockSpacing.Sm)
         ) {
-            Box(
-                modifier = Modifier.size(42.dp).border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .background(SlockColor.SurfaceCream),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                if (attachment.mimeType.startsWith("image/") && attachment.thumbnailUrl != null) {
-                    SlockAspectFitImagePreviewSurface(
-                        source = attachment.thumbnailUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        borderWidth = 0.dp
-                    )
-                } else {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = if (attachment.mimeType.startsWith("image/")) "IMG" else "FILE",
-                        style = SlockType.Button.copy(fontSize = 9.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack
+                        text = attachment.name,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (meta.isNotBlank()) {
+                        Text(
+                            text = meta,
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack.copy(alpha = 0.45f)),
+                            color = SlockColor.TextBlack.copy(alpha = 0.45f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                summaryLabel?.let { label ->
+                    Text(
+                        text = label,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                            fontSize = 10.sp,
+                            lineHeight = 12.sp,
+                            color = SlockColor.TextBlack.copy(alpha = 0.7f)
+                        ),
+                        color = SlockColor.TextBlack.copy(alpha = 0.7f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 134.dp)
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = attachment.name,
-                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                val meta = listOf(attachment.sizeLabel, attachment.mimeType).filter { it.isNotBlank() }.joinToString(" · ")
-                if (meta.isNotBlank()) {
-                    Text(
-                        text = meta,
-                        style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                openState.threadAttachmentStatusLabel()?.let { statusLabel ->
-                    Text(
-                        text = statusLabel,
-                        style = SlockType.Caption.copy(
-                            color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray
-                        ),
-                        color = if (isOpening) SlockColor.TextBlack else SlockColor.TextMutedGray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+            SlockLucideIcon(
+                affordanceIcon,
+                modifier = Modifier.align(Alignment.BottomEnd).size(12.dp),
+                color = "#99000000"
+            )
+            if (isOpening) {
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .height(6.dp)
+                            .width(36.dp)
+                            .background(SlockColor.BrandYellow),
+                    contentAlignment = Alignment.Center
+                ) {}
             }
         }
         if (canOpenComments) {
