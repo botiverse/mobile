@@ -997,19 +997,11 @@ internal fun shouldStartThreadTasksJoin(
         startedThreadId != taskChannelId.value &&
         payload.resolvedAuxiliaryThreadId()?.let { it == taskChannelId.value } == true
 
-internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(
-    initialPayload: KuiklyThreadScreenPayload = this
-): String? {
+internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     val candidate = streamChannelId.nonBlank() ?: sourceThreadId.nonBlank() ?: return null
     if (!isReplyThreadWithExplicitParentPair()) return candidate
     if (candidate == parentChannelId.nonBlank()) return null
-    if (
-        initialPayload.hasUntrustedReplyThreadAuxiliaryHint() &&
-        candidate == initialPayload.auxiliaryStreamCandidate() &&
-        status == "loading"
-    ) {
-        return null
-    }
+    if (status == "loading") return null
     return candidate
 }
 
@@ -1017,15 +1009,6 @@ private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boo
     surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
         parentChannelId.nonBlank() != null &&
         replyParentMessageIdForAuxiliary() != null
-
-private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadAuxiliaryHint(): Boolean {
-    if (!isReplyThreadWithExplicitParentPair()) return false
-    val candidate = auxiliaryStreamCandidate() ?: return false
-    return candidate != parentChannelId.nonBlank()
-}
-
-private fun KuiklyThreadScreenPayload.auxiliaryStreamCandidate(): String? =
-    streamChannelId.nonBlank() ?: sourceThreadId.nonBlank()
 
 private fun KuiklyThreadScreenPayload.replyParentMessageIdForAuxiliary(): String? =
     parentMessageId.nonBlank() ?: originParentMessageId.nonBlank()
@@ -1685,7 +1668,7 @@ internal fun SharedThreadRouteContent(
             .withSharedShellEventCapabilities()
             .withConversationHeader(conversationHeaderState.entryFor(payload))
     }
-    val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId(initialPayload)
+    val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
     val auxiliaryRouteKey = resolvedAuxiliaryThreadId ?: "pending-${initialPayload.instanceId}"
     LaunchedEffect(resolvedAuxiliaryThreadId, active) {
         if (active) {
@@ -1825,7 +1808,7 @@ internal fun SharedThreadRouteContent(
         } else {
             initialPayload
     }
-    val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId(initialPayload)
+    val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId()
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
     val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
     val memberSuggestionsFlow =
@@ -4440,18 +4423,13 @@ internal fun threadVisualFixture(
 
 private fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }
 
-private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(
-    initialPayload: KuiklyThreadScreenPayload = this
-): String? {
+private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): String? {
     val resolvedComposer = resolveThreadComposer()
     return resolvedComposer.mentionChannelId.nonBlank()
-        ?: resolvedAuxiliaryThreadId(initialPayload)
+        ?: resolvedAuxiliaryThreadId()
         ?: resolvedComposer.streamChannelId.nonBlank()
-            ?.takeIf { !initialPayload.hasUntrustedReplyThreadAuxiliaryHint() }
         ?: streamChannelId.nonBlank()
-            ?.takeIf { !initialPayload.hasUntrustedReplyThreadAuxiliaryHint() }
         ?: sourceThreadId.nonBlank()
-            ?.takeIf { !initialPayload.hasUntrustedReplyThreadAuxiliaryHint() }
         ?: parentChannelId.nonBlank()
 }
 

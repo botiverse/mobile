@@ -3385,6 +3385,12 @@ private fun SettingsLanguagePreferenceCard(
     val busy = languageBusy || displayBusy
     val currentDisplay = snapshot.translationDisplay.selectedKey
     val dirty = languageDraft != snapshot.browserLanguage.selectedKey || displayDraft != currentDisplay
+    // Auto-save on draft change with debounce.
+    LaunchedEffect(languageDraft, displayDraft) {
+        if (!dirty) return@LaunchedEffect
+        delay(400)
+        onSubmit()
+    }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Languages, title = "Language") {
         SettingsFormDetailText("Choose your preferred language and whether messages display translated or original text.")
         SlockBrutalSectionLabel(label = "Preferred language")
@@ -3412,13 +3418,6 @@ private fun SettingsLanguagePreferenceCard(
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_LANGUAGE, LANGUAGE_REGION_ACTION_AUTO_TRANSLATION, LANGUAGE_REGION_ACTION_TRANSLATION_DISPLAY) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
-        SlockBrutalActionButton(
-            label = actionState.statusFor(LANGUAGE_REGION_ACTION_LANGUAGE, "Save language"),
-            onClick = onSubmit,
-            enabled = dirty && !busy,
-            leadingIcon = SlockLucideIconName.Save,
-            backgroundColor = SlockColor.BrandYellow
-        )
     }
 }
 
@@ -3436,6 +3435,12 @@ private fun SettingsDateTimePreferenceCard(
     val timeFormatBusy = actionState?.action == LANGUAGE_REGION_ACTION_TIME_FORMAT && actionState.inProgress
     val busy = timezoneBusy || timeFormatBusy
     val dirty = timezoneDraft != snapshot.timezone.selectedKey || timeFormatDraft != snapshot.timeFormat.selectedKey
+    // Auto-save on draft change with debounce.
+    LaunchedEffect(timezoneDraft, timeFormatDraft) {
+        if (!dirty) return@LaunchedEffect
+        delay(400)
+        onSubmit()
+    }
     SettingsFormSectionCard(iconName = SlockLucideIconName.Clock, title = "Date & Time") {
         SettingsFormDetailText("Timezone and time format affect timestamps across channels, threads, and Settings.")
         SlockBrutalSectionLabel(label = "Timezone")
@@ -3460,13 +3465,6 @@ private fun SettingsDateTimePreferenceCard(
         if (actionState?.let { it.action in setOf(LANGUAGE_REGION_ACTION_TIMEZONE, LANGUAGE_REGION_ACTION_TIME_FORMAT) && it.errorCode != null } == true) {
             SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
-        SlockBrutalActionButton(
-            label = actionState.statusFor(LANGUAGE_REGION_ACTION_TIMEZONE, "Save time"),
-            onClick = onSubmit,
-            enabled = dirty && !busy,
-            leadingIcon = SlockLucideIconName.Save,
-            backgroundColor = SlockColor.BrandYellow
-        )
     }
 }
 

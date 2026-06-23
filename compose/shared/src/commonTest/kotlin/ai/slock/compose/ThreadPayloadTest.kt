@@ -2219,7 +2219,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun resolvedAuxiliaryThreadIdRejectsUnprovenReplyThreadHintUntilContent() {
+    fun resolvedAuxiliaryThreadIdUsesCurrentPayloadIdentityAfterLoading() {
         val launchPayload =
             KuiklyThreadScreenPayload(
                 instanceId = "activity-thread",
@@ -2232,7 +2232,7 @@ class ThreadPayloadTest {
                 status = "loading"
             )
 
-        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId(launchPayload))
+        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId())
         assertEquals(
             "thread-m1",
             launchPayload
@@ -2241,13 +2241,13 @@ class ThreadPayloadTest {
                     streamChannelId = "thread-m1",
                     status = "content"
                 )
-                .resolvedAuxiliaryThreadId(launchPayload)
+                .resolvedAuxiliaryThreadId()
         )
         assertEquals(
             "wrong-thread",
             launchPayload
                 .copy(status = "content")
-                .resolvedAuxiliaryThreadId(launchPayload)
+                .resolvedAuxiliaryThreadId()
         )
     }
 
@@ -2270,7 +2270,7 @@ class ThreadPayloadTest {
                 status = "empty",
                 messages = emptyList()
             )
-        val resolvedThreadId = loadedEmptyPayload.resolvedAuxiliaryThreadId(launchPayload)
+        val resolvedThreadId = loadedEmptyPayload.resolvedAuxiliaryThreadId()
         val composer =
             loadedEmptyPayload
                 .resolveThreadComposer()
@@ -2281,7 +2281,7 @@ class ThreadPayloadTest {
                 parentChannelId = loadedEmptyPayload.parentChannelId
             )
 
-        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId(launchPayload))
+        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId())
         assertEquals("thread-m1", resolvedThreadId)
         assertEquals("thread-m1", surface.sendChannelId)
     }
@@ -2305,7 +2305,7 @@ class ThreadPayloadTest {
                 streamChannelId = "thread-m1",
                 status = "content"
             )
-        val resolvedTaskChannelId = resolvedPayload.resolvedAuxiliaryThreadId(launchPayload)?.let(::ChannelId)
+        val resolvedTaskChannelId = resolvedPayload.resolvedAuxiliaryThreadId()?.let(::ChannelId)
 
         assertFalse(shouldStartThreadTasksJoin(launchPayload, startedThreadId = null, taskChannelId = ChannelId("wrong-thread")))
         assertTrue(shouldStartThreadTasksJoin(resolvedPayload, startedThreadId = null, taskChannelId = resolvedTaskChannelId))
