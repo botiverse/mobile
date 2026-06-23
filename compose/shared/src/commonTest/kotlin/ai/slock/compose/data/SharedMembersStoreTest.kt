@@ -105,7 +105,13 @@ class SharedMembersStoreTest {
         assertEquals(
             listOf(
                 SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = true),
-                SharedMembersMemberSuggestion("Build Agent", "build", inMentionChannel = false),
+                SharedMembersMemberSuggestion(
+                    "Build Agent",
+                    "build",
+                    inMentionChannel = false,
+                    kind = MemberKind.Agent,
+                    avatarWireValue = "random:u2"
+                ),
                 SharedMembersMemberSuggestion(
                     "Remote User",
                     "remote",
@@ -136,7 +142,13 @@ class SharedMembersStoreTest {
         assertEquals(
             listOf(
                 SharedMembersMemberSuggestion("Cindy", "cindy", inMentionChannel = true),
-                SharedMembersMemberSuggestion("Outside Agent", "outside", inMentionChannel = false)
+                SharedMembersMemberSuggestion(
+                    "Outside Agent",
+                    "outside",
+                    inMentionChannel = false,
+                    kind = MemberKind.Agent,
+                    avatarWireValue = "random:u2"
+                )
             ),
             store.state.value.memberSuggestions
         )
@@ -175,7 +187,57 @@ class SharedMembersStoreTest {
                     kind = MemberKind.Agent,
                     description = "Builds and validates Android changes",
                     avatarWireValue = "pixel:build-agent",
-                    gravatarHash = "ABC123",
+                    gravatarHash = null,
+                    avatarLabel = "BA"
+                )
+            ),
+            store.state.value.memberSuggestions
+        )
+    }
+
+    @Test
+    fun channelMentionScopeUpgradesAgentFallbackAvatarToProfilePixel() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("a1"),
+                            displayName = "Build Agent",
+                            handle = "build",
+                            kind = MemberKind.Agent,
+                            description = "Builds and validates Android changes",
+                            avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                            gravatarHash = "agent-hash",
+                            avatarLabel = "BA"
+                        )
+                    )
+            )
+        memberRepository.channelMembersByChannel["channel-1"] =
+            listOf(
+                MemberProfile(
+                    id = MemberId("a1"),
+                    displayName = "Build Agent",
+                    handle = "@build",
+                    kind = MemberKind.Agent,
+                    avatar = AvatarReference.Pixel("tree"),
+                    avatarLabel = "BA"
+                )
+            )
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(serverId = "server-1", mentionChannelId = "channel-1")
+
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion(
+                    displayName = "Build Agent",
+                    handle = "build",
+                    inMentionChannel = true,
+                    kind = MemberKind.Agent,
+                    description = "Builds and validates Android changes",
+                    avatarWireValue = "pixel:tree",
+                    gravatarHash = null,
                     avatarLabel = "BA"
                 )
             ),
@@ -305,7 +367,12 @@ class SharedMembersStoreTest {
         assertEquals(
             listOf(
                 SharedMembersMemberSuggestion("Cindy", "cindy"),
-                SharedMembersMemberSuggestion("Build Agent", "build-agent")
+                SharedMembersMemberSuggestion(
+                    "Build Agent",
+                    "build-agent",
+                    kind = MemberKind.Agent,
+                    avatarWireValue = "random:u2"
+                )
             ),
             store.state.value.memberSuggestions
         )

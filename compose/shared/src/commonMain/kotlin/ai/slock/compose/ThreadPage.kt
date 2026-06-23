@@ -78,8 +78,8 @@ import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
-import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
+import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ServerId
@@ -7179,12 +7179,12 @@ private fun Modifier.threadMessageLongPressActions(
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     val isAgent = authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
-    return avatarWireValueForAvatarSlot(
+    return resolveAvatarSlot(
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
         id = authorId.ifBlank { authorName },
         avatarWireValue = avatarWireValue,
         gravatarHash = gravatarHash
-    )
+    ).effectiveAvatarWireValue
 }
 
 private fun String.isLikelyThreadAgentId(): Boolean =

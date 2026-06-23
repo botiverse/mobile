@@ -131,13 +131,45 @@ fun AgentProfile.toMemberProfile(): MemberProfile =
     )
 
 // Avatar priority helpers
-fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
-    avatarWireValueForAvatarSlot(
+data class AvatarSlotResolution(
+    val displayAvatarWireValue: String?,
+    val gravatarHash: String?,
+    val fallbackAvatarWireValue: String?
+) {
+    val effectiveAvatarWireValue: String?
+        get() =
+            displayAvatarWireValue
+                ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+                ?: fallbackAvatarWireValue
+}
+
+fun MemberProfile.avatarSlotResolution(): AvatarSlotResolution =
+    resolveAvatarSlot(
         kind = kind,
         id = id.value,
         avatarWireValue = avatar?.wireValue,
         avatarUrl = avatarUrl,
         gravatarHash = gravatarHash
+    )
+
+fun MemberProfile.avatarWireValueForAvatarSlot(): String? =
+    avatarSlotResolution().effectiveAvatarWireValue
+
+fun ConversationSummary.avatarSlotResolution(): AvatarSlotResolution =
+    resolveAvatarSlot(
+        kind =
+            if (kind == ConversationKind.DirectMessage && directMessagePeerType.equals("agent", ignoreCase = true)) {
+                MemberKind.Agent
+            } else {
+                MemberKind.Human
+            },
+        id =
+            presenceMemberId?.value
+                ?: channelId?.value
+                ?: threadId.value,
+        avatarWireValue = avatar?.wireValue,
+        avatarUrl = avatarUrl ?: gravatarUrl,
+        gravatarHash = null
     )
 
 fun avatarWireValueForAvatarSlot(
@@ -146,19 +178,39 @@ fun avatarWireValueForAvatarSlot(
     avatarWireValue: String?,
     avatarUrl: String? = null,
     gravatarHash: String? = null
-): String? {
+): String? =
+    resolveAvatarSlot(
+        kind = kind,
+        id = id,
+        avatarWireValue = avatarWireValue,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
+    ).effectiveAvatarWireValue
+
+fun resolveAvatarSlot(
+    kind: MemberKind,
+    id: String,
+    avatarWireValue: String?,
+    avatarUrl: String? = null,
+    gravatarHash: String? = null
+): AvatarSlotResolution {
     val wireValue =
         avatarWireValue
             ?.takeIf { it.isNotBlank() }
             ?: avatarUrl?.takeIf { it.isNotBlank() }
     if (kind != MemberKind.Agent) {
-        return wireValue ?: gravatarHash?.takeIf { it.isNotBlank() }?.toGravatarAvatarUrl()
+        return AvatarSlotResolution(
+            displayAvatarWireValue = wireValue,
+            gravatarHash = gravatarHash?.takeIf { it.isNotBlank() },
+            fallbackAvatarWireValue = null
+        )
     }
-    return when {
-        wireValue == null -> agentAvatarFallbackWireValue(id)
-        wireValue.isAgentAvatarWireValue() -> wireValue
-        else -> agentAvatarFallbackWireValue(id)
-    }
+    val fallback = agentAvatarFallbackWireValue(id)
+    return AvatarSlotResolution(
+        displayAvatarWireValue = wireValue?.takeIf { it.isAgentAvatarWireValue() },
+        gravatarHash = null,
+        fallbackAvatarWireValue = fallback
+    )
 }
 
 fun agentAvatarFallbackWireValue(id: String): String =

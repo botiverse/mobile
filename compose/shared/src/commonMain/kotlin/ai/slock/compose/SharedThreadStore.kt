@@ -85,9 +85,11 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.SyncResumeResponse
+import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
+import ai.slock.compose.model.resolveAvatarSlot
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -3486,8 +3488,8 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
     val isAgent = profile.kind == MemberKind.Agent || authorKind.equals("agent", ignoreCase = true)
-    val profileAvatarWireValue =
-        avatarWireValueForAvatarSlot(
+    val profileAvatar =
+        resolveAvatarSlot(
             kind = if (isAgent) MemberKind.Agent else profile.kind,
             id = profile.id.value,
             avatarWireValue = profile.avatar?.wireValue,
@@ -3495,22 +3497,25 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
             gravatarHash = profile.gravatarHash
         )
     val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
+    val currentAvatar =
+        resolveAvatarSlot(
+            kind = if (isAgent) MemberKind.Agent else profile.kind,
+            id = authorId.ifBlank { profile.id.value },
+            avatarWireValue = currentAvatarWireValue,
+            gravatarHash = gravatarHash
+        )
     val resolvedAvatarWireValue =
         if (isAgent) {
             if (currentAvatarWireValue == null ||
                 currentAvatarWireValue.isGravatarAvatarWireValue() ||
                 currentAvatarWireValue.isAgentFallbackAvatarWireValue()
             ) {
-                profileAvatarWireValue
+                profileAvatar.effectiveAvatarWireValue
             } else {
-                avatarWireValueForAvatarSlot(
-                    kind = MemberKind.Agent,
-                    id = authorId.ifBlank { profile.id.value },
-                    avatarWireValue = currentAvatarWireValue
-                )
+                currentAvatar.effectiveAvatarWireValue
             }
         } else {
-            currentAvatarWireValue ?: profileAvatarWireValue
+            currentAvatar.effectiveAvatarWireValue ?: profileAvatar.effectiveAvatarWireValue
         }
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
@@ -3519,10 +3524,10 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
                 MemberKind.Agent -> "agent"
                 MemberKind.Human -> "human"
                 else -> authorKind
-            },
+        },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
         avatarWireValue = resolvedAvatarWireValue,
-        gravatarHash = if (isAgent) null else gravatarHash ?: profile.gravatarHash
+        gravatarHash = if (isAgent) null else currentAvatar.gravatarHash ?: profileAvatar.gravatarHash
     )
 }
 
@@ -3684,9 +3689,11 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             originMessage = resolvedParentMessage?.toKuiklyThreadMessageItem(currentUserId),
             parentMessageId = parentId,
             dmPeerName = base.dmPeerName?.takeIf { it.isNotBlank() }
-        )
-    val dmPeerAvatarWireValue = conversation.avatar?.wireValue ?: conversation.avatarUrl
+    )
+    val dmPeerAvatar = conversation.avatarSlotResolution()
     val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
+    val isAgentDirectMessage =
+        isDirectMessage && conversation.directMessagePeerType.equals("agent", ignoreCase = true)
     return base.copy(
         title = headerContext.title,
         subtitle = headerContext.subtitle,
@@ -3714,9 +3721,9 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
         dmPeerName = base.dmPeerName ?: conversation.name.takeIf { isDirectMessage },
-        dmPeerAvatarUrl = base.dmPeerAvatarUrl ?: dmPeerAvatarWireValue.takeIf { isDirectMessage },
+        dmPeerAvatarUrl = base.dmPeerAvatarUrl ?: dmPeerAvatar.effectiveAvatarWireValue.takeIf { isDirectMessage },
         dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
-        dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
+        dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage && !isAgentDirectMessage }
     )
 }
 
@@ -3950,8 +3957,16 @@ private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): M
     )
 }
 
-private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem =
-    KuiklyThreadMessageItem(
+private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
+    val resolvedAvatar =
+        resolveAvatarSlot(
+            kind = author.kind,
+            id = author.id.value,
+            avatarWireValue = author.avatar?.wireValue,
+            avatarUrl = author.avatarUrl,
+            gravatarHash = author.gravatarHash
+        )
+    return KuiklyThreadMessageItem(
         id = id.value,
         authorId = author.id.value,
         authorName = author.displayName,
@@ -3963,15 +3978,8 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
             },
         isOwn = currentUserId != null && author.id.value == currentUserId,
         avatarLabel = author.avatarLabel,
-        avatarWireValue =
-            avatarWireValueForAvatarSlot(
-                kind = author.kind,
-                id = author.id.value,
-                avatarWireValue = author.avatar?.wireValue,
-                avatarUrl = author.avatarUrl,
-                gravatarHash = author.gravatarHash
-            ),
-        gravatarHash = if (author.kind == MemberKind.Agent) null else author.gravatarHash,
+        avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
+        gravatarHash = resolvedAvatar.gravatarHash,
         seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
@@ -4002,6 +4010,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
         commentRef = commentRef?.toKuiklyThreadCommentRef()
     )
+}
 
 private fun String.toMessageDeliveryState(): MessageDeliveryState =
     when (trim().lowercase()) {
