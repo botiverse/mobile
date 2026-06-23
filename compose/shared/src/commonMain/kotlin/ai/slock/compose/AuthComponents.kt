@@ -68,8 +68,8 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandWidth = 126.dp
-private val AuthTopBarBrandHeight = 31.dp
+private val AuthTopBarBrandWidth = 156.dp
+private val AuthTopBarBrandHeight = 38.dp
 
 private fun Modifier.authStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
