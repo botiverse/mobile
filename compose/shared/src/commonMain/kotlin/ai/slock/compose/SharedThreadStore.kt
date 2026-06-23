@@ -3176,6 +3176,7 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
     fun KuiklyThreadMessageItem.updateIfMatches(): KuiklyThreadMessageItem =
         if (id == event.parentMessageId.value) {
             copy(
+                threadChannelId = event.threadChannelId.value,
                 replyCount = maxOf(replyCount, event.replyCount),
                 unreadReplyCount = event.unreadCount ?: unreadReplyCount,
                 firstUnreadReplyMessageId =

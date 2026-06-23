@@ -2494,6 +2494,59 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeThreadUpdatedAppliesReplyMetadataToDirectMessageParent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = directMessagePayload(),
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                message(
+                                    threadId = "dm-1",
+                                    id = "dm-parent-1",
+                                    seq = 1,
+                                    body = "dm parent"
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = null
+                    ),
+                myMessageAlignment = MyMessageAlignmentPreference.Left
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    parentMessageId = MessageId("dm-parent-1"),
+                    threadChannelId = ChannelId("dm-thread-1"),
+                    replyCount = 1,
+                    lastReplyAt = "2026-05-19T16:01:00Z",
+                    participantIds = listOf(MemberId("u1"), MemberId("agent-1")),
+                    unreadCount = 1,
+                    firstUnreadMessageId = MessageId("dm-reply-1")
+                )
+            )
+        )
+
+        val parent = store.state.value.payload.messages.single { it.id == "dm-parent-1" }
+        assertEquals("dm-thread-1", parent.threadChannelId)
+        assertEquals(1, parent.replyCount)
+        assertEquals(1, parent.unreadReplyCount)
+        assertEquals("dm-reply-1", parent.firstUnreadReplyMessageId)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =

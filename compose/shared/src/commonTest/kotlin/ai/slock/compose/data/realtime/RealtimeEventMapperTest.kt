@@ -8,6 +8,7 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -201,6 +202,31 @@ class RealtimeEventMapperTest {
             )
 
         assertNull(event)
+    }
+
+    @Test
+    fun threadUpdatedAcceptsChannelIdFallbackAndUnreadMetadata() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.ThreadUpdated,
+                """
+                {
+                  "parentMessageId": "dm-parent-1",
+                  "channelId": "dm-thread-1",
+                  "replyCount": 1,
+                  "unreadCount": 1,
+                  "firstUnreadMessageId": "dm-reply-1",
+                  "participantIds": ["u1", "agent-1"]
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<ThreadUpdated>(event)
+        assertEquals("dm-parent-1", updated.parentMessageId.value)
+        assertEquals("dm-thread-1", updated.threadChannelId.value)
+        assertEquals(1, updated.replyCount)
+        assertEquals(1, updated.unreadCount)
+        assertEquals("dm-reply-1", updated.firstUnreadMessageId?.value)
     }
 
     @Test

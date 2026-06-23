@@ -331,10 +331,14 @@ private data class CommentRefWireDto(
 @Serializable
 private data class ThreadUpdatedDto(
     val parentMessageId: String,
-    val threadChannelId: String,
+    val threadChannelId: String? = null,
+    val channelId: String? = null,
+    val threadId: String? = null,
     val replyCount: Int = 0,
     val lastReplyAt: String? = null,
     val participantIds: List<String> = emptyList(),
+    val unreadCount: Int? = null,
+    val firstUnreadMessageId: String? = null,
 )
 
 @Serializable
@@ -506,13 +510,23 @@ private fun CommentHostSourceWireDto.toDomain(): MessageCommentHostSource? {
     )
 }
 
-private fun ThreadUpdatedDto.toDomain(): ThreadUpdated = ThreadUpdated(
-    parentMessageId = MessageId(parentMessageId),
-    threadChannelId = ChannelId(threadChannelId),
-    replyCount = replyCount,
-    lastReplyAt = lastReplyAt,
-    participantIds = participantIds.map(::MemberId),
-)
+private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
+    val cleanParentMessageId = parentMessageId.takeIf { it.isNotBlank() } ?: return null
+    val cleanThreadChannelId =
+        threadChannelId?.takeIf { it.isNotBlank() }
+            ?: channelId?.takeIf { it.isNotBlank() }
+            ?: threadId?.takeIf { it.isNotBlank() }
+            ?: return null
+    return ThreadUpdated(
+        parentMessageId = MessageId(cleanParentMessageId),
+        threadChannelId = ChannelId(cleanThreadChannelId),
+        replyCount = replyCount,
+        lastReplyAt = lastReplyAt,
+        participantIds = participantIds.map(::MemberId),
+        unreadCount = unreadCount,
+        firstUnreadMessageId = firstUnreadMessageId?.takeIf { it.isNotBlank() }?.let(::MessageId)
+    )
+}
 
 private fun TaskCreatedDto.toDomain(): TaskCreated? {
     val list = tasks.map { it.toDomain() }
