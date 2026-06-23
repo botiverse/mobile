@@ -55,7 +55,11 @@ class SlockComposerNewlineActionModeTest {
         assertTrue(messages, messages.contains("applyActionMode installed=true"))
         assertTrue(messages, messages.contains("performLongClick"))
         assertTrue(messages, messages.contains("onCreateActionMode after"))
-        assertTrue(messages, messages.contains("ensureNewlineMenuItem added"))
+        assertTrue(messages, messages.contains("ensureNewlineMenuItem added title="))
+        assertTrue(
+            messages,
+            messages.contains("换行") || messages.contains("Insert newline")
+        )
     }
 }
 

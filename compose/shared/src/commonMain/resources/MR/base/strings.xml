@@ -6,6 +6,7 @@
     <string name="tab_tasks">TASKS</string>
     <string name="tab_members">MEMBERS</string>
     <string name="tab_settings">SETTINGS</string>
+    <string name="thread_composer_insert_newline">Insert newline</string>
     <string name="settings_invite_by_email">INVITE BY EMAIL</string>
     <string name="settings_delete_server">DELETE SERVER</string>
 </resources>

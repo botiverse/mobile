@@ -72,6 +72,15 @@ class KmmResourceI18nTest {
     }
 
     @Test
+    fun threadComposerActionStringResourcesAreGenerated() {
+        val desc: StringDesc = MR.strings.thread_composer_insert_newline.desc()
+        assertTrue(
+            desc is ResourceStringDesc,
+            "thread composer newline action must use KMM Resource strings"
+        )
+    }
+
+    @Test
     fun commonOkAndCancelAreDistinctGeneratedEntries() {
         // Both keys exist independently; this catches a regression where the
         // generator accidentally collapses/aliases two distinct <string> entries.

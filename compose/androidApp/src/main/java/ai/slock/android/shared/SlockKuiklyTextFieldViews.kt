@@ -9,6 +9,7 @@ import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.inputmethod.EditorInfo
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
+import ai.slock.compose.localizedThreadComposerInsertNewlineTitle
 import com.tencent.kuikly.core.render.android.css.ktx.toDpF
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
@@ -184,10 +185,14 @@ internal open class SlockKuiklyTextFieldView(
                 logState("ensureNewlineMenuItem already-present")
                 return
             }
-            menu.add(Menu.NONE, MENU_ITEM_INSERT_NEWLINE, Menu.NONE, "换行")
+            val title = newlineMenuTitle()
+            menu.add(Menu.NONE, MENU_ITEM_INSERT_NEWLINE, Menu.NONE, title)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
-            logState("ensureNewlineMenuItem added")
+            logState("ensureNewlineMenuItem added title=$title")
         }
+
+        private fun newlineMenuTitle(): String =
+            localizedThreadComposerInsertNewlineTitle(context)
     }
 }
 

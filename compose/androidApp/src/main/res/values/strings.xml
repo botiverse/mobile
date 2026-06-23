@@ -426,7 +426,6 @@
     <string name="tasks_status_closed">Closed</string>
     <string name="tasks_empty_column_title">No %1$s tasks</string>
     <string name="tasks_empty_column_detail">Drop a task here when the state changes.</string>
-    <string name="thread_composer_insert_newline">Insert newline</string>
     <string name="common_loading">Loading</string>
     <string name="common_loading_sample_state">Loading sample state</string>
     <string name="common_preparing_local_state">Preparing local state.</string>

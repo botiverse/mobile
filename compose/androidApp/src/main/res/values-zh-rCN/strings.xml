@@ -371,7 +371,6 @@
     <string name="tasks_status_closed">已关闭</string>
     <string name="tasks_empty_column_title">暂无%1$s任务</string>
     <string name="tasks_empty_column_detail">任务状态变化后可以放到这里。</string>
-    <string name="thread_composer_insert_newline">换行</string>
     <string name="common_loading">加载中</string>
     <string name="common_loading_sample_state">正在加载示例状态</string>
     <string name="common_preparing_local_state">正在准备本地状态。</string>
