@@ -75,6 +75,8 @@ private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_NAME = "Product UX Designer"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@slock.ai"
 private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
+private const val AUTH_TERMS_URL = "https://slock.ai/terms"
+private const val AUTH_PRIVACY_URL = "https://slock.ai/privacy"
 
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -247,6 +249,8 @@ private fun LoginScreen() {
         },
         onForgotPassword = { pager.openAuthPage(FORGOT_PASSWORD_PAGE) },
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
+        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
+        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
@@ -770,6 +774,8 @@ internal fun LoginContent(
     onSocialSignIn: (AuthProvider) -> Unit = {},
     onForgotPassword: () -> Unit,
     onCreateAccount: () -> Unit,
+    onOpenTerms: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {}
 ) {
     var emailDraft by remember { mutableStateOf(email) }
@@ -866,6 +872,10 @@ internal fun LoginContent(
                     )
                 }
             }
+            AuthLoginLegalNotice(
+                onOpenTerms = onOpenTerms,
+                onOpenPrivacy = onOpenPrivacy
+            )
             AuthTextLink("Forgot Password?") { onForgotPassword() }
             AuthInlineAction("No account?", "Create One") { onCreateAccount() }
         }
@@ -1017,6 +1027,50 @@ internal fun ForgotPasswordContent(
 }
 
 @Composable
+private fun AuthLoginLegalNotice(
+    onOpenTerms: () -> Unit,
+    onOpenPrivacy: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            "By continuing, you agree to the",
+            style = AuthLegalNoticeTextStyle,
+            color = AuthLegalNoticeTextColor,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().authPageStaticTextFocus()
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Terms of Service",
+                style = AuthLegalNoticeLinkStyle,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.clickable { onOpenTerms() }
+            )
+            Text(
+                " and ",
+                style = AuthLegalNoticeTextStyle,
+                color = AuthLegalNoticeTextColor,
+                modifier = Modifier.authPageStaticTextFocus()
+            )
+            Text(
+                "Privacy Policy.",
+                style = AuthLegalNoticeLinkStyle,
+                color = SlockColor.TextBlack,
+                modifier = Modifier.clickable { onOpenPrivacy() }
+            )
+        }
+    }
+}
+
+@Composable
 private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().clickable { onCheckedChange(!checked) },
@@ -1062,6 +1116,9 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
     }
 }
 
+private val AuthLegalNoticeTextColor = SlockColor.TextBlack.copy(alpha = 0.60f)
+private val AuthLegalNoticeTextStyle = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 16.sp, color = AuthLegalNoticeTextColor)
+private val AuthLegalNoticeLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
 private val AuthTermsTextColor = SlockColor.TextBlack.copy(alpha = 0.70f)
 private val AuthTermsTextStyle = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = AuthTermsTextColor)
 private val AuthTermsLinkStyle = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack, textDecoration = TextDecoration.Underline)
