@@ -9,7 +9,6 @@ import ai.slock.compose.SlockSpacing
 import ai.slock.compose.SlockStroke
 import ai.slock.compose.SlockType
 import ai.slock.compose.TextField
-import ai.slock.compose.toSlockDpOffset
 import ai.slock.compose.withSlockFontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,7 +51,6 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -700,14 +698,12 @@ internal fun SlockAnchoredToolbarChip(
     activeShadowColor: Color = SlockColor.ShadowBlack,
     onAnchorChanged: ((Offset) -> Unit)? = null
 ) {
-    val density = LocalDensity.current
     val anchor = remember { SlockMutableOffsetRef() }
     Box(
         modifier =
             modifier.onGloballyPositioned { coords ->
-                val root = coords.positionInRoot().toSlockDpOffset(density)
-                val height = with(density) { coords.size.height.toDp().value }
-                val next = Offset(root.x, root.y + height)
+                val root = coords.positionInRoot()
+                val next = Offset(root.x, root.y + coords.size.height.toFloat())
                 if (!anchor.hasValue || anchor.value != next) {
                     anchor.update(next)
                     onAnchorChanged?.invoke(next)
