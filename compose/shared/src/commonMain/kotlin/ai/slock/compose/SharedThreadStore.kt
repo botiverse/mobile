@@ -2842,15 +2842,12 @@ private fun KuiklyThreadScreenPayload.shouldReadPersistentCandidateBeforeFirstFr
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =
     sourceThreadId?.takeIf { it.isNotBlank() }
 
-private fun KuiklyThreadScreenPayload.replyThreadContentChannelId(): String? {
-    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
-    return streamChannelId?.takeIf { it.isNotBlank() }
-        ?: sourceThreadId?.takeIf { it.isNotBlank() }
-}
-
 private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolean =
-    channelId?.value == threadChannelId ||
-        threadId.value == threadChannelId
+    matchesResolvedReplyThreadTimeline(
+        resolvedThreadChannelId = threadChannelId,
+        messageChannelId = channelId?.value,
+        messageThreadId = threadId.value
+    )
 
 private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
     ThreadCandidateProofGate

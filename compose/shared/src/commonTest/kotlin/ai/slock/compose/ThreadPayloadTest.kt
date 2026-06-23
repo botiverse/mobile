@@ -1788,6 +1788,66 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyThreadMessagesPageRequiresResolvedThreadMembership() {
+        val base =
+            KuiklyThreadScreenPayload(
+                instanceId = "reply-thread-m1",
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                status = "loading"
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "u1", email = "artin@slock.ai"),
+                accessToken = "access",
+                refreshToken = "refresh"
+            )
+
+        val payload =
+            buildSharedThreadPayloadFromMessagesPage(
+                basePayload = base,
+                session = session,
+                page =
+                    ThreadMessagesPage(
+                        messages =
+                            listOf(
+                                WireMessage(
+                                    id = "parent",
+                                    channelId = "channel-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "parent row",
+                                    threadSummary = WireThreadSummary(threadChannelId = "thread-m1")
+                                ),
+                                WireMessage(
+                                    id = "legacy-unscoped",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "missing row identity"
+                                ),
+                                WireMessage(
+                                    id = "reply-1",
+                                    channelId = "thread-m1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
+                                    content = "reply row"
+                                )
+                            ),
+                        canLoadMoreBefore = false,
+                        canLoadMoreAfter = false
+                    )
+            )
+
+        assertEquals("content", payload.status)
+        assertEquals(listOf("reply row"), payload.messages.map { it.body })
+    }
+
+    @Test
     fun buildsSharedThreadPayloadPreservingActionCardMetadata() {
         val base =
             KuiklyThreadScreenPayload(

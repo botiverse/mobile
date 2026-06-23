@@ -8,6 +8,8 @@ import ai.slock.compose.KuiklyThreadReactionItem
 import ai.slock.compose.KuiklyThreadScreenPayload
 import ai.slock.compose.KuiklyThreadSurfaceKind
 import ai.slock.compose.SharedThreadComposerAttachment
+import ai.slock.compose.matchesResolvedReplyThreadTimeline
+import ai.slock.compose.replyThreadContentChannelId
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
@@ -277,14 +279,12 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
 
 private fun WireMessage.belongsToBasePayloadThread(basePayload: KuiklyThreadScreenPayload): Boolean {
     if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return true
-    val selectedThreadId =
-        basePayload.streamChannelId?.takeIf { it.isNotBlank() }
-            ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-            ?: return true
-    val messageChannelId = channelId?.takeIf { it.isNotBlank() }
-    val messageThreadId = threadId?.takeIf { it.isNotBlank() }
-    if (messageChannelId == null && messageThreadId == null) return true
-    return messageChannelId == selectedThreadId || messageThreadId == selectedThreadId
+    val selectedThreadId = basePayload.replyThreadContentChannelId() ?: return true
+    return matchesResolvedReplyThreadTimeline(
+        resolvedThreadChannelId = selectedThreadId,
+        messageChannelId = channelId,
+        messageThreadId = threadId
+    )
 }
 
 private fun firstNonBlank(vararg values: String?): String? =
