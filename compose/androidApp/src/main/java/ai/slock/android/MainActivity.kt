@@ -63,7 +63,7 @@ class MainActivity : ComponentActivity() {
             val result =
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
-                        api = AndroidAuthApiFactory.createAuthApi(),
+                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
                         sessionStore = EncryptedAuthSessionStore(applicationContext)
                     ).completeSocialLogin(provider = provider, code = code)
                 }

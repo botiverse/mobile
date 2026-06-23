@@ -42,12 +42,14 @@ class SharedSettingsStoreTest {
                 SharedSettingsDestination.ConnectedApps,
                 SharedSettingsDestination.Computers,
                 SharedSettingsDestination.Storage,
-                SharedSettingsDestination.About
+                SharedSettingsDestination.About,
+                SharedSettingsDestination.Developer
             ),
             home.items.map { it.destination }
         )
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Diagnostics })
         assertEquals("Version, diagnostics, feedback", home.items.first { it.destination == SharedSettingsDestination.About }.subtitle)
+        assertEquals("API server, diagnostics, route launcher", home.items.first { it.destination == SharedSettingsDestination.Developer }.subtitle)
         assertEquals(false, home.items.any { it.destination == SharedSettingsDestination.Router && it.productVisible })
         scope.cancel()
     }
@@ -1242,6 +1244,35 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun developerEnvironmentLoadsAndSwitchesThroughPlatformCapabilities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("production", initial.environmentKey)
+
+        store.accept(SharedSettingsIntent.SetApiEnvironment("staging"))
+
+        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("staging", updated.environmentKey)
+        assertEquals("Staging", updated.environmentLabel)
+        assertEquals("https://raft-app-staging.botiverse.dev/api/", updated.apiBaseUrl)
+        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "staging", inProgress = false), store.state.value.actionState)
+        assertEquals(listOf("developer", "environment:staging"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun aboutSessionLabelsComeFromCanonicalSessionStoreWhenHostLabelsAreBlank() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities =
@@ -2130,6 +2161,7 @@ class SharedSettingsStoreTest {
                         )
                 )
             ),
+        private var developerSnapshot: SharedSettingsDeveloperSnapshot = buildDeveloperSnapshot("production"),
         private val avatarFileResult: DataResult<AttachmentUploadFile> =
             DataResult.Error(ScreenError("settings_account_avatar_picker_unavailable")),
         private val connectedAppLogoFileResult: DataResult<AttachmentUploadFile> =
@@ -2145,6 +2177,17 @@ class SharedSettingsStoreTest {
         override suspend fun loadStorage(): DataResult<SharedSettingsStorageSnapshot> {
             calls += "storage"
             return DataResult.Content(storageSnapshot())
+        }
+
+        override suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
+            calls += "developer"
+            return DataResult.Content(developerSnapshot)
+        }
+
+        override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
+            calls += "environment:$environmentKey"
+            developerSnapshot = buildDeveloperSnapshot(environmentKey)
+            return DataResult.Content(developerSnapshot)
         }
 
         override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {
@@ -2200,6 +2243,37 @@ class SharedSettingsStoreTest {
                     ),
                 feedback = feedback
             )
+
+        companion object {
+            private fun buildDeveloperSnapshot(environmentKey: String): SharedSettingsDeveloperSnapshot {
+                val production =
+                    SharedSettingsApiEnvironmentOption(
+                        key = "production",
+                        label = "Production",
+                        apiBaseUrl = "https://api.slock.ai/api/",
+                        socketBaseUrl = "https://api.slock.ai",
+                        webUrl = "https://app.raft.build"
+                    )
+                val staging =
+                    SharedSettingsApiEnvironmentOption(
+                        key = "staging",
+                        label = "Staging",
+                        apiBaseUrl = "https://raft-app-staging.botiverse.dev/api/",
+                        socketBaseUrl = "https://raft-app-staging.botiverse.dev",
+                        webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
+                    )
+                val selected = if (environmentKey == "staging") staging else production
+                return SharedSettingsDeveloperSnapshot(
+                    environmentKey = selected.key,
+                    environmentLabel = selected.label,
+                    apiBaseUrl = selected.apiBaseUrl,
+                    socketBaseUrl = selected.socketBaseUrl,
+                    webUrl = selected.webUrl,
+                    options = listOf(production, staging),
+                    feedback = "Selected ${selected.label}"
+                )
+            }
+        }
     }
 
     private class FakeNotificationPreferenceRepository(

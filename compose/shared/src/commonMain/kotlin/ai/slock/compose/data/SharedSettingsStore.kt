@@ -31,6 +31,7 @@ enum class SharedSettingsDestination {
     Mobile,
     Storage,
     About,
+    Developer,
     Diagnostics,
     Router
 }
@@ -54,6 +55,7 @@ data class SharedSettingsState(
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
+    val developer: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
     val diagnostics: ScreenLoadState<SharedSettingsDiagnosticsSnapshot> = ScreenLoadState.Loading,
     val refreshingDestinations: Set<SharedSettingsDestination> = emptySet(),
     val routeErrorCode: String? = null,
@@ -116,6 +118,24 @@ data class SharedSettingsNetworkProbeSnapshot(
     val reachable: Boolean = false,
     val code: Int = 0,
     val durationMillis: Long = 0L
+)
+
+data class SharedSettingsDeveloperSnapshot(
+    val environmentKey: String = "",
+    val environmentLabel: String = "",
+    val apiBaseUrl: String = "",
+    val socketBaseUrl: String = "",
+    val webUrl: String = "",
+    val options: List<SharedSettingsApiEnvironmentOption> = emptyList(),
+    val feedback: String? = null
+)
+
+data class SharedSettingsApiEnvironmentOption(
+    val key: String,
+    val label: String,
+    val apiBaseUrl: String,
+    val socketBaseUrl: String,
+    val webUrl: String
 )
 
 data class SharedSettingsDiagnosticsSnapshot(
@@ -257,6 +277,7 @@ sealed interface SharedSettingsIntent {
     data class SetMessageAlignment(val alignment: String) : SharedSettingsIntent
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
+    data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -306,6 +327,12 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun loadAbout(): DataResult<SharedSettingsAboutSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
+        DataResult.Error(ScreenError("settings_developer_environment_unavailable", retryable = false))
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -627,6 +654,12 @@ class SharedSettingsDataSource(
             is DataResult.NoPermission -> result
         }
     }
+
+    suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.loadDeveloper()
+
+    suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.setApiEnvironment(environmentKey)
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()
@@ -1180,6 +1213,12 @@ class SharedSettingsStore(
                         actionState = SharedSettingsActionState("clearStorage", itemId = intent.target, inProgress = true),
                         effect = SharedSettingsEffect.ClearStorage(intent.target)
                     )
+            is SharedSettingsIntent.SetApiEnvironment -> {
+                runAction(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey) {
+                    dataSource.setApiEnvironment(intent.environmentKey)
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey)
+                }
+            }
             is SharedSettingsIntent.CompleteStorageClear ->
                 completeStorageClear(intent)
             SharedSettingsIntent.CopyDiagnostics ->
@@ -1271,6 +1310,8 @@ class SharedSettingsStore(
             SharedSettingsDestination.Storage -> loadStorage()
             SharedSettingsDestination.About ->
                 dataSource.loadAbout().applyToState(destination) { copy(about = it) }
+            SharedSettingsDestination.Developer ->
+                dataSource.loadDeveloper().applyToState(destination) { copy(developer = it) }
             SharedSettingsDestination.Diagnostics ->
                 dataSource.loadDiagnostics().applyToState(destination) { copy(diagnostics = it) }
             SharedSettingsDestination.Router -> loadHome()
@@ -1699,6 +1740,29 @@ class SharedSettingsStore(
             )
     }
 
+    private fun DataResult<SharedSettingsDeveloperSnapshot>.applyDeveloperActionResult(
+        action: String,
+        itemId: String? = null
+    ) {
+        val nextDeveloper = toScreenLoadState()
+        _state.value =
+            _state.value.copy(
+                developer =
+                    when (nextDeveloper) {
+                        is ScreenLoadState.Content -> nextDeveloper
+                        else -> _state.value.developer
+                    },
+                actionState =
+                    SharedSettingsActionState(
+                        action = action,
+                        itemId = itemId,
+                        inProgress = false,
+                        errorCode = nextDeveloper.routeErrorCode()
+                    ),
+                routeErrorCode = nextDeveloper.routeErrorCode()
+            )
+    }
+
     private suspend fun <T> DataResult<T>.applyToState(
         destination: SharedSettingsDestination,
         update: SharedSettingsState.(ScreenLoadState<T>) -> SharedSettingsState
@@ -1783,6 +1847,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetLocale,
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.ClearStorage,
+            is SharedSettingsIntent.SetApiEnvironment,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,
@@ -1850,6 +1915,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.Mobile -> mobile is ScreenLoadState.Content
         SharedSettingsDestination.Storage -> storage is ScreenLoadState.Content
         SharedSettingsDestination.About -> about is ScreenLoadState.Content
+        SharedSettingsDestination.Developer -> developer is ScreenLoadState.Content
         SharedSettingsDestination.Diagnostics -> diagnostics is ScreenLoadState.Content
         SharedSettingsDestination.Router -> home is ScreenLoadState.Content
     }
@@ -1858,6 +1924,7 @@ internal const val MOBILE_ACTION_NOTIFICATION_PREFERENCE = "notificationPreferen
 internal const val MOBILE_ACTION_SERVER_MUTE = "serverMute"
 internal const val MOBILE_ACTION_PERMISSION = "notificationPermission"
 internal const val MOBILE_ACTION_SETTINGS = "openNotificationSettings"
+internal const val DEVELOPER_ACTION_API_ENVIRONMENT = "apiEnvironment"
 internal const val MOBILE_ACTION_TEST_NOTIFICATION = "sendTestNotification"
 internal const val MOBILE_ACTION_LANGUAGE = "language"
 internal const val MOBILE_ACTION_MESSAGE_ALIGNMENT = "messageAlignment"
@@ -2036,7 +2103,8 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination),
                 nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
-                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination)
+                nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination),
+                nav(SharedSettingsDestination.Developer, "Developer", "API server, diagnostics, route launcher", SlockLucideIconName.Terminal, null, selectedDestination)
             )
     )
 }

@@ -34,6 +34,7 @@ import ai.slock.compose.data.MOBILE_ACTION_SERVER_MUTE
 import ai.slock.compose.data.MOBILE_ACTION_SETTINGS
 import ai.slock.compose.data.MOBILE_ACTION_TEST_NOTIFICATION
 import ai.slock.compose.data.APPEARANCE_ACTION_MESSAGE_FONT_SIZE
+import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_AUTO_TRANSLATION
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_LANGUAGE
 import ai.slock.compose.data.LANGUAGE_REGION_ACTION_SERVER_TRANSLATION
@@ -110,6 +111,7 @@ import ai.slock.compose.data.SharedHomeShellStore
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDestination
+import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.SharedSettingsEffect
@@ -404,6 +406,7 @@ private const val SettingsDestinationStorage = "storage"
 private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
+private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationRouter = "router"
 private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
@@ -1589,7 +1592,7 @@ private fun SlockAppShellContent() {
                     authGateMessage = null
                     authGateViewModel.dispatch(SharedAuthGateIntent.SignedIn(session))
                 },
-                onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
+                onOpenDiagnostics = { pager.openAppShellDeveloper() }
             )
             return
         }
@@ -1616,7 +1619,7 @@ private fun SlockAppShellContent() {
                 message = gate.message,
                 onRetry = { authGateViewModel.dispatch(SharedAuthGateIntent.Retry) },
                 onSignIn = { authGateViewModel.dispatch(SharedAuthGateIntent.ShowSignIn) },
-                onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() }
+                onOpenDiagnostics = { pager.openAppShellDeveloper() }
             )
             return
         }
@@ -2312,6 +2315,7 @@ private fun SlockAppShellContent() {
                                 pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
+                            onOpenAuthDiagnostics = { pager.openAppShellAuthDiagnostics() },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
                             },
@@ -2416,6 +2420,7 @@ private fun SettingsAppShellContent(
     onDestinationChange: (String) -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
+    onOpenAuthDiagnostics: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
@@ -3206,12 +3211,24 @@ private fun SettingsAppShellContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
                     bottomContentPadding = bottomContentPadding,
-                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
+                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDeveloper) },
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
                     onOpenSlock = { settingsCapabilities.openUrl("https://app.raft.build") },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
+                )
+            SettingsDestinationDeveloper ->
+                SharedSettingsDeveloperContent(
+                    state = settingsState.developer,
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    onSetApiEnvironment = { key ->
+                        onSettingsIntent(SharedSettingsIntent.SetApiEnvironment(key))
+                    },
+                    onOpenAuthDiagnostics = onOpenAuthDiagnostics,
+                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
+                    onOpenRouter = onOpenRouter
                 )
             SettingsDestinationDiagnostics ->
                 SharedSettingsDiagnosticsContent(
@@ -5913,6 +5930,28 @@ private fun SharedSettingsAboutContent(
 }
 
 @Composable
+internal fun SharedSettingsDeveloperContent(
+    state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
+    actionState: SharedSettingsActionState?,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    onSetApiEnvironment: (String) -> Unit,
+    onOpenAuthDiagnostics: () -> Unit,
+    onOpenDiagnostics: () -> Unit,
+    onOpenRouter: () -> Unit
+) {
+    val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    val payload = snapshot.toDeveloperPayload(state, actionState)
+    SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
+        when (action) {
+            DEVELOPER_ACTION_API_ENVIRONMENT -> value?.takeIf { it.isNotBlank() }?.let(onSetApiEnvironment)
+            "authDiagnostics" -> onOpenAuthDiagnostics()
+            "diagnostics" -> onOpenDiagnostics()
+            "router" -> onOpenRouter()
+        }
+    }
+}
+
+@Composable
 private fun SharedSettingsDiagnosticsContent(
     state: ScreenLoadState<SharedSettingsDiagnosticsSnapshot>,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
@@ -6117,11 +6156,11 @@ private fun appShellSettingsHomePayload(
                     section = "About"
                 ),
                 SlockTabItemPayload(
-                    key = SettingsDestinationRouter,
-                    title = "Developer Router",
-                    subtitle = "Open Kuikly route launcher and icon compare",
-                    iconName = SlockLucideIconName.LayoutList,
-                    selected = selectedDestination == SettingsDestinationRouter,
+                    key = SettingsDestinationDeveloper,
+                    title = "Developer",
+                    subtitle = "API server, diagnostics, route launcher",
+                    iconName = SlockLucideIconName.Terminal,
+                    selected = selectedDestination == SettingsDestinationDeveloper,
                     section = "About"
                 )
             )
@@ -7201,12 +7240,103 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open logs, profiler, and diagnostic feedback tools.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.Terminal, "Developer", "Open API server, diagnostics, and route launcher tools.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true)
                         )
                 )
             )
     )
+
+private fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
+    state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
+    actionState: SharedSettingsActionState?
+): KuiklySharedSettingsPayload {
+    val currentKey = this?.environmentKey.orEmpty()
+    val options =
+        this?.options
+            ?.takeIf { it.isNotEmpty() }
+            ?: emptyList()
+    val environmentRows =
+        if (options.isNotEmpty()) {
+            options.map { option ->
+                val selected = option.key == currentKey
+                val switching =
+                    actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT &&
+                        actionState.itemId == option.key &&
+                        actionState.inProgress
+                KuiklySharedSettingsRow(
+                    key = DEVELOPER_ACTION_API_ENVIRONMENT,
+                    iconName = if (selected) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Server,
+                    title = option.label,
+                    detail = option.apiBaseUrl.ifBlank { option.webUrl },
+                    value = option.key,
+                    status =
+                        when {
+                            switching -> "Switching"
+                            selected -> "Selected"
+                            else -> "Switch"
+                        },
+                    enabled = !selected && actionState?.inProgress != true
+                )
+            }
+        } else {
+            listOf(
+                KuiklySharedSettingsRow(
+                    key = "environmentUnavailable",
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    title = "API server",
+                    detail =
+                        when (state) {
+                            is ScreenLoadState.Error -> state.error.code
+                            is ScreenLoadState.Empty -> state.reason.name
+                            is ScreenLoadState.NoPermission -> state.blocker.code
+                            ScreenLoadState.Loading -> "Loading developer environment options."
+                            is ScreenLoadState.Content -> "No API server environments are available."
+                        },
+                    status = if (state is ScreenLoadState.Loading) "Loading" else "Unavailable"
+                )
+            )
+        }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-developer",
+        title = "Developer",
+        detail = this?.feedback ?: this?.environmentLabel.orEmpty().ifBlank { "API server and diagnostics" },
+        heroIconName = SlockLucideIconName.Terminal,
+        heroLabel = "Developer",
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "API Server",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow(
+                                key = "currentApi",
+                                iconName = SlockLucideIconName.Globe,
+                                title = "Current API",
+                                detail = this?.apiBaseUrl.orEmpty().ifBlank { "Unknown" },
+                                status = this?.environmentLabel.orEmpty().ifBlank { "Current" }
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = "currentSocket",
+                                iconName = SlockLucideIconName.Activity,
+                                title = "Current socket",
+                                detail = this?.socketBaseUrl.orEmpty().ifBlank { "Unknown" },
+                                status = "Realtime"
+                            )
+                        ) + environmentRows
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Diagnostics",
+                    rows =
+                        listOf(
+                            KuiklySharedSettingsRow("authDiagnostics", SlockLucideIconName.LogIn, "Auth diagnostics", "Open auth bootstrap, session, and network diagnostic details.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "App diagnostics", "Open sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("router", SlockLucideIconName.Route, "Route launcher", "Open Kuikly route launcher and icon compare.", status = "Open", enabled = true)
+                        )
+                )
+            )
+    )
+}
 
 private fun SharedSettingsAboutSnapshot.buildSummary(): String =
     buildString {
@@ -7524,6 +7654,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationMobile -> "Mobile"
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
+        SettingsDestinationDeveloper -> "Developer"
         SettingsDestinationDiagnostics -> "Diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
         else -> "Settings"
@@ -7543,6 +7674,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationMobile -> "My message alignment"
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Diagnostics"
+        SettingsDestinationDeveloper -> "API server, diagnostics, route launcher"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
         else -> ""
@@ -7562,6 +7694,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
         SettingsDestinationAbout -> SlockLucideIconName.Bug
+        SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
         else -> SlockLucideIconName.Settings
@@ -7581,6 +7714,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
         SettingsDestinationMobile -> SharedSettingsDestination.Mobile
         SettingsDestinationStorage -> SharedSettingsDestination.Storage
         SettingsDestinationAbout -> SharedSettingsDestination.About
+        SettingsDestinationDeveloper -> SharedSettingsDestination.Developer
         SettingsDestinationDiagnostics -> SharedSettingsDestination.Diagnostics
         SettingsDestinationHome -> SharedSettingsDestination.Home
         else -> null
@@ -7904,7 +8038,7 @@ private fun AuthChooseServerPageContent() {
                         restoreAttempt += 1
                     },
                     onSignIn = { pager.openLoginReplacingCurrentPage() },
-                    onOpenDiagnostics = { pager.openAppShellAuthDiagnostics() },
+                    onOpenDiagnostics = { pager.openAppShellDeveloper() },
                     onBack = closeChooser.takeIf { fromShell }
                 )
             }
@@ -8034,6 +8168,14 @@ private fun Pager.openAppShellAuthDiagnostics() {
         .openPage(
             AUTH_DIAGNOSTICS_PAGE,
             JSONObject().put("pageName", AUTH_DIAGNOSTICS_PAGE)
+        )
+}
+
+private fun Pager.openAppShellDeveloper() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+        .openPage(
+            AUTH_DEVELOPER_PAGE,
+            JSONObject().put("pageName", AUTH_DEVELOPER_PAGE)
         )
 }
 

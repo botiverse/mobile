@@ -2,6 +2,7 @@ package ai.slock.android.shared
 
 import android.net.Uri
 import android.util.Base64
+import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
@@ -51,7 +52,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                                 val requestBody = command.requestBody(method, headers, activity)
                                 val request =
                                         Request.Builder()
-                                                .url(command.optString("url"))
+                                                .url(rewriteEnvironmentUrl(command.optString("url")))
                                                 .applyHeaders(headers, skipContentType = requestBody is MultipartBody)
                                                 .method(method, requestBody)
                                                 .build()
@@ -91,6 +92,11 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             }
             activeRequests.remove(requestId, active)
         }
+    }
+
+    private fun rewriteEnvironmentUrl(url: String): String {
+        val hostActivity = activity ?: return url
+        return AndroidApiServerEnvironmentStore(hostActivity.applicationContext).rewriteApiUrl(url)
     }
 
     private fun cancel(params: String?) {

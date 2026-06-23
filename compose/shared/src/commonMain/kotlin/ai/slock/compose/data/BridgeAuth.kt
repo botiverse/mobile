@@ -108,6 +108,27 @@ internal class BridgeSettingsPlatformCapabilities(
         )
     }
 
+    override suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> {
+        val response = bridge.settingsCapability(JSONObject().put("action", "loadDeveloper"))
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_unavailable" }))
+        }
+        return DataResult.Content(response.toDeveloperSnapshot())
+    }
+
+    override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "setApiEnvironment")
+                    .put("environmentKey", environmentKey)
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_failed" }))
+        }
+        return DataResult.Content(response.toDeveloperSnapshot())
+    }
+
     override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "loadDiagnostics"))
         if (response?.optString("status") != "ok") {
@@ -237,6 +258,38 @@ internal class BridgeSettingsPlatformCapabilities(
                 }
             }
         return SharedSettingsDiagnosticsHostSnapshot(entries = entries)
+    }
+
+    private fun JSONObject.toDeveloperSnapshot(): SharedSettingsDeveloperSnapshot {
+        val optionsJson = optJSONArray("options")
+        val options =
+            buildList {
+                if (optionsJson != null) {
+                    for (index in 0 until optionsJson.length()) {
+                        val option = optionsJson.optJSONObject(index) ?: continue
+                        val key = option.optString("key")
+                        if (key.isBlank()) continue
+                        add(
+                            SharedSettingsApiEnvironmentOption(
+                                key = key,
+                                label = option.optString("label").ifBlank { key },
+                                apiBaseUrl = option.optString("apiBaseUrl"),
+                                socketBaseUrl = option.optString("socketBaseUrl"),
+                                webUrl = option.optString("webUrl")
+                            )
+                        )
+                    }
+                }
+            }
+        return SharedSettingsDeveloperSnapshot(
+            environmentKey = optString("environmentKey"),
+            environmentLabel = optString("environmentLabel"),
+            apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
+            socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
+            webUrl = optString("webUrl"),
+            options = options,
+            feedback = optString("feedback").takeIf { it.isNotBlank() }
+        )
     }
 
     @OptIn(ExperimentalEncodingApi::class)

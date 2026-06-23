@@ -1,6 +1,7 @@
 package ai.slock.android.shared
 
 import android.content.Context
+import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
@@ -224,9 +225,13 @@ internal object AndroidRealtimeBridgeManager {
     private fun ensureRealtimeRepository(context: Context): RealtimeRepository {
         realtimeRepository?.let { return it }
         val sessionStore = EncryptedAuthSessionStore(context.applicationContext)
+        val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(context.applicationContext)
         val client =
             SocketIoRealtimeClient(
-                transport = SocketIoSocketTransport(),
+                transport =
+                    SocketIoSocketTransport(
+                        socketUrl = AndroidAuthApiFactory.currentSocketBaseUrl(context.applicationContext)
+                    ),
                 logger = { message ->
                     SlockDiagnosticsLogger.d(LOG_TAG, message)
                 }
@@ -235,7 +240,7 @@ internal object AndroidRealtimeBridgeManager {
             SessionRealtimeRepository(
                 store = sessionStore,
                 client = client,
-                tokenRefresher = AuthTokenRefresher(sessionStore)
+                tokenRefresher = AuthTokenRefresher(sessionStore, AndroidAuthApiFactory.createAuthApi(apiBaseUrl))
             )
         realtimeClient = client
         realtimeRepository = repository
