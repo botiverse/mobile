@@ -8,8 +8,19 @@ import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.components.SlockBrutalReadOnlyField
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.SlockCachedImage
+import ai.slock.compose.data.AccountPasswordChangeRequest
+import ai.slock.compose.data.AccountProfileUpdateRequest
+import ai.slock.compose.data.AccountProviderLinkStartRequest
+import ai.slock.compose.data.AccountSettingsSnapshot
+import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.SharedSettingsDestination
+import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsState
+import ai.slock.compose.data.SharedSettingsViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
@@ -46,6 +57,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_ACCOUNT_PAGE = "compose_settings_account"
@@ -149,16 +161,44 @@ internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
 private fun SettingsAccountScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberAccountPayload(
+    val launchPayload = rememberAccountPayload(
         pager.pageData.params.optString("payload"),
         pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
-    LaunchedEffect(payload) {
-        bridge.log("settings_account_render instanceId=${payload.instanceId} connected=${payload.connectedAccounts.size}")
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-account") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(Unit) {
+        bridge.log("settings_account_open instanceId=${launchPayload.instanceId}")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Account))
     }
-    SettingsAccountContent(payload) { action, value ->
-        bridge.settingsEvent(payload.instanceId, action, value)
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    SettingsAccountContent(
+        settingsState.account.toAccountPayload(session = null, actionState = settingsState.actionState),
+        onPasswordChange = { currentPassword, newPassword ->
+            settingsViewModel.dispatch(
+                SharedSettingsIntent.ChangeAccountPassword(
+                    AccountPasswordChangeRequest(
+                        currentPassword = currentPassword,
+                        newPassword = newPassword
+                    )
+                )
+            )
+        }
+    ) { action, value ->
+        handleStandaloneAccountAction(
+            action = action,
+            value = value,
+            settingsState = settingsState,
+            dispatch = settingsViewModel::dispatch,
+            fallbackEvent = { fallbackAction, fallbackValue ->
+                bridge.settingsEvent(launchPayload.instanceId, fallbackAction, fallbackValue)
+            }
+        )
     }
 }
 
@@ -171,6 +211,39 @@ private fun rememberAccountPayload(
     remember(payload, fallbackPageData, instanceId) {
         parseSettingsAccountPayload(payload, fallbackPageData, instanceId)
     }
+
+private fun handleStandaloneAccountAction(
+    action: String,
+    value: String?,
+    settingsState: SharedSettingsState,
+    dispatch: (SharedSettingsIntent) -> Unit,
+    fallbackEvent: (String, String?) -> Unit
+) {
+    when (action) {
+        "logout" -> dispatch(SharedSettingsIntent.Logout)
+        "uploadAvatar" -> dispatch(SharedSettingsIntent.RequestAccountAvatarUpload)
+        "connectProvider" ->
+            value?.takeIf { it.isNotBlank() }?.let { providerId ->
+                dispatch(SharedSettingsIntent.ConnectAccountProvider(AccountProviderLinkStartRequest(providerId = providerId)))
+            }
+        "saveProfile" -> {
+            val account = (settingsState.account as? ScreenLoadState.Content<AccountSettingsSnapshot>)?.data
+            val displayName = value.orEmpty().trim()
+            if (account != null) {
+                dispatch(
+                    SharedSettingsIntent.UpdateProfile(
+                        AccountProfileUpdateRequest(
+                            displayName = displayName.ifBlank { account.profile.displayName },
+                            handle = account.profile.handle,
+                            email = account.profile.email
+                        )
+                    )
+                )
+            }
+        }
+        else -> fallbackEvent(action, value)
+    }
+}
 
 @Composable
 internal fun SettingsAccountContent(

@@ -2,8 +2,14 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.data.SharedSettingsDestination
+import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsViewModel
+import ai.slock.compose.data.isRefreshing
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -29,6 +35,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_STORAGE_PAGE = "compose_settings_storage"
@@ -100,16 +107,33 @@ internal val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
 private fun SettingsStorageScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberStoragePayload(
+    val launchPayload = rememberStoragePayload(
         pager.pageData.params.optString("payload"),
         pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
-    LaunchedEffect(payload) {
-        bridge.log("settings_storage_render instanceId=${payload.instanceId} rows=${payload.rows.size}")
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-storage") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(Unit) {
+        bridge.log("settings_storage_open instanceId=${launchPayload.instanceId}")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Storage))
     }
-    SettingsStorageContent(payload) { action, target ->
-        bridge.settingsEvent(payload.instanceId, action, target)
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    SettingsStorageContent(
+        settingsState.storage.toStoragePayload(
+            actionState = settingsState.actionState,
+            refreshing = settingsState.isRefreshing(SharedSettingsDestination.Storage)
+        )
+    ) { action, target ->
+        when (action) {
+            "refreshStorage" -> settingsViewModel.dispatch(SharedSettingsIntent.RefreshStorage)
+            "clearStorage" -> target?.takeIf { it.isNotBlank() }?.let { settingsViewModel.dispatch(SharedSettingsIntent.ClearStorage(it)) }
+            else -> bridge.settingsEvent(launchPayload.instanceId, action, target)
+        }
     }
 }
 

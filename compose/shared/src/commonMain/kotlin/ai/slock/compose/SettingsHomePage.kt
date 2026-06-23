@@ -6005,7 +6005,7 @@ private fun appShellSettingsHomePayload(
             )
     )
 
-private fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
+internal fun ScreenLoadState<AccountSettingsSnapshot>.toAccountPayload(
     session: StoredAuthSession?,
     actionState: ai.slock.compose.data.SharedSettingsActionState? = null
 ): KuiklySettingsAccountPayload {
@@ -6096,7 +6096,7 @@ private fun appShellAccountPayload(session: StoredAuthSession?): KuiklySettingsA
     )
 }
 
-private fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
+internal fun ScreenLoadState<SharedSettingsStorageSnapshot>.toStoragePayload(
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
     refreshing: Boolean
 ): KuiklySettingsStoragePayload {
@@ -6154,7 +6154,7 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
         else -> SlockLucideIconName.Archive
     }
 
-private fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
+internal fun ScreenLoadState<SettingsBillingSnapshot>.toBillingPayload(
     session: StoredAuthSession?,
     timeContext: SlockTimeContext?
 ): KuiklySettingsBillingPayload {

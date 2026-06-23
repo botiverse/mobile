@@ -1,19 +1,9 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
-import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
-import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
-import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
-import ai.slock.compose.data.KeyValueLocalePreferenceStore
-import ai.slock.compose.data.KeyValueRecompositionProfilerPreferenceStore
-import ai.slock.compose.data.KuiklySlockNetworkClient
-import ai.slock.compose.data.PersistentChatLayoutPreferenceRepository
-import ai.slock.compose.data.PersistentLocaleRepository
-import ai.slock.compose.data.PersistentRecompositionProfilerPreferenceRepository
-import ai.slock.compose.data.RealSettingsRepository
 import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.SettingsComputerAgentSnapshot
 import ai.slock.compose.data.SettingsComputerDetailSnapshot
@@ -21,30 +11,23 @@ import ai.slock.compose.data.SettingsComputerRenameRequest
 import ai.slock.compose.data.SettingsComputerSnapshot
 import ai.slock.compose.data.SettingsComputerWorkspaceSnapshot
 import ai.slock.compose.data.SettingsComputersSnapshot
-import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.data.SharedSettingsActionState
-import ai.slock.compose.data.SharedSettingsDataSource
-import ai.slock.compose.data.SharedSettingsEffect
+import ai.slock.compose.data.SharedSettingsDestination
 import ai.slock.compose.data.SharedSettingsIntent
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsViewModel
-import ai.slock.compose.data.SlockComputersApiClient
-import ai.slock.compose.data.SlockComputersNetworkApi
-import ai.slock.compose.data.SlockSharedStoreRegistry
-import ai.slock.compose.data.kuiklySharedPreferenceStore
+import ai.slock.compose.data.isRefreshing
 import ai.slock.compose.SlockColor
 import ai.slock.compose.SlockType
 import ai.slock.compose.SlockLucideIconName
 import ai.slock.compose.SlockLucideIcon
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.SlockTimeFormat24Hour
-import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
@@ -166,16 +149,35 @@ internal data class KuiklySettingsAgentItem(
 private fun SettingsComputersScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload = rememberComputersPayload(
+    val launchPayload = rememberComputersPayload(
         pager.pageData.params.optString("payload"),
         pager.pageData.params.toString(),
         pager.pageData.params.optString("instanceId")
     )
-    LaunchedEffect(payload) {
-        bridge.log("settings_computers_render instanceId=${payload.instanceId} computers=${payload.computers.size}")
+    val timeContext = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.settingsStandaloneTimeContext()
     }
-    SettingsComputersContent(payload) { action, itemId ->
-        bridge.settingsEvent(payload.instanceId, action, itemId)
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-computers") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(Unit) {
+        bridge.log("settings_computers_open instanceId=${launchPayload.instanceId}")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Computers))
+    }
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    SettingsComputersContent(
+        settingsState.computers.toComputersPayload(
+            refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),
+            timeContext = timeContext
+        )
+    ) { action, itemId ->
+        when (action) {
+            "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { pager.openSettingsComputerDetailPage(it, timeContext) }
+            else -> bridge.settingsEvent(launchPayload.instanceId, action, itemId)
+        }
     }
 }
 
@@ -202,14 +204,7 @@ private fun SettingsComputerDetailScreen() {
         bridge.log("settings_computer_detail_open instanceId=${launchPayload.instanceId} computerId=$computerId")
         settingsViewModel.dispatch(SharedSettingsIntent.OpenComputer(computerId))
     }
-    LaunchedEffect(settingsState.effect) {
-        val effect = settingsState.effect ?: return@LaunchedEffect
-        when (effect) {
-            is SharedSettingsEffect.OpenUrl -> environment.settingsCapabilities.openUrl(effect.url)
-            else -> Unit
-        }
-        settingsViewModel.dispatch(SharedSettingsIntent.ConsumeEffect)
-    }
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
     SettingsComputerDetailRouteShell(
         title = settingsState.computerDetail.currentComputerTitle(),
         onBack = { pager.closeSettingsComputerDetailPage() }
@@ -252,72 +247,6 @@ private fun rememberComputerDetailPayload(
     androidx.compose.runtime.remember(payload, fallbackPageData, instanceId) {
         parseSettingsComputerDetailPayload(payload, fallbackPageData, instanceId)
     }
-
-private data class StandaloneSettingsEnvironment(
-    val dataSource: SharedSettingsDataSource,
-    val settingsCapabilities: BridgeSettingsPlatformCapabilities
-)
-
-@Composable
-private fun rememberStandaloneSettingsEnvironment(
-    pager: Pager,
-    bridge: BridgeModule
-): StandaloneSettingsEnvironment {
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
-    val networkClient =
-        remember(authStore, pager) {
-            KuiklySlockNetworkClient(
-                sessionStore = authStore,
-                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
-                warningLogger = { message -> bridge.log("settings_standalone_network $message") }
-            )
-        }
-    val computersApiClient =
-        remember(networkClient) {
-            SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
-        }
-    val scope = rememberCoroutineScope()
-    val computersStore =
-        remember(computersApiClient, scope) {
-            SharedComputersStore(
-                computersApiClient = computersApiClient,
-                scope = scope,
-                logger = { message -> bridge.log("settings_standalone_$message") }
-            )
-        }
-    val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
-    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
-    val dataSource =
-        remember(authStore, networkClient, computersStore, sharedPreferenceStore, settingsCapabilities) {
-            SharedSettingsDataSource(
-                sessionStore = authStore,
-                settingsRepository =
-                    RealSettingsRepository(
-                        sessionStore = authStore,
-                        networkClient = networkClient,
-                        logger = { message -> bridge.log("settings_standalone_repository $message") },
-                        warningLogger = { message -> bridge.log("settings_standalone_repository_warning $message") }
-                    ),
-                computersSource = computersStore,
-                localeRepository = PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore)),
-                chatLayoutPreferenceRepository =
-                    PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore)),
-                recompositionProfilerPreferenceRepository =
-                    PersistentRecompositionProfilerPreferenceRepository(
-                        KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
-                    ),
-                platformCapabilities = settingsCapabilities,
-                diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
-            )
-        }
-    return remember(dataSource, settingsCapabilities) {
-        StandaloneSettingsEnvironment(
-            dataSource = dataSource,
-            settingsCapabilities = settingsCapabilities
-        )
-    }
-}
 
 @Composable
 private fun SettingsComputerDetailRouteShell(
@@ -759,7 +688,7 @@ private fun SettingsComputerAgentSnapshot.toAgentItem(): KuiklySettingsAgentItem
     )
 }
 
-private fun JSONObject.settingsStandaloneTimeContext(): SlockTimeContext? {
+internal fun JSONObject.settingsStandaloneTimeContext(): SlockTimeContext? {
     val offset = optString("localOffsetMinutes").toIntOrNull() ?: return null
     val today = optString("todayEpochDay").toLongOrNull()
     val now = optString("nowEpochMillis").toLongOrNull()

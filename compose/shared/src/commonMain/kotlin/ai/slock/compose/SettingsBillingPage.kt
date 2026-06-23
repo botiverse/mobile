@@ -3,8 +3,13 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalCard
+import ai.slock.compose.data.SharedSettingsDestination
+import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsViewModel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -34,6 +39,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
+import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.serialization.Serializable
 
 const val SETTINGS_BILLING_PAGE = "compose_settings_billing"
@@ -200,25 +206,35 @@ internal val settingsBillingSmokePayload =
 private fun SettingsBillingScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = Utils.bridgeModule(pager.pagerId)
-    val payload =
+    val launchPayload =
         rememberBillingPayload(
             pager.pageData.params.optString("payload"),
             pager.pageData.params.toString(),
             pager.pageData.params.optString("instanceId")
         )
-    LaunchedEffect(payload) {
-        bridge.log(
-            "settings_billing_render instanceId=${payload.instanceId} status=${payload.status} plans=${payload.plans.size}"
-        )
+    val timeContext = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.settingsStandaloneTimeContext()
     }
+    val environment = rememberStandaloneSettingsEnvironment(pager, bridge)
+    val settingsViewModel: SharedSettingsViewModel =
+        viewModel(key = "standalone-settings-billing") {
+            SharedSettingsViewModel(environment.dataSource)
+        }
+    val settingsState by settingsViewModel.state.collectAsState()
+    LaunchedEffect(Unit) {
+        bridge.log("settings_billing_open instanceId=${launchPayload.instanceId}")
+        settingsViewModel.dispatch(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Billing))
+    }
+    StandaloneSettingsEffectHandler(pager, environment, settingsState, settingsViewModel::dispatch)
+    val payload = settingsState.billing.toBillingPayload(session = null, timeContext = timeContext)
     SettingsBillingContent(payload) { action, planId ->
         when (action) {
-            "comparePlans" -> bridge.openUrl(planId ?: payload.comparePlansUrl)
+            "comparePlans" -> environment.settingsCapabilities.openUrl(planId ?: payload.comparePlansUrl)
             "portal" -> {
                 bridge.toast("Billing portal is not yet available on mobile. Opening in browser.")
-                bridge.openUrl("https://raft.build/settings/billing")
+                environment.settingsCapabilities.openUrl("https://raft.build/settings/billing")
             }
-            else -> bridge.settingsEvent(payload.instanceId, action, planId)
+            else -> bridge.settingsEvent(launchPayload.instanceId, action, planId)
         }
     }
 }
