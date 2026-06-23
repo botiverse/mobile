@@ -959,6 +959,9 @@ class ThreadPayloadTest {
         val parentPayload = parsedPayload.parentMessageContextLoadingPayload("dm-parent-1")
 
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
+        assertEquals("previous", replyPayload.parentNavigationHint)
+        assertEquals("previous", launchPayload.parentNavigationHint)
+        assertEquals("previous", parsedPayload.parentNavigationHint)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
         assertEquals("dm-agent-1", parsedPayload.parentChannelId)
         assertEquals("dm-parent-1", parsedPayload.parentMessageId)
@@ -998,6 +1001,8 @@ class ThreadPayloadTest {
         assertEquals(null, payload.originPreview)
         assertEquals("message-1", payload.originParentMessageId)
         assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
+        assertEquals(null, payload.parentNavigationHint)
+        assertEquals(null, payload.toWireThreadLaunchPayload().parentNavigationHint)
         assertEquals("loading", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)

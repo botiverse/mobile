@@ -1152,6 +1152,7 @@ internal class SharedThreadDataSource(
                 parentChannelId = parentChannelId,
                 parentMessageId = action.parentMessageId?.value ?: parentMessage.id,
                 parentSurfaceKind = parentSurfaceKind,
+                parentNavigationHint = basePayload.parentNavigationHint,
                 navigationLabel = "Close",
                 selectedTab = "chat",
                 showModeTabs = false,
