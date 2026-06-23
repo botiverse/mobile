@@ -6,6 +6,7 @@ import ai.slock.compose.KuiklyThreadMessageCommentRef
 import ai.slock.compose.KuiklyThreadMessageItem
 import ai.slock.compose.KuiklyThreadReactionItem
 import ai.slock.compose.KuiklyThreadScreenPayload
+import ai.slock.compose.KuiklyThreadSurfaceKind
 import ai.slock.compose.SharedThreadComposerAttachment
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.io.encoding.Base64
@@ -199,7 +200,10 @@ internal fun buildSharedThreadPayloadFromMessagesPage(
     session: StoredAuthSession?
 ): KuiklyThreadScreenPayload {
     val currentUserId = session?.user?.id
-    val messages = page.messages.map { it.toMessageItem(currentUserId) }
+    val messages =
+        page.messages
+            .filter { it.belongsToBasePayloadThread(basePayload) }
+            .map { it.toMessageItem(currentUserId) }
     return basePayload.copy(
         status = if (messages.isEmpty()) "empty" else "content",
         messages = messages,
@@ -216,6 +220,7 @@ internal fun appendSharedThreadSentMessageFromPage(
 ): KuiklyThreadScreenPayload {
     val sent =
         page.messages
+            .filter { it.belongsToBasePayloadThread(basePayload) }
             .map { it.toMessageItem(session?.user?.id) }
             .filterNot { it.id in basePayload.messages.map { message -> message.id }.toSet() }
 
@@ -268,6 +273,18 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         attachments = attachments.mapIndexed { i, a -> a.toAttachmentItem(i) },
         commentRef = commentRef?.toMessageCommentRef()
     )
+}
+
+private fun WireMessage.belongsToBasePayloadThread(basePayload: KuiklyThreadScreenPayload): Boolean {
+    if (basePayload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return true
+    val selectedThreadId =
+        basePayload.streamChannelId?.takeIf { it.isNotBlank() }
+            ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+            ?: return true
+    val messageChannelId = channelId?.takeIf { it.isNotBlank() }
+    val messageThreadId = threadId?.takeIf { it.isNotBlank() }
+    if (messageChannelId == null && messageThreadId == null) return true
+    return messageChannelId == selectedThreadId || messageThreadId == selectedThreadId
 }
 
 private fun firstNonBlank(vararg values: String?): String? =
