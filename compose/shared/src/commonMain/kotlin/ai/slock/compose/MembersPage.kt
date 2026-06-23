@@ -8,6 +8,7 @@ import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarDefaultKey
 import ai.slock.compose.PixelAvatarPickerKeys
+import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentCreatedSummary
@@ -3604,21 +3605,11 @@ private fun MembersAgentActivityTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MembersDetailSection(title = "ACTIVITY", modifier = modifier, framed = false) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = member.membersResolvedAgentStatus(detail?.summary?.status, detail?.summary?.activity)?.label
-                    ?: member.detailStatusLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+    MembersDetailSection(
+        title = "ACTIVITY DIAGNOSTICS",
+        modifier = modifier,
+        framed = false,
+        trailingContent = {
             SlockBrutalActionButton(
                 label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy Diagnostic Info",
                 leadingIcon = SlockLucideIconName.Clipboard,
@@ -3627,6 +3618,13 @@ private fun MembersAgentActivityTab(
                 onClick = onCopyDiagnostics
             )
         }
+    ) {
+        // #63 React parity: wrap the activity list in a `SlockBrutalCard` so
+        // the visible list surface matches the brutal bordered box with
+        // right + bottom shadow used in React's `AgentDetailPanel.tsx`
+        // activity section. The previous flat layout (no border, no shadow)
+        // contributed to the 12.66% pixel mismatch on
+        // `screens.members.agent-detail.activity`.
         val rows =
             remember(detail?.agentId, detail?.activity) {
                 detail?.activity.orEmpty()
@@ -3667,20 +3665,26 @@ private fun MembersAgentActivityTab(
                     listState.scrollToItem(rows.lastIndex)
                 }
             }
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 520.dp)
-                    .nestedScroll(
-                        scrollUp = NestedScrollMode.SELF_FIRST,
-                        scrollDown = NestedScrollMode.SELF_FIRST
-                    ),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
+            SlockBrutalCard(
+                shadowOffset = 4.dp,
+                contentPadding = 0.dp,
+                verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
-                items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 220.dp, max = 520.dp)
+                        .nestedScroll(
+                            scrollUp = NestedScrollMode.SELF_FIRST,
+                            scrollDown = NestedScrollMode.SELF_FIRST
+                        ),
+                    verticalArrangement = Arrangement.spacedBy(0.dp),
+                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
+                ) {
+                    items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
+                        MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
+                    }
                 }
             }
         }
@@ -3749,21 +3753,20 @@ private fun MembersAgentActivityRow(
                 )
             }
             if (displayBody.isNotBlank()) {
-                if (activity.refTextEnabled) {
-                    SlockMarkdownBody(
-                        body = displayBody,
-                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        onOpenUrl = onOpenUrl,
-                    )
-                } else {
-                    Text(
-                        text = displayBody,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
-                        color = SlockColor.TextMutedGray,
-                        maxLines = if (expanded) 12 else 3,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                // #63 React parity + owner directive (artin 06-23 16:38):
+                // '运行信息的数据不需要接入 markdown 的，就纯文本就好' — runtime /
+                // activity body is always plain Text, never SlockMarkdownBody.
+                // The previous `if (activity.refTextEnabled)` markdown branch
+                // was contributing to the visual mismatch because React renders
+                // the same field as plain text, but the KMP markdown path
+                // produced slightly different line spacing and link styling.
+                Text(
+                    text = displayBody,
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = if (expanded) 12 else 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             if (longBody) {
                 Text(

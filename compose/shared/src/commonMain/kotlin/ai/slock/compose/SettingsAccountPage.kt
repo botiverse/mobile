@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.GitHubIconDataUri
 import ai.slock.compose.GoogleIconDataUri
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.SlockCachedImage
@@ -395,21 +396,13 @@ private fun SettingsProfileSaveButton(text: String, enabled: Boolean = true, onC
 }
 
 @Composable
-private fun SettingsAccountHardShadowCard(content: @Composable () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(end = 3.dp, bottom = 3.dp)) {
-        Box(Modifier.matchParentSize().offset(x = 3.dp, y = 3.dp).background(SlockColor.ShadowBlack))
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            content()
-        }
-    }
+private fun SettingsAccountHardShadowCard(content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit) {
+    SlockBrutalCard(
+        shadowOffset = 3.dp,
+        contentPadding = 16.dp,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        content = content
+    )
 }
 
 @Composable

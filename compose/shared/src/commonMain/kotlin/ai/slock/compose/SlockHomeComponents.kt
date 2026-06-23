@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalPanel
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.resources.MR
@@ -1508,25 +1509,13 @@ private fun HardShadowPanel(
     maxWidth: Dp,
     content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    Box(
-        modifier = modifier
-            .padding(end = HomePanelShadowOffset, bottom = HomePanelShadowOffset)
-            .widthIn(min = minWidth, max = maxWidth)
-    ) {
-        Box(
-            Modifier
-                .matchParentSize()
-                .offset(x = HomePanelShadowOffset, y = HomePanelShadowOffset)
-                .background(SlockColor.ShadowBlack)
-        )
-        Column(
-            modifier = Modifier
-                .widthIn(min = minWidth, max = maxWidth)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            content = content
-        )
-    }
+    SlockBrutalPanel(
+        modifier = modifier,
+        minWidth = minWidth,
+        maxWidth = maxWidth,
+        shadowOffset = HomePanelShadowOffset,
+        content = content
+    )
 }
 
 @Composable

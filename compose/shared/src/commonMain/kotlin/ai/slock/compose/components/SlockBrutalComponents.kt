@@ -814,20 +814,34 @@ internal fun SlockBrutalListShell(
     shadowOffset: Dp = 4.dp,
     content: LazyListScope.() -> Unit
 ) {
+    // Brutal-shadow pattern: outer Box reserves shadowOffset extra space on
+    // right + bottom via padding; shadow Box inside is matchParentSize() +
+    // offset(shadowOffset) so the dark slab peeks out uniformly. Foreground
+    // LazyColumn fills the non-shadow area with bordered SurfaceWhite.
+    // Mirrors the proven SlockBrutalCard pattern (SlockBrutalCard.kt) and
+    // fixes the earlier broken `padding(end, bottom).background(ShadowBlack)`
+    // pattern that did not actually reserve outer space for the shadow to
+    // peek out. (Visual diff evidence:
+    // `visual-testing-results/diff/react__android/components.channel.members.panel.side-by-side.png`
+    // showed 81.18% pixel mismatch with a flat inner list box in Android.)
     Box(
         modifier =
             modifier
                 .fillMaxWidth()
-                .height(height)
+                .height(height + shadowOffset)
                 .padding(end = shadowOffset, bottom = shadowOffset)
-                .background(SlockColor.ShadowBlack)
     ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(x = shadowOffset, y = shadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
         LazyColumn(
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .height(height)
-                    .padding(end = shadowOffset, bottom = shadowOffset)
                     .background(SlockColor.SurfaceWhite)
                     .border(SlockStroke.Default, SlockColor.BorderBlack),
             verticalArrangement = Arrangement.spacedBy(0.dp),

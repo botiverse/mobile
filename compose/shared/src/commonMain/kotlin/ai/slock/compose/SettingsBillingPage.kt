@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalCard
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -640,18 +641,11 @@ private fun SettingsBillingStatusPanel(title: String) {
 }
 
 @Composable
-private fun HardShadowCard(content: @Composable () -> Unit) {
-    Box(modifier = Modifier.fillMaxWidth().padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
-        Column(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
-                    .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            content()
-        }
-    }
+private fun HardShadowCard(content: @Composable com.tencent.kuikly.compose.foundation.layout.ColumnScope.() -> Unit) {
+    SlockBrutalCard(
+        shadowOffset = 2.dp,
+        contentPadding = 14.dp,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content
+    )
 }
