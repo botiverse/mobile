@@ -151,6 +151,8 @@ import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.RealSavedRepository
 import ai.slock.compose.data.RealSearchRepository
 import ai.slock.compose.data.RealSettingsRepository
+import ai.slock.compose.data.SettingsRepository
+import ai.slock.compose.data.SharedMembersDataSource
 import ai.slock.compose.data.SearchIsoBounds
 import ai.slock.compose.data.SearchSort
 import ai.slock.compose.data.SearchSenderFilterItem
@@ -1365,17 +1367,20 @@ private fun SlockAppShellContent() {
     var notificationPreferenceSnapshot by remember {
         mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
     }
+    val settingsRepository =
+        remember(appShellNetworkClient) {
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                logger = { message -> bridge.log("shared_settings_repository $message") },
+                warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
+            )
+        }
     val settingsDataSource =
         remember(appShellComputersStore) {
             SharedSettingsDataSource(
                 sessionStore = authStore,
-                settingsRepository =
-                    RealSettingsRepository(
-                        sessionStore = authStore,
-                        networkClient = appShellNetworkClient,
-                        logger = { message -> bridge.log("shared_settings_repository $message") },
-                        warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
-                    ),
+                settingsRepository = settingsRepository,
                 computersSource = appShellComputersStore,
                 notificationPreferenceRepository = notificationPreferenceRepository,
                 localeRepository = localeRepository,
@@ -2268,6 +2273,7 @@ private fun SlockAppShellContent() {
                             bridge = bridge,
                             authStore = authStore,
                             memberRepository = memberRepository,
+                            settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
                             membersRefreshKey = membersListRefreshKey,
@@ -3977,7 +3983,13 @@ private fun SettingsPushStatusCard(
         )
         SettingsFormDivider()
         SlockBrutalActionButton(
-            label = actionState.statusFor(MOBILE_ACTION_SETTINGS, "Manage notifications"),
+            // task #90: Don't use actionState.statusFor here — that
+            // helper would render "Saved" on success completion of the
+            // openNotificationSettings action, which is semantically wrong
+            // for a "open system settings" button. "Manage notifications"
+            // is the persistent label; in-progress is signaled via
+            // `enabled` below.
+            label = "Manage notifications",
             onClick = onSettings,
             enabled = snapshot.notificationSettings.available && actionState?.inProgress != true,
             leadingIcon = SlockLucideIconName.Settings,
@@ -8080,6 +8092,7 @@ private fun SharedMembersScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     authStore: SlockAuthSessionStore,
     memberRepository: MemberRepository,
+    settingsRepository: SettingsRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
     membersRefreshKey: Int,
@@ -8155,6 +8168,75 @@ private fun SharedMembersScreen(
                     computersStore.dispatch(SharedComputersIntent.EnsureComputerPicker(serverId))
                 }
             }
+            // task #79: wire Settings → Members humans "+" invite flow.
+            // Mirror the MembersPage.kt path: build a SharedMembersDataSource
+            // on the fly from the host memberRepository + settingsRepository,
+            // then expose loadJoinLinks/ensureJoinLink/sendInvite to the
+            // dialog via MembersRouteContent invite params.
+            val settingsMembersDataSource = remember(memberRepository, settingsRepository, serverId) {
+                SharedMembersDataSource(
+                    memberRepository = memberRepository,
+                    settingsRepository = settingsRepository
+                )
+            }
+            val inviteScope = rememberCoroutineScope()
+            var inviteJoinLinkLoading by remember { mutableStateOf(false) }
+            var inviteJoinLinkUrl by remember { mutableStateOf<String?>(null) }
+            var inviteJoinLinkCopied by remember { mutableStateOf(false) }
+            fun loadInviteJoinLink() {
+                if (serverId.isBlank() || inviteJoinLinkLoading) return
+                inviteJoinLinkLoading = true
+                inviteScope.launch {
+                    val listed = settingsMembersDataSource.loadJoinLinks(serverId)
+                    val existing = (listed as? DataResult.Content)?.data.orEmpty().firstOrNull()
+                    val result = if (existing != null) {
+                        DataResult.Content(existing)
+                    } else {
+                        settingsMembersDataSource.ensureJoinLink(serverId)
+                    }
+                    inviteJoinLinkLoading = false
+                    when (result) {
+                        is DataResult.Content -> inviteJoinLinkUrl = result.data.url
+                        is DataResult.NoPermission ->
+                            bridge.toast("You do not have permission to manage invites.")
+                        is DataResult.Error ->
+                            bridge.toast("Failed to load join link: ${result.error.code}")
+                        is DataResult.Empty -> Unit
+                    }
+                }
+            }
+            val inviteHumanSubmit: (suspend (List<String>) -> DataResult<Unit>)? =
+                remember(settingsMembersDataSource, serverId) {
+                    { emails ->
+                        if (serverId.isBlank()) {
+                            DataResult.Error(ScreenError(code = "server_id_missing", retryable = false))
+                        } else {
+                            val results = emails.map { email ->
+                                settingsMembersDataSource.sendInvite(serverId, email.trim())
+                            }
+                            when {
+                                results.isEmpty() ->
+                                    DataResult.Empty(EmptyReason.NoSettingsAvailable)
+                                results.all { it is DataResult.Content } ->
+                                    DataResult.Content(Unit)
+                                else -> {
+                                    val firstNoPermission = results.firstNotNullOfOrNull {
+                                        (it as? DataResult.NoPermission)?.blocker?.code
+                                    }
+                                    val firstError = results.firstNotNullOfOrNull {
+                                        (it as? DataResult.Error)?.error?.code
+                                    }
+                                    DataResult.Error(
+                                        ScreenError(
+                                            code = firstNoPermission ?: firstError ?: "invite_send_failed",
+                                            retryable = true
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             val createAgentSubmit: suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit> = { submit ->
                 val result = createAgentCoordinator.createAgent(submit.toCreateAgentRequest())
                 if (result is DataResult.Content) {
@@ -8187,7 +8269,7 @@ private fun SharedMembersScreen(
             MembersRouteContent(
                 payload = membersPayload,
                 refreshing = refreshing,
-                onAddHuman = { bridge.toast("Add member is not available yet") },
+                onAddHuman = { loadInviteJoinLink() },
                 onOpenMemberDetail = { member ->
                     val pageData = membersPayload.toMemberDetailPageData(member.id.value)
                     if (pageData == null) {
@@ -8204,6 +8286,18 @@ private fun SharedMembersScreen(
                 createAgentMachinesLoading = computersSlice.status == SharedComputersLoadStatus.InFlight,
                 createAgentCurrentAgentCount = current.members.count { it.kind == MemberKind.Agent },
                 createAgentLoadMachines = loadMachines,
+                inviteHumanSubmit = inviteHumanSubmit,
+                inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
+                inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
+                inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
+                inviteHumanJoinLinkCopy = {
+                    val url = inviteJoinLinkUrl
+                    if (url != null) {
+                        bridge.copyToPasteboard(url)
+                        inviteJoinLinkCopied = true
+                    }
+                },
+                inviteHumanLoadJoinLink = { loadInviteJoinLink() },
                 bottomContentPadding = bottomContentPadding
             )
         }
