@@ -8460,7 +8460,8 @@ private fun SharedMembersScreen(
 internal fun buildHostMembersPayload(
     server: ServerSummary,
     members: List<MemberProfile>,
-    timeContext: SlockTimeContext?
+    timeContext: SlockTimeContext?,
+    agentPanelTabOrder: List<String> = emptyList()
 ): KuiklyMembersPayload =
     KuiklyMembersPayload(
         instanceId = server.id.value,
@@ -8470,6 +8471,7 @@ internal fun buildHostMembersPayload(
         todayEpochDay = timeContext?.todayEpochDay,
         nowEpochMillis = timeContext?.nowEpochMillis,
         timeFormat = timeContext?.timeFormat ?: SlockTimeFormat24Hour,
+        agentPanelTabOrder = agentPanelTabOrder,
         // Product mapping for now: create-agent follows server admin/settings permission
         // until the API exposes a dedicated capability.
         canCreateAgents = server.permissions.canManageSettings

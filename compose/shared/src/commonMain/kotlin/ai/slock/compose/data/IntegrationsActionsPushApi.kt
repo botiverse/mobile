@@ -155,12 +155,7 @@ internal class SlockIntegrationsActionsPushApiClient(
         }
 
     suspend fun agentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> =
-        transport.agentIntegrations(agentId).mapApiBody(
-            "agent_integrations_contract_mismatch",
-            ListSerializer(IntegrationOverviewItemDto.serializer())
-        ) { wire ->
-            AgentIntegrationsPage(itemCount = wire.size, firstClientName = wire.firstOrNull()?.clientName)
-        }
+        transport.agentIntegrations(agentId).mapAgentIntegrations(agentId)
 
     suspend fun executeAction(messageId: MessageId, body: String): DataResult<ActionCardResult> =
         transport.executeAction(messageId, body).mapActionCard("action_execute_contract_mismatch")
@@ -214,7 +209,17 @@ internal data class IntegrationClientCreateResult(val clientId: String, val clie
 internal data class IntegrationApproveResult(val requestId: String, val grantId: String?)
 internal data class IntegrationRequestResult(val requestId: String, val status: String)
 internal data class IntegrationGrantResult(val grantId: String, val status: String?, val revokedAt: String?)
-internal data class AgentIntegrationsPage(val itemCount: Int, val firstClientName: String?)
+internal data class AgentIntegrationsPage(
+    val agentId: MemberId,
+    val items: List<AgentAppLoginItem>
+) {
+    fun toSnapshot(): AgentAppLoginSnapshot =
+        AgentAppLoginSnapshot(
+            agentId = agentId,
+            items = items,
+            loadState = if (items.isEmpty()) AgentAppLoginLoadState.Empty else AgentAppLoginLoadState.Content
+        )
+}
 internal data class ActionCardResult(val messageId: String, val metadataPresent: Boolean)
 internal data class ActionEventResult(val ok: Boolean)
 internal data class PushVapidKey(val publicKey: String)
@@ -252,6 +257,26 @@ private fun HomeNetworkResponse.mapPushCommand(contractCode: String): DataResult
         if (!wire.ok) null else PushCommandResult(ok = true)
     }
 
+private fun HomeNetworkResponse.mapAgentIntegrations(agentId: MemberId): DataResult<AgentIntegrationsPage> {
+    val contractCode = "agent_integrations_contract_mismatch"
+    if (!isSuccessful) {
+        return if (code == 403) {
+            DataResult.NoPermission(PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_integrations"))
+        } else {
+            DataResult.Error(ScreenError(code = contractCode, retryable = code >= 500))
+        }
+    }
+    return mapApiBody(
+        contractCode,
+        ListSerializer(IntegrationOverviewItemDto.serializer())
+    ) { wire ->
+        AgentIntegrationsPage(
+            agentId = agentId,
+            items = wire.map { it.toAgentAppLoginItem() ?: return@mapApiBody null }
+        )
+    }
+}
+
 /**
  * Action event endpoints answer with HTTP 204 / empty body on success. An
  * empty body — or an empty JSON object — passes; any other shape is a contract
@@ -281,9 +306,64 @@ private fun HomeNetworkResponse.mapActionEvent(contractCode: String): DataResult
 
 @Serializable
 private data class IntegrationOverviewItemDto(
+    val id: String? = null,
+    val type: String? = null,
+    val serverId: String? = null,
+    val agentId: String? = null,
+    val agentName: String? = null,
+    val agentDisplayName: String? = null,
     val clientId: String? = null,
+    val clientKey: String? = null,
     val clientName: String? = null,
+    val clientDescription: String? = null,
+    val clientHomepageUrl: String? = null,
+    val clientReturnUrl: String? = null,
+    val clientAgentManifestUrl: String? = null,
+    val scopes: List<String> = emptyList(),
+    val remember: Boolean = false,
+    val createdAt: String? = null,
+    val resolvedAt: String? = null,
+    val resolvedByUserId: String? = null,
+    val revokedAt: String? = null,
 )
+
+private fun IntegrationOverviewItemDto.toAgentAppLoginItem(): AgentAppLoginItem? {
+    val itemId = id.nonBlankOrNull()
+        ?: clientId.nonBlankOrNull()
+        ?: clientKey.nonBlankOrNull()
+        ?: return null
+    val client = clientId.nonBlankOrNull()
+        ?: clientKey.nonBlankOrNull()
+        ?: return null
+    val name = clientName.nonBlankOrNull()
+        ?: clientKey.nonBlankOrNull()
+        ?: client
+    return AgentAppLoginItem(
+        id = itemId,
+        type = type.toAgentAppLoginType(),
+        clientId = client,
+        clientKey = clientKey.nonBlankOrNull(),
+        clientName = name,
+        clientDescription = clientDescription.nonBlankOrNull(),
+        clientHomepageUrl = clientHomepageUrl.nonBlankOrNull(),
+        clientReturnUrl = clientReturnUrl.nonBlankOrNull(),
+        clientAgentManifestUrl = clientAgentManifestUrl.nonBlankOrNull(),
+        scopes = scopes.filter { it.isNotBlank() },
+        remember = remember,
+        createdAt = createdAt.nonBlankOrNull(),
+        resolvedAt = resolvedAt.nonBlankOrNull(),
+        resolvedByUserId = resolvedByUserId.nonBlankOrNull(),
+        revokedAt = revokedAt.nonBlankOrNull()
+    )
+}
+
+private fun String?.toAgentAppLoginType(): AgentAppLoginType =
+    when (this?.trim()?.lowercase()) {
+        "pending" -> AgentAppLoginType.Pending
+        else -> AgentAppLoginType.Active
+    }
+
+private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
 
 @Serializable
 private data class IntegrationClientDto(

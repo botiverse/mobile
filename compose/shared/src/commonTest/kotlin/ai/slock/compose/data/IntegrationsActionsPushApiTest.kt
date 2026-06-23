@@ -29,7 +29,18 @@ class IntegrationsActionsPushApiTest {
         )
         assertEquals("denied", assertIs<DataResult.Content<IntegrationRequestResult>>(client.denyIntegrationRequest("request-1")).data.status)
         assertEquals("grant-1", assertIs<DataResult.Content<IntegrationGrantResult>>(client.revokeIntegrationGrant("grant-1")).data.grantId)
-        assertEquals(1, assertIs<DataResult.Content<AgentIntegrationsPage>>(client.agentIntegrations(MemberId("agent-1"))).data.itemCount)
+        val agentIntegrations = assertIs<DataResult.Content<AgentIntegrationsPage>>(client.agentIntegrations(MemberId("agent-1"))).data
+        assertEquals("agent-1", agentIntegrations.agentId.value)
+        assertEquals(1, agentIntegrations.items.size)
+        assertEquals(AgentAppLoginType.Active, agentIntegrations.items.first().type)
+        assertEquals("grant-1", agentIntegrations.items.first().id)
+        assertEquals("client-1", agentIntegrations.items.first().clientId)
+        assertEquals("Linear", agentIntegrations.items.first().clientName)
+        assertEquals("Project tracker", agentIntegrations.items.first().clientDescription)
+        assertEquals("https://linear.app", agentIntegrations.items.first().clientHomepageUrl)
+        assertEquals("https://linear.app/.well-known/agent.json", agentIntegrations.items.first().clientAgentManifestUrl)
+        assertEquals(listOf("messages:read", "tasks:write"), agentIntegrations.items.first().scopes)
+        assertEquals("2026-06-24T01:02:03.000Z", agentIntegrations.items.first().createdAt)
         assertEquals(
             "message-1",
             assertIs<DataResult.Content<ActionCardResult>>(
@@ -140,7 +151,30 @@ class IntegrationsActionsPushApiTest {
         private val approveBody: String = """{"request":{"id":"request-1","status":"approved"},"grantId":"grant-1"}""",
         private val denyBody: String = """{"id":"request-1","status":"denied"}""",
         private val revokeBody: String = """{"id":"grant-1","status":"revoked","revokedAt":"2026-05-22T00:00:00.000Z"}""",
-        private val agentIntegrationsBody: String = """[{"clientId":"client-1","clientName":"Linear","active":true}]""",
+        private val agentIntegrationsBody: String =
+            """
+            [{
+              "id":"grant-1",
+              "type":"active",
+              "serverId":"server-1",
+              "agentId":"agent-1",
+              "agentName":"agent-1",
+              "agentDisplayName":"Agent One",
+              "clientId":"client-1",
+              "clientKey":"linear",
+              "clientName":"Linear",
+              "clientDescription":"Project tracker",
+              "clientHomepageUrl":"https://linear.app",
+              "clientReturnUrl":"https://linear.app/callback",
+              "clientAgentManifestUrl":"https://linear.app/.well-known/agent.json",
+              "scopes":["messages:read","tasks:write"],
+              "remember":true,
+              "createdAt":"2026-06-24T01:02:03.000Z",
+              "resolvedAt":"2026-06-24T01:03:03.000Z",
+              "resolvedByUserId":"user-1",
+              "revokedAt":null
+            }]
+            """.trimIndent(),
         private val actionBody: String = """{"messageId":"message-1","metadata":{"action_state":"executed"}}""",
         private val actionEventBody: String = "",
         private val vapidBody: String = """{"publicKey":"vapid-public-key"}""",
