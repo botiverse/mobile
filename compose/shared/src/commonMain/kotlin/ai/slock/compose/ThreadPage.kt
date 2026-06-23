@@ -907,11 +907,14 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
 
 internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
     val content = (loadState as? ScreenLoadState.Content)?.data ?: return emptyMap()
-    return content.tasks.mapNotNull { task ->
+    return content.tasks.threadLinkedTasksByMessageId()
+}
+
+internal fun List<TaskSummary>.threadLinkedTasksByMessageId(): Map<String, TaskSummary> =
+    mapNotNull { task ->
         val messageId = task.messageId?.value?.trim()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
         messageId to task
     }.toMap()
-}
 
 internal fun KuiklyThreadScreenPayload.supportsChannelTasks(): Boolean =
     composer.showAsTaskToggle || showTaskOpenActions || showTaskStatusActions
@@ -1091,7 +1094,6 @@ internal data class ThreadRouteUiState(
     val thread: KuiklyThreadScreenPayload,
     val files: KuiklyThreadFilesPayload,
     val composer: KuiklyThreadComposerPayload,
-    val tasks: TasksUiState,
     val membersLoadStatus: LoadMembersStatus
 )
 
@@ -1743,14 +1745,6 @@ internal fun SharedThreadRouteContent(
                 )
             }
         }
-    val pendingTasksState = remember { TasksUiState(ScreenLoadState.Loading) }
-    val tasksState =
-        if (tasksViewModel != null) {
-            val collectedTasksState by tasksViewModel.state.collectAsState()
-            collectedTasksState
-        } else {
-            pendingTasksState
-        }
     val memberSuggestionScopePayload =
         if (
             payload.threadComposerMentionScopeChannelId() != null ||
@@ -1901,23 +1895,16 @@ internal fun SharedThreadRouteContent(
         )
         tasksViewModel?.dispatch(SharedTasksRouteIntent.Start)
     }
-    LaunchedEffect(startedTasksJoinThreadId, taskChannelId?.value, tasksState.loadState) {
-        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
-        if (startedTasksJoinThreadId != resolvedTaskChannelId.value) {
-            return@LaunchedEffect
-        }
-        val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@LaunchedEffect
-        val resultKey = "${resolvedTaskChannelId.value}:$result:$taskCount"
-        if (lastTasksJoinResultKey == resultKey) {
-            return@LaunchedEffect
-        }
-        lastTasksJoinResultKey = resultKey
-        val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
-        bridge.log(
-            "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
-                "tasks=$taskCount durationMs=$durationMs"
-        )
-    }
+    ThreadTasksJoinResultLogger(
+        tasksViewModel = tasksViewModel,
+        taskChannelId = taskChannelId,
+        startedTasksJoinThreadId = startedTasksJoinThreadId,
+        lastTasksJoinResultKey = lastTasksJoinResultKey,
+        tasksJoinStartedAt = tasksJoinStartedAt,
+        threadRouteKey = threadRouteKey,
+        onLogged = { resultKey -> lastTasksJoinResultKey = resultKey },
+        log = { message -> bridge.log(message) }
+    )
 
     val routeFilesPayload =
         remember(payload.filesPayload, payload.instanceId) {
@@ -2022,19 +2009,17 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val routeUiState =
-        remember(renderedPayload, filesPayload, composerState, tasksState, threadState.membersLoadStatus) {
+        remember(renderedPayload, filesPayload, composerState, threadState.membersLoadStatus) {
             ThreadRouteUiState(
                 thread = renderedPayload,
                 files = filesPayload,
                 composer = composerState,
-                tasks = tasksState,
                 membersLoadStatus = threadState.membersLoadStatus
             )
         }
     val renderedThread = routeUiState.thread
     val renderedFiles = routeUiState.files
     val renderedComposer = routeUiState.composer
-    val renderedTasks = routeUiState.tasks
     var firstContentExtrasVisible by remember(threadRouteKey, renderedThread.status) {
         mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
     }
@@ -2284,24 +2269,7 @@ internal fun SharedThreadRouteContent(
         val attachment = group.images[currentIndex]
         imagePreviewState = null
         attachmentNoPreviewState = null
-        coroutineScope.launch {
-            val signedImageUrl =
-                when (val response = dataSource.attachmentUrl(attachment.id, disposition = "inline")) {
-                    is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
-                    is ThreadApiResult.Failure -> null
-                }
-            val imageUrl =
-                signedImageUrl ?: attachment.thumbnailUrl?.takeIf { it.isNotBlank() }
-            pager.openSlockFilePreviewPage(
-                attachment.toThreadAttachmentPreviewPayload(
-                    kind = "image",
-                    title = "Image preview",
-                    imageUrl = imageUrl,
-                    message = if (imageUrl == null) "Image preview is unavailable." else "",
-                    externalUrl = signedImageUrl
-                )
-            )
-        }
+        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "image"))
     }
     fun selectImagePreviewIndex(index: Int) {
         val preview = imagePreviewState ?: return
@@ -2346,24 +2314,7 @@ internal fun SharedThreadRouteContent(
             attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment = attachment)
             return
         }
-        coroutineScope.launch {
-            val result =
-                loadSharedThreadMarkdownAttachment(
-                    dataSource = dataSource,
-                    networkModule = networkModule,
-                    attachment = attachment
-                )
-            pager.openSlockFilePreviewPage(
-                attachment.toThreadAttachmentPreviewPayload(
-                    kind = if (result.body != null) "markdown" else "error",
-                    title = if (result.body != null) "Markdown preview" else "Preview unavailable",
-                    content = result.body.orEmpty(),
-                    message = result.error.orEmpty(),
-                    error = result.error,
-                    externalUrl = resolveAttachmentExternalUrl(attachment)
-                )
-            )
-        }
+        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "markdown"))
     }
     LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
         if (renderedThread.selectedTab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
@@ -2567,7 +2518,8 @@ internal fun SharedThreadRouteContent(
             filesPayload = renderedFiles,
             composerSurface = composerSurface,
             composerState = renderedComposer,
-            tasksState = renderedTasks,
+            tasksViewModel = tasksViewModel,
+            taskChannelId = taskChannelId,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
             contentExtrasVisible = firstContentExtrasVisible,
@@ -4483,12 +4435,51 @@ internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecute
     }
 
 @Composable
+private fun ThreadTasksJoinResultLogger(
+    tasksViewModel: SharedTasksViewModel?,
+    taskChannelId: ChannelId?,
+    startedTasksJoinThreadId: String?,
+    lastTasksJoinResultKey: String?,
+    tasksJoinStartedAt: TimeMark?,
+    threadRouteKey: String?,
+    onLogged: (String) -> Unit,
+    log: (String) -> Unit
+) {
+    val pendingTasksState = remember { TasksUiState(ScreenLoadState.Loading) }
+    val tasksState =
+        if (tasksViewModel != null) {
+            val collectedTasksState by tasksViewModel.state.collectAsState()
+            collectedTasksState
+        } else {
+            pendingTasksState
+        }
+    LaunchedEffect(startedTasksJoinThreadId, taskChannelId?.value, tasksState.loadState) {
+        val resolvedTaskChannelId = taskChannelId ?: return@LaunchedEffect
+        if (startedTasksJoinThreadId != resolvedTaskChannelId.value) {
+            return@LaunchedEffect
+        }
+        val (result, taskCount) = tasksState.threadTasksJoinDiagnosticsResult() ?: return@LaunchedEffect
+        val resultKey = "${resolvedTaskChannelId.value}:$result:$taskCount"
+        if (lastTasksJoinResultKey == resultKey) {
+            return@LaunchedEffect
+        }
+        onLogged(resultKey)
+        val durationMs = tasksJoinStartedAt?.elapsedNow()?.inWholeMilliseconds ?: -1L
+        log(
+            "thread_tasks_join_result threadId=${threadRouteKey.orEmpty()} result=$result " +
+                "tasks=$taskCount durationMs=$durationMs"
+        )
+    }
+}
+
+@Composable
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     filesPayload: KuiklyThreadFilesPayload,
     composerSurface: ThreadComposerSurface,
     composerState: KuiklyThreadComposerPayload,
-    tasksState: TasksUiState,
+    tasksViewModel: SharedTasksViewModel?,
+    taskChannelId: ChannelId?,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     contentExtrasVisible: Boolean,
@@ -4522,9 +4513,10 @@ private fun ThreadPageContent(
     var activeModal by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var composerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(0f) }
     val composerBottomSafeArea = slockBottomSafeAreaPadding()
-    val taskChannelId =
-        remember(payload.sourceThreadId, payload.instanceId) {
-            payload.sourceThreadId
+    val taskPanelChannelId =
+        remember(taskChannelId, payload.sourceThreadId, payload.instanceId) {
+            taskChannelId
+                ?: payload.sourceThreadId
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::ChannelId)
                 ?: ChannelId(payload.instanceId)
@@ -4585,8 +4577,8 @@ private fun ThreadPageContent(
                     }
                 )
             }
-            val linkedTasksByMessageId = remember(tasksState.loadState) {
-                tasksState.threadLinkedTasksByMessageId()
+            val linkedTasksByMessageId = remember(payload.tasks) {
+                payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageId()
             }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
@@ -4613,8 +4605,8 @@ private fun ThreadPageContent(
                         )
                     KuiklyThreadTab.Tasks ->
                         ThreadTasksTab(
-                            state = tasksState,
-                            channelId = taskChannelId,
+                            tasksViewModel = tasksViewModel,
+                            channelId = taskPanelChannelId,
                             openTaskEnabled = payload.showTaskOpenActions,
                             onOpenTask = { onThreadEvent("openTask", it, null, null) },
                             onIntent = onTasksIntent
@@ -8432,12 +8424,20 @@ private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
 
 @Composable
 private fun ThreadTasksTab(
-    state: TasksUiState,
+    tasksViewModel: SharedTasksViewModel?,
     channelId: ChannelId,
     openTaskEnabled: Boolean,
     onOpenTask: (String) -> Unit,
     onIntent: (SharedTasksRouteIntent) -> Unit
 ) {
+    val pendingTasksState = remember { TasksUiState(ScreenLoadState.Loading) }
+    val state =
+        if (tasksViewModel != null) {
+            val collectedTasksState by tasksViewModel.state.collectAsState()
+            collectedTasksState
+        } else {
+            pendingTasksState
+        }
     SharedTasksPanel(
         state = state,
         showHeader = false,
