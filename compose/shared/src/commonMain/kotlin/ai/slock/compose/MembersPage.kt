@@ -827,11 +827,9 @@ internal fun MembersPageContent() {
 private sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
-    data class Content(
+    data class Ready(
         val server: ServerSummary,
-        val member: MemberProfile,
-        val currentUserId: String?,
-        val agentDetailSeeded: Boolean = false
+        val currentUserId: String?
     ) : MemberDetailRouteState
 }
 
@@ -842,7 +840,7 @@ private class MemberDetailRouteProvider(
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore
 ) {
-    suspend fun cachedMember(memberId: String): MemberDetailRouteState.Content? {
+    suspend fun cachedContext(memberId: String): MemberDetailRouteState.Ready? {
         val selectedMemberId = memberId.trim()
         if (selectedMemberId.isBlank()) return null
         val selectedId = MemberId(selectedMemberId)
@@ -854,11 +852,9 @@ private class MemberDetailRouteProvider(
         val session = authStore.readSession() ?: return null
         val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
-        return MemberDetailRouteState.Content(
+        return MemberDetailRouteState.Ready(
             server = server,
-            member = detail.toMemberProfile(server),
-            currentUserId = session.user.id,
-            agentDetailSeeded = true
+            currentUserId = session.user.id
         )
     }
 
@@ -872,44 +868,62 @@ private class MemberDetailRouteProvider(
             return MemberDetailRouteState.Error("server_required")
         }
         val selectedId = MemberId(selectedMemberId)
+        val state = agentDetailStore.state.value
+        val hasMatchingDetail = state.agentId == selectedId && state.detail?.agentId == selectedId
+        if (!hasMatchingDetail) {
+            agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
+            agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(selectedId))
+        }
         when (val detailResult = memberRepository.getAgentDetail(DataRequestPriority.Visible, selectedId)) {
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
-                return MemberDetailRouteState.Content(
+                return MemberDetailRouteState.Ready(
                     server = server,
-                    member = detailResult.data.toMemberProfile(server),
-                    currentUserId = session.user.id,
-                    agentDetailSeeded = true
+                    currentUserId = session.user.id
                 )
             }
-            is DataResult.Empty -> return MemberDetailRouteState.Error("member_not_found")
-            is DataResult.Error -> return MemberDetailRouteState.Error(detailResult.error.code)
-            is DataResult.NoPermission -> return MemberDetailRouteState.Error(detailResult.blocker.code)
+            is DataResult.Empty -> {
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
+                return MemberDetailRouteState.Error("member_not_found")
+            }
+            is DataResult.Error -> {
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailError(selectedId, detailResult.error.code)
+                )
+                return MemberDetailRouteState.Error(detailResult.error.code)
+            }
+            is DataResult.NoPermission -> {
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailNoPermission(selectedId, detailResult.blocker.code)
+                )
+                return MemberDetailRouteState.Error(detailResult.blocker.code)
+            }
         }
     }
 
-    suspend fun loadAgentDetail(member: MemberProfile?) {
-        if (member == null || member.kind != MemberKind.Agent) {
-            agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            return
-        }
-        agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
-        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
-        when (val result = memberRepository.getAgentDetail(DataRequestPriority.Visible, member.id)) {
-            is DataResult.Content ->
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
-            is DataResult.Empty ->
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
-            is DataResult.NoPermission ->
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
-                )
-            is DataResult.Error ->
-                agentDetailStore.dispatch(
-                    SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
-                )
-        }
+    fun updateCachedMemberProfile(member: MemberProfile) {
+        val state = agentDetailStore.state.value
+        val detail = state.detail ?: return
+        if (state.agentId != member.id || detail.agentId != member.id) return
+        agentDetailStore.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                member.id,
+                detail.withMemberProfileProjection(member)
+            )
+        )
+    }
+
+    fun updateCachedLifecycleResult(action: MembersAgentLifecycleAction, agentId: MemberId) {
+        val state = agentDetailStore.state.value
+        val detail = state.detail ?: return
+        if (state.agentId != agentId || detail.agentId != agentId) return
+        agentDetailStore.dispatch(
+            SharedAgentDetailIntent.SetDetail(
+                agentId,
+                detail.withMemberDetailLifecycleResult(action)
+            )
+        )
     }
 
     suspend fun runLifecycleAction(
@@ -1050,23 +1064,26 @@ private fun MemberDetailPageContent() {
     }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
-    val agentDetailState = agentDetailStoreState.toMembersAgentDetailLoadState()
+    val selectedMemberId = remember(payload.memberId) {
+        payload.memberId.trim().takeIf { it.isNotBlank() }?.let(::MemberId)
+    }
+    val selectedAgentDetailStoreStateMatches = selectedMemberId != null && agentDetailStoreState.agentId == selectedMemberId
+    val selectedAgentDetail = agentDetailStoreState.detail?.takeIf {
+        selectedAgentDetailStoreStateMatches && it.agentId == selectedMemberId
+    }
+    val agentDetailState =
+        if (selectedAgentDetailStoreStateMatches) {
+            agentDetailStoreState.toMembersAgentDetailLoadState()
+        } else {
+            MembersAgentDetailLoadState.Loading
+        }
     val timeContext = payload.toSlockTimeContext()
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
 
-    LaunchedEffect(payload.memberId) {
-        val cached = provider.cachedMember(payload.memberId)
+    LaunchedEffect(payload.memberId, localAgentDetailRefreshKey) {
+        val cached = provider.cachedContext(payload.memberId)
         routeState = cached ?: MemberDetailRouteState.Loading
         routeState = provider.loadMember(payload.memberId)
-    }
-
-    val content = routeState as? MemberDetailRouteState.Content
-    val member = content?.member
-    LaunchedEffect(member?.id?.value, member?.kind, content?.agentDetailSeeded, localAgentDetailRefreshKey) {
-        if (content?.agentDetailSeeded == true && localAgentDetailRefreshKey == 0) {
-            return@LaunchedEffect
-        }
-        provider.loadAgentDetail(member)
     }
 
     when (val current = routeState) {
@@ -1083,91 +1100,101 @@ private fun MemberDetailPageContent() {
                 detail = current.code,
                 onBack = { provider.bridge.closePage() }
             )
-        is MemberDetailRouteState.Content -> {
-            val agentDetailActions =
-                remember(provider) {
-                    object : SharedAgentDetailActions {
-                        override suspend fun runLifecycleAction(
-                            agentId: MemberId,
-                            action: MembersAgentLifecycleAction
-                        ): DataResult<AgentLifecycleActionResult> {
-                            val result = provider.runLifecycleAction(agentId, action)
-                            if (result is DataResult.Content && result.data.success) {
-                                routeState = routeState.withMemberDetailLifecycleResult(action, agentId)
-                                localAgentDetailRefreshKey += 1
-                                if (action == MembersAgentLifecycleAction.Delete) {
-                                    provider.bridge.closePage()
-                                }
-                            }
-                            return result
-                        }
-
-                        override fun copyDiagnostics(diagnostics: String) {
-                            provider.copyDiagnostics(diagnostics)
-                        }
-
-                        override suspend fun reportIssue(diagnostics: String): Boolean {
-                            return provider.reportIssue(diagnostics)
-                        }
-
-                        override suspend fun updateAgentProfile(
-                            request: AgentProfileUpdateRequest
-                        ): DataResult<MemberProfile> {
-                            val result = provider.updateAgentProfile(request)
-                            if (result is DataResult.Content) {
-                                routeState = routeState.withMemberDetailProfile(result.data)
-                            }
-                            return result
-                        }
-                    }
+        is MemberDetailRouteState.Ready -> {
+            val member = selectedAgentDetail?.toMemberProfile(current.server)
+            if (member == null) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SlockCenteredLoading()
                 }
-            MembersDetailContent(
-                member = current.member,
-                agentDetailState = agentDetailState,
-                canViewPrivateAgentSurfaces = { _, detail ->
-                    current.server.permissions.canManageSettings ||
-                        detail?.summary?.creatorId == current.currentUserId
-                },
-                canManageAgent = { _, detail ->
-                    current.server.permissions.canManageSettings ||
-                        detail?.summary?.creatorId == current.currentUserId
-                },
-                onBack = { provider.bridge.closePage() },
-                onOpenDirectMessage = { provider.bridge.settingsEvent(payload.instanceId, "openMember", current.member.id.value) },
-                onCopyMemberId = {
-                    provider.copyMemberId(current.member)
-                },
-                onOpenUrl = { provider.bridge.openUrl(it) },
-                agentDetailActions = agentDetailActions,
-                onUpdateAgentProfile = { request ->
-                    agentDetailActions.updateAgentProfile(request)
-                },
-                onPickAgentAvatarFile = {
-                    provider.pickAgentAvatarFile()
-                },
-                onUploadAgentAvatar = { agentId, file ->
-                    val result = provider.uploadAgentAvatar(agentId, file)
-                    if (result is DataResult.Content) {
-                        routeState = routeState.withMemberDetailProfile(result.data)
+            } else {
+                val agentDetailActions =
+                    remember(provider) {
+                        object : SharedAgentDetailActions {
+                            override suspend fun runLifecycleAction(
+                                agentId: MemberId,
+                                action: MembersAgentLifecycleAction
+                            ): DataResult<AgentLifecycleActionResult> {
+                                val result = provider.runLifecycleAction(agentId, action)
+                                if (result is DataResult.Content && result.data.success) {
+                                    provider.updateCachedLifecycleResult(action, agentId)
+                                    localAgentDetailRefreshKey += 1
+                                    if (action == MembersAgentLifecycleAction.Delete) {
+                                        provider.bridge.closePage()
+                                    }
+                                }
+                                return result
+                            }
+
+                            override fun copyDiagnostics(diagnostics: String) {
+                                provider.copyDiagnostics(diagnostics)
+                            }
+
+                            override suspend fun reportIssue(diagnostics: String): Boolean {
+                                return provider.reportIssue(diagnostics)
+                            }
+
+                            override suspend fun updateAgentProfile(
+                                request: AgentProfileUpdateRequest
+                            ): DataResult<MemberProfile> {
+                                val result = provider.updateAgentProfile(request)
+                                if (result is DataResult.Content) {
+                                    provider.updateCachedMemberProfile(result.data)
+                                }
+                                return result
+                            }
+                        }
                     }
-                    result
-                },
-                onAgentLifecycleAction = { agentId, action ->
-                    agentDetailActions.runLifecycleAction(agentId, action)
-                },
-                agentWorkspaceTreeLoader = { agentId ->
-                    provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
-                },
-                agentWorkspaceChildrenLoader = { agentId, dirPath ->
-                    provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
-                },
-                onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
-                onReportAgentIssue = agentDetailActions::reportIssue,
-                onUnavailableAction = { bridge.toast(it) },
-                timeContext = timeContext,
-                sharedAgentDetailStore = provider.agentDetailStore,
-                initialAgentTab = initialAgentTab
-            )
+                MembersDetailContent(
+                    member = member,
+                    agentDetailState = agentDetailState,
+                    canViewPrivateAgentSurfaces = { _, detail ->
+                        current.server.permissions.canManageSettings ||
+                            detail?.summary?.creatorId == current.currentUserId
+                    },
+                    canManageAgent = { _, detail ->
+                        current.server.permissions.canManageSettings ||
+                            detail?.summary?.creatorId == current.currentUserId
+                    },
+                    onBack = { provider.bridge.closePage() },
+                    onOpenDirectMessage = { provider.bridge.settingsEvent(payload.instanceId, "openMember", member.id.value) },
+                    onCopyMemberId = {
+                        provider.copyMemberId(member)
+                    },
+                    onOpenUrl = { provider.bridge.openUrl(it) },
+                    agentDetailActions = agentDetailActions,
+                    onUpdateAgentProfile = { request ->
+                        agentDetailActions.updateAgentProfile(request)
+                    },
+                    onPickAgentAvatarFile = {
+                        provider.pickAgentAvatarFile()
+                    },
+                    onUploadAgentAvatar = { agentId, file ->
+                        val result = provider.uploadAgentAvatar(agentId, file)
+                        if (result is DataResult.Content) {
+                            provider.updateCachedMemberProfile(result.data)
+                        }
+                        result
+                    },
+                    onAgentLifecycleAction = { agentId, action ->
+                        agentDetailActions.runLifecycleAction(agentId, action)
+                    },
+                    agentWorkspaceTreeLoader = { agentId ->
+                        provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
+                    },
+                    agentWorkspaceChildrenLoader = { agentId, dirPath ->
+                        provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
+                    },
+                    onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
+                    onReportAgentIssue = agentDetailActions::reportIssue,
+                    onUnavailableAction = { bridge.toast(it) },
+                    timeContext = timeContext,
+                    sharedAgentDetailStore = provider.agentDetailStore,
+                    initialAgentTab = initialAgentTab
+                )
+            }
         }
     }
 }
@@ -4641,47 +4668,39 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
     )
 }
 
-private fun MemberDetailRouteState.withMemberDetailProfile(member: MemberProfile): MemberDetailRouteState {
-    val content = this as? MemberDetailRouteState.Content ?: return this
-    return if (content.member.id == member.id) {
-        content.copy(member = member)
-    } else {
-        this
-    }
+private fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfile): AgentDetailSnapshot {
+    val fallbackName = member.handle.ifBlank { member.displayName.ifBlank { member.id.value } }
+    val nextSummary =
+        (summary ?: AgentDetailSummary(id = member.id.value, name = fallbackName)).copy(
+            name = fallbackName,
+            displayName = member.displayName.ifBlank { fallbackName },
+            status = member.agentStatus?.label ?: summary?.status,
+            runtime = member.roleDescription ?: summary?.runtime,
+            avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
+        )
+    return copy(summary = nextSummary)
 }
 
-private fun MemberDetailRouteState.withMemberDetailLifecycleResult(
-    action: MembersAgentLifecycleAction,
-    agentId: MemberId
-): MemberDetailRouteState {
-    val content = this as? MemberDetailRouteState.Content ?: return this
-    if (content.member.id != agentId) return this
-    return when (action) {
-        MembersAgentLifecycleAction.Delete ->
-            MemberDetailRouteState.Error("agent_deleted")
-        MembersAgentLifecycleAction.Start,
-        MembersAgentLifecycleAction.Restart ->
-            content.copy(
-                member = content.member.copy(agentStatus = AgentStatus.Working, presence = Presence.Active)
-            )
-        MembersAgentLifecycleAction.Stop ->
-            content.copy(
-                member = content.member.copy(agentStatus = AgentStatus.Offline, presence = Presence.Offline)
-            )
-        MembersAgentLifecycleAction.UnassignMachine ->
-            content.copy(
-                member =
-                    content.member.copy(
-                        permissionBadges =
-                            content.member.permissionBadges.filterNot {
-                                it.startsWith("computer:") || it.startsWith("computer-id:")
-                            }
-                    )
-            )
-        MembersAgentLifecycleAction.ResetSession,
-        MembersAgentLifecycleAction.ResetFull ->
-            content
-    }
+private fun AgentDetailSnapshot.withMemberDetailLifecycleResult(
+    action: MembersAgentLifecycleAction
+): AgentDetailSnapshot {
+    val currentSummary = summary ?: AgentDetailSummary(id = agentId.value, name = agentId.value)
+    val nextSummary =
+        when (action) {
+            MembersAgentLifecycleAction.Start,
+            MembersAgentLifecycleAction.Restart ->
+                currentSummary.copy(status = AgentStatus.Working.label, activity = AgentStatus.Working.label)
+            MembersAgentLifecycleAction.Stop ->
+                currentSummary.copy(status = AgentStatus.Offline.label, activity = AgentStatus.Offline.label)
+            MembersAgentLifecycleAction.UnassignMachine ->
+                currentSummary.copy(machineId = null, machineName = null)
+            MembersAgentLifecycleAction.Delete ->
+                currentSummary.copy(deletedAt = currentSummary.deletedAt ?: "deleted")
+            MembersAgentLifecycleAction.ResetSession,
+            MembersAgentLifecycleAction.ResetFull ->
+                currentSummary
+        }
+    return copy(summary = nextSummary)
 }
 
 private fun String.toMemberDetailDiagnosticsLine(): String =
