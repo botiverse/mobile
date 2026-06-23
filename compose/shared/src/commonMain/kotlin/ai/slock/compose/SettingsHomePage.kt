@@ -6056,7 +6056,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationServer,
                     title = "Server Profile",
                     subtitle = "Workspace name, slug, role",
-                    iconName = SlockLucideIconName.Users,
+                    iconName = SlockLucideIconName.Building2,
                     value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationServer,
                     section = "Workspace"
@@ -6065,7 +6065,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationBilling,
                     title = "Billing",
                     subtitle = "Plan and usage",
-                    iconName = SlockLucideIconName.ShieldCheck,
+                    iconName = SlockLucideIconName.CreditCard,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
                     selected = selectedDestination == SettingsDestinationBilling,
                     section = "Workspace"
@@ -6082,7 +6082,7 @@ private fun appShellSettingsHomePayload(
                     key = SettingsDestinationConnectedApps,
                     title = "Connected Apps",
                     subtitle = "Marketplace, installed apps, OAuth clients",
-                    iconName = SlockLucideIconName.Blocks,
+                    iconName = SlockLucideIconName.Link2,
                     selected = selectedDestination == SettingsDestinationConnectedApps,
                     section = "Workspace"
                 ),
@@ -7510,10 +7510,10 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
     when (destination) {
         SettingsDestinationAccount -> SlockLucideIconName.User
         SettingsDestinationComputers -> SlockLucideIconName.Monitor
-        SettingsDestinationServer -> SlockLucideIconName.Users
+        SettingsDestinationServer -> SlockLucideIconName.Building2
         SettingsDestinationAdministration -> SlockLucideIconName.Shield
-        SettingsDestinationConnectedApps -> SlockLucideIconName.Blocks
-        SettingsDestinationBilling -> SlockLucideIconName.ShieldCheck
+        SettingsDestinationConnectedApps -> SlockLucideIconName.Link2
+        SettingsDestinationBilling -> SlockLucideIconName.CreditCard
         SettingsDestinationLanguageRegion -> SlockLucideIconName.Languages
         SettingsDestinationAppearance -> SlockLucideIconName.Type
         SettingsDestinationNotifications -> SlockLucideIconName.Bell
