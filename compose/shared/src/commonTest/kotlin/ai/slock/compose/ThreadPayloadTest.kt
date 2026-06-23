@@ -1765,6 +1765,50 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneSavedDmThreadLaunchKeepsDirectMessageParentSurface() {
+        val request =
+            InboxItem(
+                key = "saved:dm-reply-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-dm-parent-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-dm-parent-1"),
+                parentChannelId = ChannelId("dm-agent-1"),
+                parentChannelName = "Product-UX-Designer",
+                parentChannelKind = ConversationKind.DirectMessage,
+                parentMessageId = MessageId("dm-parent-1"),
+                parentMessagePreview = "Can you check this?",
+                latestActivityMessageId = MessageId("dm-reply-1"),
+                latestActivityPreview = "Sure"
+            ).toHomeMessageOpenRequest()
+
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversation,
+                timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
+                anchorMessageId = request.anchorMessageId
+            )
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+        val parentPayload = initialPayload.parentMessageContextLoadingPayload("dm-parent-1")
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals("thread-dm-parent-1", launch.threadId)
+        assertEquals("dm-agent-1", launch.parentChannelId)
+        assertEquals("dm-parent-1", launch.parentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, request.conversation.thread?.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, initialPayload.parentSurfaceKind)
+        assertEquals(true, initialPayload.showOpenInChannelAction)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
+        assertEquals("dm-agent-1", parentPayload.sourceThreadId)
+        assertEquals("dm-agent-1", parentPayload.streamChannelId)
+    }
+
+    @Test
     fun screenPayloadWireLaunchDropsDisplayAndProductState() {
         val launch =
             KuiklyThreadScreenPayload(

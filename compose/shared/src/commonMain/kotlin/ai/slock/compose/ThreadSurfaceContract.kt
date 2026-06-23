@@ -27,6 +27,29 @@ private fun String?.isMemberScopedThreadChannelType(): Boolean =
         else -> false
     }
 
+internal fun ConversationKind?.threadParentSurfaceKindOrNull(): String? =
+    when (this) {
+        ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+        ConversationKind.Channel,
+        ConversationKind.Joint -> KuiklyThreadSurfaceKind.Channel
+        else -> null
+    }
+
+private fun String?.threadParentSurfaceKindOrNull(): String? =
+    when (this?.trim()?.lowercase()) {
+        KuiklyThreadSurfaceKind.DirectMessage,
+        "direct_message",
+        "direct-message",
+        "directmessage",
+        "direct" -> KuiklyThreadSurfaceKind.DirectMessage
+        KuiklyThreadSurfaceKind.Channel,
+        "public",
+        "private",
+        "joint",
+        "group" -> KuiklyThreadSurfaceKind.Channel
+        else -> null
+    }
+
 internal fun ConversationSummary.threadStreamChannelId(): String? =
     thread?.streamChannelId?.value
         ?: if (kind == ConversationKind.Thread) {
@@ -40,6 +63,14 @@ internal fun ConversationSummary.threadParentChannelId(): String? =
 
 internal fun ConversationSummary.threadParentMessageId(): String? =
     thread?.parentMessageId?.value
+
+internal fun ConversationSummary.threadParentSurfaceKind(): String? =
+    thread?.parentSurfaceKind.threadParentSurfaceKindOrNull()
+        ?: if (kind == ConversationKind.Thread) {
+            channelType.threadParentSurfaceKindOrNull()
+        } else {
+            null
+        }
 
 internal fun threadSurfaceComposerPlaceholder(
     surfaceKind: String,

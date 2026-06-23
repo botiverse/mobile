@@ -1013,7 +1013,8 @@ internal fun InboxItem.toConversationSummary(): ConversationSummary {
                 ThreadConversation(
                     parentChannelId = parentChannel,
                     parentMessageId = parentId,
-                    streamChannelId = streamChannelId
+                    streamChannelId = streamChannelId,
+                    parentSurfaceKind = parentChannelKind.threadParentSurfaceKindOrNull()
                 )
             } else {
                 null
