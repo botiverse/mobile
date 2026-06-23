@@ -23,7 +23,6 @@ import ai.slock.compose.data.AgentSkillPathGroup
 import ai.slock.compose.data.AgentSkillSummary
 import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
-import ai.slock.compose.data.AgentWorkspaceFilePreviewSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.DataResult
@@ -51,7 +50,6 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.SlockWorkspaceFileKind
-import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.SlockTimeFormat12Hour
@@ -190,20 +188,6 @@ private sealed interface MembersAgentWorkspaceTreeState {
     data class NoPermission(val code: String) : MembersAgentWorkspaceTreeState
     data class Error(val code: String) : MembersAgentWorkspaceTreeState
     data object Empty : MembersAgentWorkspaceTreeState
-}
-
-private sealed interface MembersAgentWorkspaceFileState {
-    data object None : MembersAgentWorkspaceFileState
-    data class Loading(val path: String) : MembersAgentWorkspaceFileState
-    data class Content(val snapshot: AgentWorkspaceFilePreviewSnapshot) : MembersAgentWorkspaceFileState
-    data class Error(val path: String, val code: String) : MembersAgentWorkspaceFileState
-    data class NoPermission(val path: String, val code: String) : MembersAgentWorkspaceFileState
-    data class Empty(val path: String) : MembersAgentWorkspaceFileState
-}
-
-private enum class MembersWorkspaceViewMode {
-    Raw,
-    Preview
 }
 
 internal enum class MembersAgentLifecycleAction(
@@ -531,19 +515,6 @@ private val membersAgentDetailVisualWorkspaceNotesChildren = AgentWorkspaceChild
     )
 )
 
-private val membersAgentDetailVisualWorkspaceMemoryFile = AgentWorkspaceFilePreviewSnapshot(
-    agentId = membersAgentDetailVisualMember.id,
-    path = "MEMORY.md",
-    preview = SlockWorkspaceFilePreview.Text(
-        path = "MEMORY.md",
-        content = "# Product UX Designer\n\n- Owns visual fixture review.\n- Tracks cross-platform parity gaps.\n",
-        markdown = true,
-        sizeBytes = 86,
-        modifiedAt = "2026-06-19T12:28:00Z",
-        mimeType = "text/markdown"
-    )
-)
-
 private enum class MembersAgentDetailVisualMode {
     Profile,
     LifecycleActions,
@@ -793,13 +764,6 @@ internal fun MembersPageContent() {
                 DataResult.Empty(EmptyReason.NoMembers)
             }
         },
-        agentWorkspaceFileLoader = { agentId, path ->
-            if (agentId == membersAgentDetailVisualMember.id && path == "MEMORY.md") {
-                DataResult.Content(membersAgentDetailVisualWorkspaceMemoryFile)
-            } else {
-                DataResult.Empty(EmptyReason.NoMembers)
-            }
-        },
         canCreateAgents = payload.canCreateAgents,
         createAgentSubmit = createAgentSubmit,
         createAgentMachines = computersSlice.machines,
@@ -847,7 +811,6 @@ private fun MembersAgentDetailVisualContent() {
         },
         agentWorkspaceTreeLoader = null,
         agentWorkspaceChildrenLoader = null,
-        agentWorkspaceFileLoader = null,
         onCopyAgentDiagnostics = {},
         onReportAgentIssue = null,
         onUnavailableAction = {},
@@ -956,7 +919,6 @@ internal fun MembersRouteContent(
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)? = null,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)? = null,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)? = null,
-    agentWorkspaceFileLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceFilePreviewSnapshot>)? = null,
     onCopyAgentDiagnostics: (String) -> Unit = {},
     onReportAgentIssue: (suspend (String) -> Boolean)? = null,
     canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
@@ -1088,7 +1050,6 @@ internal fun MembersRouteContent(
             onAgentLifecycleAction = onAgentLifecycleAction,
             agentWorkspaceTreeLoader = agentWorkspaceTreeLoader,
             agentWorkspaceChildrenLoader = agentWorkspaceChildrenLoader,
-            agentWorkspaceFileLoader = agentWorkspaceFileLoader,
             onCopyAgentDiagnostics = onCopyAgentDiagnostics,
             onReportAgentIssue = onReportAgentIssue,
             onUnavailableAction = onUnavailableAction,
@@ -1384,7 +1345,6 @@ private fun MembersDetailContent(
     onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)?,
     agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)?,
     agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)?,
-    agentWorkspaceFileLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceFilePreviewSnapshot>)?,
     onCopyAgentDiagnostics: (String) -> Unit,
     onReportAgentIssue: (suspend (String) -> Boolean)?,
     onUnavailableAction: (String) -> Unit,
@@ -1466,10 +1426,6 @@ private fun MembersDetailContent(
     var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<SlockWorkspaceNode>>>(emptyMap()) }
     var loadingWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
     var workspaceDirErrors by remember(member.id.value) { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var workspaceFileState by remember(member.id.value) {
-        mutableStateOf<MembersAgentWorkspaceFileState>(MembersAgentWorkspaceFileState.None)
-    }
-    var workspaceViewMode by remember(member.id.value) { mutableStateOf(MembersWorkspaceViewMode.Preview) }
     val visibleTabs = remember(canViewPrivate, deleted, member.kind) {
         if (member.kind == MemberKind.Agent) {
             membersVisibleAgentTabs(canViewPrivateSurfaces = canViewPrivate, deleted = deleted)
@@ -1494,7 +1450,6 @@ private fun MembersDetailContent(
             loadedWorkspaceDirs = emptyMap()
             loadingWorkspaceDirs = emptySet()
             workspaceDirErrors = emptyMap()
-            workspaceFileState = MembersAgentWorkspaceFileState.None
             workspaceTreeState =
                 try {
                     callback(member.id).toMembersWorkspaceTreeState()
@@ -1546,21 +1501,6 @@ private fun MembersDetailContent(
         }
     }
     fun selectWorkspaceFile(path: String) {
-        val callback = agentWorkspaceFileLoader
-        if (callback == null) {
-            pager.openSlockFilePreviewPage(
-                SlockFilePreviewPayload(
-                    kind = "error",
-                    title = "Preview unavailable",
-                    subtitle = path,
-                    name = path,
-                    path = path,
-                    message = "Failed to load: workspace_file_unavailable",
-                    error = "workspace_file_unavailable"
-                )
-            )
-            return
-        }
         pager.openSlockFilePreviewPage(agentWorkspaceLazyPreviewPayload(agentId = member.id.value, path = path))
     }
     LaunchedEffect(member.id.value, selectedTab, canViewPrivate, agentWorkspaceTreeLoader) {
@@ -1780,14 +1720,9 @@ private fun MembersDetailContent(
                                 loadedDirs = loadedWorkspaceDirs,
                                 loadingDirs = loadingWorkspaceDirs,
                                 dirErrors = workspaceDirErrors,
-                                fileState = workspaceFileState,
-                                viewMode = workspaceViewMode,
                                 onRefresh = { loadWorkspaceRoot() },
                                 onToggleDirectory = { toggleWorkspaceDirectory(it) },
                                 onSelectFile = { selectWorkspaceFile(it) },
-                                onBackToTree = { workspaceFileState = MembersAgentWorkspaceFileState.None },
-                                onViewModeChange = { workspaceViewMode = it },
-                                onOpenUrl = onOpenUrl,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         MembersAgentDetailTab.Apps ->
@@ -2016,16 +1951,6 @@ private fun DataResult<AgentWorkspaceTreeSnapshot>.toMembersWorkspaceTreeState()
         is DataResult.Empty -> MembersAgentWorkspaceTreeState.Empty
         is DataResult.Error -> MembersAgentWorkspaceTreeState.Error(error.code)
         is DataResult.NoPermission -> MembersAgentWorkspaceTreeState.NoPermission(blocker.code)
-    }
-
-private fun DataResult<AgentWorkspaceFilePreviewSnapshot>.toMembersWorkspaceFileState(
-    path: String
-): MembersAgentWorkspaceFileState =
-    when (this) {
-        is DataResult.Content -> MembersAgentWorkspaceFileState.Content(data)
-        is DataResult.Empty -> MembersAgentWorkspaceFileState.Empty(path)
-        is DataResult.Error -> MembersAgentWorkspaceFileState.Error(path, error.code)
-        is DataResult.NoPermission -> MembersAgentWorkspaceFileState.NoPermission(path, blocker.code)
     }
 
 @Composable
@@ -3466,14 +3391,9 @@ private fun MembersAgentWorkspaceTab(
     loadedDirs: Map<String, List<SlockWorkspaceNode>>,
     loadingDirs: Set<String>,
     dirErrors: Map<String, String>,
-    fileState: MembersAgentWorkspaceFileState,
-    viewMode: MembersWorkspaceViewMode,
     onRefresh: () -> Unit,
     onToggleDirectory: (String) -> Unit,
     onSelectFile: (String) -> Unit,
-    onBackToTree: () -> Unit,
-    onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
-    onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     MembersDetailSection(
@@ -3499,28 +3419,16 @@ private fun MembersAgentWorkspaceTab(
                 MembersWorkspaceErrorState("Failed to load files: ${treeState.code}", onRefresh)
             is MembersAgentWorkspaceTreeState.NoPermission ->
                 MembersWorkspaceErrorState("Workspace hidden: ${treeState.code}", onRefresh)
-            is MembersAgentWorkspaceTreeState.Content -> {
-                val selectedPath = fileState.membersWorkspaceSelectedPath()
-                if (selectedPath != null) {
-                    MembersWorkspaceFileViewer(
-                        fileState = fileState,
-                        viewMode = viewMode,
-                        onBackToTree = onBackToTree,
-                        onViewModeChange = onViewModeChange,
-                        onOpenUrl = onOpenUrl
-                    )
-                } else {
-                    MembersWorkspaceTreeView(
-                        root = treeState.snapshot.root,
-                        expandedDirs = expandedDirs,
-                        loadedDirs = loadedDirs,
-                        loadingDirs = loadingDirs,
-                        dirErrors = dirErrors,
-                        onToggleDirectory = onToggleDirectory,
-                        onSelectFile = onSelectFile
-                    )
-                }
-            }
+            is MembersAgentWorkspaceTreeState.Content ->
+                MembersWorkspaceTreeView(
+                    root = treeState.snapshot.root,
+                    expandedDirs = expandedDirs,
+                    loadedDirs = loadedDirs,
+                    loadingDirs = loadingDirs,
+                    dirErrors = dirErrors,
+                    onToggleDirectory = onToggleDirectory,
+                    onSelectFile = onSelectFile
+                )
         }
     }
 }
@@ -3637,159 +3545,6 @@ private fun MembersWorkspaceNodeRow(
 }
 
 @Composable
-private fun MembersWorkspaceFileViewer(
-    fileState: MembersAgentWorkspaceFileState,
-    viewMode: MembersWorkspaceViewMode,
-    onBackToTree: () -> Unit,
-    onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
-    onOpenUrl: (String) -> Unit
-) {
-    val path = fileState.membersWorkspaceSelectedPath().orEmpty()
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-    ) {
-        SlockBrutalActionButton(
-            label = "Files",
-            leadingIcon = SlockLucideIconName.ArrowLeft,
-            enabled = true,
-            modifier = Modifier.width(96.dp),
-            onClick = onBackToTree
-        )
-        Text(
-            text = path,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-    }
-    when (fileState) {
-        is MembersAgentWorkspaceFileState.Loading ->
-            MembersDetailField("Preview", "Loading file...")
-        is MembersAgentWorkspaceFileState.Error ->
-            MembersDetailField("Preview", "Failed to load: ${fileState.code}")
-        is MembersAgentWorkspaceFileState.NoPermission ->
-            MembersDetailField("Preview", "File hidden: ${fileState.code}")
-        is MembersAgentWorkspaceFileState.Empty ->
-            MembersDetailField("Preview", "File content is unavailable.")
-        MembersAgentWorkspaceFileState.None -> Unit
-        is MembersAgentWorkspaceFileState.Content ->
-            MembersWorkspacePreviewContent(
-                preview = fileState.snapshot.preview,
-                viewMode = viewMode,
-                onViewModeChange = onViewModeChange,
-                onOpenUrl = onOpenUrl
-            )
-    }
-}
-
-@Composable
-private fun MembersWorkspacePreviewContent(
-    preview: SlockWorkspaceFilePreview,
-    viewMode: MembersWorkspaceViewMode,
-    onViewModeChange: (MembersWorkspaceViewMode) -> Unit,
-    onOpenUrl: (String) -> Unit
-) {
-    when (preview) {
-        is SlockWorkspaceFilePreview.Text -> {
-            if (preview.markdown) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
-                    SlockBrutalActionButton(
-                        label = "Raw",
-                        leadingIcon = SlockLucideIconName.FileCode,
-                        enabled = true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onViewModeChange(MembersWorkspaceViewMode.Raw) }
-                    )
-                    SlockBrutalActionButton(
-                        label = "Preview",
-                        leadingIcon = SlockLucideIconName.Eye,
-                        enabled = true,
-                        modifier = Modifier.weight(1f),
-                        onClick = { onViewModeChange(MembersWorkspaceViewMode.Preview) }
-                    )
-                }
-            }
-            Text(
-                text = preview.membersWorkspaceMetaLine(),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (preview.markdown && viewMode == MembersWorkspaceViewMode.Preview) {
-                SlockFilePreviewMarkdownPanel(
-                    name = preview.path,
-                    meta = preview.membersWorkspaceMetaLine(),
-                    statusLabel = null,
-                    status = "content",
-                    body = preview.content,
-                    error = null,
-                    onOpenUrl = onOpenUrl,
-                    modifier = Modifier.heightIn(min = 280.dp, max = 560.dp),
-                    performanceKey = "workspace:${preview.path}",
-                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp)
-                )
-            } else {
-                SlockFilePreviewTextPanel(
-                    name = preview.path,
-                    meta = preview.membersWorkspaceMetaLine(),
-                    content = preview.content
-                )
-            }
-        }
-        is SlockWorkspaceFilePreview.Image -> {
-            Text(
-                text = preview.membersWorkspaceMetaLine(),
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (preview.imageUrl != null) {
-                SlockFilePreviewImagePanel(
-                    source = preview.imageUrl,
-                    contentDescription = preview.path,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 220.dp, max = 420.dp)
-                )
-            } else {
-                SlockFilePreviewGenericCard(
-                    iconName = SlockLucideIconName.Image,
-                    name = preview.path,
-                    meta = preview.membersWorkspaceMetaLine(),
-                    message = preview.description ?: "Image preview is unavailable."
-                )
-            }
-        }
-        is SlockWorkspaceFilePreview.Unsupported ->
-            SlockFilePreviewGenericCard(
-                iconName = SlockLucideIconName.File,
-                name = preview.path,
-                meta = preview.membersWorkspaceMetaLine(),
-                message = preview.reason
-            )
-        is SlockWorkspaceFilePreview.Error ->
-            SlockFilePreviewMessage(
-                iconName = SlockLucideIconName.TriangleAlert,
-                title = "Preview unavailable",
-                detail = preview.reason,
-                modifier = Modifier.fillMaxWidth()
-            )
-        is SlockWorkspaceFilePreview.Loading ->
-            SlockFilePreviewMessage(
-                iconName = SlockLucideIconName.Loader,
-                title = "Loading preview...",
-                detail = preview.detail,
-                modifier = Modifier.fillMaxWidth()
-            )
-    }
-}
-
 @Composable
 private fun MembersWorkspaceEmptyState(message: String, onRefresh: () -> Unit) {
     MembersDetailField("Files", message)
@@ -4381,37 +4136,6 @@ private fun SlockWorkspaceNode.membersWorkspaceIconName(expanded: Boolean): Stri
         SlockWorkspaceFileKind.Image -> "image"
         SlockWorkspaceFileKind.Unsupported -> "file"
     }
-
-private fun MembersAgentWorkspaceFileState.membersWorkspaceSelectedPath(): String? =
-    when (this) {
-        MembersAgentWorkspaceFileState.None -> null
-        is MembersAgentWorkspaceFileState.Loading -> path
-        is MembersAgentWorkspaceFileState.Content -> snapshot.path
-        is MembersAgentWorkspaceFileState.Error -> path
-        is MembersAgentWorkspaceFileState.NoPermission -> path
-        is MembersAgentWorkspaceFileState.Empty -> path
-    }
-
-private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(): String =
-    listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
-        sizeBytes.membersWorkspaceSizeLabel(),
-        modifiedAt?.takeIf { it.isNotBlank() }
-    ).joinToString(" · ").ifBlank { path }
-
-private fun SlockWorkspaceFilePreview.Image.membersWorkspaceMetaLine(): String =
-    listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
-        sizeBytes.membersWorkspaceSizeLabel(),
-        modifiedAt?.takeIf { it.isNotBlank() }
-    ).joinToString(" · ").ifBlank { path }
-
-private fun SlockWorkspaceFilePreview.Unsupported.membersWorkspaceMetaLine(): String =
-    listOfNotNull(
-        mimeType?.takeIf { it.isNotBlank() },
-        sizeBytes.membersWorkspaceSizeLabel(),
-        modifiedAt?.takeIf { it.isNotBlank() }
-    ).joinToString(" · ").ifBlank { path }
 
 private fun Long?.membersWorkspaceSizeLabel(): String? {
     val bytes = this ?: return null

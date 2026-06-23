@@ -8208,9 +8208,6 @@ private fun SharedMembersScreen(
                 agentWorkspaceChildrenLoader = { agentId, dirPath ->
                     memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
                 },
-                agentWorkspaceFileLoader = { agentId, path ->
-                    memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, agentId, path)
-                },
                 canViewPrivateAgentSurfaces = { _, detail ->
                     current.server.permissions.canManageSettings ||
                         detail?.summary?.creatorId == current.currentUserId
