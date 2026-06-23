@@ -19,6 +19,7 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
@@ -75,6 +76,7 @@ internal fun SlockBrutalDropdownMenu(
     horizontalAutoFlip: Boolean = true,
     verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Auto
 ) {
+    val density = LocalDensity.current
     val popoverWidth = widthDp.dp
     val shadowOffsetDp = SlockBrutalDropdownMenuShadowOffsetValue.dp
     val rowHeight = SlockBrutalDropdownMenuRowHeightValue.dp
@@ -85,17 +87,26 @@ internal fun SlockBrutalDropdownMenu(
     // produces a visible card (e.g. a non-admin user clicking the trigger still sees a
     // "No actions available" panel rather than a 4px-tall sliver).
     val effectiveRowCount = items.size.coerceAtLeast(1)
-    val contentSize = Size(
-        width = widthDp + SlockBrutalDropdownMenuShadowOffsetValue,
-        height = (effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue) + SlockBrutalDropdownMenuShadowOffsetValue
-    )
+    val contentSize =
+        with(density) {
+            Size(
+                width = (popoverWidth + shadowOffsetDp).toPx(),
+                height =
+                    ((effectiveRowCount * SlockBrutalDropdownMenuRowHeightValue).dp + shadowOffsetDp)
+                        .toPx()
+            )
+        }
+    val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
+    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
+    val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
     SlockAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
         modifier = modifier,
-        horizontalOffset = horizontalOffsetDp,
-        verticalOffset = verticalOffsetDp,
+        viewportGap = viewportGapPx,
+        horizontalOffset = horizontalOffsetPx,
+        verticalOffset = verticalOffsetPx,
         horizontalAutoFlip = horizontalAutoFlip,
         verticalPlacement = verticalPlacement
     ) { popoverModifier, _ ->

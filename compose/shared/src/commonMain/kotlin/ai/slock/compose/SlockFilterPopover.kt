@@ -25,9 +25,9 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
-import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.platform.LocalDensity
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -87,12 +87,19 @@ internal fun SlockFilterPopover(
     showClearWhenSelected: Boolean = multiSelect,
     headerSlot: (@Composable () -> Unit)? = null
 ) {
+    val density = LocalDensity.current
     val shadowOffset = if (surfaceShadowColor == Color.Transparent) 0.dp else 4.dp
     val popoverWidth = widthDp.dp
-    val popoverSize = Size(
-        width = widthDp + shadowOffset.value,
-        height = SlockFilterPopoverEstimatedHeightValue + shadowOffset.value
-    )
+    val popoverSize =
+        with(density) {
+            Size(
+                width = (popoverWidth + shadowOffset).toPx(),
+                height = (SlockFilterPopoverEstimatedHeightValue.dp + shadowOffset).toPx()
+            )
+        }
+    val horizontalOffsetPx = with(density) { horizontalOffsetDp.dp.toPx() }
+    val verticalOffsetPx = with(density) { verticalOffsetDp.dp.toPx() }
+    val viewportGapPx = with(density) { SlockFloatingDefaultViewportGap.dp.toPx() }
     val filtered =
         if (searchText.isBlank()) options
         else options.filter { it.label.contains(searchText, ignoreCase = true) }
@@ -100,8 +107,9 @@ internal fun SlockFilterPopover(
         anchor = anchor,
         contentSize = popoverSize,
         onDismiss = onDismiss,
-        horizontalOffset = horizontalOffsetDp,
-        verticalOffset = verticalOffsetDp,
+        viewportGap = viewportGapPx,
+        horizontalOffset = horizontalOffsetPx,
+        verticalOffset = verticalOffsetPx,
         // #327: auto-avoid screen edges so filter popovers don't overflow
         // the viewport on narrow screens or near the right/bottom edge.
         horizontalAutoFlip = true,
@@ -169,12 +177,8 @@ internal fun SlockFilterPopover(
                             value = searchText,
                             onValueChange = onSearchChange,
                             placeholder = searchPlaceholder,
-                            textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextBlack),
                             autoFocus = false,
                             maxLines = 1,
-                            fieldMinHeight = 32.dp,
-                            horizontalPadding = 8.dp,
-                            verticalPadding = 6.dp,
                             showShadow = false,
                             showClearWhenNotEmpty = true,
                             onClear = { onSearchChange("") },
