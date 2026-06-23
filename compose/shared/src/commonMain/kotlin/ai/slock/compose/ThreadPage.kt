@@ -1142,6 +1142,24 @@ internal fun SharedTasksProjectionSlice.threadLinkedTasksProjection(
             ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
     }
 
+internal fun threadLinkedTasksLookup(
+    scopedProjection: ThreadLinkedTasksProjection,
+    sharedStoreProjection: ThreadLinkedTasksProjection,
+    fallbackLookup: Map<String, TaskSummary>
+): Map<String, TaskSummary> =
+    when {
+        scopedProjection.authoritative && scopedProjection.lookup.isNotEmpty() ->
+            scopedProjection.lookup
+        sharedStoreProjection.authoritative && sharedStoreProjection.lookup.isNotEmpty() ->
+            sharedStoreProjection.lookup
+        scopedProjection.authoritative ->
+            scopedProjection.lookup
+        sharedStoreProjection.authoritative ->
+            sharedStoreProjection.lookup
+        else ->
+            fallbackLookup
+    }
+
 internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
     val content = (loadState as? ScreenLoadState.Content)?.data ?: return emptyMap()
     return content.tasks.threadLinkedTasksByMessageId()
@@ -5508,11 +5526,11 @@ private fun ThreadChatTabWithLinkedTasksProjection(
             ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val linkedTasksByMessageLookup =
-        when {
-            projectedLinkedTasks.authoritative -> projectedLinkedTasks.lookup
-            sharedStoreLinkedTasks.authoritative -> sharedStoreLinkedTasks.lookup
-            else -> fallbackLinkedTasksByMessageLookup
-        }
+        threadLinkedTasksLookup(
+            scopedProjection = projectedLinkedTasks,
+            sharedStoreProjection = sharedStoreLinkedTasks,
+            fallbackLookup = fallbackLinkedTasksByMessageLookup
+        )
 
     ThreadChatTab(
         payload = payload,

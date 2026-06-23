@@ -2735,6 +2735,47 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun linkedTaskLookupKeepsWarmSharedProjectionWhenScopedStateIsEmpty() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "ship task",
+                status = TaskStatus.InReview,
+                taskNumber = 240,
+                assignee =
+                    MemberProfile(
+                        id = MemberId("agent-android"),
+                        displayName = "Android Developer",
+                        handle = "Android-Developer",
+                        kind = MemberKind.Agent
+                    ),
+                updatedAtLabel = ""
+            )
+        val warmSharedLookup = listOf(task).threadLinkedTasksByMessageLookup()
+        val fallbackTask = task.copy(status = TaskStatus.Todo, assignee = null)
+        val selectedLookup =
+            threadLinkedTasksLookup(
+                scopedProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap()),
+                sharedStoreProjection = ThreadLinkedTasksProjection(authoritative = true, lookup = warmSharedLookup),
+                fallbackLookup = listOf(fallbackTask).threadLinkedTasksByMessageLookup()
+            )
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "ship task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "Todo"
+            )
+        val linkedMessage = message.withLinkedTask(selectedLookup.threadLinkedTaskForMessage(message))
+
+        assertEquals("InReview", linkedMessage.taskStatus)
+        assertEquals("Android Developer", linkedMessage.taskAssigneeName)
+    }
+
+    @Test
     fun threadTasksJoinStartsOnlyAfterContentGate() {
         val taskChannelId = ChannelId("channel-1")
         val loadingPayload =
