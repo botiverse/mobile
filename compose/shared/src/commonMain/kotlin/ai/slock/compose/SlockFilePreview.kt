@@ -67,6 +67,7 @@ private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
 private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
+private const val SlockFilePreviewLoadingLabel = "Loading..."
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -270,7 +271,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kin
         name = name.ifBlank { "Attachment" },
         path = name,
         meta = genericAttachmentMetaLine(),
-        message = "Loading preview...",
+        message = SlockFilePreviewLoadingLabel,
         externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
         externalMimeType = mimeType,
         source = SlockFilePreviewSourceThreadAttachment,
@@ -280,11 +281,11 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kin
 internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
     SlockFilePreviewPayload(
         kind = "loading",
-        title = "Loading preview...",
+        title = "File preview",
         subtitle = path,
         name = path,
         path = path,
-        message = "Loading file preview...",
+        message = SlockFilePreviewLoadingLabel,
         source = SlockFilePreviewSourceAgentWorkspace,
         agentId = agentId
     )
@@ -488,11 +489,11 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
         is SlockWorkspaceFilePreview.Loading ->
             SlockFilePreviewPayload(
                 kind = "loading",
-                title = "Loading preview...",
+                title = "File preview",
                 subtitle = path,
                 name = path,
                 path = path,
-                message = detail
+                message = detail.ifBlank { SlockFilePreviewLoadingLabel }
             )
     }
 
@@ -559,16 +560,10 @@ internal fun SlockFilePreviewPayloadContent(
                 )
             }
         "loading" -> {
-            val title = "Loading preview..."
-            val detail =
-                payload.message
-                    .ifBlank { "Fetching preview content." }
-                    .takeUnless { it.equals(title, ignoreCase = true) }
-                    .orEmpty()
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.Loader,
-                title = title,
-                detail = detail,
+                title = SlockFilePreviewLoadingLabel,
+                detail = "",
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
         }
@@ -947,8 +942,8 @@ internal fun SlockFilePreviewMarkdownPanel(
             else ->
                 SlockFilePreviewMessage(
                     iconName = SlockLucideIconName.Loader,
-                    title = "Loading markdown preview...",
-                    detail = name.ifBlank { "Markdown file" },
+                    title = SlockFilePreviewLoadingLabel,
+                    detail = "",
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
         }

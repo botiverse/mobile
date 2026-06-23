@@ -3783,8 +3783,8 @@ private fun MembersWorkspacePreviewContent(
         is SlockWorkspaceFilePreview.Loading ->
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.Loader,
-                title = "Loading preview...",
-                detail = preview.detail,
+                title = "Loading...",
+                detail = "",
                 modifier = Modifier.fillMaxWidth()
             )
     }
