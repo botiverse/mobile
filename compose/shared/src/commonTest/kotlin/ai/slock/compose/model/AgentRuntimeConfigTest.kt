@@ -183,6 +183,25 @@ class AgentRuntimeConfigTest {
         assertNull(codexWithCmd.command)
     }
 
+    @Test
+    fun buildRuntimeConfigIncludesReasoningOnlyForSupportedRuntimes() {
+        val codexConfig = buildRuntimeConfig(
+            runtime = "codex",
+            model = "gpt-5.4",
+            customModelMode = false,
+            reasoningEffort = "high"
+        )
+        assertEquals("high", codexConfig.reasoningEffort)
+
+        val claudeConfig = buildRuntimeConfig(
+            runtime = "claude",
+            model = "sonnet",
+            customModelMode = false,
+            reasoningEffort = "high"
+        )
+        assertNull(claudeConfig.reasoningEffort)
+    }
+
     // ── Plan limits ──
 
     @Test

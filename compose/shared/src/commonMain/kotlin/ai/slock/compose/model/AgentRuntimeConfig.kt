@@ -240,13 +240,15 @@ fun buildRuntimeConfig(
         }
     val effectiveCommand: String? =
         if (supportsRuntimeCommand(effectiveRuntime) && !command.isNullOrBlank()) command.trim() else null
+    val effectiveReasoningEffort: String? =
+        if (supportsRuntimeReasoningEffort(effectiveRuntime)) reasoningEffort else null
     return RuntimeConfig(
         version = RUNTIME_CONFIG_VERSION,
         runtime = effectiveRuntime,
         provider = effectiveProvider,
         model = effectiveModel,
         mode = effectiveMode,
-        reasoningEffort = reasoningEffort,
+        reasoningEffort = effectiveReasoningEffort,
         envVars = envVars,
         command = effectiveCommand
     )
