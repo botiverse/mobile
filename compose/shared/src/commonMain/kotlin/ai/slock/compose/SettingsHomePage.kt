@@ -1198,10 +1198,12 @@ private fun SlockAppShellContent() {
     val latestHomeState by rememberUpdatedState(homeState)
     val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
     val latestReadySession by rememberUpdatedState(readySession)
+    val latestSelectedTab by rememberUpdatedState(selectedTab)
+    val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
+    val latestHomeSearchSavedState by rememberUpdatedState(homeSearchSavedState)
     val homeSurfaceVisible =
         selectedTab == "home" &&
             selectedHomeDestination == null
-    val latestHomeSurfaceVisible by rememberUpdatedState(homeSurfaceVisible)
     val homeActivityRouteActive =
         selectedTab == "home" &&
             selectedHomeDestination == HomeDestinationActivity
@@ -1232,11 +1234,13 @@ private fun SlockAppShellContent() {
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
+    var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
 
     fun resetAppShellSessionState() {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
+        membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
@@ -1710,10 +1714,32 @@ private fun SlockAppShellContent() {
                         val event = eventData.optString("event")
                         if (
                             (event == AppShellLifecycleResume || event == AppShellLifecycleShow) &&
-                            latestReadySession != null &&
-                            latestHomeSurfaceVisible
+                            latestReadySession != null
                         ) {
-                            homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh)
+                            bridge.log(
+                                "app_shell_resume_refresh tab=${latestSelectedTab} " +
+                                    "homeDestination=${latestSelectedHomeDestination.orEmpty()}"
+                            )
+                            when (retainedAppShellSelectedTab(latestSelectedTab)) {
+                                "home" ->
+                                    when (retainedHomeSecondaryDestination(latestSelectedHomeDestination)) {
+                                        null -> homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh)
+                                        HomeDestinationActivity -> homeActivityStore.dispatch(SharedActivityIntent.Refresh)
+                                        HomeDestinationSaved -> homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSaved)
+                                        HomeDestinationSearch ->
+                                            if (latestHomeSearchSavedState.search.hasResumeSearchRefreshIntent()) {
+                                                homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
+                                            } else {
+                                                homeSearchSavedViewModel.dispatch(SharedHomeSearchSavedIntent.OpenSearch)
+                                            }
+                                    }
+                                "tasks" -> tasksViewModel.dispatch(SharedTasksRouteIntent.Refresh)
+                                "members" -> {
+                                    membersListRefreshKey += 1
+                                    membersAgentDetailRefreshKey += 1
+                                }
+                                "settings" -> settingsViewModel.dispatch(SharedSettingsIntent.Refresh)
+                            }
                         }
                         return
                     }
@@ -1989,6 +2015,7 @@ private fun SlockAppShellContent() {
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
                             settingsCapabilities = settingsCapabilities,
+                            membersRefreshKey = membersListRefreshKey,
                             agentDetailRefreshKey = membersAgentDetailRefreshKey,
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset
@@ -7965,6 +7992,7 @@ private fun SharedMembersScreen(
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
     settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    membersRefreshKey: Int,
     agentDetailRefreshKey: Int,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg
@@ -7977,7 +8005,7 @@ private fun SharedMembersScreen(
         )
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(membersRefreshKey) {
         state = SharedMembersUiState.Loading
         try {
             val session = authStore.readSession()
@@ -9424,6 +9452,13 @@ private fun SharedHomeSearchDivider() {
                 .background(SlockColor.BorderBlack)
     )
 }
+
+private fun SharedHomeSearchPanelState.hasResumeSearchRefreshIntent(): Boolean =
+    query.trim().isNotBlank() ||
+        myMessagesOnly ||
+        !selectedSenderId.isNullOrBlank() ||
+        !selectedChannelId.isNullOrBlank() ||
+        timeRange != SearchTimeRange.Any
 
 @Composable
 private fun SharedHomeSearchToolbar(
