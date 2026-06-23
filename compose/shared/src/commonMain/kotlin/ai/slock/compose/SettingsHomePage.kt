@@ -2244,6 +2244,7 @@ private fun SlockAppShellContent() {
                             state = homeState,
                             active = active,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
+                            activityTotalCount = homeActivityState.totalCount,
                             savedCount = homeSearchSavedState.saved.totalCount,
                             onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
                             onNotificationDismiss = { id ->
@@ -8703,6 +8704,7 @@ private fun SharedHomeScreen(
     state: SharedHomeState,
     active: Boolean,
     activityUnreadCount: Int = 0,
+    activityTotalCount: Int = 0,
     savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
@@ -8807,7 +8809,11 @@ private fun SharedHomeScreen(
                 directMessages = directMessageItems,
                 selectedChannelId = selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
-                inboxUnreadCount = homeActivitySidebarUnreadCount(snapshot.unreadTotal, activityUnreadCount),
+                inboxUnreadCount = homeActivitySidebarUnreadCount(
+                    homeUnreadCount = snapshot.unreadTotal,
+                    activityUnreadCount = activityUnreadCount,
+                    activityTotalCount = activityTotalCount
+                ),
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 pendingServerId = serverSwitchState.pendingServerId,
