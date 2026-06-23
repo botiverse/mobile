@@ -2480,13 +2480,15 @@ private fun MembersDetailHeader(
                         val pos = coordinates.positionInRoot()
                         threeDotButtonCenter.update(
                             Offset(
-                                // #71 anchor at the button's TOP-LEFT corner
-                                // (was button CENTER) so the dropdown menu
-                                // can auto-flip horizontally against the
-                                // button's right edge instead of the center,
-                                // matching React `DropdownMenu` (place right
-                                // edge of menu at right edge of trigger).
-                                x = pos.x,
+                                // SlockAnchoredPopover treats the anchor as
+                                // the content's right edge when horizontal
+                                // auto-flip is active. Use the trigger's
+                                // right edge so the dropdown hugs the button
+                                // like React's absolute `right-0` menu.
+                                x = membersManagementMenuAnchorX(
+                                    buttonLeftPx = pos.x,
+                                    buttonWidthPx = coordinates.size.width.toFloat()
+                                ),
                                 y = pos.y + coordinates.size.height.toFloat() / 2f
                             )
                         )
@@ -2508,6 +2510,9 @@ private fun MembersDetailHeader(
         )
     }
 }
+
+internal fun membersManagementMenuAnchorX(buttonLeftPx: Float, buttonWidthPx: Float): Float =
+    buttonLeftPx + buttonWidthPx
 
 @Composable
 private fun MembersDetailSummary(

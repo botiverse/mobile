@@ -260,6 +260,11 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentManagementMenuAnchorUsesTriggerRightEdge() {
+        assertEquals(132f, membersManagementMenuAnchorX(buttonLeftPx = 100f, buttonWidthPx = 32f))
+    }
+
+    @Test
     fun agentStatusDisplayStateUsesActivityForColorAndPulse() {
         val member =
             MemberProfile(
