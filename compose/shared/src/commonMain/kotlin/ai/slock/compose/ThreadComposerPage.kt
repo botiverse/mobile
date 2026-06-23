@@ -40,6 +40,8 @@ import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
+import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
+import com.tencent.kuikly.compose.ui.text.TextRange
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
@@ -638,19 +640,21 @@ internal fun ThreadComposerContent(
     // can come later if this marker shows hot. bodyLength proxy uses seedText length.
     traceMarkdownSection(SlockComposerTraceNames.COMPOSER_RENDER, state.seedText.length) {
     var fieldValue by remember(state.instanceId) {
-        mutableStateOf(state.seedText)
+        mutableStateOf(TextFieldValue(state.seedText, selection = TextRange(state.seedText.length)))
     }
-    val text = fieldValue
+    val text = fieldValue.text
     var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
     var focused by remember(state.instanceId) { mutableStateOf(false) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
-        fieldValue = state.seedText
+        fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
         asTask = state.seedAsTask
         focused = false
     }
-    val suggestionTrigger = remember(text) { detectKuiklyComposerSuggestionTrigger(text) }
+    val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
+    val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
+    val suggestionTrigger = remember(text, selectionStart) { detectKuiklyComposerSuggestionTrigger(text, selectionStart) }
     if (text.isNotBlank()) {
         println("[composer] trigger t=" + text.take(30) + " trigger=" + suggestionTrigger.toString())
     }
@@ -703,16 +707,30 @@ internal fun ThreadComposerContent(
 
     fun applyMemberSuggestion(member: KuiklyComposerMemberItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.MemberTrigger ?: return
-        val before = fieldValue.substring(0, trigger.triggerStart)
-        fieldValue = "$before@${member.handle} "
-        emitChange(nextText = fieldValue)
+        applyKuiklyComposerSuggestionEdit(
+            text = text,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            triggerStart = trigger.triggerStart,
+            replacement = "@${member.handle} "
+        )?.let { edit ->
+            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            emitChange(nextText = edit.text)
+        }
     }
 
     fun applyChannelSuggestion(channel: KuiklyComposerChannelItem) {
         val trigger = suggestionTrigger as? KuiklyComposerSuggestionTrigger.ChannelTrigger ?: return
-        val before = fieldValue.substring(0, trigger.triggerStart)
-        fieldValue = "$before#${channel.name} "
-        emitChange(nextText = fieldValue)
+        applyKuiklyComposerSuggestionEdit(
+            text = text,
+            selectionStart = selectionStart,
+            selectionEnd = selectionEnd,
+            triggerStart = trigger.triggerStart,
+            replacement = "#${channel.name} "
+        )?.let { edit ->
+            fieldValue = TextFieldValue(edit.text, selection = TextRange(edit.cursor))
+            emitChange(nextText = edit.text)
+        }
     }
 
     Box(
@@ -812,8 +830,8 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
-                            println("[composer] onValueChange len=" + next.length + " t=" + next.take(20))
-                            emitChange(nextText = next)
+                            println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
+                            emitChange(nextText = next.text)
                         },
                         onFocus = {
                             focused = true
@@ -831,7 +849,7 @@ internal fun ThreadComposerContent(
                             onSend = {
                                 if (canSend) {
                                     onEvent("send", null, null, null)
-                                    fieldValue = ""
+                                    fieldValue = TextFieldValue("")
                                     asTask = false
                                 }
                             }
@@ -916,7 +934,7 @@ internal fun ThreadComposerContent(
                                 sending = state.composerMode == "sending" || state.composerMode == "uploading"
                             ) {
                                 onEvent("send", null, null, null)
-                                fieldValue = ""
+                                fieldValue = TextFieldValue("")
                                 asTask = false
                             }
                         }
@@ -1421,19 +1439,51 @@ private fun KuiklyPendingAttachmentItem.statusLabel(): String {
     return listOf(state, detail).filter { it != null && it.isNotBlank() }.joinToString(" • ")
 }
 
-private fun detectKuiklyComposerSuggestionTrigger(text: String): KuiklyComposerSuggestionTrigger {
+internal data class KuiklyComposerSuggestionEdit(
+    val text: String,
+    val cursor: Int
+)
+
+internal fun applyKuiklyComposerSuggestionEdit(
+    text: String,
+    selectionStart: Int,
+    selectionEnd: Int,
+    triggerStart: Int,
+    replacement: String
+): KuiklyComposerSuggestionEdit? {
+    val safeStart = selectionStart.coerceIn(0, text.length)
+    val safeEnd = selectionEnd.coerceIn(safeStart, text.length)
+    if (triggerStart < 0 || triggerStart > safeStart) return null
+    val suffixStart =
+        if (replacement.lastOrNull()?.isWhitespace() == true && safeEnd < text.length && text[safeEnd].isWhitespace()) {
+            safeEnd + 1
+        } else {
+            safeEnd
+        }
+    val nextText = text.substring(0, triggerStart) + replacement + text.substring(suffixStart)
+    return KuiklyComposerSuggestionEdit(
+        text = nextText,
+        cursor = triggerStart + replacement.length
+    )
+}
+
+private fun detectKuiklyComposerSuggestionTrigger(
+    text: String,
+    cursor: Int = text.length
+): KuiklyComposerSuggestionTrigger {
     if (text.isBlank()) {
         return KuiklyComposerSuggestionTrigger.None
     }
+    val beforeCursor = text.substring(0, cursor.coerceIn(0, text.length))
     var triggerIndex = -1
     var triggerChar = ' '
-    for (i in text.indices.reversed()) {
-        val current = text[i]
+    for (i in beforeCursor.indices.reversed()) {
+        val current = beforeCursor[i]
         if (current.isWhitespace()) {
             break
         }
         if (current == '@' || current == '#') {
-            if (i == 0 || text[i - 1].isComposerSuggestionBoundary()) {
+            if (i == 0 || beforeCursor[i - 1].isComposerSuggestionBoundary()) {
                 triggerIndex = i
                 triggerChar = current
             }
@@ -1443,7 +1493,7 @@ private fun detectKuiklyComposerSuggestionTrigger(text: String): KuiklyComposerS
     if (triggerIndex < 0) {
         return KuiklyComposerSuggestionTrigger.None
     }
-    val query = text.substring(triggerIndex + 1)
+    val query = beforeCursor.substring(triggerIndex + 1)
     return when (triggerChar) {
         '@' -> KuiklyComposerSuggestionTrigger.MemberTrigger(query, triggerIndex)
         '#' -> KuiklyComposerSuggestionTrigger.ChannelTrigger(query, triggerIndex)
