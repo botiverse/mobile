@@ -9,7 +9,6 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
-import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
@@ -107,7 +106,7 @@ internal fun SlockBrutalPanel(
             modifier = Modifier
                 .widthIn(min = minWidth, max = maxWidth)
                 .then(contentModifier)
-                .fillMaxSize()
+                .fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .border(SlockStroke.Default, SlockColor.BorderBlack),
             content = content
