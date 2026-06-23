@@ -58,6 +58,7 @@ import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
 import ai.slock.android.core.data.auth.GoogleSocialAuthResult
 import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
+import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
@@ -360,7 +361,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                     val result =
                             withContext(Dispatchers.IO) {
                                 SharedAuthDataSource(
-                                        api = AndroidAuthApiFactory.createAuthApi(),
+                                        api = AndroidAuthApiFactory.createAuthApi(applicationContext),
                                         sessionStore = EncryptedAuthSessionStore(applicationContext)
                                 ).completeGoogleSocialAuth(nativeResult)
                             }
@@ -1568,6 +1569,8 @@ internal class SlockKuiklyBridgeModule(
                         "loadStorage" -> loadSettingsStorage()
                         "clearStorage" -> clearSettingsStorage(request.optString("target"))
                         "loadAbout" -> loadSettingsAbout()
+                        "loadDeveloper" -> loadSettingsDeveloper()
+                        "setApiEnvironment" -> setApiEnvironment(request.optString("environmentKey"))
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
@@ -2002,9 +2005,61 @@ internal class SlockKuiklyBridgeModule(
                 "notificationStatusLabel" to "Managed by system settings",
                 "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
                 "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}",
-                "baseUrl" to AndroidAuthApiFactory.BASE_URL,
+                "baseUrl" to AndroidAuthApiFactory.currentBaseUrl(appContext),
                 "buildTime" to BuildConfig.BUILD_TIME,
                 "gitCommit" to BuildConfig.GIT_COMMIT
+        )
+    }
+
+    private fun loadSettingsDeveloper(feedback: String? = null): Map<String, Any> {
+        val current = AndroidApiServerEnvironmentStore(appContext).current()
+        val options =
+                JSONArray().also { array ->
+                    AndroidApiServerEnvironmentStore.predefined.forEach { environment ->
+                        array.put(
+                                JSONObject()
+                                        .put("key", environment.key)
+                                        .put("label", environment.label)
+                                        .put("apiBaseUrl", environment.apiBaseUrl)
+                                        .put("socketBaseUrl", environment.socketBaseUrl)
+                                        .put("webUrl", environment.webUrl)
+                        )
+                    }
+                }
+        return mapOf(
+                "status" to "ok",
+                "environmentKey" to current.key,
+                "environmentLabel" to current.label,
+                "apiBaseUrl" to current.apiBaseUrl,
+                "socketBaseUrl" to current.socketBaseUrl,
+                "webUrl" to current.webUrl,
+                "options" to options,
+                "feedback" to feedback.orEmpty()
+        )
+    }
+
+    private fun setApiEnvironment(environmentKey: String): Map<String, Any> {
+        val store = AndroidApiServerEnvironmentStore(appContext)
+        val before = store.current()
+        val after =
+                store.select(environmentKey)
+                        ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
+        val changed = before.key != after.key
+        if (changed) {
+            runBlocking { EncryptedAuthSessionStore(appContext).clearSession() }
+            AndroidRealtimeBridgeManager.disconnectForSessionEnd("api_environment_changed")
+            SlockDiagnosticsLogger.record(
+                    "SlockDeveloper",
+                    "api_environment_changed from=${before.key} to=${after.key}"
+            )
+        }
+        return loadSettingsDeveloper(
+                feedback =
+                        if (changed) {
+                            "API server switched to ${after.label}. Sign in again to use this environment."
+                        } else {
+                            "${after.label} is already selected."
+                        }
         )
     }
 
@@ -2026,7 +2081,7 @@ internal class SlockKuiklyBridgeModule(
     private fun probeSettingsNetwork(): Map<String, Any> {
         val startedAt = System.currentTimeMillis()
         return runCatching {
-            val baseUrl = AndroidAuthApiFactory.BASE_URL
+            val baseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
             val connection =
                     (URL(baseUrl).openConnection() as HttpURLConnection).apply {
                         requestMethod = "GET"
@@ -2056,11 +2111,11 @@ internal class SlockKuiklyBridgeModule(
             val detail = throwable.message ?: throwable::class.java.simpleName
             SlockDiagnosticsLogger.record(
                     "SlockNetworkProbe",
-                    "baseUrl=${safeUrlForDiagnostics(AndroidAuthApiFactory.BASE_URL)} failed=${throwable::class.java.simpleName} durationMs=$duration"
+                    "baseUrl=${safeUrlForDiagnostics(AndroidAuthApiFactory.currentBaseUrl(appContext))} failed=${throwable::class.java.simpleName} durationMs=$duration"
             )
             mapOf(
                     "status" to "ok",
-                    "baseUrl" to AndroidAuthApiFactory.BASE_URL,
+                    "baseUrl" to AndroidAuthApiFactory.currentBaseUrl(appContext),
                     "reachable" to false,
                     "code" to 0,
                     "durationMillis" to duration,
@@ -2519,7 +2574,7 @@ internal class SlockKuiklyBridgeModule(
         if (hostActivity?.requestGoogleNativeSocialAuth(callback) == true) return
 
         val returnTo = URLEncoder.encode("/", StandardCharsets.UTF_8.name())
-        val url = "${AndroidAuthApiFactory.BASE_URL.trimEnd('/')}/auth/google/start?returnTo=$returnTo"
+        val url = "${AndroidAuthApiFactory.currentBaseUrl(appContext).trimEnd('/')}/auth/google/start?returnTo=$returnTo"
         val intent =
                 Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

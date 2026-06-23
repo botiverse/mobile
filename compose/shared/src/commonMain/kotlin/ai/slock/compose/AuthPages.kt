@@ -12,11 +12,15 @@ import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import ai.slock.compose.data.KuiklySlockAuthTransport
+import ai.slock.compose.data.ScreenLoadState
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
+import ai.slock.compose.data.SharedSettingsActionState
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDataSource
+import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SlockSharedStoreRegistry
@@ -65,6 +69,7 @@ const val LOGIN_PAGE = "compose_login"
 const val REGISTER_PAGE = "compose_register"
 const val FORGOT_PASSWORD_PAGE = "compose_forgot_password"
 const val AUTH_DIAGNOSTICS_PAGE = "compose_auth_diagnostics"
+const val AUTH_DEVELOPER_PAGE = "compose_auth_developer"
 private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
 private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
@@ -122,6 +127,14 @@ internal class ComposeAuthDiagnosticsPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
         super.willInit()
         setContent { AuthDiagnosticsScreen() }
+    }
+}
+
+@Page(AUTH_DEVELOPER_PAGE, supportInLocal = true)
+internal class ComposeAuthDeveloperPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { AuthDeveloperScreen() }
     }
 }
 
@@ -251,7 +264,7 @@ private fun LoginScreen() {
         onCreateAccount = { pager.openAuthPage(REGISTER_PAGE) },
         onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
         onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
     )
 }
 
@@ -346,7 +359,7 @@ private fun RegisterScreen() {
             }
         },
         onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
     )
 }
 
@@ -404,7 +417,59 @@ private fun ForgotPasswordScreen() {
             }
         },
         onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
-        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DEVELOPER_PAGE) }
+    )
+}
+
+@Composable
+private fun AuthDeveloperScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val settingsDataSource =
+        remember {
+            SharedSettingsDataSource(
+                sessionStore = sharedStores.authStore,
+                platformCapabilities = BridgeSettingsPlatformCapabilities(bridge),
+                diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") }
+            )
+        }
+    var state by remember { mutableStateOf<ScreenLoadState<SharedSettingsDeveloperSnapshot>>(ScreenLoadState.Loading) }
+    var actionState by remember { mutableStateOf<SharedSettingsActionState?>(null) }
+    var reloadToken by remember { mutableStateOf(0) }
+    var pendingEnvironment by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(settingsDataSource, reloadToken) {
+        state =
+            when (val result = settingsDataSource.loadDeveloper()) {
+                is DataResult.Content -> ScreenLoadState.Content(result.data)
+                is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
+                is DataResult.Error -> ScreenLoadState.Error(result.error)
+                is DataResult.NoPermission -> ScreenLoadState.NoPermission(result.blocker)
+            }
+    }
+
+    LaunchedEffect(pendingEnvironment) {
+        val key = pendingEnvironment ?: return@LaunchedEffect
+        actionState = SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, key, inProgress = true)
+        state =
+            when (val result = settingsDataSource.setApiEnvironment(key)) {
+                is DataResult.Content -> ScreenLoadState.Content(result.data)
+                is DataResult.Empty -> ScreenLoadState.Empty(result.reason)
+                is DataResult.Error -> ScreenLoadState.Error(result.error)
+                is DataResult.NoPermission -> ScreenLoadState.NoPermission(result.blocker)
+            }
+        actionState = actionState?.copy(inProgress = false, errorCode = null)
+        pendingEnvironment = null
+    }
+
+    SharedSettingsDeveloperContent(
+        state = state,
+        actionState = actionState,
+        onSetApiEnvironment = { key -> pendingEnvironment = key },
+        onOpenAuthDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
+        onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
+        onOpenRouter = { pager.openAuthPage("router") }
     )
 }
 
