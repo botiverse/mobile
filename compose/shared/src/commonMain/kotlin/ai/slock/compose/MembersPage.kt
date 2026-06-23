@@ -431,8 +431,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         AgentReminderSummary(
             id = "reminder-product-ux-memory",
             title = "Roll 1-6; if 3, tidy Product-UX memory/files",
-            fireAt = "2026-06-19T18:30:00Z",
-            recurrenceDescription = "daily"
+            fireAt = "2026-06-19T18:30:00Z"
         )
     ),
     activity = listOf(
