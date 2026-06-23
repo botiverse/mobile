@@ -1317,7 +1317,7 @@ internal fun slockMarkdownTypography(base: TextStyle): DefaultMarkdownTypography
     )
 }
 
-private val SlockMarkdownInlineChipHeight = 21.sp
+private val SlockMarkdownInlineChipHeight = 24.sp
 private val SlockMarkdownChannelChipBackground = SlockColor.AccentPink.copy(alpha = 0.3f)
 private val SlockMarkdownThreadChipBackground = SlockColor.AccentCyan.copy(alpha = 0.3f)
 private val SlockMarkdownTaskChipBackground = SlockColor.BrandYellow.copy(alpha = 0.4f)
@@ -1337,7 +1337,9 @@ private fun slockMarkdownPlainMentionWidthSp(label: String) =
     (label.slockInlineTextWidthUnits() * 7.8f + 8f).coerceAtLeast(28f).sp
 
 internal fun slockMarkdownInlineChipWidthSp(label: String) =
-    (label.slockInlineTextWidthUnits() * 7.6f + 14f).coerceAtLeast(40f).sp
+    (label.slockInlineTextWidthUnits() * 7.6f + SlockMarkdownInlineChipHorizontalChromeSp)
+        .coerceAtLeast(40f)
+        .sp
 
 internal fun slockMarkdownInlineCodeWidthSp(code: String) =
     (code.sumOf { it.slockInlineCodeWidthSp().toDouble() }.toFloat() + SlockMarkdownInlineCodeHorizontalChromeSp)
@@ -1355,7 +1357,7 @@ internal fun slockMarkdownInlineCodePlaceholderWidthSp(code: String, measuredWid
 internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit {
     val lineHeight = textStyle.lineHeight.takeIf { it.isSpecified }?.value
     val fontSize = textStyle.fontSize.takeIf { it.isSpecified }?.value
-    return (lineHeight ?: fontSize?.plus(SlockMarkdownInlineCodeFallbackVerticalChromeSp) ?: 20f)
+    return ((lineHeight ?: fontSize ?: 20f) + SlockMarkdownInlineCodeVerticalChromeSp)
         .coerceAtLeast(SlockMarkdownInlineCodeMinHeightSp)
         .sp
 }
@@ -1367,10 +1369,11 @@ internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
-private const val SlockMarkdownInlineCodeHorizontalChromeSp = 8f
+private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
+private const val SlockMarkdownInlineCodeHorizontalChromeSp = 14f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
-private const val SlockMarkdownInlineCodeMinHeightSp = 18f
-private const val SlockMarkdownInlineCodeFallbackVerticalChromeSp = 6f
+private const val SlockMarkdownInlineCodeMinHeightSp = 24f
+private const val SlockMarkdownInlineCodeVerticalChromeSp = 4f
 private const val SlockMarkdownMeasuredWidthEpsilonSp = 0.25f
 private const val SlockMarkdownMeasuredWidthSafetySp = 6f
 
@@ -1411,9 +1414,10 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
     Box(
         modifier =
             Modifier
+                .fillMaxSize()
                 .background(color)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(start = 4.dp, end = 4.dp, top = 0.dp, bottom = 1.dp),
+                .padding(start = 5.dp, end = 5.dp, top = 1.dp, bottom = 1.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
@@ -1440,6 +1444,14 @@ private fun SlockMarkdownMentionText(label: String) {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(SlockColor.EmptyStateGray)
+                    .align(Alignment.BottomCenter)
+        )
         KuiklyText(
             text = label,
             style =
@@ -1454,14 +1466,6 @@ private fun SlockMarkdownMentionText(label: String) {
             maxLines = 1,
             overflow = TextOverflow.Clip
         )
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(SlockColor.EmptyStateGray)
-                    .align(Alignment.BottomCenter)
-        )
     }
 }
 
@@ -1470,9 +1474,10 @@ private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
     Box(
         modifier =
             Modifier
+                .fillMaxSize()
                 .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 2.dp, vertical = 0.dp),
+                .padding(horizontal = 4.dp, vertical = 1.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
