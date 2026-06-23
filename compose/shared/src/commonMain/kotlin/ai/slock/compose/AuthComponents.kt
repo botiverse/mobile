@@ -339,7 +339,7 @@ internal fun AuthActionButton(
     enabled: Boolean = true,
     loading: Boolean = false,
     preserveDisabledVisual: Boolean = false,
-    variant: AuthActionButtonVariant = AuthActionButtonVariant.Default,
+    variant: AuthActionButtonVariant = AuthActionButtonVariant.Large,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
     val background = when (tone) {
