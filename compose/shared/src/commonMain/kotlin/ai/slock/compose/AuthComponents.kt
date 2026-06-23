@@ -63,6 +63,8 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
+private val AuthTopBarBrandWidth = 126.dp
+private val AuthTopBarBrandHeight = 31.dp
 
 private fun Modifier.authStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -152,7 +154,7 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier) {
     SlockCachedImage(
         source = RaftLogoSvgDataUri,
         contentDescription = null,
-        modifier = modifier.width(81.dp).height(20.dp)
+        modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight)
     )
 }
 
