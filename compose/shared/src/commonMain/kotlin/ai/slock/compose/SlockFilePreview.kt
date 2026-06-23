@@ -519,7 +519,7 @@ internal fun SlockFilePreviewPayloadContent(
                 onOpenUrl = onOpenUrl,
                 modifier = modifier.fillMaxSize(),
                 performanceKey = "preview:${payload.path}",
-                textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
                 showChrome = false
             )
         "text" ->

@@ -1207,7 +1207,7 @@ internal fun MembersListContent(
                     item("group_${group.label}") {
                         Text(
                             text = group.label,
-                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                             color = SlockColor.TextMutedGray,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -2099,7 +2099,7 @@ private fun MembersDetailHeader(
                 }
                 Text(
                     text = member.description?.takeIf { it.isNotBlank() } ?: member.detailHandle,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -2217,7 +2217,7 @@ private fun MembersDetailSummary(
             )
             Text(
                 text = statusLabel,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = if (deleted) SlockColor.AccentRed else SlockColor.TextMutedGray,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -2273,7 +2273,7 @@ private fun MembersLifecycleConfirmation(
     ) {
         Text(
             text = "Confirm ${action.label}",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp).withSlockFontWeight(FontWeight.Bold),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp).withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextBlack
         )
         Text(
@@ -2429,14 +2429,14 @@ private fun MembersAgentAvatarPicker(
                 MembersAvatar(member = member, avatarSize = 80.dp)
                 Text(
                     text = member.avatar?.wireValue ?: member.avatarUrl ?: "Default",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     textAlign = TextAlign.Center
                 )
             }
             Text(
                 text = "Choose Avatar",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
             )
@@ -2795,7 +2795,7 @@ private fun MembersAgentProfileTab(
             ) {
                 Text(
                     text = "Display Name",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.weight(1f)
                 )
@@ -2889,7 +2889,7 @@ private fun MembersAgentProfileTab(
             ) {
                 Text(
                     text = "Description",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.weight(1f)
                 )
@@ -3004,7 +3004,7 @@ private fun MembersAgentProfileTab(
         ) {
             Text(
                 text = "Info",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray
             )
             // Computer row
@@ -3015,7 +3015,7 @@ private fun MembersAgentProfileTab(
             ) {
                 Text(
                     text = "Computer",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
                 )
@@ -3050,7 +3050,7 @@ private fun MembersAgentProfileTab(
             ) {
                 Text(
                     text = "Creator",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
                 )
@@ -3074,7 +3074,7 @@ private fun MembersAgentProfileTab(
         ) {
             Text(
                 text = "Runtime Config",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray
             )
             Row(
@@ -3121,14 +3121,14 @@ private fun MembersAgentProfileTab(
         ) {
             Text(
                 text = "Environment Variables",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray
             )
             val envVarNames = summary?.envVarNames.orEmpty()
             if (envVarNames.isEmpty()) {
                 Text(
                     text = "No environment variables configured",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     fontStyle = FontStyle.Italic
                 )
@@ -3212,13 +3212,13 @@ private fun MembersAgentDmsTab(detail: AgentDetailSnapshot?, modifier: Modifier 
         // 'Visible here as an activity/audit trail...' caption).
         Text(
             text = "AGENT PRIVATE CHATS",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
                 .withSlockFontWeight(FontWeight.Bold),
             color = SlockColor.TextMutedGray
         )
         Text(
             text = "Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.",
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
             color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
         )
         Box(
@@ -3601,7 +3601,7 @@ private fun MembersWorkspaceNodeRow(
             SlockLucideIcon(node.membersWorkspaceIconName(expanded), Modifier.size(14.dp))
             Text(
                 text = node.name.ifBlank { node.path },
-                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp)
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
                     .withSlockFontWeight(if (node.name == "memory.md") FontWeight.Bold else FontWeight.Normal),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
@@ -3659,7 +3659,7 @@ private fun MembersWorkspaceFileViewer(
         )
         Text(
             text = path,
-            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
             color = SlockColor.TextBlack,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -3731,7 +3731,7 @@ private fun MembersWorkspacePreviewContent(
                     onOpenUrl = onOpenUrl,
                     modifier = Modifier.heightIn(min = 280.dp, max = 560.dp),
                     performanceKey = "workspace:${preview.path}",
-                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 17.sp)
+                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp)
                 )
             } else {
                 SlockFilePreviewTextPanel(
@@ -3971,7 +3971,7 @@ private fun MembersAgentActivityRow(
             ) {
                 Text(
                     text = activity.title,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 17.sp)
+                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
                         .withSlockFontWeight(FontWeight.Bold),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
@@ -3994,13 +3994,13 @@ private fun MembersAgentActivityRow(
                 if (activity.refTextEnabled) {
                     SlockMarkdownBody(
                         body = displayBody,
-                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        textStyle = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         onOpenUrl = onOpenUrl,
                     )
                 } else {
                     Text(
                         text = displayBody,
-                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = SlockColor.TextMutedGray,
                         maxLines = if (expanded) 12 else 3,
                         overflow = TextOverflow.Ellipsis,
@@ -4086,7 +4086,7 @@ private fun MembersDetailSection(
         ) {
             Text(
                 text = title,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -4176,7 +4176,7 @@ private fun MembersListRow(
         ) {
             Text(
                 text = member.displayName,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 19.sp),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -4184,7 +4184,7 @@ private fun MembersListRow(
             )
             Text(
                 text = member.description ?: member.handle,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 19.sp),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Normal).copy(fontSize = 14.sp, lineHeight = 20.sp),
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,

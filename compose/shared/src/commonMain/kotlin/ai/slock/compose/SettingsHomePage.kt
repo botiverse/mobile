@@ -9748,7 +9748,7 @@ private fun SharedHomeSavedHeader(
                 )
                 Text(
                     "$count saved",
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp, letterSpacing = 0.sp),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -10140,7 +10140,7 @@ private fun SharedHomeSavedResultCard(
                 source?.let {
                     Text(
                         text = it,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.5f),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -10172,7 +10172,7 @@ private fun SharedHomeSavedResultCard(
                 time?.let { t ->
                     Text(
                         text = t.formatSavedTimestamp(timeContext),
-                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
                         color = SlockColor.TextBlack.copy(alpha = 0.4f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -10181,7 +10181,7 @@ private fun SharedHomeSavedResultCard(
             }
             Text(
                 text = preview,
-                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 19.sp, letterSpacing = 0.sp),
+                style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
@@ -10214,7 +10214,7 @@ private fun SharedHomeSavedSenderMeta(
         )
         Text(
             text = senderName,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
             color = SlockColor.TextBlack,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
@@ -10314,7 +10314,7 @@ private fun SharedHomeSearchEntityRow(
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = result.title,
-                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 17.sp),
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -10410,7 +10410,7 @@ private fun SharedHomeThreadResultGroup(
             }
             Text(
                 text = group.title,
-                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 18.sp),
                 color = SlockColor.TextBlack,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -10472,7 +10472,7 @@ private fun SharedHomeSearchMessageResultRow(
             if (!nested) {
                 Text(
                     text = searchResultSourceLabel(item),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -10565,7 +10565,7 @@ private fun SharedHomeLoadMoreRow(
             minWidth = 0.dp,
             minHeight = 30.dp,
             shadowOffset = 3.dp,
-            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp, letterSpacing = 0.sp),
+            textStyle = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp, letterSpacing = 0.sp),
             onClick = onClick
         )
     }

@@ -358,7 +358,7 @@ internal fun SlockModalCompactMemberRow(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                     color = SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis

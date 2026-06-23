@@ -4029,7 +4029,7 @@ private fun ThreadImagePreviewLoadingPill(modifier: Modifier = Modifier) {
     ) {
         Text(
             text = "Loading full image...",
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
         )
@@ -4060,7 +4060,7 @@ private fun ThreadImagePreviewNavigationPill(
         )
         Text(
             text = label,
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 13.sp),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 11.sp, lineHeight = 14.sp),
             color = SlockColor.TextBlack,
             maxLines = 1
         )

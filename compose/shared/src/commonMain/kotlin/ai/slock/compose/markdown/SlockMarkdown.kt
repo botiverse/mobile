@@ -1424,7 +1424,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
                     .withSlockFontWeight(FontWeight.SemiBold)
                     .copy(
                         fontSize = 14.sp,
-                        lineHeight = 21.sp
+                        lineHeight = 22.sp
                     ),
             color = SlockColor.TextBlack,
             textAlign = TextAlign.Center,
