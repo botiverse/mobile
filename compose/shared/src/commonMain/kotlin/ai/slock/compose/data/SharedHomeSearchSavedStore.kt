@@ -50,7 +50,7 @@ class SharedHomeSearchSavedStore(
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
-                if (!saved.loaded && !saved.loading) loadSaved(refresh = true)
+                if (!saved.loading) loadSaved(refresh = true)
             }
             SharedHomeSearchSavedIntent.RefreshSaved -> loadSaved(refresh = true)
             SharedHomeSearchSavedIntent.LoadMoreSaved -> loadSaved(refresh = false)

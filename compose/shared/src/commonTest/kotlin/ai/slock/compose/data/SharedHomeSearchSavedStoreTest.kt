@@ -42,6 +42,31 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun openSavedRefreshesLoadedPanelOnReentry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(1, saved.loadInitialCalls)
+        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
+
+        saved.items = listOf(inboxItem("message-2"))
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(2, saved.loadInitialCalls)
+        assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun searchPanelSendsQueryFiltersAndSortToRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-2")))
@@ -234,12 +259,15 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     private class FakeSavedRepository(
-        private val items: List<InboxItem> = emptyList()
+        var items: List<InboxItem> = emptyList()
     ) : SavedRepository {
         var unsavedMessageId: MessageId? = null
+        var loadInitialCalls: Int = 0
 
-        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> =
-            DataResult.Content(SavedSnapshot(server = testServer(serverId), items = items))
+        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> {
+            loadInitialCalls++
+            return DataResult.Content(SavedSnapshot(server = testServer(serverId), items = items))
+        }
 
         override suspend fun loadMore(serverId: ServerId, offset: Int, limit: Int): DataResult<SavedSnapshot> =
             DataResult.Empty(EmptyReason.NoInboxItems)

@@ -1213,9 +1213,9 @@ private fun SlockAppShellContent() {
         }
         homeViewModel.dispatch(SharedHomeIntent.SetSurfaceVisible(homeSurfaceVisible))
     }
-    LaunchedEffect(homeActivityRouteActive, homeActivityState.loaded, homeActivityState.loading) {
-        if (homeActivityRouteActive && !homeActivityState.loaded && !homeActivityState.loading) {
-            homeActivityStore.dispatch(SharedActivityIntent.LoadInitial)
+    LaunchedEffect(homeActivityRouteActive) {
+        if (homeActivityRouteActive) {
+            homeActivityStore.dispatch(SharedActivityIntent.Refresh)
         }
     }
     val loadedSettingsTimeFormat =

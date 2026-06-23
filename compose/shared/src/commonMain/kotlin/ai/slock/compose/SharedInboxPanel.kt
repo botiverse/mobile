@@ -61,6 +61,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.material3.Text
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
@@ -261,21 +263,27 @@ private fun SharedActivityPanelContent(
                     bottomContentPadding = bottomContentPadding
                 )
             snapshot == null && state.errorCode != null ->
-                SharedActivityStateBody(
+                SharedActivityRefreshableStateBody(
                     title = "Could not load activity",
                     detail = state.errorCode,
                     actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
-                    bottomContentPadding = bottomContentPadding
+                    refreshing = state.refreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
                 )
             snapshot == null ->
-                SharedActivityStateBody(
+                SharedActivityRefreshableStateBody(
                     title = "Activity is empty",
                     detail = state.selectedFilter.emptyCopy(),
-                    bottomContentPadding = bottomContentPadding
+                    refreshing = state.refreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
                 )
             snapshot.items.isEmpty() ->
-                SharedActivityStateBody(
+                SharedActivityRefreshableStateBody(
                     title =
                         when (state.selectedFilter) {
                             InboxFilter.Mentions -> "No mentions yet"
@@ -283,11 +291,15 @@ private fun SharedActivityPanelContent(
                             InboxFilter.All -> "Activity is empty"
                         },
                     detail = state.selectedFilter.emptyCopy(),
-                    bottomContentPadding = bottomContentPadding
+                    refreshing = state.refreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    bottomContentPadding = bottomContentPadding,
+                    listState = listState
                 )
             else ->
                 SharedActivityList(
                     snapshot = snapshot,
+                    refreshing = state.refreshing,
                     loadingMore = state.loadingMore,
                     loadMoreErrorCode = state.loadMoreErrorCode,
                     onOpenMessage = onOpenMessage,
@@ -390,6 +402,7 @@ private fun SharedActivityFilterBar(
 @Composable
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
+    refreshing: Boolean,
     loadingMore: Boolean,
     loadMoreErrorCode: String?,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
@@ -400,8 +413,9 @@ private fun SharedActivityList(
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    val pullToRefreshState = rememberPullToRefreshState(refreshing)
     LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
-        snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.lastIndex) }
+        snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
             .distinctUntilChanged()
             .collect { shouldLoad ->
                 if (shouldLoad && snapshot.hasMore && !loadingMore) {
@@ -415,6 +429,11 @@ private fun SharedActivityList(
             modifier = Modifier.fillMaxSize().padding(top = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            pullToRefreshItem(
+                state = pullToRefreshState,
+                scrollState = listState,
+                onRefresh = { onIntent(SharedActivityIntent.Refresh) }
+            )
             items(snapshot.items.size, key = { index -> snapshot.items[index].key }) { index ->
                 val item = snapshot.items[index]
                 SharedActivityRow(
@@ -736,13 +755,49 @@ private fun SharedActivityLoadMoreRetryRow(onClick: () -> Unit) {
 }
 
 @Composable
+private fun SharedActivityRefreshableStateBody(
+    title: String,
+    detail: String,
+    actionLabel: String? = null,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    bottomContentPadding: Dp,
+    listState: LazyListState,
+    onAction: () -> Unit = {}
+) {
+    val pullToRefreshState = rememberPullToRefreshState(refreshing)
+    LazyColumn(
+        state = listState,
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        pullToRefreshItem(
+            state = pullToRefreshState,
+            scrollState = listState,
+            onRefresh = onRefresh
+        )
+        item(key = "activity_state") {
+            SharedActivityStateBody(
+                title = title,
+                detail = detail,
+                actionLabel = actionLabel,
+                bottomContentPadding = bottomContentPadding,
+                onAction = onAction,
+                modifier = Modifier.fillParentMaxSize()
+            )
+        }
+    }
+}
+
+@Composable
 private fun SharedActivityStateBody(
     title: String,
     detail: String,
     loading: Boolean = false,
     actionLabel: String? = null,
     bottomContentPadding: Dp,
-    onAction: () -> Unit = {}
+    onAction: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     if (loading) {
         SlockCenteredLoading(message = title)
@@ -754,7 +809,7 @@ private fun SharedActivityStateBody(
         iconName = SlockLucideIconName.Activity,
         actionLabel = actionLabel,
         onAction = onAction.takeIf { actionLabel != null },
-        modifier = Modifier.padding(bottom = bottomContentPadding)
+        modifier = modifier.padding(bottom = bottomContentPadding)
     )
 }
 
@@ -842,10 +897,10 @@ private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): SlockLucid
         ai.slock.compose.model.TaskStatus.Closed -> SlockLucideIconName.Ban
     }
 
-private fun LazyListState.isActivityLoadMoreThreshold(lastItemIndex: Int): Boolean {
-    if (lastItemIndex < 0) return false
+private fun LazyListState.isActivityLoadMoreThreshold(lastActivityRowIndex: Int): Boolean {
+    if (lastActivityRowIndex < 1) return false
     val visibleLastIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return false
-    return visibleLastIndex >= lastItemIndex - 3
+    return visibleLastIndex >= lastActivityRowIndex - 3
 }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
