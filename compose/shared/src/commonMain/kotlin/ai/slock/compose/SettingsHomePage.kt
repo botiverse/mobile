@@ -4946,27 +4946,26 @@ private fun SettingsServerSlugInput(
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockBrutalSectionLabel(label = "Server slug")
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .height(42.dp)
                     .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
             }
-            SlockBrutalTextField(
-                label = "Server slug",
+            TextField(
                 value = value,
+                onValueChange = { if (enabled) onValueChange(it) },
                 placeholder = placeholder,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                required = true,
-                modifier = Modifier.weight(1f)
+                placeholderColor = SlockColor.TextMutedGray,
+                maxLines = 1,
+                textStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                modifier = Modifier.weight(1f).padding(horizontal = 10.dp)
             )
         }
     }
