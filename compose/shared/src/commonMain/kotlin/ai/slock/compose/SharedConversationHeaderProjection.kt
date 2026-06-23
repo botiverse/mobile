@@ -91,11 +91,17 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
             thread?.streamChannelId?.value
         ).filter { it.isNotBlank() }.toSet()
     if (ids.isEmpty()) return null
-    val displayName =
+    val rawDisplayName =
         when (surfaceKind) {
             KuiklyThreadSurfaceKind.DirectMessage -> name.removePrefix("@").ifBlank { name }
             else -> name.removePrefix("#").ifBlank { name }
         }
+    val displayName =
+        threadHeaderSafeTitle(
+            raw = rawDisplayName,
+            surfaceKind = surfaceKind,
+            identityIds = ids
+        )
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,

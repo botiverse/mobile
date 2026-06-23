@@ -88,6 +88,8 @@ import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
+import com.tencent.kuikly.compose.extension.NestedScrollMode
+import com.tencent.kuikly.compose.extension.nestedScroll
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -3666,7 +3668,11 @@ private fun MembersAgentActivityTab(
                 state = listState,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 520.dp),
+                    .heightIn(min = 220.dp, max = 520.dp)
+                    .nestedScroll(
+                        scrollUp = NestedScrollMode.SELF_FIRST,
+                        scrollDown = NestedScrollMode.SELF_FIRST
+                    ),
                 verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
                 beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {

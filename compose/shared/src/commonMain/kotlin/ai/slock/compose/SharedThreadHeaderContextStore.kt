@@ -63,8 +63,9 @@ internal object SharedThreadHeaderContextStore {
             title =
                 when (surfaceKind) {
                     KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
-                    KuiklyThreadSurfaceKind.DirectMessage -> dmTitleFor(surfaceKind, dmPeerName ?: conversation.name)
-                    else -> conversation.name.takeIf { it.isNotBlank() } ?: fallbackTitle(surfaceKind)
+                    KuiklyThreadSurfaceKind.DirectMessage ->
+                        dmTitleFor(surfaceKind, dmPeerName ?: safeConversationTitle(conversation, surfaceKind))
+                    else -> safeConversationTitle(conversation, surfaceKind)
                 },
             subtitle =
                 when (surfaceKind) {
@@ -87,20 +88,32 @@ internal object SharedThreadHeaderContextStore {
         )
     }
 
-    private fun fallbackTitle(surfaceKind: String): String =
-        when (surfaceKind) {
-            KuiklyThreadSurfaceKind.ReplyThread -> ThreadReplyPageTitle
-            KuiklyThreadSurfaceKind.DirectMessage -> "Direct Message"
-            else -> "Channel"
-        }
+    private fun fallbackTitle(surfaceKind: String): String = threadHeaderFallbackTitle(surfaceKind)
 
     private fun dmTitleFor(surfaceKind: String, dmPeerName: String?): String =
         if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
-            dmPeerName?.takeIf { it.isNotBlank() } ?: fallbackTitle(surfaceKind)
+            threadHeaderSafeTitleOrNull(dmPeerName) ?: fallbackTitle(surfaceKind)
         } else {
             fallbackTitle(surfaceKind)
         }
+
+    private fun safeConversationTitle(
+        conversation: ConversationSummary,
+        surfaceKind: String
+    ): String =
+        threadHeaderSafeTitle(
+            raw = conversation.name,
+            surfaceKind = surfaceKind,
+            identityIds = conversation.headerIdentityIds()
+        )
 }
+
+private fun ConversationSummary.headerIdentityIds(): Set<String> =
+    listOfNotNull(
+        threadId.value,
+        channelId?.value,
+        thread?.streamChannelId?.value
+    ).filter { it.isNotBlank() }.toSet()
 
 internal fun KuiklyThreadScreenPayload.withHeaderContext(
     context: SharedThreadHeaderContext
