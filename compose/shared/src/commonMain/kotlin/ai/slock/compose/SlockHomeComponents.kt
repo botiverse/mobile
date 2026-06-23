@@ -335,9 +335,7 @@ private fun SlockHomePageContent() {
         onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
         onChannelClick = { conversationId -> openThreadPageFromConversationId(pager, payload, conversationId) },
-        onChannelLongPress = { conversationId, _ ->
-            bridge.settingsEvent(payload.instanceId, "openPinMenu", conversationId)
-        },
+        onChannelLongPress = { _, _ -> },
         onPinToggle = { conversationId ->
             bridge.settingsEvent(payload.instanceId, "togglePinned", conversationId)
         },
