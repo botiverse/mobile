@@ -14,6 +14,7 @@ import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentCreatedSummary
+import ai.slock.compose.data.AgentCreatorSummary
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDetailSummary
 import ai.slock.compose.data.AgentDmSummary
@@ -54,10 +55,14 @@ import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.getModelLabel
+import ai.slock.compose.model.getRuntimeDisplayName
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.supportsRuntimeFastMode
+import ai.slock.compose.model.supportsRuntimeReasoningEffort
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockWorkspaceFileKind
@@ -425,6 +430,14 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         daemonVersion = "0.61.1",
         creatorId = "artin",
         creatorType = "user",
+        creator = AgentCreatorSummary(
+            type = "human",
+            id = "artin",
+            name = "artin",
+            displayName = "artin",
+            avatarUrl = "pixel:user",
+            gravatarHash = null
+        ),
         envVarNames = listOf("RAFT_PROFILE", "SLOCK_VISUAL_PROVIDER"),
         createdAgents = listOf(
             AgentCreatedSummary(
@@ -3392,13 +3405,49 @@ private fun MembersAgentProfileTab(
                     color = SlockColor.TextMutedGray,
                     modifier = Modifier.width(86.dp)
                 )
-                Text(
-                    text = summary?.creatorLabel.orDash(),
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                val creatorProfile = summary?.creator?.toMemberProfile()
+                if (creatorProfile != null) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        MembersAvatar(
+                            member = creatorProfile,
+                            avatarSize = 22.dp,
+                            statusSize = 0.dp,
+                            showStatusOverlay = false
+                        )
+                        Text(
+                            text = creatorProfile.displayName,
+                            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                                .withSlockFontWeight(FontWeight.Bold),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
+                        Text(
+                            text = creatorProfile.detailHandle,
+                            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextMutedGray,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "No creator assigned",
+                        style = SlockType.Body.copy(
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            fontStyle = FontStyle.Italic
+                        ),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
@@ -3419,28 +3468,31 @@ private fun MembersAgentProfileTab(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                val runtimeLabel = summary?.runtime.orBadgeFallback(member.roleDescription)
-                if (runtimeLabel.isNotBlank()) {
+                val runtimeId = summary?.runtime?.takeIf { it.isNotBlank() }
+                    ?: member.roleDescription?.takeIf { it.isNotBlank() }
+                if (!runtimeId.isNullOrBlank()) {
                     MembersAgentRuntimeChip(
-                        label = runtimeLabel,
+                        label = getRuntimeDisplayName(runtimeId),
                         kind = MembersAgentRuntimeChipKind.Runtime
                     )
                 }
-                if (!summary?.model.isNullOrBlank()) {
+                val modelId = summary?.model?.takeIf { it.isNotBlank() }
+                if (runtimeId != null && modelId != null) {
                     MembersAgentRuntimeChip(
-                        label = summary.model.orDash(),
+                        label = getModelLabel(runtimeId, modelId),
                         kind = MembersAgentRuntimeChipKind.Model
                     )
                 }
-                if (!summary?.reasoning.isNullOrBlank()) {
+                if (runtimeId != null && supportsRuntimeReasoningEffort(runtimeId) && !summary?.reasoning.isNullOrBlank()) {
                     MembersAgentRuntimeChip(
-                        label = summary.reasoning.orDash(),
+                        label = summary.reasoning.orDash().toMembersDisplayLabel(),
                         kind = MembersAgentRuntimeChipKind.Reasoning
                     )
                 }
-                if (!summary?.executionMode.isNullOrBlank()) {
+                val runtimeMode = summary?.executionMode.toMembersRuntimeModeChipLabel(runtimeId)
+                if (runtimeMode != null) {
                     MembersAgentRuntimeChip(
-                        label = summary.executionMode.orDash(),
+                        label = runtimeMode,
                         kind = MembersAgentRuntimeChipKind.Mode
                     )
                 }
@@ -4508,12 +4560,29 @@ internal fun buildMembersAgentDiagnostics(
     ).joinToString("\n")
 }
 
-private val ai.slock.compose.data.AgentDetailSummary?.creatorLabel: String?
-    get() =
-        this?.creatorId?.takeIf { it.isNotBlank() }?.let { creatorId ->
-            listOfNotNull(creatorType?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel(), creatorId)
-                .joinToString(": ")
-        }
+private fun AgentCreatorSummary.toMemberProfile(): MemberProfile? {
+    if (id.isBlank() || name.isBlank()) return null
+    val display = displayName?.takeIf { it.isNotBlank() } ?: name
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = display,
+        handle = name,
+        kind = if (type == "agent") MemberKind.Agent else MemberKind.Human,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = display.take(1).uppercase()
+    )
+}
+
+private fun String?.toMembersRuntimeModeChipLabel(runtimeId: String?): String? {
+    if (runtimeId == null || !supportsRuntimeFastMode(runtimeId)) return null
+    return when (this?.trim()?.lowercase()) {
+        "fast" -> "Fast"
+        "default" -> "Default"
+        else -> null
+    }
+}
 
 private val MemberProfile.membersComputerName: String?
     get() =

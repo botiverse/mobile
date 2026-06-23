@@ -189,11 +189,21 @@ data class AgentDetailSummary(
     val avatarUrl: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
+    val creator: AgentCreatorSummary? = null,
     val envVarNames: List<String> = emptyList(),
     val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,
     val deletedAt: String? = null
+)
+
+data class AgentCreatorSummary(
+    val type: String,
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String? = null
 )
 
 data class AgentCreatedSummary(

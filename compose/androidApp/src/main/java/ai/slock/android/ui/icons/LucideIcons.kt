@@ -1670,6 +1670,44 @@ object LucideIcons {
                 }.build()
     }
 
+    val Menu: ImageVector by lazy {
+        ImageVector.Builder(
+                    name = "LucideMenu",
+                    defaultWidth = 24.0.dp,
+                    defaultHeight = 24.0.dp,
+                    viewportWidth = 24.0f,
+                    viewportHeight = 24.0f,
+                ).apply {
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 5.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 12.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                    }
+                    path(
+                        stroke = SolidColor(Color(0xFF000000)),
+                        strokeLineCap = StrokeCap.Round,
+                        strokeLineJoin = StrokeJoin.Round,
+                        strokeLineWidth = 2.0f,
+                    ) {
+                        moveTo(x = 4.0f, y = 19.0f)
+                        horizontalLineToRelative(dx = 16.0f)
+                    }
+                }.build()
+    }
+
     val Eraser: ImageVector by lazy {
         ImageVector.Builder(
                     name = "LucideEraser",
@@ -3554,34 +3592,6 @@ object LucideIcons {
                     ) {
                         moveTo(x = 9.0f, y = 11.0f)
                         horizontalLineToRelative(dx = 6.0f)
-                    }
-                }.build()
-    }
-
-    // #71 React parity: replaces the vertical three-dot `Ellipsis` icon used
-    // by the agent detail management button with the horizontal three-line
-    // `Menu` icon (matches React `lucide-react Menu` used in
-    // `AgentDetailPanel.tsx:1822`). SVG path: M4 5h16 / M4 12h16 / M4 19h16.
-    val Menu: ImageVector by lazy {
-        ImageVector.Builder(
-                    name = "LucideMenu",
-                    defaultWidth = 24.0.dp,
-                    defaultHeight = 24.0.dp,
-                    viewportWidth = 24.0f,
-                    viewportHeight = 24.0f,
-                ).apply {
-                    path(
-                        stroke = SolidColor(Color(0xFF000000)),
-                        strokeLineCap = StrokeCap.Round,
-                        strokeLineJoin = StrokeJoin.Round,
-                        strokeLineWidth = 2.0f,
-                    ) {
-                        moveTo(x = 4.0f, y = 5.0f)
-                        horizontalLineToRelative(dx = 16.0f)
-                        moveTo(x = 4.0f, y = 12.0f)
-                        horizontalLineToRelative(dx = 16.0f)
-                        moveTo(x = 4.0f, y = 19.0f)
-                        horizontalLineToRelative(dx = 16.0f)
                     }
                 }.build()
     }
@@ -5822,7 +5832,7 @@ object LucideIcons {
                 }.build()
     }
 
-    val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-ring", "blocks", "bookmark", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "eraser", "external-link", "eye", "eye-off", "file", "file-check", "file-code", "file-text", "flag", "flame", "folder", "folder-open", "funnel", "git-branch", "globe", "hash", "heart", "house", "image", "image-plus", "inbox", "info", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-open", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pencil", "pin", "pin-off", "play", "plus", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
+    val Names: List<String> = listOf("activity", "align-horizontal-space-around", "app-window", "archive", "arrow-left", "arrow-up-down", "at-sign", "ban", "badge-info", "bell", "bell-ring", "blocks", "bookmark", "bot", "bug", "building-2", "calendar", "chart-bar", "check", "chevron-down", "chevron-left", "chevron-right", "chevron-up", "circle", "circle-arrow-up", "circle-check", "circle-check-big", "circle-dashed", "circle-user", "clipboard", "clipboard-list", "clock", "clock-3", "columns-3", "copy", "credit-card", "download", "ellipsis", "menu", "eraser", "external-link", "eye", "eye-off", "file", "file-check", "file-code", "file-text", "flag", "flame", "folder", "folder-open", "funnel", "git-branch", "globe", "hash", "heart", "house", "image", "image-plus", "inbox", "info", "key", "key-round", "languages", "layout-list", "link", "link-2", "list-tree", "list-todo", "lock", "log-in", "log-out", "loader", "loader-circle", "mail", "mail-open", "mail-plus", "message-circle", "message-circle-off", "message-square", "message-square-plus", "monitor", "monitor-x", "package-check", "package", "paperclip", "panel-bottom-open", "pencil", "pin", "pin-off", "play", "plus", "refresh-cw", "rotate-ccw", "rotate-cw", "route", "save", "search", "send", "settings", "server", "share", "share-2", "shield", "shield-check", "sliders-horizontal", "smartphone", "sparkles", "square", "square-check-big", "store", "terminal", "triangle-alert", "trash", "trash-2", "type", "unlink", "upload", "user", "user-minus", "user-plus", "users", "users-round", "volume-x", "wand", "waypoints", "x")
 
     fun byName(name: String): ImageVector? {
         return when (name.toIconKey()) {
@@ -5864,6 +5874,7 @@ object LucideIcons {
             "credit-card" -> CreditCard
             "download" -> Download
             "ellipsis" -> Ellipsis
+            "menu" -> Menu
             "eraser" -> Eraser
             "external-link" -> ExternalLink
             "eye" -> Eye
@@ -5967,5 +5978,5 @@ object LucideIcons {
             .lowercase(Locale.US)
     }
 
-    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellRing, Blocks, Bookmark, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Eraser, ExternalLink, Eye, EyeOff, File, FileCheck, FileCode, FileText, Flag, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Menu, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pencil, Pin, PinOff, Play, Plus, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
+    val All: List<ImageVector> = listOf(Activity, AlignHorizontalSpaceAround, AppWindow, Archive, ArrowLeft, ArrowUpDown, AtSign, Ban, BadgeInfo, Bell, BellRing, Blocks, Bookmark, Bot, Bug, Building2, Calendar, ChartBar, Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, CircleArrowUp, CircleCheck, CircleCheckBig, CircleDashed, CircleUser, Clipboard, ClipboardList, Clock, Clock3, Columns3, Copy, CreditCard, Download, Ellipsis, Menu, Eraser, ExternalLink, Eye, EyeOff, File, FileCheck, FileCode, FileText, Flag, Flame, Folder, FolderOpen, Funnel, GitBranch, Globe, Hash, Heart, House, Image, ImagePlus, Inbox, Info, Key, KeyRound, Languages, LayoutList, Link, Link2, ListTree, ListTodo, Lock, LogIn, LogOut, Loader, LoaderCircle, Mail, MailOpen, MailPlus, MessageCircle, MessageCircleOff, MessageSquare, MessageSquarePlus, Monitor, MonitorX, PackageCheck, Package, Paperclip, PanelBottomOpen, Pencil, Pin, PinOff, Play, Plus, RefreshCw, RotateCcw, RotateCw, Route, Save, Search, Send, Settings, Server, Share, Share2, Shield, ShieldCheck, SlidersHorizontal, Smartphone, Sparkles, Square, SquareCheckBig, Store, Terminal, TriangleAlert, Trash, Trash2, Type, Unlink, Upload, User, UserMinus, UserPlus, Users, UsersRound, VolumeX, Wand, Waypoints, X)
 }

@@ -38,6 +38,9 @@ class MemberRepositoryDataSourceTest {
         assertEquals("0.57.1", detail.data.summary?.daemonVersion)
         assertEquals("user-1", detail.data.summary?.creatorId)
         assertEquals("human", detail.data.summary?.creatorType)
+        assertEquals("Artin", detail.data.summary?.creator?.displayName)
+        assertEquals("artin", detail.data.summary?.creator?.name)
+        assertEquals("pixel:user", detail.data.summary?.creator?.avatarUrl)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.data.summary?.envVarNames)
         assertEquals("Helper", detail.data.summary?.createdAgents?.single()?.displayName)
         assertEquals("idle", detail.data.summary?.activity)
@@ -193,6 +196,14 @@ class MemberRepositoryDataSourceTest {
                           "activityDetail":"Ready",
                           "creatorId":"user-1",
                           "creatorType":"human",
+                          "creator":{
+                            "type":"human",
+                            "id":"user-1",
+                            "name":"artin",
+                            "displayName":"Artin",
+                            "avatarUrl":"pixel:user",
+                            "gravatarHash":"hash-1"
+                          },
                           "daemonVersion":"0.57.1",
                           "envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},
                           "createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],

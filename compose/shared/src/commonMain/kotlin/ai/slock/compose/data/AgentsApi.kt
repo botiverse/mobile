@@ -317,6 +317,7 @@ internal data class AgentSummary(
     val avatarUrl: String?,
     val creatorId: String?,
     val creatorType: String?,
+    val creator: AgentCreatorSummary?,
     val envVarNames: List<String>,
     val createdAgents: List<AgentCreatedSummary>,
     val activity: String?,
@@ -408,6 +409,7 @@ private data class AgentWireDto(
     val avatarUrl: String? = null,
     val creatorId: String? = null,
     val creatorType: String? = null,
+    val creator: AgentCreatorWireDto? = null,
     val daemonVersion: String? = null,
     val envVars: Map<String, JsonElement> = emptyMap(),
     val createdAgents: List<AgentCreatedWireDto> = emptyList(),
@@ -415,6 +417,16 @@ private data class AgentWireDto(
     val activityDetail: String? = null,
     val deletedAt: String? = null,
     val runtimeProfile: AgentRuntimeProfileDto? = null,
+)
+
+@Serializable
+private data class AgentCreatorWireDto(
+    val type: String,
+    val id: String,
+    val name: String,
+    val displayName: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarHash: String? = null,
 )
 
 private fun AgentWireDto.toSummary(): AgentSummary? {
@@ -435,11 +447,24 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
+        creator = creator?.toDomain(),
         envVarNames = envVars.keys.filter { it.isNotBlank() }.sorted(),
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt
+    )
+}
+
+private fun AgentCreatorWireDto.toDomain(): AgentCreatorSummary? {
+    if (id.isBlank() || name.isBlank()) return null
+    return AgentCreatorSummary(
+        type = type,
+        id = id,
+        name = name,
+        displayName = displayName,
+        avatarUrl = avatarUrl,
+        gravatarHash = gravatarHash
     )
 }
 

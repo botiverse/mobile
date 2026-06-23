@@ -810,6 +810,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         avatarUrl = avatarUrl,
         creatorId = creatorId,
         creatorType = creatorType,
+        creator = creator,
         envVarNames = envVarNames,
         createdAgents = createdAgents,
         activity = activity,

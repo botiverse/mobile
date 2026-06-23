@@ -38,7 +38,7 @@ internal fun MembersAgentRuntimeChip(
     label: String,
     kind: MembersAgentRuntimeChipKind,
     modifier: Modifier = Modifier,
-    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp)
+    textStyle: TextStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp)
         .withSlockFontWeight(FontWeight.Bold)
 ) {
     val backgroundColor: Color = when (kind) {
@@ -51,7 +51,7 @@ internal fun MembersAgentRuntimeChip(
         modifier = modifier
             .background(backgroundColor)
             .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .padding(horizontal = 8.dp, vertical = 3.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(

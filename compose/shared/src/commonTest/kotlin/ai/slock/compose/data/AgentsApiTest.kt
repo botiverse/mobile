@@ -29,6 +29,9 @@ class AgentsApiTest {
         assertEquals("pixel:robot", detail.avatarUrl)
         assertEquals("user-1", detail.creatorId)
         assertEquals("human", detail.creatorType)
+        assertEquals("Artin", detail.creator?.displayName)
+        assertEquals("artin", detail.creator?.name)
+        assertEquals("pixel:user", detail.creator?.avatarUrl)
         assertEquals(listOf("ANTHROPIC_API_KEY", "OPENAI_API_KEY"), detail.envVarNames)
         assertEquals("Helper", detail.createdAgents.single().displayName)
         val created = assertIs<DataResult.Content<AgentSummary>>(client.createAgent("""{"name":"Noel"}""")).data
@@ -138,7 +141,7 @@ class AgentsApiTest {
 
     private class RecordingAgentsApi(
         private val agentsBody: String = """[{"id":"agent-1","name":"Noel","status":"active"}]""",
-        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
+        private val agentBody: String = """{"id":"agent-1","name":"Agent One","displayName":"Noel Bot","status":"active","model":"gpt-5","runtime":"codex","machineId":"machine-1","reasoningEffort":"medium","executionMode":"local","avatarUrl":"pixel:robot","creatorId":"user-1","creatorType":"human","creator":{"type":"human","id":"user-1","name":"artin","displayName":"Artin","avatarUrl":"pixel:user","gravatarHash":"hash-1"},"daemonVersion":"0.57.1","envVars":{"OPENAI_API_KEY":"configured","ANTHROPIC_API_KEY":"configured"},"createdAgents":[{"id":"agent-child","name":"helper","displayName":"Helper","runtime":"codex","status":"idle"}],"activity":"idle","activityDetail":"Ready","deletedAt":null}""",
         private val createAgentBody: String = """{"id":"agent-2","name":"Noel","status":"active","avatarUrl":"pixel:tree"}""",
         private val commandBody: String = """{"ok":true}""",
         private val agentDmsBody: String = """[{"id":"dm-1","name":"Agent chat"}]""",
