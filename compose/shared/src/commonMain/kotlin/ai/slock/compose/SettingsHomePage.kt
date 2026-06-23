@@ -3774,31 +3774,22 @@ private fun SettingsServerMuteCard(
     actionState: SharedSettingsActionState?,
     onServerMuteChange: (Boolean) -> Unit
 ) {
-    var muteDraft by remember(snapshot.muteServer.enabled) { mutableStateOf(snapshot.muteServer.enabled) }
     val busy = actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.inProgress
-    val dirty = muteDraft != snapshot.muteServer.enabled
     SettingsFormSectionCard(iconName = SlockLucideIconName.VolumeX, title = "Workspace mute") {
         SettingsFormDetailText(snapshot.muteServer.detail)
         SegmentedControl(
-            selectedValue = if (muteDraft) "muted" else "unmuted",
+            selectedValue = if (snapshot.muteServer.enabled) "muted" else "unmuted",
             options =
                 listOf(
                     SegmentedControlOption("unmuted", "Unmuted", SlockLucideIconName.BellRing),
                     SegmentedControlOption("muted", "Muted", SlockLucideIconName.VolumeX)
                 ),
-            onValueSelected = { muteDraft = it == "muted" },
+            onValueSelected = { onServerMuteChange(it == "muted") },
             enabled = snapshot.muteServer.available && !busy
         )
         if (actionState?.action == MOBILE_ACTION_SERVER_MUTE && actionState.errorCode != null) {
             SettingsFormErrorText(actionState.errorCode)
         }
-        SlockBrutalActionButton(
-            label = actionState.statusFor(MOBILE_ACTION_SERVER_MUTE, "Save mute"),
-            onClick = { onServerMuteChange(muteDraft) },
-            enabled = snapshot.muteServer.available && dirty && !busy,
-            leadingIcon = SlockLucideIconName.Save,
-            backgroundColor = SlockColor.BrandYellow
-        )
     }
 }
 
