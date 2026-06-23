@@ -2496,7 +2496,7 @@ private fun MembersDetailHeader(
             )
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Text(
                     text = member.displayName,
@@ -2506,20 +2506,24 @@ private fun MembersDetailHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = member.description?.takeIf { it.isNotBlank() } ?: member.detailHandle,
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = statusLabel,
-                    style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                    color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = statusLabel,
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    SlockStatusIndicator(
+                        color = if (deleted) SlockColor.AccentOrange else agentStatusDisplayState.color,
+                        size = 8.dp,
+                        pulsing = !deleted && agentStatusDisplayState.pulsing
+                    )
+                }
             }
             SlockBrutalActionButton(
                 label = "Message",
