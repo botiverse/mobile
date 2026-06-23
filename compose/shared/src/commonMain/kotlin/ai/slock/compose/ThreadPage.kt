@@ -4326,7 +4326,7 @@ internal fun threadVisualFixture(
                             threadChannelId = "thread-msg-agent-reply",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "+1", count = 2, selected = false)
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 2, selected = false)
                                 )
                         )
                     ),
