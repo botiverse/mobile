@@ -24,6 +24,9 @@ OHOS is closer to the desired long-term shape but still needs clearer boundaries
 - When Bugly is initialized, `setPersistentRecorder` forwards entries to `SlockOhosBuglyDiagnostics.record()`.
 - Bugly `TDLog` writes bounded files under `bugly_tdlog` with `maxFileSize = 50MB` and `maxAliveTime = 7 days`.
 - Settings copy/upload mostly uses the persistent Bugly/TDLog path, but Settings list still reads the memory recent buffer.
+- Settings diagnostic feedback has two different product actions today:
+  - Android prepares a channel-ready text attachment via `bodyBase64`.
+  - OHOS `sendFeedback` currently requests a Bugly/TDDiag upload instead of returning an attachment draft.
 
 The target direction is **not** reading back system `logcat` / `hilog`. Mobile apps should treat system logs as external debugging streams. The app must own its durable diagnostics files, because normal app permissions, privacy constraints, and platform sandboxing make system-log readback unreliable or inappropriate.
 
@@ -45,6 +48,7 @@ The key rule: **write once to an app diagnostics pipeline, fan out to bounded si
 - Keep system logs useful for external debugging, but never use `logcat` / `hilog` readback for Settings diagnostics.
 - Preserve sanitization before data enters memory, file, Bugly, clipboard, share sheet, or feedback upload.
 - Support copy/share/send-feedback from bounded files without building huge strings from memory.
+- Support Settings -> Diagnostics feedback to a Raft channel by producing a local text attachment file/draft, even when Bugly is the durable OHOS sink.
 - Keep high-frequency logs from hurting UI performance or storage.
 
 ## Non-goals
@@ -84,6 +88,19 @@ Shared code should continue to emit diagnostics through existing host capabiliti
   - `sendFeedback`
 
 Shared/KMP should not know the host file path. It should only see a normalized `SharedSettingsDiagnosticsSnapshot` plus action feedback.
+
+Feedback actions must be separated by product destination:
+
+- **Channel feedback**: host returns a `SettingsDiagnosticsFeedbackDraft`-compatible payload:
+  - `status=ok`
+  - `message`
+  - `fileName`
+  - `mimeType=text/plain`
+  - `sizeBytes`
+  - `bodyBase64`
+- **Crash/observability upload**: host requests Bugly/TDDiag upload and returns upload metadata such as `queryKey`.
+
+Do not overload a single `sendFeedback` action to mean both. If the UI entry point says "send diagnostics to channel", the host must return a local attachment draft. If the UI entry point says "upload to Bugly", the host may call TDDiag directly.
 
 ### Host boundary
 
@@ -183,13 +200,17 @@ Update Settings actions:
   - max alive time: `7 days`
 - `SlockOhosDiagnostics.setPersistentRecorder(...)` forwards to TDLog when Bugly is ready.
 - Settings copy/upload already reads through `SlockOhosBuglyDiagnostics` for durable output.
+- `SlockOhosBuglyDiagnostics.exportDiagnosticsText()` currently returns a text snapshot built from bundle/device metadata plus `SlockOhosDiagnostics.exportText(1000)`.
+- `SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot()` writes that snapshot to `filesDir/diagnostics_upload/diagnostics-<ts>.txt` for TDDiag upload.
+- `KRBridgeModule.copyDiagnosticsCapability()` copies `exportDiagnosticsText()` to clipboard.
+- `KRBridgeModule.sendFeedback` currently calls `uploadBuglyDiagnosticsCapability()`, which returns Bugly upload status/query key, not a `SettingsDiagnosticsFeedbackDraft` attachment.
 
 ### Target state
 
 Keep TDLog/Bugly as the OHOS durable file sink, but rename and document responsibilities:
 
 - `SlockOhosDiagnostics`: recent memory + sanitization + fan-out coordinator.
-- `SlockOhosBuglyDiagnostics`: durable file/crash upload sink.
+- `SlockOhosBuglyDiagnostics`: TDLog durable sink + crash/TDDiag upload adapter + Bugly-backed export writer.
 - Add fallback app-owned file sink if Bugly init fails:
   - directory: `filesDir/slock-diagnostics/`
   - active/rotated JSONL files matching Android limits where practical.
@@ -201,10 +222,23 @@ Update Settings actions:
 
 - `loadDiagnostics`: show recent memory entries plus durable sink metadata.
 - `copyDiagnostics`: prefer durable TDLog/fallback file export; include recent memory tail only as a small prefix if needed.
+- `prepareDiagnosticsFeedback` / channel `sendFeedback`:
+  - flush TDLog first when Bugly is initialized.
+  - generate a user-readable text file under a cache/export directory, for example `cacheDir/slock-feedback/slock-feedback-<ts>.txt`.
+  - the file content should use Bugly-backed export data:
+    - header metadata from `SlockOhosBuglyDiagnostics.exportDiagnosticsText()`
+    - recent memory tail
+    - TDLog file metadata or clipped TDLog text if the SDK exposes safe file reads
+    - explicit truncation notice when capped
+  - return `fileName`, `mimeType`, `sizeBytes`, and `bodyBase64` so shared can attach it to the selected Raft channel.
+  - prune old generated feedback files after creation.
+- `uploadDiagnosticsToBugly` (or a clearly named equivalent): flush TDLog and request TDDiag upload; return `queryKey`.
 - `clearDiagnostics`: clear recent memory and delete fallback app-owned files. For Bugly TDLog files, either:
   - delete files only if SDK/docs confirm this is safe, or
   - record a `clear_requested` marker and expose that persistent crash SDK logs are managed by retention.
 - `uploadDiagnostics`: flush TDLog before upload; include generated diagnostic snapshot as currently done.
+
+The channel feedback file must not require the user or support agent to open the Bugly console. Bugly can be the source of durable lines, but Settings feedback still needs a normal local file attachment.
 
 ## Event Model
 
@@ -278,6 +312,16 @@ Caps:
 - Share/feedback attachment: max `2MB` text by default.
 - Upload SDK: can include native rolling files up to SDK/network limits.
 
+For OHOS with Bugly enabled:
+
+- `TDLog.flushLog()` must run before generating the channel feedback file.
+- If direct TDLog file reads are supported and safe, include the newest TDLog tail in the exported text.
+- If direct TDLog file reads are not available, generate the channel file from `exportDiagnosticsText()` and recent memory, and include:
+  - `Durable sink: bugly_tdlog`
+  - `TDLog dir: <filesDir>/bugly_tdlog`
+  - `TDLog attachment: not embedded; uploaded through Bugly only`
+- The Raft channel attachment path must remain local and deterministic from the host perspective. Do not make the channel feedback depend on the asynchronous Bugly upload succeeding.
+
 ## Performance Rules
 
 - File writes must not run on the Kuikly render thread.
@@ -305,11 +349,15 @@ Caps:
 ### Phase 2: OHOS fallback + cleanup
 
 1. Keep Bugly TDLog as primary durable sink.
-2. Add fallback rolling file sink when Bugly is not initialized.
-3. Lower `SlockOhosDiagnostics.MAX_ENTRIES`.
-4. Update Settings load/copy/share/clear metadata.
-5. Add ArkTS tests or manual HDC proof:
+2. Add a Bugly-backed channel feedback export action that returns `SettingsDiagnosticsFeedbackDraft` fields (`fileName`, `mimeType`, `sizeBytes`, `bodyBase64`).
+3. Keep TDDiag upload as a separate explicitly named action; do not use it as the implementation of channel feedback.
+4. Add fallback rolling file sink when Bugly is not initialized.
+5. Lower `SlockOhosDiagnostics.MAX_ENTRIES`.
+6. Update Settings load/copy/share/clear metadata.
+7. Add ArkTS tests or manual HDC proof:
    - Bugly ready: durable sink `bugly_tdlog`
+   - Bugly ready: channel feedback produces a local text attachment draft without waiting for Bugly upload success
+   - Bugly ready: explicit Bugly upload returns upload request status/query key
    - Bugly failed: durable sink `fallback_file`
    - clear memory + fallback files
 
@@ -339,7 +387,7 @@ OHOS:
 
 - `./hvigorw --mode module -p module=entry assembleHap` if the host build is available.
 - Manual HDC:
-  - Bugly initialized: record log, copy diagnostics, upload diagnostics.
+  - Bugly initialized: record log, copy diagnostics, generate channel feedback attachment, upload diagnostics to Bugly.
   - Bugly disabled/failing: fallback file gets lines.
   - Settings clear behavior matches documented retention.
 
@@ -354,7 +402,8 @@ Cross-platform:
 
 - Android no longer depends on a `100_000` entry in-memory diagnostics history.
 - Android feedback/copy/share reads from app-owned rolling files.
-- OHOS has a documented durable primary sink and fallback path.
+- OHOS has a documented durable primary sink, channel attachment export path, and fallback path.
+- OHOS channel feedback returns a local file draft; Bugly/TDDiag upload remains a separate action.
 - Settings Diagnostics can show recent entries quickly but exports durable file history.
 - No implementation reads from system `logcat` or `hilog`.
 - Clear logs behavior is explicit and test-covered.
