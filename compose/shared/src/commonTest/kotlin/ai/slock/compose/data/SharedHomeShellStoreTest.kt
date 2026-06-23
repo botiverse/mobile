@@ -125,6 +125,7 @@ class SharedHomeShellStoreTest {
             listOf<SharedHomeIntent>(
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(true),
+                SharedHomeIntent.Start,
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),
                 SharedHomeIntent.SetSurfaceVisible(false),
                 SharedHomeIntent.ApplyRealtimeEvent("server-1", event),

@@ -21,7 +21,7 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
             if (value.length <= ThreadFailureReasonMaxLength) {
                 value
             } else {
-                value.take(ThreadFailureReasonMaxLength - 1).trimEnd() + "..."
+                value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
             }
         }
 

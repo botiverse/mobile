@@ -1423,6 +1423,7 @@ internal class SharedThreadDataSource(
                 ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
                 ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
                 ?: return this
+        if (parentMessage?.id?.value == parentMessageId) return this
         if (basePayload.originStatus == "loaded" && basePayload.originMessage?.id == parentMessageId) {
             val parentChannelId =
                 basePayload.parentChannelId?.takeIf { it.isNotBlank() }
@@ -1437,7 +1438,6 @@ internal class SharedThreadDataSource(
                     )
             )
         }
-        if (parentMessage?.id?.value == parentMessageId) return this
         if (messages.any { message -> message.id.value == parentMessageId }) return this
         val contextResult =
             fetchThreadSnapshotFromRepository("thread_parent_context") { repository ->
@@ -3949,6 +3949,17 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val isDirectMessage = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
     val isAgentDirectMessage =
         isDirectMessage && conversation.directMessagePeerType.equals("agent", ignoreCase = true)
+    val resolvedComposer =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            base.composer.copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                mentionChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                streamChannelId = streamChannelId
+            )
+        } else {
+            base.composer
+        }
     return base.copy(
         title = headerContext.title,
         subtitle = headerContext.subtitle,
@@ -3968,6 +3979,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         originErrorCode = headerContext.originErrorCode,
         emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyTitle else base.emptyTitle,
         emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) ThreadReplyEmptyDetail else base.emptyDetail,
+        composer = resolvedComposer,
         tasks = tasks.map { task -> task.toKuiklyThreadTaskItem() },
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,

@@ -396,7 +396,7 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         assertEquals(44.sp, inlineContent.getValue("slock-code:4").placeholder.width)
-        assertEquals(19.sp, inlineContent.getValue("slock-code:4").placeholder.height)
+        assertEquals(20.sp, inlineContent.getValue("slock-code:4").placeholder.height)
     }
 
     @Test

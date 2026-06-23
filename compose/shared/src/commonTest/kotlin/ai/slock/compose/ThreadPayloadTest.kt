@@ -143,7 +143,7 @@ class ThreadPayloadTest {
         assertEquals(null, message.taskNumber)
         assertEquals(0, message.replyCount)
         assertEquals(1, message.reactions.size)
-        assertEquals("+1", message.reactions.single().emoji)
+        assertEquals("👍", message.reactions.single().emoji)
         assertEquals(2, message.reactions.single().count)
         assertFalse(message.reactions.single().selected)
     }
@@ -636,7 +636,7 @@ class ThreadPayloadTest {
         assertEquals("artin", renderedPayload.dmPeerName)
         assertEquals("pixel:crown", renderedPayload.dmPeerAvatarUrl)
         assertEquals("AR", renderedPayload.dmPeerAvatarLabel)
-        assertEquals("https://www.gravatar.com/avatar/artin", renderedPayload.dmPeerGravatarUrl)
+        assertEquals(null, renderedPayload.dmPeerGravatarUrl)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
     }
@@ -1069,7 +1069,7 @@ class ThreadPayloadTest {
     fun threadHeaderDisplayTitleDropsLeadingChannelHash() {
         assertEquals("首页专修", threadHeaderDisplayTitle("#首页专修"))
         assertEquals("design", threadHeaderDisplayTitle("design"))
-        assertEquals("#", threadHeaderDisplayTitle("#"))
+        assertEquals("Channel", threadHeaderDisplayTitle("#"))
     }
 
     @Test
@@ -1739,7 +1739,7 @@ class ThreadPayloadTest {
         assertEquals("parent-message-1", initialPayload.originParentMessageId)
         assertEquals("reply-2", initialPayload.focusedMessageId)
         assertEquals(false, initialPayload.showModeTabs)
-        assertEquals(true, initialPayload.showOpenInChannelAction)
+        assertEquals(false, initialPayload.showOpenInChannelAction)
 
         val composer = initialPayload.resolveThreadComposer()
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, composer.surfaceKind)

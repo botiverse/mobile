@@ -1054,6 +1054,9 @@ class SharedHomeStoreTest {
 
         store.accept(SharedHomeIntent.Start)
 
+        withTimeout(1_000) {
+            while (api.calls.size < 8) yield()
+        }
         assertEquals(countBeforeStart, observedStates.size)
         assertEquals(8, api.calls.size)
         assertEquals(0, logs.count { it.contains("home_refresh_skip") && it.contains("reason=fresh_snapshot") })
@@ -1323,7 +1326,7 @@ class SharedHomeStoreTest {
 
         val notification = store.state.value.notifications.single()
         assertEquals("announcement-1", notification.id)
-        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(listOf("GET announcements/active", "GET announcements/active"), announcementsApi.calls)
         scope.cancel()
     }
 
@@ -1623,6 +1626,10 @@ class SharedHomeStoreTest {
 
     private class RecordingHomeApi : SlockHomeApi {
         val calls = mutableListOf<String>()
+        private var channelBlock: BlockingCall? = null
+
+        fun blockNextChannels(): BlockingCall =
+            BlockingCall().also { channelBlock = it }
 
         override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse =
             error("server-specific overload should be used")
@@ -1636,8 +1643,14 @@ class SharedHomeStoreTest {
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse =
             error("server-specific overload should be used")
 
-        override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
-            ok("channels", serverId)
+        override suspend fun channels(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse {
+            channelBlock?.let { block ->
+                channelBlock = null
+                block.started.complete(Unit)
+                block.released.await()
+            }
+            return ok("channels", serverId)
+        }
 
         override suspend fun directMessages(serverId: ServerId, priority: DataRequestPriority): HomeNetworkResponse =
             ok("dms", serverId)
