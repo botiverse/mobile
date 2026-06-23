@@ -616,6 +616,19 @@ internal fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMe
     }
 }
 
+internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
+    val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "thread-member-detail-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected")
+        put("memberId", selected)
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
+}
+
 private fun KuiklyThreadScreenPayload.threadMemberProfilesForProfilePage(selectedMemberId: String): List<MemberProfile> =
     (members.map { it.toMemberProfile() } + listOfNotNull(findThreadAuthorProfile(selectedMemberId)))
         .distinctBy { it.id.value }
@@ -1389,7 +1402,7 @@ private fun ThreadPageScreen() {
         },
         realtimeEventSignal = threadRealtimeEventSignal,
         onOpenMemberProfile = { currentPayload, memberId ->
-            val pageData = currentPayload.toThreadMembersProfilePageData(memberId)
+            val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
             if (pageData == null) {
                 bridge.toast("Unable to open profile")
                 bridge.logWarn(
@@ -1397,7 +1410,7 @@ private fun ThreadPageScreen() {
                         "instanceId=${currentPayload.instanceId}"
                 )
             } else {
-                routerModule.openPage(MEMBERS_PAGE, pageData)
+                routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
             }
         }
     )
