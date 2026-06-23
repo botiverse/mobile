@@ -1086,7 +1086,6 @@ internal data class SharedThreadRealtimeEventSignal(
 
 internal data class ThreadRouteUiState(
     val thread: KuiklyThreadScreenPayload,
-    val files: KuiklyThreadFilesPayload,
     val composer: KuiklyThreadComposerPayload,
     val membersLoadStatus: LoadMembersStatus
 )
@@ -1777,7 +1776,6 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
-    val filesState by filesViewModel.state.collectAsState()
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {
             SharedThreadComposerDraftViewModel()
@@ -1922,7 +1920,6 @@ internal fun SharedThreadRouteContent(
             )
         )
     }
-    val filesPayload = filesState.payload
     var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     var attachmentNoPreviewState by remember(payload.instanceId) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
@@ -2003,16 +2000,14 @@ internal fun SharedThreadRouteContent(
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val routeUiState =
-        remember(renderedPayload, filesPayload, composerState, threadState.membersLoadStatus) {
+        remember(renderedPayload, composerState, threadState.membersLoadStatus) {
             ThreadRouteUiState(
                 thread = renderedPayload,
-                files = filesPayload,
                 composer = composerState,
                 membersLoadStatus = threadState.membersLoadStatus
             )
         }
     val renderedThread = routeUiState.thread
-    val renderedFiles = routeUiState.files
     val renderedComposer = routeUiState.composer
     var firstContentExtrasVisible by remember(threadRouteKey, renderedThread.status) {
         mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
@@ -2204,21 +2199,6 @@ internal fun SharedThreadRouteContent(
             routeAuthRequired(renderedThread.errorCode)
         }
     }
-    LaunchedEffect(renderedFiles.status, renderedFiles.errorCode) {
-        if (renderedFiles.status == "no_permission" || renderedFiles.status == "error") {
-            routeAuthRequired(renderedFiles.errorCode)
-        }
-    }
-    fun loadThreadFiles(reason: String, cursor: String? = null) {
-        if (resolvedAuxiliaryThreadId == null) return
-        filesViewModel.dispatch(
-            if (cursor != null) {
-                SharedThreadFilesIntent.LoadMore(reason)
-            } else {
-                SharedThreadFilesIntent.Refresh(reason)
-            }
-        )
-    }
     fun requestImagePreviewUrl(attachmentId: String) {
         if (attachmentId in imagePreviewUrlCache) return
         val currentPreview = imagePreviewState ?: return
@@ -2303,11 +2283,6 @@ internal fun SharedThreadRouteContent(
             return
         }
         pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "markdown"))
-    }
-    LaunchedEffect(renderedThread.sourceThreadId, renderedThread.selectedTab) {
-        if (renderedThread.selectedTab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
-            loadThreadFiles("initial_tab")
-        }
     }
     // Render-axis signature: only the fields the render log actually reads.
     // Members / settings / actions / realtime metadata / files payload
@@ -2503,15 +2478,24 @@ internal fun SharedThreadRouteContent(
     Box(modifier = Modifier.fillMaxSize()) {
         ThreadPageContent(
             payload = renderedThread,
-            filesPayload = renderedFiles,
             composerSurface = composerSurface,
             composerState = renderedComposer,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
+            filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
             channelSuggestionsFlow = channelSuggestionsFlow,
             contentExtrasVisible = firstContentExtrasVisible,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
+            onFilesAuthRequired = { code -> routeAuthRequired(code) },
+            onOpenFilesAttachment = { attachment, imageGroup ->
+                if (imageGroup != null) {
+                    openImagePreview(imageGroup)
+                } else {
+                    openAttachmentNoPreview(attachment)
+                }
+            },
+            onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
             highlightedMentions = threadState.highlightedMentions,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
@@ -2524,13 +2508,11 @@ internal fun SharedThreadRouteContent(
                     action == "openAttachment" && !attachmentId.isNullOrBlank() -> {
                         val imageGroup =
                             renderedThread.findThreadImageAttachmentGroup(attachmentId)
-                                ?: renderedFiles.findThreadImageAttachmentGroup(attachmentId)
                         if (imageGroup != null) {
                             openImagePreview(imageGroup)
                         } else {
                             val attachment =
                                 renderedThread.findThreadAttachment(attachmentId)
-                                    ?: renderedFiles.findThreadAttachment(attachmentId)
                                     ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                             openAttachmentNoPreview(attachment)
                         }
@@ -2538,7 +2520,6 @@ internal fun SharedThreadRouteContent(
                     action == "downloadAttachment" && !attachmentId.isNullOrBlank() -> {
                         val attachment =
                             renderedThread.findThreadAttachment(attachmentId)
-                                ?: renderedFiles.findThreadAttachment(attachmentId)
                                 ?: KuiklyThreadAttachmentItem(id = attachmentId, name = "Attachment")
                         openAttachmentExternally(attachment)
                     }
@@ -3039,22 +3020,9 @@ internal fun SharedThreadRouteContent(
                         }
                     }
                 }
-                action == "selectTab" -> {
-                    if (tab == KuiklyThreadTab.Files.wireValue && renderedFiles.shouldFetchInitialFiles()) {
-                        loadThreadFiles("tab_select")
-                    }
-                }
+                action == "selectTab" -> Unit
                 action == "loadMembers" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadMembers)
-                }
-                action == "loadMoreFiles" -> {
-                    val cursor = renderedFiles.nextCursor?.takeIf { it.isNotBlank() }
-                    if (cursor != null && renderedFiles.hasMore) {
-                        loadThreadFiles("load_more", cursor)
-                    }
-                }
-                action == "retryFiles" -> {
-                    loadThreadFiles("retry")
                 }
                 action == "loadOlder" || action == "retryLoadOlder" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadOlder)
@@ -4418,15 +4386,18 @@ private fun ThreadTasksJoinResultLogger(
 @Composable
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
-    filesPayload: KuiklyThreadFilesPayload,
     composerSurface: ThreadComposerSurface,
     composerState: KuiklyThreadComposerPayload,
     tasksViewModel: SharedTasksViewModel?,
     taskChannelId: ChannelId?,
+    filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
     channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
+    onFilesAuthRequired: (String?) -> Unit,
+    onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
@@ -4555,16 +4526,13 @@ private fun ThreadPageContent(
                             onIntent = onTasksIntent
                         )
                     KuiklyThreadTab.Files ->
-                        ThreadFilesContent(payload = filesPayload, attachmentOpenStates = attachmentOpenStates) { action, attachmentId ->
-                            when (action) {
-                                "open" ->
-                                    onThreadEvent("openAttachment", null, attachmentId, null)
-                                "download" ->
-                                    onThreadEvent("downloadAttachment", null, attachmentId, null)
-                                "loadMore" -> onThreadEvent("loadMoreFiles", null, null, null)
-                                "retry" -> onThreadEvent("retryFiles", null, null, null)
-                            }
-                        }
+                        ThreadFilesTab(
+                            filesViewModel = filesViewModel,
+                            attachmentOpenStates = attachmentOpenStates,
+                            onAuthRequired = onFilesAuthRequired,
+                            onOpenAttachment = onOpenFilesAttachment,
+                            onDownloadAttachment = onDownloadFilesAttachment
+                        )
                 }
             }
             if (!payload.joined) {
@@ -8364,6 +8332,44 @@ private fun threadAttachmentCommentBlockedCopy(reason: String?): String =
         "unlinked" -> "THIS ATTACHMENT IS NOT LINKED TO A COMMENT THREAD."
         else -> "COMMENTS ARE NOT AVAILABLE."
     }
+
+@Composable
+private fun ThreadFilesTab(
+    filesViewModel: SharedThreadFilesViewModel,
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState>,
+    onAuthRequired: (String?) -> Unit,
+    onOpenAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
+    onDownloadAttachment: (KuiklyThreadAttachmentItem) -> Unit
+) {
+    val filesState by filesViewModel.state.collectAsState()
+    val payload = filesState.payload
+    LaunchedEffect(payload.instanceId) {
+        if (payload.shouldFetchInitialFiles()) {
+            filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("initial_tab"))
+        }
+    }
+    LaunchedEffect(payload.status, payload.errorCode) {
+        if (payload.status == "no_permission" || payload.status == "error") {
+            onAuthRequired(payload.errorCode)
+        }
+    }
+    ThreadFilesContent(payload = payload, attachmentOpenStates = attachmentOpenStates) { action, attachmentId ->
+        when (action) {
+            "open" -> {
+                val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
+                val attachment = payload.findThreadAttachment(cleanAttachmentId) ?: return@ThreadFilesContent
+                onOpenAttachment(attachment, payload.findThreadImageAttachmentGroup(cleanAttachmentId))
+            }
+            "download" -> {
+                val cleanAttachmentId = attachmentId?.takeIf { it.isNotBlank() } ?: return@ThreadFilesContent
+                val attachment = payload.findThreadAttachment(cleanAttachmentId) ?: return@ThreadFilesContent
+                onDownloadAttachment(attachment)
+            }
+            "loadMore" -> filesViewModel.dispatch(SharedThreadFilesIntent.LoadMore("load_more"))
+            "retry" -> filesViewModel.dispatch(SharedThreadFilesIntent.Refresh("retry"))
+        }
+    }
+}
 
 @Composable
 private fun ThreadTasksTab(
