@@ -36,6 +36,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.material3.LinearProgressIndicator
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
@@ -534,6 +535,7 @@ internal fun SlockFilePreviewPayloadContent(
                     meta = payload.meta,
                     message = payload.message.ifBlank { "Image preview is unavailable." },
                     statusLabel = downloadStatusLabel,
+                    showProgress = downloadInProgress,
                     actionLabel = if (onDownload != null) {
                         if (downloadInProgress) "Downloading..." else "Download"
                     } else {
@@ -566,6 +568,7 @@ internal fun SlockFilePreviewPayloadContent(
                 meta = payload.meta,
                 message = payload.message.ifBlank { "No preview is available for this file type." },
                 statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
                 actionLabel = if (onDownload != null) {
                     if (downloadInProgress) "Downloading..." else "Download"
                 } else {
@@ -740,6 +743,7 @@ internal fun SlockFilePreviewGenericCard(
     meta: String,
     message: String,
     statusLabel: String? = null,
+    showProgress: Boolean = false,
     actionLabel: String? = null,
     actionIcon: SlockLucideIconName? = null,
     actionEnabled: Boolean = true,
@@ -792,6 +796,14 @@ internal fun SlockFilePreviewGenericCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
+            )
+        }
+        if (showProgress) {
+            Box(modifier = Modifier.height(SlockSpacing.Md))
+            LinearProgressIndicator(
+                modifier = Modifier.fillMaxWidth().height(4.dp),
+                color = SlockColor.AccentCyan,
+                trackColor = SlockColor.SurfaceCream
             )
         }
         if (actionLabel != null && onAction != null) {

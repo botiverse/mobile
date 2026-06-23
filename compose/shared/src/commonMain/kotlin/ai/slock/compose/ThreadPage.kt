@@ -4140,6 +4140,7 @@ private fun ThreadAttachmentNoPreviewOverlay(
                 meta = attachment.genericAttachmentMetaLine(),
                 message = "No preview is available for this file type.",
                 statusLabel = openState.threadAttachmentStatusLabel(),
+                showProgress = isOpening,
                 actionLabel = if (isOpening) "Downloading..." else "Download",
                 actionIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
                 actionEnabled = !isOpening,
