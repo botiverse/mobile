@@ -103,7 +103,9 @@ data class SharedSettingsAboutSnapshot(
     val socketStatusLabel: String = "",
     val notificationStatusLabel: String = "",
     val deviceLabel: String = "",
-    val platformLabel: String = ""
+    val platformLabel: String = "",
+    val buildTime: String = "",
+    val gitCommit: String = ""
 )
 
 data class SharedSettingsNetworkProbeSnapshot(

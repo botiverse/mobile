@@ -6958,17 +6958,9 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                         listOf(
                             KuiklySharedSettingsRow("appName", SlockLucideIconName.Sparkles, "Application", appName.ifBlank { "Raft" }, status = "Shared shell"),
                             KuiklySharedSettingsRow("version", SlockLucideIconName.BadgeInfo, "Version", versionLabel.ifBlank { "Unknown" }, status = buildLabel.ifBlank { "Build unknown" }),
-                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Read only"),
-                            KuiklySharedSettingsRow("device", SlockLucideIconName.Smartphone, "Device", deviceLabel.ifBlank { "Unknown" }, status = platformLabel.ifBlank { "Platform" })
-                        )
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Runtime",
-                    rows =
-                        listOf(
-                            KuiklySharedSettingsRow("signedInUser", SlockLucideIconName.User, "Signed in as", signedInUserLabel.ifBlank { "Unknown" }, status = sessionStatusLabel),
-                            KuiklySharedSettingsRow("selectedServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "None" }, status = socketStatusLabel),
-                            KuiklySharedSettingsRow("notifications", SlockLucideIconName.Bell, "Notifications", notificationStatusLabel.ifBlank { "Unknown" }, status = "Host")
+                            KuiklySharedSettingsRow("buildTime", SlockLucideIconName.Clock, "Build time", buildTime.ifBlank { "Unknown" }, status = "Host"),
+                            KuiklySharedSettingsRow("gitCommit", SlockLucideIconName.GitBranch, "Git commit", gitCommit.ifBlank { "Unknown" }, status = "Source"),
+                            KuiklySharedSettingsRow("package", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Read only")
                         )
                 ),
                 KuiklySharedSettingsSection(
@@ -6976,9 +6968,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     rows =
                         listOf(
                             KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open logs, profiler, and diagnostic feedback tools.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("copyBuild", SlockLucideIconName.Copy, "Copy version/build", buildSummary(), status = "Copy", enabled = true),
-                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true)
+                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true)
                         )
                 )
             )
