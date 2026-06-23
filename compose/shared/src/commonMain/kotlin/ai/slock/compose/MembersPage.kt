@@ -3200,16 +3200,134 @@ private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
 
 @Composable
 private fun MembersAgentDmsTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
-    MembersDetailSection(title = "AGENT DMS", modifier = modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        // #67 React parity: AGENT PRIVATE CHATS header + caption explaining the
+        // audit-trail nature of the rows (mirrors React `AgentDmsTab.tsx`
+        // 'Visible here as an activity/audit trail...' caption).
+        Text(
+            text = "AGENT PRIVATE CHATS",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray
+        )
+        Text(
+            text = "Visible here as an activity/audit trail. These rows are intentionally not direct conversation links.",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+            color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(SlockStroke.Thin)
+                .background(SlockColor.BorderBlack.copy(alpha = 0.15f))
+        )
         val rows = detail?.directMessages.orEmpty()
         if (rows.isEmpty()) {
-            MembersDetailField("DMs", "No agent-to-agent DMs yet.")
+            Text(
+                text = "No agent-to-agent DMs yet.",
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
+            )
         } else {
             rows.take(8).forEach { row ->
-                MembersDetailField(row.peerName, row.lastMessagePreview ?: row.lastMessageAt ?: row.id)
+                MembersAgentDmRow(row)
             }
         }
     }
+}
+
+@Composable
+private fun MembersAgentDmRow(row: AgentDmSummary) {
+    // React parity: subtle bordered card (alpha 0.2 border, no brutal shadow)
+    // with avatar + name + handle + relative time on the top row, body text
+    // on the second row, and an ACTIVITY ONLY tag on the third row.
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.2f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Agent DM",
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextMutedGray
+            )
+            SlockAvatar(
+                avatarWireValue = row.peerAvatarUrl,
+                label = row.peerName.take(1).uppercase(),
+                avatarSize = 22.dp,
+                borderWidth = SlockStroke.Thin
+            )
+            Text(
+                text = row.peerName,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "@${row.peerName}",
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+            Text(
+                text = row.lastMessageAt.membersDmRelativeTime(),
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1
+            )
+        }
+        if (!row.lastMessagePreview.isNullOrBlank()) {
+            Text(
+                text = row.lastMessagePreview,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = "ACTIVITY ONLY",
+            style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+        )
+    }
+}
+
+private fun String?.membersDmRelativeTime(): String {
+    val raw = this?.trim()?.takeIf { it.isNotBlank() } ?: return ""
+    // Try ISO timestamp first.
+    val epochMillis = parseSlockTimestampEpochMillisOrNull(raw)
+    if (epochMillis != null) {
+        val now = System.currentTimeMillis()
+        val diffMs = now - epochMillis
+        if (diffMs < 0L) return raw
+        val minutes = diffMs / 60_000L
+        val hours = diffMs / 3_600_000L
+        val days = diffMs / 86_400_000L
+        return when {
+            minutes < 1L -> "just now"
+            minutes < 60L -> "$minutes minute${if (minutes == 1L) "" else "s"} ago"
+            hours < 24L -> "$hours hour${if (hours == 1L) "" else "s"} ago"
+            days < 30L -> "$days day${if (days == 1L) "" else "s"} ago"
+            else -> raw
+        }
+    }
+    // Otherwise pass through (already-friendly strings like '4 days ago').
+    return raw
 }
 
 @Composable
