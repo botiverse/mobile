@@ -74,6 +74,18 @@ git submodule update --init --recursive third_party/slock-source
   production parser rejection/ignore behavior, and narrow static checks on
   known route/pageData entry points. Do not use broad word-grep as a hard gate.
 
+## Kuikly Overlay Coordinate Rule
+
+- For Slock Kuikly Compose floating overlays, dropdowns, context menus, and
+  anchored popovers, keep anchor and overlay geometry in pixels. Do not convert
+  `positionInRoot()` or `coords.size` through `LocalDensity`, `toDp()`, `.dp`,
+  or `toSlockDpOffset()` before passing an anchor to `SlockAnchoredPopover`.
+- Use dp only for visual dimensions and spacing passed into Compose layout
+  modifiers or parameters explicitly named `*Dp`.
+- See `docs/kuikly-overlay-coordinate-contract.md` before changing
+  `SlockAnchoredPopover`, `SlockFloatingOverlayLayout`, or trigger components
+  such as `SlockAnchoredToolbarChip`.
+
 ## Task / Commit / Thread Discipline
 
 Workflow rules for how every agent (human-supervised or autonomous) should move

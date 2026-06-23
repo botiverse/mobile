@@ -97,6 +97,7 @@ internal fun SlockFloatingOverlayHost(
     // localAnchor.y came out as 1442 (treated as dp), and the menu
     // landed at y=877 dp ≈ 2303 px (screen bottom) instead of near
     // the row. Keep everything in pixels to avoid the unit mismatch.
+    // Contract: docs/kuikly-overlay-coordinate-contract.md.
     var overlayLayout by remember { mutableStateOf(SlockFloatingOverlayLayout()) }
     // Defer the host's dismiss-clickable so the long-press release that
     // opens the menu does not immediately propagate to the host's
