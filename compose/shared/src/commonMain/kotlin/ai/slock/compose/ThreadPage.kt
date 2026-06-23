@@ -3937,147 +3937,130 @@ private fun ThreadImagePreviewOverlay(
         with(LocalDensity.current) {
             56.dp.toPx()
         }
-    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = "Image preview",
-            subtitle = current.name.ifBlank { "Image" },
-            iconName = SlockLucideIconName.Image,
-            backgroundColor = SlockColor.SurfaceWhite,
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onDismiss,
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
-            },
-            trailingContent = {
-                ThreadAttachmentPreviewMoreMenuButton(
-                    onOpenWithSystem = { onOpenExternally(current) }
-                )
-            }
-        )
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         Column(modifier = Modifier.fillMaxSize()) {
-            val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
-            Box(
-                modifier = Modifier.fillMaxWidth()
-                    .weight(1f)
-                    .padding(
-                        start = SlockSpacing.Md,
-                        top = SlockSpacing.Md,
-                        end = SlockSpacing.Md,
-                        bottom = SlockSpacing.Md + previewBottomPadding
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
+            SlockTopPageHeader(
+                title = current.name.ifBlank { "Image" },
+                subtitle = current.genericAttachmentMetaLine().takeIf { it.isNotBlank() },
+                iconName = SlockLucideIconName.Image,
+                backgroundColor = SlockColor.SurfaceWhite,
+                leadingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.ArrowLeft,
+                        onClick = onDismiss,
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                },
+                trailingContent = {
+                    SlockFilePreviewOverflowMenuButton(
+                        onOpenMenu = { anchor ->
+                            menuAnchor = anchor
+                            menuOpen = true
+                        }
+                    )
+                }
+            )
+            Column(modifier = Modifier.fillMaxSize()) {
+                val previewBottomPadding = if (hasMultiple) 0.dp else bottomSafeArea
                 Box(
-                    modifier = Modifier.fillMaxSize()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .then(
-                            if (hasMultiple) {
-                                Modifier.pointerInput(state.currentIndex, state.images.size) {
-                                    var dragDistance = 0f
-                                    detectHorizontalDragGestures(
-                                        onDragStart = { dragDistance = 0f },
-                                        onDragEnd = {
-                                            when {
-                                                dragDistance <= -swipeThresholdPx && state.currentIndex < state.images.lastIndex -> {
-                                                    onSelectIndex(state.currentIndex + 1)
-                                                }
-
-                                                dragDistance >= swipeThresholdPx && state.currentIndex > 0 -> {
-                                                    onSelectIndex(state.currentIndex - 1)
-                                                }
-                                            }
-                                        },
-                                        onDragCancel = { dragDistance = 0f }
-                                    ) { _, dragAmount ->
-                                        dragDistance += dragAmount
-                                    }
-                                }
-                            } else {
-                                Modifier
-                            }
-                        )
+                    modifier = Modifier.fillMaxWidth()
+                        .weight(1f)
+                        .padding(
+                            start = SlockSpacing.Md,
+                            top = SlockSpacing.Md,
+                            end = SlockSpacing.Md,
+                            bottom = SlockSpacing.Md + previewBottomPadding
+                        ),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (displayUrl != null) {
-                        SlockCachedImage(
-                            source = displayUrl,
-                            contentDescription = current.name,
-                            contentScale = ContentScale.Fit,
-                            modifier = Modifier.fillMaxSize().padding(8.dp)
+                    Box(
+                        modifier = Modifier.fillMaxSize()
+                            .background(SlockColor.SurfaceCream)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .then(
+                                if (hasMultiple) {
+                                    Modifier.pointerInput(state.currentIndex, state.images.size) {
+                                        var dragDistance = 0f
+                                        detectHorizontalDragGestures(
+                                            onDragStart = { dragDistance = 0f },
+                                            onDragEnd = {
+                                                when {
+                                                    dragDistance <= -swipeThresholdPx && state.currentIndex < state.images.lastIndex -> {
+                                                        onSelectIndex(state.currentIndex + 1)
+                                                    }
+
+                                                    dragDistance >= swipeThresholdPx && state.currentIndex > 0 -> {
+                                                        onSelectIndex(state.currentIndex - 1)
+                                                    }
+                                                }
+                                            },
+                                            onDragCancel = { dragDistance = 0f }
+                                        ) { _, dragAmount ->
+                                            dragDistance += dragAmount
+                                        }
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        if (displayUrl != null) {
+                            SlockCachedImage(
+                                source = displayUrl,
+                                contentDescription = current.name,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier.fillMaxSize().padding(8.dp)
+                            )
+                        } else {
+                            ThreadImagePreviewEmptyState(
+                                title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
+                                detail = current.name
+                            )
+                        }
+                    }
+                    if (isLoading && displayUrl != null) {
+                        ThreadImagePreviewLoadingPill(
+                            modifier =
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = if (hasMultiple) 56.dp else 12.dp)
                         )
-                    } else {
-                        ThreadImagePreviewEmptyState(
-                            title = if (failedWithoutImage) "Image unavailable" else "Loading image...",
-                            detail = current.name
+                    }
+                    if (hasMultiple) {
+                        ThreadImagePreviewNavigationPill(
+                            label = "${state.currentIndex + 1}/${state.images.size}",
+                            canGoPrevious = state.currentIndex > 0,
+                            canGoNext = state.currentIndex < state.images.lastIndex,
+                            onPrevious = { onSelectIndex(state.currentIndex - 1) },
+                            onNext = { onSelectIndex(state.currentIndex + 1) },
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
                         )
                     }
                 }
-                if (isLoading && displayUrl != null) {
-                    ThreadImagePreviewLoadingPill(
-                        modifier =
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = if (hasMultiple) 56.dp else 12.dp)
-                    )
-                }
                 if (hasMultiple) {
-                    ThreadImagePreviewNavigationPill(
-                        label = "${state.currentIndex + 1}/${state.images.size}",
-                        canGoPrevious = state.currentIndex > 0,
-                        canGoNext = state.currentIndex < state.images.lastIndex,
-                        onPrevious = { onSelectIndex(state.currentIndex - 1) },
-                        onNext = { onSelectIndex(state.currentIndex + 1) },
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
-                    )
-                }
-            }
-            if (hasMultiple) {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth()
-                        .height(74.dp + bottomSafeArea)
-                        .background(SlockColor.SurfaceWhite)
-                        .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    items(state.images.size, key = { state.images[it].id }) { index ->
-                        ThreadImagePreviewThumbnail(
-                            attachment = state.images[index],
-                            selected = index == state.currentIndex,
-                            resolvedUrl = resolvedUrls[state.images[index].id]?.url,
-                            onClick = { onSelectIndex(index) }
-                        )
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth()
+                            .height(74.dp + bottomSafeArea)
+                            .background(SlockColor.SurfaceWhite)
+                            .padding(start = 12.dp, top = 10.dp, end = 12.dp, bottom = 10.dp + bottomSafeArea),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(state.images.size, key = { state.images[it].id }) { index ->
+                            ThreadImagePreviewThumbnail(
+                                attachment = state.images[index],
+                                selected = index == state.currentIndex,
+                                resolvedUrl = resolvedUrls[state.images[index].id]?.url,
+                                onClick = { onSelectIndex(index) }
+                            )
+                        }
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun ThreadAttachmentPreviewMoreMenuButton(
-    isOpening: Boolean = false,
-    onOpenWithSystem: () -> Unit
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
-    Box {
-        SlockBrutalIconButton(
-            iconName = SlockLucideIconName.Ellipsis,
-            onClick = { menuOpen = true },
-            size = 30.dp,
-            shadowOffset = 2.dp,
-            modifier = Modifier.onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInRoot()
-                menuAnchor = Offset(
-                    x = pos.x + coordinates.size.width.toFloat() / 2f,
-                    y = pos.y + coordinates.size.height.toFloat() / 2f
-                )
-            }
-        )
         if (menuOpen) {
             SlockBrutalDropdownMenu(
                 anchor = menuAnchor,
@@ -4085,14 +4068,14 @@ private fun ThreadAttachmentPreviewMoreMenuButton(
                     listOf(
                         SlockBrutalDropdownMenuItem(
                             id = ThreadAttachmentPreviewOpenWithActionId,
-                            label = if (isOpening) "Preparing..." else "Open with...",
-                            icon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink,
-                            enabled = !isOpening
+                            label = "Open with...",
+                            icon = SlockLucideIconName.ExternalLink
                         )
                     ),
                 onSelect = { id ->
+                    menuOpen = false
                     if (id == ThreadAttachmentPreviewOpenWithActionId) {
-                        onOpenWithSystem()
+                        onOpenExternally(current)
                     }
                 },
                 onDismiss = { menuOpen = false },
@@ -4249,15 +4232,23 @@ private fun ThreadAttachmentNoPreviewOverlay(
     val isOpening = openState.threadAttachmentIsOpening()
     val isMarkdown = attachment.isMarkdownAttachment()
     SlockFilePreviewPageScaffold(
-        title = if (isMarkdown) "Markdown preview" else "File preview",
-        subtitle = attachment.name.ifBlank { "Attachment" },
+        title = attachment.name.ifBlank { "Attachment" },
+        subtitle = attachment.genericAttachmentMetaLine().takeIf { it.isNotBlank() },
         iconName = if (isMarkdown) SlockLucideIconName.FileText else SlockLucideIconName.File,
         onBack = onDismiss,
-        trailingContent = {
-            ThreadAttachmentPreviewMoreMenuButton(
-                isOpening = isOpening,
-                onOpenWithSystem = onOpenWithSystem
-            )
+        overflowMenuItems =
+            listOf(
+                SlockBrutalDropdownMenuItem(
+                    id = ThreadAttachmentPreviewOpenWithActionId,
+                    label = if (isOpening) "Preparing..." else "Open with...",
+                    icon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.ExternalLink,
+                    enabled = !isOpening
+                )
+            ),
+        onOverflowMenuSelect = { id ->
+            if (id == ThreadAttachmentPreviewOpenWithActionId) {
+                onOpenWithSystem()
+            }
         }
     ) {
         if (isMarkdown) {

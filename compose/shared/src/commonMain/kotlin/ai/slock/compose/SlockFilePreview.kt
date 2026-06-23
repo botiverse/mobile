@@ -14,7 +14,6 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxScope
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
@@ -97,48 +96,53 @@ private fun SlockFilePreviewStandalonePageContent() {
         )
     }
     SlockFilePreviewPageScaffold(
-        title = payload.title,
-        subtitle = payload.subtitle.ifBlank { payload.name.ifBlank { payload.path } },
+        title = payload.previewHeaderTitle(),
+        subtitle = payload.previewHeaderSubtitle(),
         iconName = payload.previewIconName(),
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         contentPadding = 0.dp,
-        trailingContent =
-            payload.externalUrl?.takeIf { it.isNotBlank() }?.let { externalUrl ->
-                {
-                    SlockFilePreviewExternalMenuButton(
-                        onOpenWithSystem = {
-                            coroutineScope.launch {
-                                val result =
-                                    bridge.openAttachment(
-                                        url = externalUrl,
-                                        attachmentId = payload.path.ifBlank { payload.name },
-                                        fileName =
-                                            payload.externalFileName
-                                                .ifBlank { payload.name }
-                                                .ifBlank { payload.path }
-                                                .ifBlank { "attachment" },
-                                        mimeType = payload.externalMimeType
-                                    )
-                                when (result?.optString("status").orEmpty()) {
-                                    "opened", "" -> Unit
-                                    "no_app" ->
-                                        bridge.toast(
-                                            result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
-                                        )
-                                    "storage_failed" ->
-                                        bridge.toast(
-                                            result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
-                                        )
-                                    else ->
-                                        bridge.toast(
-                                            result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
-                                        )
-                                }
-                            }
-                        }
+        overflowMenuItems =
+            payload.externalUrl?.takeIf { it.isNotBlank() }?.let {
+                listOf(
+                    SlockBrutalDropdownMenuItem(
+                        id = SlockFilePreviewOpenWithActionId,
+                        label = "Open with...",
+                        icon = SlockLucideIconName.ExternalLink
                     )
+                )
+            }.orEmpty(),
+        onOverflowMenuSelect = { id ->
+            if (id != SlockFilePreviewOpenWithActionId) return@SlockFilePreviewPageScaffold
+            val externalUrl = payload.externalUrl?.takeIf { it.isNotBlank() } ?: return@SlockFilePreviewPageScaffold
+            coroutineScope.launch {
+                val result =
+                    bridge.openAttachment(
+                        url = externalUrl,
+                        attachmentId = payload.path.ifBlank { payload.name },
+                        fileName =
+                            payload.externalFileName
+                                .ifBlank { payload.name }
+                                .ifBlank { payload.path }
+                                .ifBlank { "attachment" },
+                        mimeType = payload.externalMimeType
+                    )
+                when (result?.optString("status").orEmpty()) {
+                    "opened", "" -> Unit
+                    "no_app" ->
+                        bridge.toast(
+                            result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
+                        )
+                    "storage_failed" ->
+                        bridge.toast(
+                            result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+                        )
+                    else ->
+                        bridge.toast(
+                            result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
+                        )
                 }
             }
+        }
     ) {
         SlockFilePreviewPayloadContent(
             payload = payload,
@@ -293,48 +297,54 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
         else -> SlockLucideIconName.File
     }
 
-@Composable
-private fun SlockFilePreviewExternalMenuButton(
-    onOpenWithSystem: () -> Unit
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
-    Box {
-        SlockBrutalIconButton(
-            iconName = SlockLucideIconName.Ellipsis,
-            onClick = { menuOpen = true },
-            size = 30.dp,
-            shadowOffset = 2.dp,
-            modifier = Modifier.onGloballyPositioned { coordinates ->
-                val pos = coordinates.positionInRoot()
-                menuAnchor =
-                    Offset(
-                        x = pos.x + coordinates.size.width.toFloat() / 2f,
-                        y = pos.y + coordinates.size.height.toFloat() / 2f
-                    )
-            }
-        )
-        if (menuOpen) {
-            SlockBrutalDropdownMenu(
-                anchor = menuAnchor,
-                items =
-                    listOf(
-                        SlockBrutalDropdownMenuItem(
-                            id = SlockFilePreviewOpenWithActionId,
-                            label = "Open with...",
-                            icon = SlockLucideIconName.ExternalLink
-                        )
-                    ),
-                onSelect = { id ->
-                    if (id == SlockFilePreviewOpenWithActionId) {
-                        onOpenWithSystem()
-                    }
-                },
-                onDismiss = { menuOpen = false },
-                widthDp = 180f
-            )
+private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
+    val source =
+        name
+            .ifBlank { path }
+            .ifBlank { externalFileName }
+            .ifBlank { title }
+            .ifBlank { "File" }
+    return source.slockFilePreviewFileName()
+}
+
+private fun SlockFilePreviewPayload.previewHeaderSubtitle(): String? {
+    val headerTitle = previewHeaderTitle()
+    return listOf(meta, path, subtitle, externalMimeType)
+        .asSequence()
+        .map { it.trim() }
+        .firstOrNull { candidate ->
+            candidate.isNotBlank() &&
+                candidate != headerTitle &&
+                candidate.slockFilePreviewFileName() != headerTitle &&
+                !candidate.endsWith("preview", ignoreCase = true)
         }
-    }
+}
+
+private fun String.slockFilePreviewFileName(): String {
+    val normalized = trim().replace('\\', '/')
+    return normalized.substringAfterLast('/').ifBlank { normalized.ifBlank { "File" } }
+}
+
+@Composable
+internal fun SlockFilePreviewOverflowMenuButton(
+    onOpenMenu: (Offset) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    SlockBrutalIconButton(
+        iconName = SlockLucideIconName.Ellipsis,
+        onClick = { onOpenMenu(menuAnchor) },
+        size = 30.dp,
+        shadowOffset = 2.dp,
+        modifier = modifier.onGloballyPositioned { coordinates ->
+            val pos = coordinates.positionInRoot()
+            menuAnchor =
+                Offset(
+                    x = pos.x + coordinates.size.width.toFloat() / 2f,
+                    y = pos.y + coordinates.size.height.toFloat() / 2f
+                )
+        }
+    )
 }
 
 private fun SlockWorkspaceFilePreview.Text.membersWorkspaceMetaLine(fallbackPath: String): String =
@@ -370,35 +380,64 @@ private fun Long?.slockFilePreviewSizeLabel(): String? {
 @Composable
 internal fun SlockFilePreviewPageScaffold(
     title: String,
-    subtitle: String,
+    subtitle: String? = null,
     iconName: SlockLucideIconName,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Md,
-    trailingContent: (@Composable BoxScope.() -> Unit)? = null,
+    overflowMenuItems: List<SlockBrutalDropdownMenuItem> = emptyList(),
+    onOverflowMenuSelect: (String) -> Unit = {},
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-        SlockTopPageHeader(
-            title = title,
-            subtitle = subtitle,
-            iconName = iconName,
-            backgroundColor = SlockColor.SurfaceWhite,
-            leadingContent = {
-                SlockBrutalIconButton(
-                    iconName = SlockLucideIconName.ArrowLeft,
-                    onClick = onBack,
-                    size = 30.dp,
-                    shadowOffset = 2.dp
-                )
-            },
-            trailingContent = trailingContent
-        )
-        Column(
-            modifier = Modifier.fillMaxSize().padding(contentPadding),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
-        ) {
-            content()
+    var menuOpen by remember { mutableStateOf(false) }
+    var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    Box(modifier = modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            SlockTopPageHeader(
+                title = title,
+                subtitle = subtitle,
+                iconName = iconName,
+                backgroundColor = SlockColor.SurfaceWhite,
+                leadingContent = {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.ArrowLeft,
+                        onClick = onBack,
+                        size = 30.dp,
+                        shadowOffset = 2.dp
+                    )
+                },
+                trailingContent =
+                    if (overflowMenuItems.isNotEmpty()) {
+                        {
+                            SlockFilePreviewOverflowMenuButton(
+                                onOpenMenu = { anchor ->
+                                    menuAnchor = anchor
+                                    menuOpen = true
+                                }
+                            )
+                        }
+                    } else {
+                        null
+                    }
+            )
+            Column(
+                modifier = Modifier.fillMaxSize().padding(contentPadding),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                content()
+            }
+        }
+        if (menuOpen && overflowMenuItems.isNotEmpty()) {
+            SlockBrutalDropdownMenu(
+                anchor = menuAnchor,
+                items = overflowMenuItems,
+                onSelect = { id ->
+                    menuOpen = false
+                    onOverflowMenuSelect(id)
+                },
+                onDismiss = { menuOpen = false },
+                widthDp = 180f
+            )
         }
     }
 }
