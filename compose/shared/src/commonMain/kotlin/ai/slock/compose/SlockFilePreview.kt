@@ -558,13 +558,20 @@ internal fun SlockFilePreviewPayloadContent(
                     modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
                 )
             }
-        "loading" ->
+        "loading" -> {
+            val title = "Loading preview..."
+            val detail =
+                payload.message
+                    .ifBlank { "Fetching preview content." }
+                    .takeUnless { it.equals(title, ignoreCase = true) }
+                    .orEmpty()
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.Loader,
-                title = "Loading preview...",
-                detail = payload.message.ifBlank { "Fetching preview content." },
+                title = title,
+                detail = detail,
                 modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
             )
+        }
         "error" ->
             SlockFilePreviewMessage(
                 iconName = SlockLucideIconName.TriangleAlert,
@@ -1040,13 +1047,15 @@ internal fun SlockFilePreviewMessage(
             maxLines = 2,
             overflow = TextOverflow.Ellipsis
         )
-        Text(
-            text = detail,
-            style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 4,
-            overflow = TextOverflow.Ellipsis
-        )
+        if (detail.isNotBlank()) {
+            Text(
+                text = detail,
+                style = SlockType.Body.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
