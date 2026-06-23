@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockAnchoredMetaChip
+import ai.slock.compose.components.SlockAttachmentPreviewCard
+import ai.slock.compose.components.SlockAttachmentPreviewCardWidth
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
@@ -8098,8 +8100,6 @@ private fun ThreadMessageCommentRefChip(
 }
 
 private val SharedThreadAttachmentImageSize = 92.dp
-private val ThreadAttachmentChipWidth = 176.dp
-private val ThreadAttachmentChipHeight = 80.dp
 
 private fun KuiklyThreadAttachmentItem.isImageAttachment(): Boolean =
     mimeType.startsWith("image/", ignoreCase = true)
@@ -8278,72 +8278,17 @@ private fun ThreadAttachmentChip(
     val affordanceIcon =
         if (attachment.threadAttachmentUsesPreviewAffordance()) SlockLucideIconName.Eye else SlockLucideIconName.Download
     Column(
-        modifier = Modifier.width(ThreadAttachmentChipWidth),
+        modifier = Modifier.width(SlockAttachmentPreviewCardWidth),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(ThreadAttachmentChipWidth, ThreadAttachmentChipHeight)
-                    .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.15f))
-                    .background(if (isOpening) SlockColor.BrandYellow.copy(alpha = 0.3f) else SlockColor.SurfaceWhite)
-                    .clickable(onClick = if (isOpening) ({}) else onOpen)
-                    .padding(horizontal = 10.dp, vertical = SlockSpacing.Sm)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = attachment.name,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (meta.isNotBlank()) {
-                        Text(
-                            text = meta,
-                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp, color = SlockColor.TextBlack.copy(alpha = 0.45f)),
-                            color = SlockColor.TextBlack.copy(alpha = 0.45f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                summaryLabel?.let { label ->
-                    Text(
-                        text = label,
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
-                            fontSize = 10.sp,
-                            lineHeight = 12.sp,
-                            color = SlockColor.TextBlack.copy(alpha = 0.7f)
-                        ),
-                        color = SlockColor.TextBlack.copy(alpha = 0.7f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 134.dp)
-                    )
-                }
-            }
-            SlockLucideIcon(
-                affordanceIcon,
-                modifier = Modifier.align(Alignment.BottomEnd).size(12.dp),
-                color = "#99000000"
-            )
-            if (isOpening) {
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .height(6.dp)
-                            .width(36.dp)
-                            .background(SlockColor.BrandYellow),
-                    contentAlignment = Alignment.Center
-                ) {}
-            }
-        }
+        SlockAttachmentPreviewCard(
+            title = attachment.name,
+            meta = meta,
+            summary = summaryLabel,
+            affordanceIcon = affordanceIcon,
+            loading = isOpening,
+            onClick = if (isOpening) ({}) else onOpen
+        )
         if (canOpenComments) {
             SlockBrutalActionButton(
                 label = attachment.threadAttachmentCommentCountLabel() ?: "Comments",
