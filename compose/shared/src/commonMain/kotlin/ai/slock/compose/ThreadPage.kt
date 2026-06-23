@@ -100,6 +100,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
@@ -413,6 +414,7 @@ internal data class KuiklyThreadScreenPayload(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val parentSurfaceKind: String? = null,
+    val parentNavigationHint: String? = null,
     val memberScopedMentions: Boolean = false,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
@@ -477,6 +479,7 @@ internal data class WireThreadLaunchPayload(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val parentSurfaceKind: String? = null,
+    val parentNavigationHint: String? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val selectedTab: String = "chat",
@@ -541,6 +544,7 @@ internal data class WireThreadLaunchPayload(
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
             parentSurfaceKind = resolvedParentSurfaceKind,
+            parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
             memberScopedMentions = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
@@ -603,6 +607,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         parentChannelId = parentChannelId.nonBlank(),
         parentMessageId = parentMessageId.nonBlank(),
         parentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull(),
+        parentNavigationHint = parentNavigationHint.threadParentNavigationHintOrNull(),
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
         focusedMessageId = focusedMessageId.nonBlank(),
         selectedTab = selectedTab,
@@ -635,6 +640,14 @@ private fun String?.threadLaunchParentSurfaceKindOrNull(): String? =
         "private",
         "joint",
         "group" -> KuiklyThreadSurfaceKind.Channel
+        else -> null
+    }
+
+private const val ThreadParentNavigationPrevious = "previous"
+
+private fun String?.threadParentNavigationHintOrNull(): String? =
+    when (this?.trim()?.lowercase()) {
+        ThreadParentNavigationPrevious -> ThreadParentNavigationPrevious
         else -> null
     }
 
@@ -1541,6 +1554,18 @@ private fun ThreadPageScreen() {
         },
         onOpenThreadPayload = ::openStandaloneThreadPayload,
         onReplaceThreadPayload = {},
+        onOpenParentThread = {
+            if (payload.parentNavigationHint.threadParentNavigationHintOrNull() == ThreadParentNavigationPrevious) {
+                bridge.log(
+                    "thread_parent_navigation action=close_previous " +
+                        "threadId=${payload.sourceThreadId.orEmpty()} parentChannelId=${payload.parentChannelId.orEmpty()}"
+                )
+                routerModule.closePage()
+                true
+            } else {
+                false
+            }
+        },
         onAuthRequired = { code ->
             bridge.logWarn("thread_auth_required code=$code route=standalone instanceId=${payload.instanceId}")
             bridge.toast("Session expired")
@@ -4426,6 +4451,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         parentChannelId = sourceThreadId,
         parentMessageId = parentMessage.id,
         parentSurfaceKind = resolvedParentSurfaceKind,
+        parentNavigationHint = ThreadParentNavigationPrevious,
         focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         navigationLabel = "Close",
         selectedTab = "chat",
@@ -5620,6 +5646,7 @@ private fun ThreadMessagesList(
         mutableStateOf(topAnchoredOriginContent)
     }
     var latestLocalSendBottomAnchorActiveKey by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var latestLocalSendBottomAnchorStartUserScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }
     var userScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }
     var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
@@ -5650,6 +5677,8 @@ private fun ThreadMessagesList(
     ) {
         payload.latestLocalSendBottomAnchorKey()
     }
+    val currentPayloadState = rememberUpdatedState(payload)
+    val currentLatestItemIndexState = rememberUpdatedState(latestItemIndex)
     val density = LocalDensity.current
     val initialContentLayoutKey = remember(
         payload.originStatus,
@@ -5732,6 +5761,22 @@ private fun ThreadMessagesList(
                 }
             }
     }
+    LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
+        if (topAnchoredOriginContent || latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
+        snapshotFlow {
+            ThreadBottomAnchorCorrectionState(
+                allowBottomAutoAnchor = allowBottomAutoAnchor,
+                isScrollInProgress = listState.isScrollInProgress,
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex)
+            )
+        }
+            .distinctUntilChanged()
+            .collect { state ->
+                if (shouldAutoCorrectThreadBottomAnchor(state)) {
+                    listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+                }
+            }
+    }
     LaunchedEffect(
         payload.instanceId,
         payload.canLoadMoreBefore,
@@ -5782,15 +5827,17 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
-            latestLocalSendBottomAnchorActiveKey = null
             return@LaunchedEffect
         }
-        val anchorKey = latestLocalSendBottomAnchorKey
-        val startUserScrollGeneration = userScrollGeneration
-        latestLocalSendBottomAnchorActiveKey = anchorKey
+        latestLocalSendBottomAnchorStartUserScrollGeneration = userScrollGeneration
+        latestLocalSendBottomAnchorActiveKey = latestLocalSendBottomAnchorKey
         allowBottomAutoAnchor = true
+    }
+    LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorActiveKey) {
+        val anchorKey = latestLocalSendBottomAnchorActiveKey ?: return@LaunchedEffect
+        val startUserScrollGeneration = latestLocalSendBottomAnchorStartUserScrollGeneration
         listState.awaitThreadMessagesLayoutFrame()
-        listState.awaitThreadMessagesLayoutStability(latestItemIndex)
+        listState.awaitThreadMessagesLayoutStability(currentLatestItemIndexState.value)
         var attempt = 0
         while (
             shouldContinueLatestLocalSendBottomAnchor(
@@ -5798,11 +5845,12 @@ private fun ThreadMessagesList(
                 targetAnchorKey = anchorKey,
                 startUserScrollGeneration = startUserScrollGeneration,
                 currentUserScrollGeneration = userScrollGeneration,
-                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(currentLatestItemIndexState.value),
+                isSendingAnchorVisible = currentPayloadState.value.hasSendingLocalSendAnchor(anchorKey),
                 attempt = attempt
             )
         ) {
-            listState.scrollLatestItemToRenderedBottom(latestItemIndex)
+            listState.scrollLatestItemToRenderedBottom(currentLatestItemIndexState.value)
             delay(ThreadLayoutStabilityFrameDelayMs)
             attempt += 1
         }
@@ -6433,11 +6481,32 @@ internal fun shouldContinueLatestLocalSendBottomAnchor(
     startUserScrollGeneration: Int,
     currentUserScrollGeneration: Int,
     isAtRenderedBottom: Boolean,
+    isSendingAnchorVisible: Boolean,
     attempt: Int
 ): Boolean {
     if (targetAnchorKey == null || activeAnchorKey != targetAnchorKey) return false
     if (currentUserScrollGeneration != startUserScrollGeneration) return false
-    return !isAtRenderedBottom || attempt < ThreadBottomAnchorMinimumAttempts
+    return isSendingAnchorVisible || !isAtRenderedBottom || attempt < ThreadBottomAnchorMinimumAttempts
+}
+
+internal data class ThreadBottomAnchorCorrectionState(
+    val allowBottomAutoAnchor: Boolean,
+    val isScrollInProgress: Boolean,
+    val isAtRenderedBottom: Boolean
+)
+
+internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrectionState): Boolean =
+    state.allowBottomAutoAnchor &&
+        !state.isScrollInProgress &&
+        !state.isAtRenderedBottom
+
+internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
+    val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
+    return messages.any { message ->
+        message.id == messageId &&
+            message.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) &&
+            message.pendingSendContext != null
+    }
 }
 
 internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {

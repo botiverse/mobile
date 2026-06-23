@@ -233,6 +233,7 @@ class ThreadBottomAnchorSignatureTest {
                 startUserScrollGeneration = 0,
                 currentUserScrollGeneration = 0,
                 isAtRenderedBottom = false,
+                isSendingAnchorVisible = false,
                 attempt = 64
             )
         )
@@ -244,7 +245,94 @@ class ThreadBottomAnchorSignatureTest {
                 startUserScrollGeneration = 0,
                 currentUserScrollGeneration = 0,
                 isAtRenderedBottom = true,
+                isSendingAnchorVisible = false,
                 attempt = 3
+            )
+        )
+    }
+
+    @Test
+    fun latestLocalSendBottomAnchor_continuesWhileSendingRowIsVisible() {
+        assertEquals(
+            true,
+            shouldContinueLatestLocalSendBottomAnchor(
+                activeAnchorKey = "local-send",
+                targetAnchorKey = "local-send",
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0,
+                isAtRenderedBottom = true,
+                isSendingAnchorVisible = true,
+                attempt = 10
+            )
+        )
+    }
+
+    @Test
+    fun hasSendingLocalSendAnchor_matchesOnlySendingPendingRow() {
+        val sending =
+            payload(
+                messages =
+                    listOf(
+                        message(
+                            "local-send-1",
+                            deliveryState = ThreadMessageDeliverySending,
+                            pendingSendContext =
+                                KuiklyThreadPendingSendContext(
+                                    channelId = "channel-1",
+                                    body = "pending"
+                                )
+                        )
+                    )
+            )
+        val sent =
+            sending.copy(
+                messages = sending.messages.map { message -> message.copy(deliveryState = ThreadMessageDeliverySent) }
+            )
+
+        assertEquals(true, sending.hasSendingLocalSendAnchor("local-send-1:7:0:0"))
+        assertEquals(false, sent.hasSendingLocalSendAnchor("local-send-1:7:0:0"))
+    }
+
+    @Test
+    fun autoCorrectBottomAnchor_runsOnlyWhenAutoAnchorAllowedAndIdle() {
+        assertEquals(
+            true,
+            shouldAutoCorrectThreadBottomAnchor(
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = true,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = false
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAutoCorrectThreadBottomAnchor(
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = false,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = false
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAutoCorrectThreadBottomAnchor(
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = true,
+                    isScrollInProgress = true,
+                    isAtRenderedBottom = false
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAutoCorrectThreadBottomAnchor(
+                ThreadBottomAnchorCorrectionState(
+                    allowBottomAutoAnchor = true,
+                    isScrollInProgress = false,
+                    isAtRenderedBottom = true
+                )
             )
         )
     }
@@ -259,6 +347,7 @@ class ThreadBottomAnchorSignatureTest {
                 startUserScrollGeneration = 0,
                 currentUserScrollGeneration = 1,
                 isAtRenderedBottom = false,
+                isSendingAnchorVisible = true,
                 attempt = 1
             )
         )
