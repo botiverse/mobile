@@ -1521,6 +1521,7 @@ private fun ThreadPageScreen() {
         networkModule = networkModule,
         authStore = authStore,
         tasksDataSource = tasksDataSource,
+        tasksDataStore = sharedStores.tasksDataStore,
         computersStore = computersStore,
         membersStore = membersStore,
         onBack = {
@@ -1840,6 +1841,7 @@ internal fun SharedThreadRouteContent(
     networkModule: SlockNetworkModule,
     authStore: SlockAuthSessionStore,
     tasksDataSource: SharedTasksDataSource,
+    tasksDataStore: SharedTasksDataStore? = null,
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
     conversationHeaderState: SharedConversationHeaderState = SharedConversationHeaderState(),
@@ -1992,7 +1994,7 @@ internal fun SharedThreadRouteContent(
                 SharedTasksViewModel(
                     authStore = authStore,
                     dataSource = tasksDataSource,
-                    sharedTasksDataStore = sharedStores.tasksDataStore,
+                    sharedTasksDataStore = tasksDataStore,
                     scope = SharedTasksScope.Channel(resolvedTaskChannelId)
                 )
             }
@@ -2780,7 +2782,7 @@ internal fun SharedThreadRouteContent(
             composerDraftViewModel = composerDraftViewModel,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
-            tasksDataStore = sharedStores.tasksDataStore,
+            tasksDataStore = tasksDataStore,
             currentServerId = currentSession?.currentServerId,
             taskChannelId = taskChannelId,
             filesViewModel = filesViewModel,
