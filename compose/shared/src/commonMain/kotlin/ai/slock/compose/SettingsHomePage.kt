@@ -2080,7 +2080,8 @@ private fun SlockAppShellContent() {
                                 isVisibleThread = false,
                                 conversationName = conversation?.name,
                                 conversationKind = conversation?.kind,
-                                currentMemberHandle = activeSession?.user?.email
+                                currentMemberHandle = activeSession?.user?.email,
+                                isAppInForeground = true
                             )
                         if (request != null) {
                             appShellCoroutineScope.launch {
