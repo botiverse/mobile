@@ -3033,7 +3033,7 @@ private fun SettingsLanguageRegionAccountPreferences.toLanguageRegionSnapshot(
 
 private val languageRegionLanguageOptions =
     listOf(
-        SettingsMobileSelectionOptionSnapshot("other", "Others"),
+        SettingsMobileSelectionOptionSnapshot("other", "System"),
         SettingsMobileSelectionOptionSnapshot("en", "English"),
         SettingsMobileSelectionOptionSnapshot("zh", "中文")
     )
