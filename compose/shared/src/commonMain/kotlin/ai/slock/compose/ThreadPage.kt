@@ -752,7 +752,8 @@ private fun buildThreadPendingSendMessage(
                     id = attachment.id,
                     name = attachment.fileName,
                     mimeType = attachment.mimeType.orEmpty(),
-                    sizeLabel = attachment.sizeLabel
+                    sizeLabel = attachment.sizeLabel,
+                    thumbnailUrl = attachment.previewUri
                 )
             },
         deliveryState = ThreadMessageDeliverySending,
@@ -2372,7 +2373,8 @@ internal fun SharedThreadRouteContent(
                 id = attachment.id,
                 name = name,
                 mimeType = attachment.mimeType.orEmpty(),
-                sizeLabel = attachment.sizeLabel
+                sizeLabel = attachment.sizeLabel,
+                thumbnailUrl = attachment.previewUri
             )
         if (threadAttachment.isImageAttachment()) {
             openImagePreview(ThreadImageAttachmentGroup(images = listOf(threadAttachment), currentIndex = 0))
@@ -3342,6 +3344,7 @@ internal fun SharedThreadRouteContent(
                                         fileName = file.fileName,
                                         sizeLabel = file.sizeBytes?.let(::formatAttachmentSizeLabel).orEmpty(),
                                         mimeType = file.mimeType?.takeIf { it.isNotBlank() },
+                                        previewUri = file.previewUri?.takeIf { it.isNotBlank() },
                                         status = "uploading"
                                     )
                                 }
@@ -3353,13 +3356,15 @@ internal fun SharedThreadRouteContent(
                         when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
                             is DataResult.Content -> {
                                 val replacedAttachmentIds = files.map { file -> file.id }.filter { it.isNotBlank() }.toSet()
+                                val previewUrisByIndex = files.map { file -> file.previewUri?.takeIf { it.isNotBlank() } }
                                 val uploaded =
-                                    uploadResult.data.attachments.map { attachment ->
+                                    uploadResult.data.attachments.mapIndexed { index, attachment ->
                                         SharedThreadComposerAttachment(
                                             id = attachment.id.value,
                                             fileName = attachment.name,
                                             sizeLabel = attachment.sizeLabel,
                                             mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                            previewUri = previewUrisByIndex.getOrNull(index),
                                             status = "ready"
                                         )
                                     }
@@ -4551,6 +4556,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                 fileName = attachment.fileName,
                 sizeLabel = attachment.sizeLabel,
                 mimeType = attachment.mimeType,
+                previewUri = attachment.previewUri,
                 status = attachment.status
             )
         } + draftState.uploadedAttachments)
@@ -4568,6 +4574,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
                     fileName = attachment.fileName,
                     sizeLabel = attachment.sizeLabel,
                     mimeType = attachment.mimeType,
+                    previewUri = attachment.previewUri,
                     status = attachment.status
                 )
             },
