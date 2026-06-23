@@ -10,6 +10,9 @@ KUIKLY_DIR="$REPO_ROOT/third_party/kuikly-ui"
 
 # This intentionally publishes the Slock fork under the selected Kuikly release
 # line so mavenLocal overrides the public artifacts with our staging fixes.
+# Keep KUIKLY_KOTLIN_VERSION explicit below: bare publishToMavenLocal from the
+# Kuikly checkout can otherwise publish a snapshot coordinate that Slock does
+# not consume.
 export KUIKLY_VERSION="${KUIKLY_VERSION:-2.21.0}"
 
 cd "$KUIKLY_DIR"

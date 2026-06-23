@@ -287,6 +287,21 @@ scripts/sync_kuikly_ai_skills.sh
   cd /Users/artin/AndroidStudioProjects/Slock
   sh scripts/build_kuikly_fork.sh
   ```
+  Do not run bare `:core-render-android:publishToMavenLocal` from inside the
+  Kuikly checkout unless you also pass the Slock release coordinates. The
+  default Kuikly Gradle properties publish `core-render-android` under a
+  snapshot coordinate such as `2.0.0-2.1.21-SNAPSHOT`, while Slock consumes
+  `com.tencent.kuikly-open:core-render-android` at the `kuiklyAndroid` version
+  pinned in `compose/gradle/libs.versions.toml` (currently
+  `2.21.0-2.1.21`). For Android-only republish during a local fix, use:
+  ```bash
+  cd /Users/artin/AndroidStudioProjects/Slock/third_party/kuikly-ui
+  KUIKLY_VERSION=2.21.0 KUIKLY_KOTLIN_VERSION=2.1.21 \
+    ./gradlew :core-render-android:publishToMavenLocal
+  ```
+  Then verify the MavenLocal AAR timestamp/hash under
+  `~/.m2/repository/com/tencent/kuikly-open/core-render-android/2.21.0-2.1.21/`
+  before rebuilding Slock.
 - After publishing, Slock Android and OHOS Gradle builds pick up the forked
   artifacts from mavenLocal automatically (`mavenLocal()` is already in the
   repository config). Android Studio Run works without extra steps — only
