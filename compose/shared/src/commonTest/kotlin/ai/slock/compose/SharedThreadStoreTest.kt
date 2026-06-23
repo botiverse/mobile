@@ -1163,6 +1163,90 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun cachedThreadPayloadNormalizesAgentGravatarBeforeFirstRender() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            ThreadSnapshot(
+                conversation = conversationSummary(),
+                messages =
+                    listOf(
+                        message(id = "m1", seq = 1, body = "agent body", authorKind = MemberKind.Agent)
+                            .copy(
+                                author =
+                                    MemberProfile(
+                                        id = MemberId("agent-1"),
+                                        displayName = "Product UX",
+                                        handle = "product-ux",
+                                        kind = MemberKind.Agent,
+                                        avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                                        gravatarHash = "agent-hash"
+                                    )
+                            )
+                    )
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+
+        val payload = dataSource.readCachedPayload(basePayload())
+
+        val message = payload?.messages?.single()
+        assertEquals("random:agent-1", message?.avatarWireValue)
+        assertEquals(null, message?.gravatarHash)
+    }
+
+    @Test
+    fun senderProfileEnrichmentReplacesAgentGravatarWithPixelAvatar() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Product UX",
+                            handle = "product-ux",
+                            kind = MemberKind.Agent,
+                            avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                            gravatarHash = "agent-hash",
+                            avatar = AvatarReference.Pixel("tree")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository
+            )
+        val payload =
+            basePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "Product UX",
+                            authorKind = "agent",
+                            avatarWireValue = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                            gravatarHash = "agent-hash",
+                            body = "agent body"
+                        )
+                    )
+            )
+
+        val enriched = dataSource.enrichSenderProfiles(payload)
+
+        val message = enriched.messages.single()
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
+    }
+
+    @Test
     fun fetchThreadPayloadWithoutSessionReturnsAuthRequiredNoPermission() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val dataSource =
