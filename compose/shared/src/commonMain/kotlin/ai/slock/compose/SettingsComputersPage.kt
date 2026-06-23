@@ -2,7 +2,16 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.SlockColor
+import ai.slock.compose.SlockType
+import ai.slock.compose.SlockLucideIconName
+import ai.slock.compose.SlockLucideIcon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.LaunchedEffect
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
@@ -265,17 +274,23 @@ internal fun SettingsComputerDetailContent(
                 // settingsComputerErrorCopy mapping (see #74 commit
                 // cf01a0a4) for codes like computer_has_agents / 409.
                 val computerId = payload.computer.id
+                val computerName = payload.computer.name
                 val renameBusy = actionState?.action == "renameComputer" && actionState.inProgress && actionState.itemId == computerId
                 val deleteBusy = actionState?.action == "deleteComputer" && actionState.inProgress && actionState.itemId == computerId
                 val rotateBusy = actionState?.action == "rotateComputerKey" && actionState.inProgress && actionState.itemId == computerId
                 val anyBusy = renameBusy || deleteBusy || rotateBusy
+                var showRenameModal by remember { mutableStateOf(false) }
+                var renameDraft by remember { mutableStateOf(computerName) }
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingsActionRow(
                         title = "Rename computer",
                         description = "Change this computer's display name.",
                         actionLabel = if (renameBusy) "Renaming..." else "Rename",
                         enabled = !anyBusy,
-                        onClick = { onEvent("renameComputer", computerId) }
+                        onClick = {
+                            renameDraft = computerName
+                            showRenameModal = true
+                        }
                     )
                     SettingsActionRow(
                         title = "Rotate API key",
@@ -298,6 +313,42 @@ internal fun SettingsComputerDetailContent(
                             errorCode = code,
                             retryable = false
                         ) { onEvent("retryComputerAction", actionState.action) }
+                    }
+                }
+                if (showRenameModal) {
+                    SlockUnifiedDialog(
+                        title = "Rename Computer",
+                        onDismiss = { if (!renameBusy) showRenameModal = false },
+                        dismissEnabled = !renameBusy
+                    ) {
+                        Text(
+                            "Enter a new name for ",
+                            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack
+                        )
+                        Text(
+                            computerName,
+                            style = SlockType.Body.withSlockFontWeight(com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack
+                        )
+                        SlockBrutalTextField(
+                            label = "New name",
+                            value = renameDraft,
+                            placeholder = computerName,
+                            onValueChange = { renameDraft = it },
+                            required = true,
+                            enabled = !renameBusy
+                        )
+                        SlockModalFullWidthActionButton(
+                            label = if (renameBusy) "Renaming..." else "Rename",
+                            icon = SlockLucideIconName.Save,
+                            onClick = {
+                                onEvent("renameComputer", "$computerId|${renameDraft.trim()}")
+                                if (!renameBusy) showRenameModal = false
+                            },
+                            enabled = renameDraft.trim().isNotBlank() && renameDraft.trim() != computerName && !renameBusy,
+                            color = SlockColor.AccentPink
+                        )
                     }
                 }
             }
