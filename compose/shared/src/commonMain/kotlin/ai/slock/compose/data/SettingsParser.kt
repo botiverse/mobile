@@ -877,11 +877,12 @@ fun parseSharedSystemChannelSnapshot(bodyText: String): SettingsServerSystemChan
     val allChannel = channels
         .mapNotNull { it as? kotlinx.serialization.json.JsonObject }
         .firstOrNull { c ->
-            (c["name"] as? JsonPrimitive)?.contentOrNull == "all" &&
-                (c["type"] as? JsonPrimitive)?.contentOrNull == "channel"
+            (c["name"] as? JsonPrimitive)?.contentOrNull == "all"
         }
     if (allChannel == null) return@runCatching null
     val id = (allChannel["id"] as? JsonPrimitive)?.contentOrNull ?: return@runCatching null
+    // Server channel types: "channel" / "private" / "joint" / "dm" / "thread".
+    // React hides #all by patching channel type to "private"; current type == "private" means hidden.
     val type = (allChannel["type"] as? JsonPrimitive)?.contentOrNull
     val hidden = type == "private"
     SettingsServerSystemChannelSnapshot(
