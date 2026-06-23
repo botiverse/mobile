@@ -129,6 +129,7 @@ dependencies {
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidsvg)
+    implementation(libs.mmkv)
     implementation(libs.bugly.pro) {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
     }

@@ -259,6 +259,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderExport.moduleExport(SlockKuiklyNetworkModule.MODULE_NAME) {
             SlockKuiklyNetworkModule()
         }
+        kuiklyRenderExport.moduleExport(SlockKuiklyMMKVModule.MODULE_NAME) {
+            SlockKuiklyMMKVModule(applicationContext)
+        }
     }
 
     override fun performanceMonitorTypes(): List<KRMonitorType> =

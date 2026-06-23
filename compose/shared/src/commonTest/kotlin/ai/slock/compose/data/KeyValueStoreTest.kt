@@ -41,4 +41,60 @@ class KeyValueStoreTest {
         store.putBoolean("notifications", false)
         assertFalse(store.getBoolean("notifications", true))
     }
+
+    @Test
+    fun mmkvStoreMigratesLegacyValueOnRead() {
+        val backend = FakeMMKVBackend()
+        val legacy = InMemorySlockKeyValueStore(mapOf("locale" to "zh-Hans"))
+        val store =
+            KuiklyMMKVKeyValueStoreDelegate(
+                backend = backend,
+                namespace = "slockLocal",
+                legacyStore = legacy
+            )
+
+        assertEquals("zh-Hans", store.getString("locale"))
+        assertEquals("zh-Hans", backend.values["slockLocal" to "slockLocal:locale"])
+    }
+
+    @Test
+    fun mmkvStoreDeletesLegacyFallbackToo() {
+        val backend =
+            FakeMMKVBackend(
+                initialValues = mapOf(("slockLocal" to "slockLocal:locale") to "zh-Hans")
+            )
+        val legacy = InMemorySlockKeyValueStore(mapOf("locale" to "zh-Hans"))
+        val store =
+            KuiklyMMKVKeyValueStoreDelegate(
+                backend = backend,
+                namespace = "slockLocal",
+                legacyStore = legacy
+            )
+
+        store.putString("locale", null)
+
+        assertNull(store.getString("locale"))
+        assertFalse(("slockLocal" to "slockLocal:locale") in backend.values)
+        assertNull(legacy.getString("locale"))
+    }
+
+    private class FakeMMKVBackend(
+        initialValues: Map<Pair<String, String>, String> = emptyMap()
+    ) : SlockMMKVKeyValueBackend {
+        val values = initialValues.toMutableMap()
+
+        override fun containsKey(key: String, mmapID: String): Boolean =
+            (mmapID to key) in values
+
+        override fun getString(key: String, mmapID: String): String? =
+            values[mmapID to key]
+
+        override fun putString(key: String, value: String, mmapID: String) {
+            values[mmapID to key] = value
+        }
+
+        override fun removeString(key: String, mmapID: String) {
+            values.remove(mmapID to key)
+        }
+    }
 }

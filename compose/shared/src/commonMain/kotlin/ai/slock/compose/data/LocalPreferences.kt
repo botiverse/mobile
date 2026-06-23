@@ -310,7 +310,7 @@ class KeyValueRouterPreferenceRepository(
 }
 
 fun kuiklySharedPreferenceStore(pager: com.tencent.kuikly.core.pager.Pager): SharedPreferenceStore =
-    KuiklySharedPreferencesKeyValueStore(
+    KuiklyMMKVKeyValueStore(
         pager,
         SlockLocalPreferenceStore.KuiklyNamespace
     )
