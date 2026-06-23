@@ -467,6 +467,7 @@ fun SlockStructuralHomeShell(
     selectedConversationSection: SlockHomeConversationSection? = null,
     serverUnreadCount: Int = 0,
     inboxUnreadCount: Int = 0,
+    inboxTotalCount: Int = 0,
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
     contentRefreshing: Boolean = false,
@@ -647,7 +648,8 @@ fun SlockStructuralHomeShell(
                             item {
                                 SidebarActivityRow(
                                     labels.inbox,
-                                    inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                    unreadCount = inboxUnreadCount.takeIf { it > 0 }?.toString(),
+                                    totalCount = inboxTotalCount.takeIf { inboxUnreadCount == 0 && it > 0 }?.toString(),
                                     selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Activity,
                                     modifier = Modifier.padding(horizontal = HomeListHorizontalPadding),
                                     onClick = if (sidebarInteractionsEnabled) onInboxClick else null
@@ -1516,7 +1518,7 @@ private fun SlockHomeNotificationKind.notificationColor(): Color = when (this) {
 @Composable
 private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentServerId: String, pendingServerId: String?, labels: SlockHomeShellLabels, onServerSelected: (String) -> Unit, onCreateServerClick: () -> Unit, modifier: Modifier = Modifier) {
     val hasCommunityServer = servers.any { it.slug == "community" }
-    HardShadowPanel(modifier = modifier, minWidth = 276.dp, maxWidth = 328.dp) {
+    HardShadowPanel(modifier = modifier.homeServerSwitcherPanelPointerBarrier(), minWidth = 276.dp, maxWidth = 328.dp) {
         if (servers.isEmpty()) {
             Text(labels.noServersAvailable, style = SlockType.Caption, color = SlockColor.TextMutedGray, modifier = Modifier.padding(SlockSpacing.Md))
         } else {
@@ -1529,6 +1531,23 @@ private fun ServerSwitcherPanel(servers: List<SlockServerSwitcherItem>, currentS
         ServerSwitcherActionRow(labels.switchOrCreateServer, onCreateServerClick)
     }
 }
+
+private fun Modifier.homeServerSwitcherPanelPointerBarrier(): Modifier =
+    pointerInput(Unit) {
+        forEachGesture {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    event.changes.forEach { change ->
+                        if (change.positionChanged()) {
+                            change.consume()
+                        }
+                    }
+                    if (event.changes.all { !it.pressed }) break
+                }
+            }
+        }
+    }
 
 @Composable
 private fun HardShadowPanel(
@@ -1599,13 +1618,21 @@ private fun ServerSwitcherActionRow(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun SidebarActivityRow(label: String, count: String?, selected: Boolean = false, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null) {
+private fun SidebarActivityRow(
+    label: String,
+    unreadCount: String?,
+    totalCount: String?,
+    selected: Boolean = false,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null
+) {
     SidebarActionRow(
         icon = SlockLucideIconName.Activity,
         label = label,
         selected = selected,
         modifier = modifier,
-        badge = count,
+        badge = unreadCount,
+        trailingText = totalCount,
         onClick = onClick
     )
 }
