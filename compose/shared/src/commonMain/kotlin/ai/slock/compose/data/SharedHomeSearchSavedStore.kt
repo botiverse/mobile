@@ -50,7 +50,7 @@ class SharedHomeSearchSavedStore(
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
-                if (!saved.loading) loadSaved(refresh = true)
+                if (!saved.loading && !saved.refreshing) loadSaved(refresh = true)
             }
             SharedHomeSearchSavedIntent.RefreshSaved -> loadSaved(refresh = true)
             SharedHomeSearchSavedIntent.LoadMoreSaved -> loadSaved(refresh = false)
@@ -172,16 +172,23 @@ class SharedHomeSearchSavedStore(
 
     private fun loadSaved(refresh: Boolean) {
         val current = _state.value.saved
+        if (refresh && (current.loading || current.refreshing)) return
         if (!refresh && (current.loadingMore || !current.hasMore)) return
         savedJob?.cancel()
         savedJob =
             scope.launch {
                 val previous = _state.value.saved
+                val refreshInPlace = refresh && (previous.loaded || previous.items.isNotEmpty())
                 _state.value =
                     _state.value.copy(
                         saved =
                             if (refresh) {
-                                previous.copy(loading = true, errorCode = null, noPermissionCode = null)
+                                previous.copy(
+                                    loading = !refreshInPlace,
+                                    refreshing = refreshInPlace,
+                                    errorCode = null,
+                                    noPermissionCode = null
+                                )
                             } else {
                                 previous.copy(loadingMore = true, errorCode = null, noPermissionCode = null)
                             }
@@ -233,17 +240,24 @@ class SharedHomeSearchSavedStore(
             clearMessageSearchResults()
             return
         }
-        if (!refresh && (current.loadingMore || !current.hasMore)) return
+        if (!refresh && (current.loadingMore || current.refreshing || !current.hasMore)) return
         searchJob?.cancel()
         val requestToken = ++searchRequestToken
         searchJob =
             scope.launch {
                 val previous = _state.value.search
+                val refreshInPlace = refresh && (previous.searched || previous.items.isNotEmpty())
                 _state.value =
                     _state.value.copy(
                         search =
                             if (refresh) {
-                                previous.copy(loading = true, searched = true, errorCode = null, noPermissionCode = null)
+                                previous.copy(
+                                    loading = !refreshInPlace,
+                                    refreshing = refreshInPlace,
+                                    searched = true,
+                                    errorCode = null,
+                                    noPermissionCode = null
+                                )
                             } else {
                                 previous.copy(loadingMore = true, searched = true, errorCode = null, noPermissionCode = null)
                             }
@@ -295,6 +309,7 @@ class SharedHomeSearchSavedStore(
                         totalCount = 0,
                         searched = false,
                         loading = false,
+                        refreshing = false,
                         loadingMore = false,
                         empty = false,
                         hasMore = false,
@@ -416,6 +431,7 @@ class SharedHomeSearchSavedStore(
                                 loaded = true,
                                 empty = items.isEmpty(),
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -429,6 +445,7 @@ class SharedHomeSearchSavedStore(
                                 hasMore = false,
                                 nextOffset = null,
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -436,6 +453,7 @@ class SharedHomeSearchSavedStore(
                         is DataResult.Error ->
                             current.copy(
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = result.error.code,
                                 noPermissionCode = null
@@ -443,6 +461,7 @@ class SharedHomeSearchSavedStore(
                         is DataResult.NoPermission ->
                             current.copy(
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
@@ -477,6 +496,7 @@ class SharedHomeSearchSavedStore(
                                 searched = true,
                                 empty = items.isEmpty(),
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -490,6 +510,7 @@ class SharedHomeSearchSavedStore(
                                 hasMore = false,
                                 nextOffset = null,
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -498,6 +519,7 @@ class SharedHomeSearchSavedStore(
                             current.copy(
                                 searched = true,
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = result.error.code,
                                 noPermissionCode = null
@@ -506,6 +528,7 @@ class SharedHomeSearchSavedStore(
                             current.copy(
                                 searched = true,
                                 loading = false,
+                                refreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
@@ -517,14 +540,14 @@ class SharedHomeSearchSavedStore(
     private fun setSavedError(code: String) {
         _state.value =
             _state.value.copy(
-                saved = _state.value.saved.copy(loading = false, loadingMore = false, errorCode = code)
+                saved = _state.value.saved.copy(loading = false, refreshing = false, loadingMore = false, errorCode = code)
             )
     }
 
     private fun setSearchError(code: String) {
         _state.value =
             _state.value.copy(
-                search = _state.value.search.copy(loading = false, loadingMore = false, searched = true, errorCode = code)
+                search = _state.value.search.copy(loading = false, refreshing = false, loadingMore = false, searched = true, errorCode = code)
             )
     }
 
@@ -549,7 +572,7 @@ class SharedHomeSearchSavedStore(
     }
 
     private fun restoreSaved(previous: SharedHomeSavedPanelState, code: String) {
-        _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, loadingMore = false))
+        _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, refreshing = false, loadingMore = false))
     }
 }
 
@@ -597,6 +620,7 @@ data class SharedHomeSavedPanelState(
     val totalCount: Int = 0,
     val loaded: Boolean = false,
     val loading: Boolean = false,
+    val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val empty: Boolean = false,
     val hasMore: Boolean = false,
@@ -619,6 +643,7 @@ data class SharedHomeSearchPanelState(
     val totalCount: Int = 0,
     val searched: Boolean = false,
     val loading: Boolean = false,
+    val refreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val empty: Boolean = false,
     val hasMore: Boolean = false,

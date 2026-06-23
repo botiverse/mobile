@@ -2,7 +2,11 @@ package ai.slock.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.background
@@ -20,6 +24,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
+import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.material3.Text
@@ -36,6 +41,9 @@ private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
+private val HeaderRefreshIndicatorWidth = 96.dp
+private val HeaderRefreshIndicatorHeight = 28.dp
+private val HeaderRefreshIconSize = 14.dp
 
 internal object SlockCollapsibleSectionTokens {
     const val AnimationDurationMillis: Int = 180
@@ -49,6 +57,8 @@ internal fun SlockTopPageHeader(
     iconBackground: Color = SlockColor.BrandYellow,
     backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
+    refreshing: Boolean = false,
+    refreshLabel: String = "Updating...",
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
@@ -100,6 +110,9 @@ internal fun SlockTopPageHeader(
                 )
             }
         }
+        if (refreshing) {
+            SlockHeaderRefreshIndicator(label = refreshLabel)
+        }
         if (trailingContent != null) {
             Box(content = trailingContent)
         }
@@ -111,6 +124,51 @@ internal fun SlockTopPageHeader(
                 .height(SlockStroke.Default)
                 .background(SlockColor.BorderBlack)
     )
+}
+
+@Composable
+internal fun SlockHeaderRefreshIndicator(
+    modifier: Modifier = Modifier,
+    label: String = "Updating..."
+) {
+    val transition = rememberInfiniteTransition(label = "slock-header-refresh-spinner")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 900),
+                repeatMode = RepeatMode.Restart
+            ),
+        label = "slock-header-refresh-spinner-rotation"
+    )
+    Row(
+        modifier =
+            modifier
+                .width(HeaderRefreshIndicatorWidth)
+                .height(HeaderRefreshIndicatorHeight)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.LoaderCircle,
+            modifier =
+                Modifier
+                    .size(HeaderRefreshIconSize)
+                    .graphicsLayer(rotationZ = rotation),
+            color = "#FF000000"
+        )
+        Text(
+            text = label,
+            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
+            color = SlockColor.TextBlack.copy(alpha = 0.64f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
 }
 
 @Composable

@@ -67,6 +67,34 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun openSavedShowsRefreshingAffordanceDuringLoadedReentry() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved = DeferredSavedRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        assertEquals(true, store.state.value.saved.loading)
+        saved.completeNext("message-1")
+        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(false, store.state.value.saved.loading)
+        assertEquals(true, store.state.value.saved.refreshing)
+        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
+        saved.completeNext("message-2")
+        assertEquals(false, store.state.value.saved.refreshing)
+        assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
     fun searchPanelSendsQueryFiltersAndSortToRepository() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = FakeSearchRepository(items = listOf(inboxItem("message-2")))
@@ -124,6 +152,35 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals("release", search.query)
         assertEquals(listOf("message-auto"), store.state.value.search.items.map { it.key })
         assertEquals(true, store.state.value.search.searched)
+        scope.cancel()
+    }
+
+    @Test
+    fun searchRefreshShowsRefreshingAffordanceDuringLoadedRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = QueuedSearchRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+        assertEquals(true, store.state.value.search.loading)
+        search.completeNext("message-1")
+        assertEquals(listOf("message-1"), store.state.value.search.items.map { it.key })
+
+        store.dispatch(SharedHomeSearchSavedIntent.RefreshSearch)
+
+        assertEquals(false, store.state.value.search.loading)
+        assertEquals(true, store.state.value.search.refreshing)
+        assertEquals(listOf("message-1"), store.state.value.search.items.map { it.key })
+        search.completeNext("message-2")
+        assertEquals(false, store.state.value.search.refreshing)
+        assertEquals(listOf("message-2"), store.state.value.search.items.map { it.key })
         scope.cancel()
     }
 
@@ -299,6 +356,66 @@ class SharedHomeSearchSavedStoreTest {
             this.options = options
             calls += SearchInvocation(query = query, offset = offset, limit = limit, options = options)
             return DataResult.Content(SearchSnapshot(server = testServer(serverId), query = query, items = items))
+        }
+    }
+
+    private inner class DeferredSavedRepository : SavedRepository {
+        private val pending = mutableListOf<Pair<ServerId, CompletableDeferred<DataResult<SavedSnapshot>>>>()
+
+        override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> {
+            val result = CompletableDeferred<DataResult<SavedSnapshot>>()
+            pending += serverId to result
+            return withContext(NonCancellable) { result.await() }
+        }
+
+        override suspend fun loadMore(serverId: ServerId, offset: Int, limit: Int): DataResult<SavedSnapshot> =
+            DataResult.Empty(EmptyReason.NoInboxItems)
+
+        override suspend fun saveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> =
+            DataResult.Content(SavedMessageMutationResult(messageId))
+
+        override suspend fun unsaveMessage(serverId: ServerId, messageId: MessageId): DataResult<SavedMessageMutationResult> =
+            DataResult.Content(SavedMessageMutationResult(messageId))
+
+        fun completeNext(messageId: String) {
+            val (serverId, result) = pending.removeAt(0)
+            result.complete(
+                DataResult.Content(
+                    SavedSnapshot(
+                        server = testServer(serverId),
+                        items = listOf(inboxItem(messageId))
+                    )
+                )
+            )
+        }
+    }
+
+    private inner class QueuedSearchRepository : SearchRepository {
+        private val pending = mutableListOf<Pair<ServerId, CompletableDeferred<DataResult<SearchSnapshot>>>>()
+
+        override suspend fun search(
+            serverId: ServerId,
+            query: String,
+            offset: Int,
+            limit: Int,
+            options: SearchQueryOptions
+        ): DataResult<SearchSnapshot> {
+            val result = CompletableDeferred<DataResult<SearchSnapshot>>()
+            pending += serverId to result
+            return withContext(NonCancellable) { result.await() }
+        }
+
+        fun completeNext(messageId: String) {
+            val (serverId, result) = pending.removeAt(0)
+            result.complete(
+                DataResult.Content(
+                    SearchSnapshot(
+                        server = testServer(serverId),
+                        query = "release",
+                        items = listOf(inboxItem(messageId))
+                    )
+                )
+            )
         }
     }
 

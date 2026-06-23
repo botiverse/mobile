@@ -136,7 +136,7 @@ internal fun SharedTasksPanel(
         when (val loadState = displayState) {
             ScreenLoadState.Loading -> {
                 if (showHeader) {
-                    SharedTasksHeader()
+                    SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
                     title = "Loading...",
@@ -157,7 +157,7 @@ internal fun SharedTasksPanel(
                 )
             is ScreenLoadState.Empty -> {
                 if (showHeader) {
-                    SharedTasksHeader()
+                    SharedTasksHeader(refreshing = state.refreshing)
                 }
                 val showEmptyToolbar = sharedTasksEmptyToolbarVisible(createTasksChannelId)
                 val emptyCopy =
@@ -206,7 +206,7 @@ internal fun SharedTasksPanel(
             }
             is ScreenLoadState.Error -> {
                 if (showHeader) {
-                    SharedTasksHeader()
+                    SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
                     title = "Could not load tasks",
@@ -217,7 +217,7 @@ internal fun SharedTasksPanel(
             }
             is ScreenLoadState.NoPermission -> {
                 if (showHeader) {
-                    SharedTasksHeader()
+                    SharedTasksHeader(refreshing = state.refreshing)
                 }
                 SharedTasksStateBody(
                     title = "Tasks unavailable",
@@ -229,11 +229,15 @@ internal fun SharedTasksPanel(
 }
 
 @Composable
-private fun SharedTasksHeader(subtitle: String = "Channel tasks") {
+private fun SharedTasksHeader(
+    subtitle: String = "Channel tasks",
+    refreshing: Boolean = false
+) {
     SlockTopPageHeader(
         title = "Tasks",
         subtitle = subtitle,
-        iconName = SlockLucideIconName.SquareCheckBig
+        iconName = SlockLucideIconName.SquareCheckBig,
+        refreshing = refreshing
     )
 }
 
@@ -426,7 +430,8 @@ private fun SharedTasksLoadedBodyContent(
                     tasksHeaderSubtitle(
                         totalTasks = content.tasks.size,
                         visibleTasks = visibleContent.filteredTasks.size
-                    )
+                    ),
+                refreshing = state.refreshing
             )
         }
         Box(modifier = Modifier.weight(1f).background(SlockColor.SurfaceWhite)) {

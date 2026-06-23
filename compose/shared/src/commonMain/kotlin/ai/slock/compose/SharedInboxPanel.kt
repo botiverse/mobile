@@ -245,7 +245,8 @@ private fun SharedActivityPanelContent(
             totalCount = state.totalCount,
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
-            topSafeAreaPadding = topSafeAreaPadding
+            topSafeAreaPadding = topSafeAreaPadding,
+            refreshing = state.refreshing
         )
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,
@@ -317,7 +318,8 @@ private fun SharedActivityHeader(
     totalCount: Int,
     totalUnreadCount: Int,
     onClose: (() -> Unit)?,
-    topSafeAreaPadding: Dp
+    topSafeAreaPadding: Dp,
+    refreshing: Boolean
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().height(62.dp + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
@@ -349,6 +351,9 @@ private fun SharedActivityHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
             }
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))

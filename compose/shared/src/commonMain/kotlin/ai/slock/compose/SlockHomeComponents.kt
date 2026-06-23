@@ -304,6 +304,7 @@ private fun SlockHomePageContent() {
         inboxUnreadCount = payload.inboxUnreadCount,
         savedCount = payload.savedCount,
         notifications = payload.notifications,
+        contentRefreshing = payload.contentRefreshing,
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
@@ -403,6 +404,7 @@ private fun HomeTitlebarVisualScreen() {
             serverName = "Raft Design",
             serverUnreadCount = 24,
             notifications = visualHomeNotifications(),
+            refreshing = false,
             topSafeArea = 0.dp,
             onServerBadgeClick = {},
             onView = {},
@@ -465,6 +467,7 @@ fun SlockStructuralHomeShell(
     inboxUnreadCount: Int = 0,
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
+    contentRefreshing: Boolean = false,
     serverSwitcherExpanded: Boolean = false,
     pendingServerId: String? = null,
     applyTopSafeArea: Boolean = true,
@@ -622,6 +625,7 @@ fun SlockStructuralHomeShell(
                         serverName = currentServerName,
                         serverUnreadCount = serverUnreadCount,
                         notifications = notifications,
+                        refreshing = contentRefreshing,
                         topSafeArea = topSafeArea,
                         onServerBadgeClick = onServerBadgeClick,
                         onView = onNotificationView,
@@ -1227,6 +1231,7 @@ private fun HomeTitlebar(
     serverName: String,
     serverUnreadCount: Int,
     notifications: List<SlockHomeNotificationItem>,
+    refreshing: Boolean,
     topSafeArea: Dp,
     onServerBadgeClick: () -> Unit,
     onView: (SlockHomeNotificationItem) -> Unit,
@@ -1253,6 +1258,9 @@ private fun HomeTitlebar(
                 )
             }
             Spacer(Modifier.weight(1f))
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
+            }
             HomeNotificationCenter(notifications, onView, onDismiss)
         }
     }

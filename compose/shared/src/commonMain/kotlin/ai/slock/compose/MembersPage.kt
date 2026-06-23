@@ -938,6 +938,7 @@ private fun JSONObject.optNullableString(key: String): String? =
 @Composable
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
+    refreshing: Boolean = false,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     onAddHuman: () -> Unit,
     onOpenDirectMessage: (MemberProfile) -> Unit,
@@ -1095,6 +1096,7 @@ internal fun MembersRouteContent(
     } else {
         MembersListContent(
             payload = payload,
+            refreshing = refreshing,
             onAddHuman = onAddHuman,
             onOpenMember = { selectedMemberId = it.id.value },
             canCreateAgents = canCreateAgents,
@@ -1118,6 +1120,7 @@ internal fun MembersRouteContent(
 @Composable
 internal fun MembersListContent(
     payload: KuiklyMembersPayload,
+    refreshing: Boolean = false,
     onAddHuman: () -> Unit,
     onOpenMember: (MemberProfile) -> Unit,
     canCreateAgents: Boolean = false,
@@ -1166,7 +1169,7 @@ internal fun MembersListContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        MembersPageHeader(title = payload.title)
+        MembersPageHeader(title = payload.title, refreshing = refreshing)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
@@ -3893,11 +3896,15 @@ private fun MembersDetailField(label: String, value: String) {
 }
 
 @Composable
-private fun MembersPageHeader(title: String) {
+private fun MembersPageHeader(
+    title: String,
+    refreshing: Boolean = false
+) {
     SlockTopPageHeader(
         title = title,
         subtitle = "Workspace members",
-        iconName = SlockLucideIconName.Users
+        iconName = SlockLucideIconName.Users,
+        refreshing = refreshing
     )
 }
 

@@ -7998,6 +7998,7 @@ private fun SharedMembersScreen(
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
+    var refreshing by remember { mutableStateOf(false) }
     var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
     val sharedAgentDetailStore = remember {
         SharedAgentDetailStore(
@@ -8006,13 +8007,18 @@ private fun SharedMembersScreen(
     }
 
     LaunchedEffect(membersRefreshKey) {
-        state = SharedMembersUiState.Loading
+        val previousContent = state as? SharedMembersUiState.Content
+        if (previousContent != null) {
+            refreshing = true
+        } else {
+            state = SharedMembersUiState.Loading
+        }
         try {
             val session = authStore.readSession()
             val serverId = session?.currentServerId
             val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
             if (session == null || serverId.isNullOrBlank() || server == null) {
-                state = SharedMembersUiState.Error("server_required")
+                state = previousContent ?: SharedMembersUiState.Error("server_required")
                 return@LaunchedEffect
             }
             val response = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
@@ -8023,14 +8029,16 @@ private fun SharedMembersScreen(
                     is DataResult.Empty ->
                         SharedMembersUiState.Content(server, emptyList(), session.user.id)
                     is DataResult.NoPermission ->
-                        SharedMembersUiState.Error(response.blocker.code)
+                        previousContent ?: SharedMembersUiState.Error(response.blocker.code)
                     is DataResult.Error ->
-                        SharedMembersUiState.Error(response.error.code)
+                        previousContent ?: SharedMembersUiState.Error(response.error.code)
                 }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
-            state = SharedMembersUiState.Error("members_network")
+            state = previousContent ?: SharedMembersUiState.Error("members_network")
+        } finally {
+            refreshing = false
         }
     }
 
@@ -8166,6 +8174,7 @@ private fun SharedMembersScreen(
                 }
             MembersRouteContent(
                 payload = membersPayload,
+                refreshing = refreshing,
                 sharedAgentDetailStore = sharedAgentDetailStore,
                 onAddHuman = { bridge.toast("Add member is not available yet") },
                 onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
@@ -9233,6 +9242,7 @@ private fun SharedHomeSearchPanel(
             SharedHomeSearchToolbar(
                 query = state.query,
                 loading = state.loading,
+                refreshing = state.refreshing,
                 onQueryChange = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged(it)) },
                 onSubmit = { onIntent(SharedHomeSearchSavedIntent.SubmitSearch) },
                 onClear = { onIntent(SharedHomeSearchSavedIntent.SearchQueryChanged("")) },
@@ -9259,7 +9269,8 @@ private fun SharedHomeSearchPanel(
                 verticalArrangement = Arrangement.spacedBy(0.dp)
             ) {
                 item {
-                    if (state.loading || state.errorCode != null || state.noPermissionCode != null) {
+                    val hasSearchRows = state.items.isNotEmpty() || entityResults.isNotEmpty()
+                    if (state.loading || state.noPermissionCode != null || (state.errorCode != null && !hasSearchRows)) {
                         SharedHomePanelStatus(
                             loading = state.loading,
                             loadingText = "Searching…",
@@ -9464,6 +9475,7 @@ private fun SharedHomeSearchPanelState.hasResumeSearchRefreshIntent(): Boolean =
 private fun SharedHomeSearchToolbar(
     query: String,
     loading: Boolean,
+    refreshing: Boolean,
     onQueryChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onClear: () -> Unit,
@@ -9497,6 +9509,9 @@ private fun SharedHomeSearchToolbar(
             onClear = onClear,
             modifier = Modifier.weight(1f)
         )
+        if (refreshing) {
+            SlockHeaderRefreshIndicator()
+        }
     }
 }
 
@@ -9618,10 +9633,12 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
                 onClose = onClose,
+                refreshing = state.refreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
             )
         }
-        if (state.loading || state.errorCode != null || state.noPermissionCode != null) {
+        val hasSavedRows = state.items.isNotEmpty()
+        if (state.loading || state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
             item {
                 SharedHomePanelStatus(
                     loading = state.loading,
@@ -9680,6 +9697,7 @@ private fun SharedHomeSavedEmptyState() {
 private fun SharedHomeSavedHeader(
     count: Int,
     onClose: (() -> Unit)?,
+    refreshing: Boolean,
     topSafeAreaPadding: Dp = 0.dp
 ) {
     Column(
@@ -9719,6 +9737,9 @@ private fun SharedHomeSavedHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+            }
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
             }
         }
         SharedHomeSearchDivider()
