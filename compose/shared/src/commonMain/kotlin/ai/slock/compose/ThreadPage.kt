@@ -5938,32 +5938,23 @@ private fun ThreadMessagesList(
             return@LaunchedEffect
         }
         if (!initialBottomAnchorReady) {
-            repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
-                listState.awaitThreadMessagesLayoutFrame()
-                val contentReady =
-                    listState.isInitialThreadContentReady(latestItemIndex, initialMessageMinHeightsPx)
-                if (contentReady) {
-                    listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-                } else if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                    listState.canScrollToThreadItem(latestItemIndex)
-                ) {
-                    listState.scrollToItem(latestItemIndex)
-                }
-                delay(ThreadLayoutStabilityFrameDelayMs)
-                if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                    contentReady &&
-                    listState.isLatestItemAtRenderedBottom(latestItemIndex)
-                ) {
+            while (!initialBottomAnchorReady) {
+                val anchored =
+                    listState.anchorInitialThreadBottomToLatest(
+                        latestItemIndex = latestItemIndex,
+                        minHeightsByListItemIndex = initialMessageMinHeightsPx
+                    )
+                if (anchored) {
                     initialBottomAnchorReady = true
                     return@LaunchedEffect
                 }
+                diagnosticsLogger(
+                    "thread_initial_bottom_anchor result=retry latestItemIndex=$latestItemIndex " +
+                        "totalItems=${listState.layoutInfo.totalItemsCount} " +
+                        "visibleItems=${listState.layoutInfo.visibleItemsInfo.size}"
+                )
+                delay(ThreadInitialBottomAnchorRetryDelayMs)
             }
-            if (listState.canScrollToThreadItem(latestItemIndex)) {
-                listState.scrollToItem(latestItemIndex)
-                listState.awaitThreadMessagesLayoutStability(latestItemIndex, initialMessageMinHeightsPx)
-                listState.scrollLatestItemToRenderedBottom(latestItemIndex)
-            }
-            initialBottomAnchorReady = true
             return@LaunchedEffect
         }
         if (!allowBottomAutoAnchor && !listState.isLatestItemAtRenderedBottom(latestItemIndex)) {
@@ -6537,6 +6528,19 @@ internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrec
         !state.isScrollInProgress &&
         !state.isAtRenderedBottom
 
+internal data class ThreadInitialBottomAnchorState(
+    val canScrollToLatest: Boolean,
+    val isContentReady: Boolean,
+    val isAtRenderedBottom: Boolean,
+    val attempt: Int
+)
+
+internal fun shouldRevealInitialThreadBottomAnchor(state: ThreadInitialBottomAnchorState): Boolean =
+    state.canScrollToLatest &&
+        state.isAtRenderedBottom &&
+        state.attempt >= ThreadBottomAnchorMinimumAttempts &&
+        (state.isContentReady || state.attempt >= ThreadInitialBottomAnchorAttempts - 1)
+
 internal fun KuiklyThreadScreenPayload.hasSendingLocalSendAnchor(anchorKey: String?): Boolean {
     val messageId = anchorKey?.substringBefore(':')?.takeIf { it.isNotBlank() } ?: return false
     return messages.any { message ->
@@ -6714,6 +6718,53 @@ private fun LazyListState.isThreadItemVisible(index: Int): Boolean {
 
 private fun LazyListState.canScrollToThreadItem(index: Int): Boolean =
     index >= 0 && layoutInfo.totalItemsCount > index
+
+private suspend fun LazyListState.anchorInitialThreadBottomToLatest(
+    latestItemIndex: Int,
+    minHeightsByListItemIndex: Map<Int, Int>
+): Boolean {
+    if (latestItemIndex < 0) return true
+    repeat(ThreadInitialBottomAnchorAttempts) { attempt ->
+        awaitThreadMessagesLayoutFrame()
+        val canScrollToLatest = canScrollToThreadItem(latestItemIndex)
+        if (!canScrollToLatest) {
+            delay(ThreadLayoutStabilityFrameDelayMs)
+            return@repeat
+        }
+
+        if (!isThreadItemVisible(latestItemIndex)) {
+            scrollToItem(latestItemIndex)
+            delay(ThreadLayoutStabilityFrameDelayMs)
+        }
+        awaitThreadMessagesLayoutStability(latestItemIndex, minHeightsByListItemIndex)
+        val contentReady = isInitialThreadContentReady(latestItemIndex, minHeightsByListItemIndex)
+        if (contentReady) {
+            scrollLatestItemToRenderedBottom(latestItemIndex)
+        } else {
+            scrollToItem(latestItemIndex)
+        }
+        delay(ThreadLayoutStabilityFrameDelayMs)
+
+        val anchorState =
+            ThreadInitialBottomAnchorState(
+                canScrollToLatest = canScrollToLatest,
+                isContentReady = contentReady,
+                isAtRenderedBottom = isLatestItemAtRenderedBottom(latestItemIndex),
+                attempt = attempt
+            )
+        if (shouldRevealInitialThreadBottomAnchor(anchorState)) {
+            return true
+        }
+    }
+    if (!canScrollToThreadItem(latestItemIndex)) {
+        return false
+    }
+    scrollToItem(latestItemIndex)
+    awaitThreadMessagesLayoutStability(latestItemIndex, minHeightsByListItemIndex)
+    scrollLatestItemToRenderedBottom(latestItemIndex)
+    delay(ThreadLayoutStabilityFrameDelayMs)
+    return isLatestItemAtRenderedBottom(latestItemIndex)
+}
 
 private suspend fun LazyListState.scrollLatestItemToRenderedBottom(latestItemIndex: Int) {
     if (latestItemIndex < 0) return
@@ -6908,7 +6959,8 @@ private fun ThreadBackToBottomButton(
 
 private const val ThreadBackToBottomTolerancePx = 24
 private const val ThreadBottomAnchorMinimumAttempts = 2
-private const val ThreadInitialBottomAnchorAttempts = 4
+private const val ThreadInitialBottomAnchorAttempts = 12
+private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadLayoutStabilityMaxFrames = 30
