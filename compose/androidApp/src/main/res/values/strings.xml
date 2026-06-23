@@ -274,10 +274,6 @@
     <string name="settings_notification_test_text">Mobile Settings can show local Android notifications.</string>
     <string name="settings_notification_channel_name">Settings test notifications</string>
     <string name="settings_notification_channel_description">Local test notifications from Mobile Settings.</string>
-    <string name="app_badge_channel_name">Unread count</string>
-    <string name="app_badge_channel_description">Drives the launcher icon number badge. No sounds, no per-message body.</string>
-    <string name="app_badge_notification_title">Unread messages</string>
-    <string name="app_badge_notification_text">%1$d unread</string>
     <string name="notification_unread_default_text">You have a new unread message.</string>
     <string name="notification_unread_general_channel_name">Unread messages</string>
     <string name="notification_unread_general_channel_description">General unread Raft message notifications.</string>
