@@ -12,6 +12,9 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.data.appendSharedThreadSentMessageFromPage
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
+import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentDetailSummary
+import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KuiklySlockNetworkClient
 import ai.slock.compose.data.NetworkSlockTasksApi
@@ -35,6 +38,7 @@ import ai.slock.compose.data.ThreadAttachmentCommentsPage
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
@@ -668,6 +672,29 @@ private fun KuiklyThreadMemberItem.threadMemberKind(): MemberKind =
 
 private fun KuiklyThreadMessageItem.threadAuthorKind(): MemberKind =
     if (authorKind.equals("agent", ignoreCase = true)) MemberKind.Agent else MemberKind.Human
+
+private fun MemberProfile.toThreadCandidateAgentDetailSnapshot(): AgentDetailSnapshot? {
+    if (kind != MemberKind.Agent) return null
+    val name = handle.ifBlank { displayName.ifBlank { id.value } }
+    val label = displayName.ifBlank { name }
+    val avatarWireValue = avatar?.wireValue ?: avatarUrl
+    return AgentDetailSnapshot(
+        agentId = id,
+        summary =
+            AgentDetailSummary(
+                id = id.value,
+                name = name,
+                displayName = label,
+                status = agentStatus?.label,
+                runtime = roleDescription,
+                avatarUrl = avatarWireValue
+            ),
+        directMessages = emptyList(),
+        reminders = emptyList(),
+        activity = emptyList(),
+        skills = AgentSkillsSnapshot(agentId = id)
+    )
+}
 
 internal fun KuiklyThreadScreenPayload.replyThreadHeaderSubtitle(): String? =
     threadChannelHeaderSubtitle(title)
@@ -1500,9 +1527,16 @@ private fun ThreadPageScreen() {
                 bridge.toast("Unable to open profile")
                 bridge.logWarn(
                     "thread_member_profile_skip reason=missing_member memberId=$memberId " +
-                        "instanceId=${currentPayload.instanceId}"
+                    "instanceId=${currentPayload.instanceId}"
                 )
             } else {
+                currentPayload.findThreadAuthorProfile(memberId)
+                    ?.toThreadCandidateAgentDetailSnapshot()
+                    ?.let { candidate ->
+                        val agentDetailStore = SlockSharedStoreRegistry.get(bridge).agentDetailStore
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(candidate.agentId, candidate))
+                    }
                 routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
             }
         }

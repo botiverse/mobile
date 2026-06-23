@@ -842,6 +842,26 @@ private class MemberDetailRouteProvider(
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore
 ) {
+    suspend fun cachedMember(memberId: String): MemberDetailRouteState.Content? {
+        val selectedMemberId = memberId.trim()
+        if (selectedMemberId.isBlank()) return null
+        val selectedId = MemberId(selectedMemberId)
+        val state = agentDetailStore.state.value
+        val detail = state.detail
+        if (state.agentId != selectedId || detail == null || detail.agentId != selectedId) {
+            return null
+        }
+        val session = authStore.readSession() ?: return null
+        val serverId = session.currentServerId
+        val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
+        return MemberDetailRouteState.Content(
+            server = server,
+            member = detail.toMemberProfile(server),
+            currentUserId = session.user.id,
+            agentDetailSeeded = true
+        )
+    }
+
     suspend fun loadMember(memberId: String): MemberDetailRouteState {
         val selectedMemberId = memberId.trim()
         if (selectedMemberId.isBlank()) return MemberDetailRouteState.Error("member_id_missing")
@@ -1005,12 +1025,7 @@ private fun rememberMemberDetailRouteProvider(
             )
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
-    val agentDetailStore =
-        remember {
-            SharedAgentDetailStore(
-                logger = { message -> bridge.log("member_detail_store $message") }
-            )
-        }
+    val agentDetailStore = sharedStores.agentDetailStore
     return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore) {
         MemberDetailRouteProvider(
             bridge = bridge,
@@ -1040,7 +1055,8 @@ private fun MemberDetailPageContent() {
     val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
 
     LaunchedEffect(payload.memberId) {
-        routeState = MemberDetailRouteState.Loading
+        val cached = provider.cachedMember(payload.memberId)
+        routeState = cached ?: MemberDetailRouteState.Loading
         routeState = provider.loadMember(payload.memberId)
     }
 
