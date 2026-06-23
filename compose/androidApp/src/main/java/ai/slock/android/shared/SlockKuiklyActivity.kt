@@ -884,15 +884,15 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
     override val asyncLogEnable: Boolean = true
 
     override fun i(tag: String, msg: String) {
-        SlockDiagnosticsLogger.i(tag, msg)
+        Log.i(tag, msg)
     }
 
     override fun d(tag: String, msg: String) {
-        SlockDiagnosticsLogger.d(tag, msg)
+        Log.d(tag, msg)
     }
 
     override fun e(tag: String, msg: String) {
-        SlockDiagnosticsLogger.e(tag, msg)
+        Log.e(tag, msg)
     }
 }
 
@@ -1184,11 +1184,12 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
+                SanitizedDiagnosticsLogBuffer.record("SlockKuikly", content)
                 when (level) {
-                    SlockBridgeLogLevel.DEBUG -> SlockDiagnosticsLogger.d("SlockKuikly", content)
-                    SlockBridgeLogLevel.INFO -> SlockDiagnosticsLogger.i("SlockKuikly", content)
-                    SlockBridgeLogLevel.WARN -> SlockDiagnosticsLogger.w("SlockKuikly", content)
-                    SlockBridgeLogLevel.ERROR -> SlockDiagnosticsLogger.e("SlockKuikly", content)
+                    SlockBridgeLogLevel.DEBUG -> Unit
+                    SlockBridgeLogLevel.INFO -> Log.i("SlockKuikly", content)
+                    SlockBridgeLogLevel.WARN -> Log.w("SlockKuikly", content)
+                    SlockBridgeLogLevel.ERROR -> Log.e("SlockKuikly", content)
                 }
                 null
             }
@@ -1433,7 +1434,6 @@ internal class SlockKuiklyBridgeModule(
                         "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
-                            SlockDiagnosticsLogger.setVerboseLoggingEnabled(enabled)
                             SlockDiagnosticsLogger.record(
                                     "SlockDiagnostics",
                                     "shared_recomposition_profiler_enabled=$enabled"
@@ -2114,14 +2114,19 @@ internal class SlockKuiklyBridgeModule(
                 }.getOrElse {
                     return mapOf("status" to "storage_failed", "message" to "Storage unavailable")
                 }
+        val isPackageArchive = isAndroidPackageArchive(requestedFileName, openMimeType)
         val intent =
-                Intent(Intent.ACTION_VIEW).apply {
+                Intent(if (isPackageArchive) Intent.ACTION_INSTALL_PACKAGE else Intent.ACTION_VIEW).apply {
                     setDataAndType(attachmentUri, openMimeType)
                     clipData = ClipData.newUri(appContext.contentResolver, targetFile.name, attachmentUri)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    if (isPackageArchive) {
+                        putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+                        putExtra(Intent.EXTRA_RETURN_RESULT, false)
+                    }
                 }
         val handlers = appContext.packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
-        if (handlers.isEmpty()) {
+        if (handlers.isEmpty() && !isPackageArchive) {
             showToast("No app can open this attachment")
             SlockDiagnosticsLogger.record(
                     "SlockAttachmentOpen",
@@ -2137,12 +2142,27 @@ internal class SlockKuiklyBridgeModule(
             )
         }
         return runCatching {
-            val chooser =
-                    Intent.createChooser(intent, "Open with").apply {
-                        clipData = intent.clipData
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-            appContext.startActivity(chooser)
+            if (isPackageArchive) {
+                runCatching {
+                    appContext.startActivity(intent)
+                }.getOrElse { firstThrowable ->
+                    if (firstThrowable !is ActivityNotFoundException) throw firstThrowable
+                    val viewIntent =
+                            Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(attachmentUri, openMimeType)
+                                clipData = ClipData.newUri(appContext.contentResolver, targetFile.name, attachmentUri)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                    appContext.startActivity(viewIntent)
+                }
+            } else {
+                val chooser =
+                        Intent.createChooser(intent, "Open with").apply {
+                            clipData = intent.clipData
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                appContext.startActivity(chooser)
+            }
             SlockDiagnosticsLogger.record(
                     "SlockAttachmentOpen",
                     "attachmentId=${attachmentId.take(8)} status=opened mimeType=$openMimeType cached=${!needsDownload} durationMs=${System.currentTimeMillis() - startedAt}"
@@ -2237,12 +2257,22 @@ internal class SlockKuiklyBridgeModule(
     }
 
     private fun guessAttachmentMimeType(fileName: String, mimeType: String?): String {
+        if (fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)) {
+            return ANDROID_PACKAGE_ARCHIVE_MIME_TYPE
+        }
         val normalized = mimeType?.substringBefore(';')?.trim()?.takeIf { it.contains('/') }
+        if (normalized.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true)) {
+            return ANDROID_PACKAGE_ARCHIVE_MIME_TYPE
+        }
         if (!normalized.isNullOrBlank()) return normalized
         val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
                 ?: "application/octet-stream"
     }
+
+    private fun isAndroidPackageArchive(fileName: String, mimeType: String): Boolean =
+            mimeType.equals(ANDROID_PACKAGE_ARCHIVE_MIME_TYPE, ignoreCase = true) ||
+                    fileName.substringAfterLast('.', missingDelimiterValue = "").equals("apk", ignoreCase = true)
 
     private fun showToast(message: String) {
         Handler(Looper.getMainLooper()).post {
@@ -2311,6 +2341,7 @@ internal class SlockKuiklyBridgeModule(
         private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
         private const val ATTACHMENT_CACHE_MAX_FILES = 80
         private const val ATTACHMENT_CACHE_MAX_AGE_MS = 24L * 60L * 60L * 1000L
+        private const val ANDROID_PACKAGE_ARCHIVE_MIME_TYPE = "application/vnd.android.package-archive"
     }
 }
 
