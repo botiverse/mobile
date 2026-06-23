@@ -477,6 +477,7 @@ class RealConversationRepository(
         val rawMessages: List<Message> =
             (messagesResult as? DataResult.Content)?.data?.messages.orEmpty()
         val snapshotMessages = rawMessages.filter { it.parentMessageId == parentMessageId }
+        val resolvedStreamChannelId = resolvedThreadChannelId ?: parentChannelId
         val snapshot =
             buildSharedThreadSnapshot(
                 payload = SharedMessagesPayload(
@@ -484,8 +485,12 @@ class RealConversationRepository(
                     hasOlder = (messagesResult as? DataResult.Content)?.data?.hasOlder ?: false,
                     hasNewer = (messagesResult as? DataResult.Content)?.data?.hasNewer ?: false
                 ),
-                threadId = ThreadId(resolvedThreadChannelId?.value ?: parentChannelId.value),
+                threadId = ThreadId(resolvedStreamChannelId.value),
                 canLoadMoreBefore = snapshotMessages.size >= messageLimit
+            ).withReplyThreadConversation(
+                parentChannelId = parentChannelId,
+                parentMessageId = parentMessageId,
+                streamChannelId = resolvedStreamChannelId
             )
         warningLogger(
             "reply_thread_load_result source=$source " +
@@ -494,8 +499,13 @@ class RealConversationRepository(
                 "resolvedThreadChannelId=${resolvedThreadChannelId?.value ?: "null"} " +
                 "durationMs=${loadStartedAt.elapsedNow().inWholeMilliseconds}"
         )
-        if (messagesResult is DataResult.Content) DataResult.Content(snapshot)
-        else messagesResult as DataResult<ThreadSnapshot>
+        when {
+            messagesResult is DataResult.Content -> DataResult.Content(snapshot)
+            messagesResult is DataResult.Empty &&
+                messagesResult.reason == EmptyReason.NoMessages &&
+                createOrOpen is DataResult.Content -> DataResult.Content(snapshot)
+            else -> messagesResult as DataResult<ThreadSnapshot>
+        }
     }
 
     private suspend fun loadChannelMessages(
@@ -922,6 +932,25 @@ private fun ConversationSummary.withThreadAnchor(
         kind = ConversationKind.Thread
     ).withParentNameFallback()
 }
+
+private fun ThreadSnapshot.withReplyThreadConversation(
+    parentChannelId: ChannelId,
+    parentMessageId: MessageId,
+    streamChannelId: ChannelId
+): ThreadSnapshot =
+    copy(
+        conversation =
+            conversation.copy(
+                channelId = parentChannelId,
+                kind = ConversationKind.Thread,
+                thread =
+                    ThreadConversation(
+                        parentChannelId = parentChannelId,
+                        parentMessageId = parentMessageId,
+                        streamChannelId = streamChannelId
+                    )
+            )
+    )
 
 @Serializable
 data class ThreadChannelActionRequestBody(

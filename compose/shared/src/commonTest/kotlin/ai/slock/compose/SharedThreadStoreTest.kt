@@ -123,7 +123,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payload = store.state.value.payload
-        assertEquals("content", payload.status)
+        assertEquals("empty", payload.status)
         assertEquals("cached body", payload.messages.single().body)
         assertEquals(1, api.channelMessageCalls)
         scope.cancel()
@@ -1354,7 +1354,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchReplyThreadPayloadResolvesThreadChannelBeforeLoadingMessages() = runBlocking {
+    fun fetchReplyThreadPayloadUsesParentPairRepositoryPath() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
             FakeConversationRepository(
@@ -1407,8 +1407,9 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(base) as DataResult.Content).data
 
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
@@ -1499,8 +1500,9 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
-        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
@@ -1573,8 +1575,9 @@ class SharedThreadStoreTest {
 
         val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
 
-        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("empty", payload.status)
         assertEquals("thread-m1", payload.sourceThreadId)
@@ -1610,8 +1613,9 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
-        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("thread-m1", payload.composer.streamChannelId)
@@ -1648,8 +1652,9 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
-        assertEquals(listOf(ThreadId("wrong-thread"), ThreadId("thread-m1")), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
         assertEquals("channel-1", payload.parentChannelId)
@@ -1690,8 +1695,9 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertFalse(observedPayloads.any { it.containsWrongReplyCacheContent() })
-        assertEquals(listOf(ThreadId("wrong-thread")), repository.getThreadRequests)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals("error", payload.status)
         assertEquals("thread_reply_network", payload.errorCode)
         assertEquals(emptyList(), payload.messages)
@@ -1778,8 +1784,9 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertEquals(null, initialPayload.sourceThreadId)
         assertEquals(null, initialPayload.streamChannelId)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("thread-m1", payload.sourceThreadId)
         assertEquals("thread-m1", payload.streamChannelId)
@@ -1860,8 +1867,9 @@ class SharedThreadStoreTest {
         assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
         assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
         assertEquals(null, payload.errorCode)
-        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
         scope.cancel()
     }
 
@@ -2846,7 +2854,8 @@ class SharedThreadStoreTest {
         assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
         assertEquals(ThreadReplyEmptyDetail, payload.emptyDetail)
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
     }
 
     @Test
@@ -3015,7 +3024,8 @@ class SharedThreadStoreTest {
 
         val cached = localStore.readThread(ThreadId("thread-m1"))
         assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.createOrOpenRequests)
-        assertEquals(listOf(ThreadId("thread-m1")), repository.getThreadRequests.takeLast(1))
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests.takeLast(1))
         assertEquals(0, api.channelMessageCalls)
         assertEquals(ThreadReplyPageTitle, payload.title)
         assertEquals("#general", payload.subtitle)
@@ -3567,7 +3577,31 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             getReplyThreadRequests += parentChannelId to parentMessageId
             getReplyThreadLimits += limit
-            return threadResult
+            val resolvedThreadId = (createThreadResult as? DataResult.Content)?.data?.threadChannelId
+            val resolvedResult = resolvedThreadId?.let { threadResultsById[ThreadId(it.value)] } ?: threadResult
+            if (resolvedResult is DataResult.Empty &&
+                resolvedResult.reason == EmptyReason.NoMessages &&
+                resolvedThreadId != null
+            ) {
+                return DataResult.Content(
+                    threadSnapshot(
+                        threadId = resolvedThreadId.value,
+                        messages = emptyList(),
+                        conversation =
+                            conversationSummary(resolvedThreadId.value).copy(
+                                kind = ConversationKind.Thread,
+                                channelId = parentChannelId,
+                                thread =
+                                    ThreadConversation(
+                                        parentChannelId = parentChannelId,
+                                        parentMessageId = parentMessageId,
+                                        streamChannelId = resolvedThreadId
+                                    )
+                            )
+                    )
+                )
+            }
+            return resolvedResult
         }
 
         override suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot> {

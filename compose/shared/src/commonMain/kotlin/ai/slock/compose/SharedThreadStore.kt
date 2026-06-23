@@ -481,30 +481,49 @@ internal class SharedThreadDataSource(
         basePayload: KuiklyThreadScreenPayload,
         persistResult: Boolean = true
     ): DataResult<KuiklyThreadScreenPayload> {
-        val resolvedBasePayload =
-            when (val resolved = resolveReplyThreadStream(basePayload)) {
-                is DataResult.Content -> resolved.data
-                is DataResult.Empty -> return resolved
-                is DataResult.Error -> return resolved
-                is DataResult.NoPermission -> return resolved
-            }
-        val threadId =
-            resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
-                ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
         val session =
             readSession()
                 ?: return authSessionRequiredResult()
+        val shouldFetchReplyByParent =
+            conversationRepository != null && basePayload.shouldFetchReplyThreadByParentPair()
+        val resolvedBasePayload =
+            if (shouldFetchReplyByParent) {
+                basePayload
+            } else {
+                when (val resolved = resolveReplyThreadStream(basePayload)) {
+                    is DataResult.Content -> resolved.data
+                    is DataResult.Empty -> return resolved
+                    is DataResult.Error -> return resolved
+                    is DataResult.NoPermission -> return resolved
+                }
+            }
+        val threadId =
+            resolvedBasePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                ?: resolvedBasePayload.streamChannelId?.takeIf { it.isNotBlank() }
         val payloadResult =
             if (conversationRepository != null) {
-                fetchInitialThreadPayloadFromRepository(
-                    session = session,
-                    basePayload = resolvedBasePayload,
-                    threadId = ThreadId(threadId)
-                )
+                if (shouldFetchReplyByParent) {
+                    fetchInitialReplyThreadPayloadFromRepository(
+                        session = session,
+                        basePayload = resolvedBasePayload
+                    )
+                } else {
+                    val resolvedThreadId =
+                        threadId
+                            ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
+                    fetchInitialThreadPayloadFromRepository(
+                        session = session,
+                        basePayload = resolvedBasePayload,
+                        threadId = ThreadId(resolvedThreadId)
+                    )
+                }
             } else {
+                val resolvedThreadId =
+                    threadId
+                        ?: return DataResult.Error(ScreenError(code = "thread_id_missing", retryable = false))
                 val response =
                     try {
-                        api.channelMessages(threadId, limit = SharedThreadPaging.initialPageSize)
+                        api.channelMessages(resolvedThreadId, limit = SharedThreadPaging.initialPageSize)
                     } catch (cancellation: CancellationException) {
                         throw cancellation
                     } catch (_: Throwable) {
@@ -1349,7 +1368,18 @@ internal class SharedThreadDataSource(
                 ?: conversation.thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }
                 ?: return this
         if (basePayload.originStatus == "loaded" && basePayload.originMessage?.id == parentMessageId) {
-            return this
+            val parentChannelId =
+                basePayload.parentChannelId?.takeIf { it.isNotBlank() }
+                    ?: conversation.thread?.parentChannelId?.value
+                    ?: parentMessage?.channelId?.value
+                    ?: return this
+            return copy(
+                parentMessage =
+                    basePayload.originMessage.toMessage(
+                        threadId = ThreadId(parentChannelId),
+                        channelId = ChannelId(parentChannelId)
+                    )
+            )
         }
         if (parentMessage?.id?.value == parentMessageId) return this
         if (messages.any { message -> message.id.value == parentMessageId }) return this
@@ -1367,8 +1397,7 @@ internal class SharedThreadDataSource(
 
     private suspend fun fetchInitialReplyThreadPayloadFromRepository(
         session: StoredAuthSession,
-        basePayload: KuiklyThreadScreenPayload,
-        threadId: ThreadId
+        basePayload: KuiklyThreadScreenPayload
     ): DataResult<KuiklyThreadScreenPayload> {
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
@@ -1382,18 +1411,36 @@ internal class SharedThreadDataSource(
                     limit = SharedThreadPaging.initialPageSize
                 )
             }
-        val resolvedBase =
-            basePayload.copy(
-                sourceThreadId = threadId.value,
-                streamChannelId = threadId.value
-            )
         return when (initialResult) {
-            is DataResult.Content ->
-                DataResult.Content(
+            is DataResult.Content -> {
+                val resolvedThreadId =
+                    initialResult.data.conversation.thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }
+                        ?: initialResult.data.conversation.channelId?.value?.takeIf { it.isNotBlank() }
+                        ?: initialResult.data.conversation.threadId.value.takeIf { it.isNotBlank() }
+                        ?: basePayload.streamChannelId?.takeIf { it.isNotBlank() }
+                        ?: basePayload.sourceThreadId?.takeIf { it.isNotBlank() }
+                val resolvedBase =
+                    if (resolvedThreadId == null) {
+                        basePayload
+                    } else {
+                        basePayload.copy(
+                            sourceThreadId = resolvedThreadId,
+                            streamChannelId = resolvedThreadId
+                        )
+                    }
+                val payload =
                     initialResult.data
+                        .withReplyParentMessageFromContext(resolvedBase)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
+                DataResult.Content(
+                    if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
+                        payload.toEmptyReplyThreadPayload()
+                    } else {
+                        payload
+                    }
                 )
+            }
             is DataResult.Empty -> initialResult
             is DataResult.Error -> initialResult
             is DataResult.NoPermission -> initialResult
@@ -2460,6 +2507,11 @@ private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolea
         parentMessage.isNotBlank() &&
         (streamCandidate == null || streamCandidate == parentChannel)
 }
+
+private fun KuiklyThreadScreenPayload.shouldFetchReplyThreadByParentPair(): Boolean =
+    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+        parentChannelId?.isNotBlank() == true &&
+        (parentMessageId?.isNotBlank() == true || originParentMessageId?.isNotBlank() == true)
 
 private fun KuiklyThreadScreenPayload.hasUntrustedReplyThreadStreamHint(): Boolean {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
