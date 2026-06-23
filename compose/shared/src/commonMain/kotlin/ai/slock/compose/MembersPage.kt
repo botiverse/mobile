@@ -826,6 +826,7 @@ internal fun MembersPageContent() {
 
 private sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
+    data object NoOp : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
     data class Content(
         val server: ServerSummary,
@@ -865,20 +866,7 @@ private class MemberDetailRouteProvider(
             }
             is DataResult.Empty,
             is DataResult.Error,
-            is DataResult.NoPermission -> Unit
-        }
-        return when (val result = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))) {
-            is DataResult.Content -> {
-                val member = result.data.members.firstOrNull { it.id.value == selectedMemberId }
-                if (member != null) {
-                    MemberDetailRouteState.Content(result.data.server, member, session.user.id)
-                } else {
-                    MemberDetailRouteState.Error("member_not_found")
-                }
-            }
-            is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
-            is DataResult.Error -> MemberDetailRouteState.Error(result.error.code)
-            is DataResult.NoPermission -> MemberDetailRouteState.Error(result.blocker.code)
+            is DataResult.NoPermission -> return MemberDetailRouteState.NoOp
         }
     }
 
@@ -1074,6 +1062,12 @@ private fun MemberDetailPageContent() {
             ) {
                 SlockCenteredLoading()
             }
+        MemberDetailRouteState.NoOp -> {
+            LaunchedEffect(Unit) {
+                provider.bridge.closePage()
+            }
+            Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite))
+        }
         is MemberDetailRouteState.Error ->
             Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
                 SlockTopPageHeader(
