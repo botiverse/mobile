@@ -1127,6 +1127,14 @@ internal class SharedThreadDataSource(
                 is DataResult.NoPermission -> return actionResult
             }
         val threadChannelId = action.threadChannelId.value
+        val parentSurfaceKind =
+            basePayload.parentSurfaceKind?.takeIf { it.isNotBlank() }
+                ?: when {
+                    basePayload.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+                    basePayload.channelKind.equals("dm", ignoreCase = true) -> KuiklyThreadSurfaceKind.DirectMessage
+                    basePayload.memberScopedMentions && basePayload.parentChannelId.isNullOrBlank() -> KuiklyThreadSurfaceKind.DirectMessage
+                    else -> KuiklyThreadSurfaceKind.Channel
+                }
         val resolvedOrigin =
             parentMessage.copy(
                 threadChannelId = threadChannelId,
@@ -1143,6 +1151,7 @@ internal class SharedThreadDataSource(
                 streamChannelId = threadChannelId,
                 parentChannelId = parentChannelId,
                 parentMessageId = action.parentMessageId?.value ?: parentMessage.id,
+                parentSurfaceKind = parentSurfaceKind,
                 navigationLabel = "Close",
                 selectedTab = "chat",
                 showModeTabs = false,
@@ -1176,6 +1185,7 @@ internal class SharedThreadDataSource(
                         streamChannelId = replyBase.streamChannelId,
                         parentChannelId = replyBase.parentChannelId,
                         parentMessageId = replyBase.parentMessageId,
+                        parentSurfaceKind = replyBase.parentSurfaceKind,
                         focusedMessageId = loaded.data.focusedMessageId ?: replyBase.focusedMessageId,
                         composer = loaded.data.composer.takeUnless { it.isDefaultThreadComposer() } ?: replyBase.composer,
                         originMessage = loaded.data.originMessage ?: resolvedOrigin,

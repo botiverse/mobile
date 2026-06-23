@@ -929,6 +929,47 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun directMessageReplyThreadLaunchKeepsParentSurfaceKind() {
+        val dmPayload =
+            buildAppShellThreadPayload(
+                ConversationSummary(
+                    threadId = ThreadId("dm-agent-1"),
+                    channelId = ChannelId("dm-agent-1"),
+                    kind = ConversationKind.DirectMessage,
+                    name = "Product-UX-Designer",
+                    permissions = ConversationPermissions(canSend = true)
+                )
+            )
+        val parentMessage =
+            KuiklyThreadMessageItem(
+                id = "dm-parent-1",
+                authorId = "agent-1",
+                authorName = "Product-UX-Designer",
+                body = "Can you check this?",
+                threadChannelId = "thread-dm-parent-1"
+            )
+
+        val replyPayload = dmPayload.replyThreadLoadingPayload(parentMessage)
+        val launchPayload = replyPayload.toWireThreadLaunchPayload()
+        val parsedPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(WireThreadLaunchPayload.serializer(), launchPayload),
+                instanceId = "fallback"
+            )
+        val parentPayload = parsedPayload.parentMessageContextLoadingPayload("dm-parent-1")
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, parsedPayload.surfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launchPayload.parentSurfaceKind)
+        assertEquals("dm-agent-1", parsedPayload.parentChannelId)
+        assertEquals("dm-parent-1", parsedPayload.parentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parsedPayload.parentSurfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, parentPayload.surfaceKind)
+        assertEquals("dm-agent-1", parentPayload.sourceThreadId)
+        assertEquals("dm-agent-1", parentPayload.streamChannelId)
+        assertEquals("Direct Message", parentPayload.title)
+    }
+
+    @Test
     fun sharedShellReplyThreadRouteUsesLaunchOnlyThreadHeader() {
         val payload =
             buildAppShellThreadPayload(
@@ -956,6 +997,7 @@ class ThreadPayloadTest {
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
         assertEquals("message-1", payload.originParentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.parentSurfaceKind)
         assertEquals("loading", payload.originStatus)
         assertEquals(false, payload.showModeTabs)
         assertEquals(false, payload.showMembersAction)

@@ -412,6 +412,7 @@ internal data class KuiklyThreadScreenPayload(
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val parentSurfaceKind: String? = null,
     val memberScopedMentions: Boolean = false,
     val selectedTab: String = "chat",
     val navigationLabel: String = "Back",
@@ -475,6 +476,7 @@ internal data class WireThreadLaunchPayload(
     val streamChannelId: String? = null,
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
+    val parentSurfaceKind: String? = null,
     val originParentMessageId: String? = null,
     val focusedMessageId: String? = null,
     val selectedTab: String = "chat",
@@ -495,6 +497,7 @@ internal data class WireThreadLaunchPayload(
 
     fun toInitialPayload(fallbackInstanceId: String): KuiklyThreadScreenPayload {
         val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+        val resolvedParentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull()
         val sourceStreamCandidate =
             sourceThreadId.nonBlank()?.takeUnless { isReplyThread && it == parentChannelId.nonBlank() }
         val resolvedStreamId =
@@ -537,6 +540,7 @@ internal data class WireThreadLaunchPayload(
             streamChannelId = resolvedStreamId,
             parentChannelId = parentChannelId.nonBlank(),
             parentMessageId = parentMessageId.nonBlank(),
+            parentSurfaceKind = resolvedParentSurfaceKind,
             memberScopedMentions = surfaceKind == KuiklyThreadSurfaceKind.DirectMessage,
             originParentMessageId =
                 if (isReplyThread) {
@@ -558,7 +562,7 @@ internal data class WireThreadLaunchPayload(
             composer = resolvedComposer,
             showMembersAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
             showSettingsAction = !isReplyThread && surfaceKind != KuiklyThreadSurfaceKind.DirectMessage,
-            showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null,
+            showOpenInChannelAction = isReplyThread && parentMessageId.nonBlank() != null && resolvedParentSurfaceKind != null,
             emptyTitle = "Loading...",
             emptyDetail = ""
         ).withLaunchHeaderContext()
@@ -575,7 +579,11 @@ internal fun KuiklyThreadScreenPayload.withSharedShellEventCapabilities(): Kuikl
             },
         showOpenInChannelAction =
             showOpenInChannelAction ||
-                (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && originParentMessageId?.isNotBlank() == true),
+                (
+                    surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
+                        originParentMessageId?.isNotBlank() == true &&
+                        parentSurfaceKind.threadLaunchParentSurfaceKindOrNull() != null
+                    ),
         showSettingsAction = showSettingsAction && showModeTabs,
         showMembersAction = showMembersAction && showModeTabs
     )
@@ -594,6 +602,7 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         streamChannelId = streamChannelId.nonBlank(),
         parentChannelId = parentChannelId.nonBlank(),
         parentMessageId = parentMessageId.nonBlank(),
+        parentSurfaceKind = parentSurfaceKind.threadLaunchParentSurfaceKindOrNull(),
         originParentMessageId = originParentMessageId.nonBlank() ?: parentMessageId.nonBlank(),
         focusedMessageId = focusedMessageId.nonBlank(),
         selectedTab = selectedTab,
@@ -613,6 +622,20 @@ private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
     JSONObject().apply {
         put("payload", threadPageJson.encodeToString(this@toThreadPageData))
         put("instanceId", instanceId)
+    }
+
+private fun String?.threadLaunchParentSurfaceKindOrNull(): String? =
+    when (this?.trim()?.lowercase()) {
+        KuiklyThreadSurfaceKind.DirectMessage,
+        "direct_message",
+        "direct-message",
+        "directmessage" -> KuiklyThreadSurfaceKind.DirectMessage
+        KuiklyThreadSurfaceKind.Channel,
+        "public",
+        "private",
+        "joint",
+        "group" -> KuiklyThreadSurfaceKind.Channel
+        else -> null
     }
 
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
@@ -3896,6 +3919,7 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
             streamChannelId = streamId,
             parentChannelId = source.channelId,
             parentMessageId = parentMessageId,
+            parentSurfaceKind = KuiklyThreadSurfaceKind.Channel,
             navigationLabel = "Close",
             selectedTab = KuiklyThreadTab.Chat.wireValue,
             showModeTabs = false,
@@ -4374,6 +4398,13 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
     focusedMessageId: String? = null
 ): KuiklyThreadScreenPayload {
     val knownThreadChannelId = parentMessage.threadChannelId?.takeIf { it.isNotBlank() }
+    val resolvedParentSurfaceKind =
+        when {
+            surfaceKind == KuiklyThreadSurfaceKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
+            channelKind.equals("dm", ignoreCase = true) -> KuiklyThreadSurfaceKind.DirectMessage
+            memberScopedMentions && parentChannelId.isNullOrBlank() -> KuiklyThreadSurfaceKind.DirectMessage
+            else -> KuiklyThreadSurfaceKind.Channel
+        }
     val composer =
         buildThreadSurfaceComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4394,6 +4425,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
         streamChannelId = knownThreadChannelId,
         parentChannelId = sourceThreadId,
         parentMessageId = parentMessage.id,
+        parentSurfaceKind = resolvedParentSurfaceKind,
         focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },
         navigationLabel = "Close",
         selectedTab = "chat",
@@ -4420,11 +4452,12 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         ?: this.parentMessageId?.takeIf { it.isNotBlank() }
     val parentThreadId = parentChannelId?.takeIf { it.isNotBlank() }
     val parentSurfaceKind =
-        if (channelKind.equals("dm", ignoreCase = true) || memberScopedMentions && parentThreadId == null) {
-            KuiklyThreadSurfaceKind.DirectMessage
-        } else {
-            KuiklyThreadSurfaceKind.Channel
-        }
+        this.parentSurfaceKind.threadLaunchParentSurfaceKindOrNull()
+            ?: if (channelKind.equals("dm", ignoreCase = true) || memberScopedMentions && parentThreadId == null) {
+                KuiklyThreadSurfaceKind.DirectMessage
+            } else {
+                KuiklyThreadSurfaceKind.Channel
+            }
     return copy(
         instanceId = parentThreadId?.let { "shared-shell-thread-$it" }
             ?: focusedParentMessageId?.let { "shared-shell-parent-message-$it" }
@@ -4437,6 +4470,7 @@ internal fun KuiklyThreadScreenPayload.parentMessageContextLoadingPayload(
         streamChannelId = parentThreadId,
         parentChannelId = null,
         parentMessageId = null,
+        parentSurfaceKind = null,
         originParentMessageId = null,
         focusedMessageId = focusedParentMessageId,
         navigationLabel = "Back",

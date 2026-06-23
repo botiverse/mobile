@@ -11421,6 +11421,12 @@ internal fun buildAppShellThreadPayload(
     val parentChannelId = conversation.threadParentChannelId()
     val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val parentSurfaceKind =
+        if (isReplyThread) {
+            KuiklyThreadSurfaceKind.Channel
+        } else {
+            null
+        }
     val originParentMessageId =
         if (isReplyThread) {
             parentMessageId
@@ -11451,6 +11457,7 @@ internal fun buildAppShellThreadPayload(
         streamChannelId = streamChannelId,
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
+        parentSurfaceKind = parentSurfaceKind,
         memberScopedMentions = conversation.usesMemberScopedMentions(),
         originParentMessageId = originParentMessageId,
         focusedMessageId = anchorMessageId?.takeIf { it.isNotBlank() },
@@ -11459,7 +11466,7 @@ internal fun buildAppShellThreadPayload(
         showModeTabs = !isReplyThread,
         showReplyActions = !isReplyThread,
         alignOwnMessagesRight = alignOwnMessagesRight,
-        showOpenInChannelAction = isReplyThread && parentMessageId != null,
+        showOpenInChannelAction = isReplyThread && parentMessageId != null && parentSurfaceKind != null,
         joined = conversation.joined,
         canSend = canSend,
         membersCount = conversation.memberCount ?: 0,
