@@ -69,8 +69,8 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandWidth = 203.dp
-private val AuthTopBarBrandHeight = 50.dp
+private val AuthTopBarBrandWidth = 175.dp
+private val AuthTopBarBrandHeight = 43.dp
 private const val RaftLogoAssetSource = "assets://lucide/raft-logo.svg"
 
 private fun Modifier.authStaticTextFocus(): Modifier =
