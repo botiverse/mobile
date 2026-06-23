@@ -9,6 +9,8 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 private val agentsApiJson = Json {
     ignoreUnknownKeys = true
@@ -319,6 +321,7 @@ internal data class AgentSummary(
     val creatorType: String?,
     val creator: AgentCreatorSummary?,
     val envVarNames: List<String>,
+    val envVars: Map<String, String>,
     val createdAgents: List<AgentCreatedSummary>,
     val activity: String?,
     val activityDetail: String?,
@@ -449,12 +452,22 @@ private fun AgentWireDto.toSummary(): AgentSummary? {
         creatorType = creatorType,
         creator = creator?.toDomain(),
         envVarNames = envVars.keys.filter { it.isNotBlank() }.sorted(),
+        envVars = envVars.toAgentEnvVars(),
         createdAgents = createdAgents.mapNotNull { it.toDomain() },
         activity = activity,
         activityDetail = activityDetail,
         deletedAt = deletedAt
     )
 }
+
+private fun Map<String, JsonElement>.toAgentEnvVars(): Map<String, String> =
+    entries
+        .mapNotNull { (key, value) ->
+            val cleanKey = key.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            cleanKey to ((value as? JsonPrimitive)?.contentOrNull ?: value.toString())
+        }
+        .sortedBy { it.first }
+        .toMap()
 
 private fun AgentCreatorWireDto.toDomain(): AgentCreatorSummary? {
     if (id.isBlank() || name.isBlank()) return null

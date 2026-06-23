@@ -773,7 +773,7 @@ private fun MachinePicker(
 }
 
 @Composable
-private fun AdvancedRuntimeSection(
+internal fun AdvancedRuntimeSection(
     runtime: String,
     onRuntimeChange: (String) -> Unit,
     model: String,

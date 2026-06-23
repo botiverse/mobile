@@ -4,6 +4,7 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.RuntimeModelConfig
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockWorkspaceFileKind
@@ -17,6 +18,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import kotlinx.serialization.json.put
 
 private val memberRepositoryJson = Json {
@@ -790,9 +792,38 @@ fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): Strin
                     put("avatarUrl", avatarUrl)
                 }
             }
+            if (request.includeRuntimeConfig) {
+                val runtimeConfig = request.runtimeConfig
+                if (runtimeConfig == null) {
+                    put("runtimeConfig", JsonNull)
+                    put("envVars", JsonNull)
+                } else {
+                    put("runtimeConfig", memberRepositoryJson.encodeToJsonElement(runtimeConfig))
+                    put("runtime", runtimeConfig.runtime)
+                    put("model", runtimeConfig.model.toAgentModelWireValue())
+                    if (runtimeConfig.reasoningEffort == null) {
+                        put("reasoningEffort", JsonNull)
+                    } else {
+                        put("reasoningEffort", runtimeConfig.reasoningEffort)
+                    }
+                    val envVars = runtimeConfig.envVars?.takeIf { it.isNotEmpty() }
+                    if (envVars == null) {
+                        put("envVars", JsonNull)
+                    } else {
+                        put("envVars", memberRepositoryJson.encodeToJsonElement(envVars))
+                    }
+                }
+                request.runtimeResetMode?.let { put("restartMode", it.wireValue) }
+            }
         }
     return body.toString()
 }
+
+private fun RuntimeModelConfig.toAgentModelWireValue(): String =
+    when (this) {
+        is RuntimeModelConfig.Preset -> id
+        is RuntimeModelConfig.Custom -> name
+    }
 
 @Serializable
 data class AddAgentChannelMemberRequestBody(val agentId: String)
@@ -845,6 +876,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         creatorType = creatorType,
         creator = creator,
         envVarNames = envVarNames,
+        envVars = envVars,
         createdAgents = createdAgents,
         activity = activity,
         activityDetail = activityDetail,

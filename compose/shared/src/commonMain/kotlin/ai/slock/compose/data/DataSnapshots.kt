@@ -192,6 +192,7 @@ data class AgentDetailSummary(
     val creatorType: String? = null,
     val creator: AgentCreatorSummary? = null,
     val envVarNames: List<String> = emptyList(),
+    val envVars: Map<String, String> = emptyMap(),
     val createdAgents: List<AgentCreatedSummary> = emptyList(),
     val activity: String? = null,
     val activityDetail: String? = null,

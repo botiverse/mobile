@@ -59,12 +59,21 @@ import ai.slock.compose.data.SharedComputersStore
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_CUSTOM
+import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_DEFAULT
+import ai.slock.compose.model.RUNTIMES
+import ai.slock.compose.model.RuntimeConfig
+import ai.slock.compose.model.RuntimeModeConfig
+import ai.slock.compose.model.RuntimeModelConfig
+import ai.slock.compose.model.RuntimeProviderConfig
 import ai.slock.compose.model.getModelLabel
+import ai.slock.compose.model.getDefaultModel
 import ai.slock.compose.model.getRuntimeDisplayName
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.buildRuntimeConfig
 import ai.slock.compose.model.supportsRuntimeFastMode
 import ai.slock.compose.model.supportsRuntimeReasoningEffort
 import ai.slock.compose.model.ServerId
@@ -3223,6 +3232,9 @@ private fun MembersAgentProfileTab(
         if (storeBackedProfileEdit) profileState.roleSaving else localSavingRole
     val roleError =
         if (storeBackedProfileEdit) profileState.roleError else localRoleError
+    var editingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var savingRuntimeConfig by remember(member.id.value) { mutableStateOf(false) }
+    var runtimeConfigError by remember(member.id.value) { mutableStateOf<String?>(null) }
 
     fun saveDisplayName() {
         val callback = onUpdateAgentProfile
@@ -3378,6 +3390,68 @@ private fun MembersAgentProfileTab(
             if (!storeBackedProfileEdit) {
                 localSavingRole = false
             }
+        }
+    }
+
+    fun saveRuntimeConfig(nextConfig: RuntimeConfig) {
+        val callback = onUpdateAgentProfile
+        if (!canEdit || (agentDetailActions == null && callback == null) || savingRuntimeConfig) {
+            onUnavailableAction("Runtime config editing is not available.")
+            return
+        }
+        val currentConfig = summary.toMembersRuntimeConfig(member)
+        val currentStatus = AgentStatus.fromWireValue(summary?.status)
+        val activeAgent = currentStatus != null && currentStatus.presence != Presence.Offline
+        val restartMode =
+            when {
+                !activeAgent -> null
+                nextConfig.runtime != currentConfig.runtime -> AgentResetMode.Session
+                else -> AgentResetMode.Restart
+            }
+        scope.launch {
+            savingRuntimeConfig = true
+            runtimeConfigError = null
+            val result =
+                try {
+                    val request = AgentProfileUpdateRequest(
+                        agentId = member.id,
+                        displayName = member.displayName,
+                        description = member.description?.takeIf { it.isNotBlank() },
+                        runtimeConfig = nextConfig,
+                        includeRuntimeConfig = true,
+                        runtimeResetMode = restartMode
+                    )
+                    if (agentDetailActions != null) {
+                        agentDetailActions.updateAgentProfile(request)
+                    } else {
+                        requireNotNull(callback).invoke(request)
+                    }
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Throwable) {
+                    DataResult.Error(ScreenError("agent_runtime_config_save_failed"))
+                }
+            when (result) {
+                is DataResult.Content,
+                is DataResult.Empty -> {
+                    editingRuntimeConfig = false
+                    val store = sharedAgentDetailStore
+                    val currentDetail = detail
+                    if (store != null && currentDetail != null) {
+                        store.dispatch(
+                            SharedAgentDetailIntent.SetDetail(
+                                member.id,
+                                currentDetail.withRuntimeConfigProjection(nextConfig)
+                            )
+                        )
+                    }
+                }
+                is DataResult.NoPermission ->
+                    runtimeConfigError = "No permission: ${result.blocker.code}"
+                is DataResult.Error ->
+                    runtimeConfigError = "Save failed: ${result.error.code}"
+            }
+            savingRuntimeConfig = false
         }
     }
 
@@ -3707,94 +3781,49 @@ private fun MembersAgentProfileTab(
             }
         }
 
-        // RUNTIME CONFIG section — mirrors React L1240-1320. Each chip is rendered via
-        // `MembersAgentRuntimeChip` (a purpose-built component for runtime semantic chips;
-        // we don't reuse the deleted `SlockBrutalTag` because runtime chips need their
-        // own color-by-kind mapping and shouldn't be confused with kind badges).
+        // RUNTIME CONFIG section — mirrors React `AgentDetailPanel` runtime block:
+        // key/value rows with brutal semantic chips, env vars embedded in the same
+        // section, and a pencil entry point for the shared runtime-config editor.
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
             MembersDetailSectionDivider()
-            MembersDetailSectionTitle("RUNTIME CONFIG")
             Row(
                 modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                val runtimeId = summary?.runtime?.takeIf { it.isNotBlank() }
-                    ?: member.roleDescription?.takeIf { it.isNotBlank() }
-                if (!runtimeId.isNullOrBlank()) {
-                    MembersAgentRuntimeChip(
-                        label = getRuntimeDisplayName(runtimeId),
-                        kind = MembersAgentRuntimeChipKind.Runtime
-                    )
-                }
-                val modelId = summary?.model?.takeIf { it.isNotBlank() }
-                if (runtimeId != null && modelId != null) {
-                    MembersAgentRuntimeChip(
-                        label = getModelLabel(runtimeId, modelId),
-                        kind = MembersAgentRuntimeChipKind.Model
-                    )
-                }
-                if (runtimeId != null && supportsRuntimeReasoningEffort(runtimeId) && !summary?.reasoning.isNullOrBlank()) {
-                    MembersAgentRuntimeChip(
-                        label = summary.reasoning.orDash().toMembersDisplayLabel(),
-                        kind = MembersAgentRuntimeChipKind.Reasoning
-                    )
-                }
-                val runtimeMode = summary?.executionMode.toMembersRuntimeModeChipLabel(runtimeId)
-                if (runtimeMode != null) {
-                    MembersAgentRuntimeChip(
-                        label = runtimeMode,
-                        kind = MembersAgentRuntimeChipKind.Mode
+                MembersDetailSectionTitle("RUNTIME CONFIG", modifier = Modifier.weight(1f))
+                if (canEdit && !editingRuntimeConfig) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Pencil,
+                        onClick = {
+                            runtimeConfigError = null
+                            editingRuntimeConfig = true
+                        },
+                        size = MembersActionSize
                     )
                 }
             }
+            MembersAgentRuntimeConfigRows(summary = summary, member = member)
+            MembersAgentRuntimeEnvVars(summary)
         }
 
-        // ENV VARS section — mirrors React `EnvVarsSection` L235+ inline span + brutal
-        // pill style. KMP currently exposes only `envVarNames` (not key=value pairs), so
-        // we render just the key as an inline span (no `=` masked value bullet). Adding
-        // full env var values + native PasswordVisualTransformation is tracked as a
-        // follow-up that also requires the data layer to surface `envVars: Map<String,
-        // String>` on `AgentDetailSummary`.
-        Column(
-            modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            MembersDetailSectionDivider()
-            MembersDetailSectionTitle("ENVIRONMENT VARIABLES")
-            val envVarNames = summary?.envVarNames.orEmpty()
-            if (envVarNames.isEmpty()) {
-                Text(
-                    text = "No environment variables configured",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    fontStyle = FontStyle.Italic
-                )
-            } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-                ) {
-                    envVarNames.take(8).forEach { name ->
-                        Box(
-                            modifier = Modifier
-                                .background(SlockColor.SurfaceWhite)
-                                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = name,
-                                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
-                                color = SlockColor.TextBlack,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+        if (editingRuntimeConfig) {
+            MembersAgentRuntimeConfigDialog(
+                member = member,
+                summary = summary,
+                saving = savingRuntimeConfig,
+                error = runtimeConfigError,
+                onDismiss = {
+                    if (!savingRuntimeConfig) {
+                        editingRuntimeConfig = false
+                        runtimeConfigError = null
                     }
-                }
-            }
+                },
+                onSave = { nextConfig -> saveRuntimeConfig(nextConfig) }
+            )
         }
 
         // Avatar editing is surfaced from the top-left avatar in `MembersDetailHeader`
@@ -3805,6 +3834,377 @@ private fun MembersAgentProfileTab(
         MembersAgentCreatedAgentsSection(detail)
         MembersAgentSkillsSection(detail)
     }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun MembersAgentRuntimeConfigRows(
+    summary: AgentDetailSummary?,
+    member: MemberProfile
+) {
+    val runtimeConfig = summary.toMembersRuntimeConfig(member)
+    val runtimeId = runtimeConfig.runtime
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersAgentRuntimeConfigField("Runtime") {
+            MembersAgentRuntimeChip(
+                label = getRuntimeDisplayName(runtimeId),
+                kind = MembersAgentRuntimeChipKind.Runtime
+            )
+        }
+        MembersAgentRuntimeConfigField("Model") {
+            MembersAgentRuntimeChip(
+                label = getModelLabel(runtimeId, runtimeConfig.toMembersRuntimeModelValue()),
+                kind = MembersAgentRuntimeChipKind.Model
+            )
+        }
+        if (supportsRuntimeReasoningEffort(runtimeId)) {
+            MembersAgentRuntimeConfigField("Reasoning") {
+                MembersAgentRuntimeChip(
+                    label = runtimeConfig.reasoningEffort?.toMembersDisplayLabel() ?: "Default",
+                    kind = MembersAgentRuntimeChipKind.Reasoning
+                )
+            }
+        }
+        if (supportsRuntimeFastMode(runtimeId)) {
+            MembersAgentRuntimeConfigField("Mode") {
+                MembersAgentRuntimeChip(
+                    label = if (runtimeConfig.mode is RuntimeModeConfig.Fast) "Fast" else "Default",
+                    kind = MembersAgentRuntimeChipKind.Mode
+                )
+            }
+        }
+        if (runtimeId == "claude") {
+            MembersAgentRuntimeConfigField("Provider") {
+                val provider = runtimeConfig.provider as? RuntimeProviderConfig.Custom
+                Text(
+                    text = provider?.apiUrl?.takeIf { it.isNotBlank() } ?: "Default",
+                    style = SlockType.Caption.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        fontStyle = if (provider == null) FontStyle.Italic else FontStyle.Normal
+                    ),
+                    color = if (provider == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            MembersAgentRuntimeConfigField("Command") {
+                val command = runtimeConfig.command?.takeIf { it.isNotBlank() }
+                Text(
+                    text = command ?: "Default",
+                    style = SlockType.Caption.copy(
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        fontStyle = if (command == null) FontStyle.Italic else FontStyle.Normal
+                    ),
+                    color = if (command == null) SlockColor.TextMutedGray else SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentRuntimeConfigField(
+    label: String,
+    content: @Composable () -> Unit
+) {
+    Column(
+        modifier = Modifier.width(122.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        content()
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun MembersAgentRuntimeEnvVars(summary: AgentDetailSummary?) {
+    val envVarNames = summary.membersRuntimeEnvVarNames()
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = "Environment Variables",
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (envVarNames.isEmpty()) {
+            Text(
+                text = "No environment variables configured",
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray,
+                fontStyle = FontStyle.Italic
+            )
+        } else {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                envVarNames.forEach { name ->
+                    Box(
+                        modifier = Modifier
+                            .background(SlockColor.SurfaceWhite)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
+                            .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "$name=***",
+                            style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentRuntimeConfigDialog(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    saving: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onSave: (RuntimeConfig) -> Unit
+) {
+    val initialConfig = remember(member.id.value, summary) { summary.toMembersRuntimeConfig(member) }
+    var runtime by remember(initialConfig) { mutableStateOf(initialConfig.runtime) }
+    val initialModelValue = remember(initialConfig) { initialConfig.toMembersRuntimeModelValue() }
+    val initialModelSelection = remember(initialConfig) {
+        createAgentModelSelectionForValue(initialConfig.runtime, initialModelValue)
+    }
+    var model by remember(initialConfig) { mutableStateOf(initialModelSelection.second) }
+    var customModelMode by remember(initialConfig) { mutableStateOf(initialModelSelection.first) }
+    var customModelName by remember(initialConfig) {
+        mutableStateOf(if (initialModelSelection.first) initialModelSelection.second else "")
+    }
+    val initialProvider = initialConfig.provider as? RuntimeProviderConfig.Custom
+    var providerMode by remember(initialConfig) {
+        mutableStateOf(
+            if (initialProvider != null) RUNTIME_PROVIDER_MODE_CUSTOM else RUNTIME_PROVIDER_MODE_DEFAULT
+        )
+    }
+    var providerApiUrl by remember(initialConfig) { mutableStateOf(initialProvider?.apiUrl.orEmpty()) }
+    var providerApiKey by remember(initialConfig) { mutableStateOf(initialProvider?.apiKey.orEmpty()) }
+    var fastMode by remember(initialConfig) { mutableStateOf(initialConfig.mode is RuntimeModeConfig.Fast) }
+    var reasoningEffort by remember(initialConfig) { mutableStateOf(initialConfig.reasoningEffort) }
+    var command by remember(initialConfig) { mutableStateOf(initialConfig.command.orEmpty()) }
+    var envVarEntries by remember(initialConfig) {
+        mutableStateOf(initialConfig.envVars.orEmpty().entries.map { it.key to it.value })
+    }
+    var advancedOpen by remember(initialConfig) {
+        mutableStateOf(command.isNotBlank() || envVarEntries.isNotEmpty())
+    }
+    val customModelMissing = customModelMode && customModelName.trim().isBlank()
+    val providerUrlInvalid =
+        runtime == "claude" &&
+            providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
+            !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
+    val providerKeyInvalid =
+        runtime == "claude" &&
+            providerMode == RUNTIME_PROVIDER_MODE_CUSTOM &&
+            providerApiKey.isBlank()
+
+    SlockUnifiedDialog(
+        title = "EDIT RUNTIME CONFIG",
+        dismissEnabled = !saving,
+        onDismiss = onDismiss
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+        ) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    AdvancedRuntimeSection(
+                        runtime = runtime,
+                        onRuntimeChange = { nextRuntime ->
+                            runtime = nextRuntime
+                            model = getDefaultModel(nextRuntime)
+                            customModelMode = false
+                            customModelName = ""
+                            providerMode = RUNTIME_PROVIDER_MODE_DEFAULT
+                            providerApiUrl = ""
+                            providerApiKey = ""
+                            fastMode = false
+                            command = ""
+                            if (!supportsRuntimeReasoningEffort(nextRuntime)) {
+                                reasoningEffort = null
+                            }
+                        },
+                        model = model,
+                        onModelChange = { selectedModel ->
+                            model = selectedModel
+                            customModelName = selectedModel
+                        },
+                        customModelMode = customModelMode,
+                        onCustomModelModeChange = { enabled ->
+                            customModelMode = enabled
+                            if (enabled && customModelName.isBlank()) {
+                                customModelName = model
+                            }
+                        },
+                        customModelName = customModelName,
+                        onCustomModelNameChange = {
+                            customModelName = it
+                            model = it
+                        },
+                        runtimeModelsOverride = emptyList(),
+                        enabled = !saving,
+                        providerMode = providerMode,
+                        onProviderModeChange = { providerMode = it },
+                        providerApiUrl = providerApiUrl,
+                        onProviderApiUrlChange = { providerApiUrl = it },
+                        providerApiKey = providerApiKey,
+                        onProviderApiKeyChange = { providerApiKey = it },
+                        fastMode = fastMode,
+                        onFastModeChange = { fastMode = it },
+                        reasoningEffort = reasoningEffort,
+                        onReasoningEffortChange = { reasoningEffort = it },
+                        envVarEntries = envVarEntries,
+                        onEnvVarEntriesChange = { envVarEntries = it },
+                        command = command,
+                        onCommandChange = { command = it },
+                        advancedOpen = advancedOpen,
+                        onAdvancedOpenChange = { advancedOpen = it }
+                    )
+                }
+                item {
+                    Text(
+                        text = "Changing runtime config may restart the agent so the next launch uses the new settings.",
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+                error?.takeIf { it.isNotBlank() }?.let { message ->
+                    item {
+                        Text(
+                            text = message,
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold)
+                                .copy(color = SlockColor.AccentRed),
+                            color = SlockColor.AccentRed
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Spacer(Modifier.weight(1f))
+                SlockBrutalActionButton(
+                    label = "Cancel",
+                    enabled = !saving,
+                    backgroundColor = SlockColor.SurfaceWhite,
+                    onClick = onDismiss
+                )
+                SlockBrutalActionButton(
+                    label = if (saving) "Saving..." else "Save Runtime Config",
+                    enabled = !saving && !customModelMissing && !providerUrlInvalid && !providerKeyInvalid,
+                    backgroundColor = SlockColor.AccentPink,
+                    minWidth = 166.dp,
+                    onClick = {
+                        onSave(
+                            buildRuntimeConfig(
+                                runtime = runtime,
+                                model = if (customModelMode) customModelName else model,
+                                customModelMode = customModelMode,
+                                customModelName = customModelName.takeIf { customModelMode },
+                                providerMode = providerMode,
+                                providerApiUrl = providerApiUrl,
+                                providerApiKey = providerApiKey,
+                                fastMode = fastMode,
+                                reasoningEffort = reasoningEffort,
+                                envVars = envVarEntries.toMembersRuntimeEnvVars(),
+                                command = command
+                            )
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+private fun AgentDetailSummary?.toMembersRuntimeConfig(member: MemberProfile): RuntimeConfig {
+    val runtime = this?.runtime?.takeIf { it.isNotBlank() }
+        ?: member.roleDescription?.takeIf { it.isNotBlank() }
+        ?: RUNTIMES.first().id
+    val model = this?.model?.takeIf { it.isNotBlank() } ?: getDefaultModel(runtime)
+    return RuntimeConfig(
+        runtime = runtime,
+        model = RuntimeModelConfig.Preset(model),
+        mode = if (this?.executionMode?.trim()?.lowercase() == "fast") {
+            RuntimeModeConfig.Fast
+        } else {
+            RuntimeModeConfig.Default
+        },
+        reasoningEffort = this?.reasoning?.takeIf { it.isNotBlank() },
+        envVars = this?.envVars?.takeIf { it.isNotEmpty() }
+    )
+}
+
+private fun RuntimeConfig.toMembersRuntimeModelValue(): String =
+    when (val modelConfig = model) {
+        is RuntimeModelConfig.Preset -> modelConfig.id
+        is RuntimeModelConfig.Custom -> modelConfig.name
+    }
+
+private fun AgentDetailSummary?.membersRuntimeEnvVarNames(): List<String> =
+    if (this == null) {
+        emptyList()
+    } else {
+        (envVars.keys + envVarNames)
+            .mapNotNull { it.trim().takeIf(String::isNotBlank) }
+            .distinct()
+            .sorted()
+    }
+
+private fun List<Pair<String, String>>.toMembersRuntimeEnvVars(): Map<String, String>? {
+    val values =
+        mapNotNull { (key, value) ->
+            key.trim().takeIf { it.isNotBlank() }?.let { it to value }
+        }.toMap()
+    return values.takeIf { it.isNotEmpty() }
+}
+
+private fun AgentDetailSnapshot.withRuntimeConfigProjection(config: RuntimeConfig): AgentDetailSnapshot {
+    val currentSummary = summary ?: AgentDetailSummary(id = agentId.value, name = agentId.value)
+    return copy(
+        summary = currentSummary.copy(
+            runtime = config.runtime,
+            model = config.toMembersRuntimeModelValue(),
+            reasoning = config.reasoningEffort,
+            executionMode = if (config.mode is RuntimeModeConfig.Fast) "fast" else "default",
+            envVars = config.envVars.orEmpty(),
+            envVarNames = config.envVars.orEmpty().keys.sorted()
+        )
+    )
 }
 
 @Composable

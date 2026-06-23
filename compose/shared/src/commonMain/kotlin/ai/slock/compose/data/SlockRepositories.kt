@@ -618,7 +618,10 @@ data class AgentProfileUpdateRequest(
     val displayName: String,
     val description: String?,
     val avatarUrl: String? = null,
-    val includeAvatarUrl: Boolean = false
+    val includeAvatarUrl: Boolean = false,
+    val runtimeConfig: ai.slock.compose.model.RuntimeConfig? = null,
+    val includeRuntimeConfig: Boolean = false,
+    val runtimeResetMode: AgentResetMode? = null
 )
 
 data class AgentAvatarUploadRequest(
