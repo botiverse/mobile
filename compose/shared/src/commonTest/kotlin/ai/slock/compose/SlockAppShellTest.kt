@@ -235,6 +235,15 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun searchSurfaceDoesNotRefreshOnLifecycleResume() {
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume(null))
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("activity"))
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("saved"))
+        assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
+        assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))
+    }
+
+    @Test
     fun authChooseServerRouteCarriesShellChromeIntentOnlyWhenRequested() {
         assertEquals(false, authChooseServerPageData().optBoolean("slockChooseServerFromShell", false))
         assertEquals(true, authChooseServerPageData(fromShell = true).optBoolean("slockChooseServerFromShell", false))

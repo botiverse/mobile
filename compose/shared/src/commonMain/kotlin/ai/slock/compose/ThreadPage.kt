@@ -616,6 +616,19 @@ internal fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMe
     }
 }
 
+internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
+    val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "thread-member-detail-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected")
+        put("memberId", selected)
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
+}
+
 private fun KuiklyThreadScreenPayload.threadMemberProfilesForProfilePage(selectedMemberId: String): List<MemberProfile> =
     (members.map { it.toMemberProfile() } + listOfNotNull(findThreadAuthorProfile(selectedMemberId)))
         .distinctBy { it.id.value }
@@ -1390,7 +1403,19 @@ private fun ThreadPageScreen() {
             }
             routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
-        realtimeEventSignal = threadRealtimeEventSignal
+        realtimeEventSignal = threadRealtimeEventSignal,
+        onOpenMemberProfile = { currentPayload, memberId ->
+            val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
+            if (pageData == null) {
+                bridge.toast("Unable to open profile")
+                bridge.logWarn(
+                    "thread_member_profile_skip reason=missing_member memberId=$memberId " +
+                        "instanceId=${currentPayload.instanceId}"
+                )
+            } else {
+                routerModule.openPage(MEMBER_DETAIL_PAGE, pageData)
+            }
+        }
     )
 }
 
@@ -5510,8 +5535,9 @@ private fun ThreadMessagesList(
         previousOlderMessagesStatus = payload.olderMessagesStatus
     }
     LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
-        if (topAnchoredOriginContent) return@LaunchedEffect
-        if (latestLocalSendBottomAnchorKey == null || latestItemIndex < 0) return@LaunchedEffect
+        if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+            return@LaunchedEffect
+        }
         allowBottomAutoAnchor = true
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
@@ -6128,7 +6154,13 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     }
 }
 
-private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
+internal fun shouldAnchorLatestLocalSendToBottom(
+    latestLocalSendBottomAnchorKey: String?,
+    latestItemIndex: Int
+): Boolean =
+    latestLocalSendBottomAnchorKey != null && latestItemIndex >= 0
+
+internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
     val latest = messages.lastOrNull() ?: return null
     if (!latest.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         latest.pendingSendContext == null

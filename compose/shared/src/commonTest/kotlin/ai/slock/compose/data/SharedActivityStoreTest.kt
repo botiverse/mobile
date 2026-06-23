@@ -12,11 +12,14 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -92,6 +95,70 @@ class SharedActivityStoreTest {
         assertEquals(listOf(ChannelId("channel-1")), read.unreadChannelIds)
         assertEquals(1, store.state.value.items.single().unreadCount)
         assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun activitySilentRefreshDoesNotDrivePullRefreshState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNext(activityItem("channel-1"))
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
+        inbox.completeNext(activityItem("channel-2"))
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals(true, store.state.value.pullRefreshing)
+        inbox.completeNext(activityItem("channel-3"))
+        assertEquals(false, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
+        scope.cancel()
+    }
+
+    @Test
+    fun activityThreadRowsResolveMissingSenderNameFromMembers() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val row =
+            threadItem("thread-channel-1", unreadCount = 1)
+                .copy(
+                    latestActivitySenderId = "agent-1",
+                    latestActivitySenderName = "@agent-one",
+                    latestActivityPreview = "Latest reply"
+                )
+        val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(row))))
+        val store =
+            activityStore(
+                scope = scope,
+                inboxRepository = inbox,
+                memberRepository =
+                    FakeMemberRepository(
+                        members =
+                            listOf(
+                                MemberProfile(
+                                    id = MemberId("agent-1"),
+                                    displayName = "Agent One",
+                                    handle = "agent-one",
+                                    kind = MemberKind.Agent
+                                )
+                            )
+                    )
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+
+        val item = store.state.value.items.single()
+        assertEquals("@agent-one", item.latestActivitySenderName)
+        assertEquals("Agent One", store.state.value.senderProfiles.getValue("agent-1").displayName)
         scope.cancel()
     }
 
@@ -185,9 +252,10 @@ class SharedActivityStoreTest {
 
     private fun activityStore(
         scope: CoroutineScope,
-        inboxRepository: FakeInboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
+        inboxRepository: InboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
+        memberRepository: MemberRepository? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null
     ): SharedActivityStore =
         SharedActivityStore(
@@ -195,6 +263,7 @@ class SharedActivityStoreTest {
             inboxRepository = inboxRepository,
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
+            memberRepository = memberRepository,
             localWriteThrough = localWriteThrough,
             scope = scope
         )
@@ -258,6 +327,119 @@ class SharedActivityStoreTest {
 
         override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
             DataResult.Content(ReadReceiptResult())
+    }
+
+    private inner class DeferredInboxRepository : InboxRepository {
+        private val pending = mutableListOf<CompletableDeferred<DataResult<InboxSnapshot>>>()
+
+        override suspend fun loadInitial(
+            serverId: ServerId,
+            filter: InboxFilter,
+            limit: Int
+        ): DataResult<InboxSnapshot> {
+            val result = CompletableDeferred<DataResult<InboxSnapshot>>()
+            pending += result
+            return withContext(NonCancellable) { result.await() }
+        }
+
+        override suspend fun loadMore(
+            serverId: ServerId,
+            filter: InboxFilter,
+            offset: Int,
+            limit: Int
+        ): DataResult<InboxSnapshot> =
+            DataResult.Empty(EmptyReason.NoInboxItems)
+
+        override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+            DataResult.Content(InboxDoneResult(channelId))
+
+        fun completeNext(item: InboxItem) {
+            pending.removeAt(0).complete(DataResult.Content(snapshot(listOf(item))))
+        }
+    }
+
+    private class FakeMemberRepository(
+        private val members: List<MemberProfile>
+    ) : MemberRepository {
+        override suspend fun getMembers(
+            priority: DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> =
+            DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Slock"), members))
+
+        override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun updateAgentProfile(priority: DataRequestPriority, request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun uploadAgentAvatar(priority: DataRequestPriority, request: AgentAvatarUploadRequest): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun getAgentDetail(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDetailSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentDirectMessages(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDmSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentReminders(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentReminderSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentActivity(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentActivitySnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaces(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentWorkspaceSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaceTree(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentWorkspaceTreeSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaceChildren(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            dirPath: String
+        ): DataResult<AgentWorkspaceChildrenSnapshot> =
+            error("unused")
+
+        override suspend fun readAgentWorkspaceFile(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            path: String
+        ): DataResult<AgentWorkspaceFilePreviewSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentSkills(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentSkillsSnapshot> =
+            error("unused")
+
+        override suspend fun startAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun stopAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun assignAgentMachine(
+            priority: DataRequestPriority,
+            request: AgentMachineAssignmentRequest
+        ): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> =
+            error("unused")
+
+        override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> =
+            error("unused")
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> =
+            error("unused")
     }
 
     private class FakeConversationRepository : ConversationRepository {

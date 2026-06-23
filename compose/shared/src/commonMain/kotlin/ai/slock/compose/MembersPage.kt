@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalModalLayer
@@ -11,11 +12,13 @@ import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
+import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentDetailSnapshot
 import ai.slock.compose.data.AgentDetailSummary
 import ai.slock.compose.data.AgentDmSummary
 import ai.slock.compose.data.AgentLifecycleActionResult
+import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentReminderSummary
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentSkillGroup
@@ -25,14 +28,20 @@ import ai.slock.compose.data.AgentSkillsSnapshot
 import ai.slock.compose.data.AgentWorkspaceChildrenSnapshot
 import ai.slock.compose.data.AgentWorkspaceTreeSnapshot
 import ai.slock.compose.data.AgentProfileUpdateRequest
+import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
+import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.EmptyReason
+import ai.slock.compose.data.MemberRepository
 import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailLoadStatus
 import ai.slock.compose.data.SharedAgentDetailState
 import ai.slock.compose.data.SharedAgentDetailStore
+import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
+import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.ScreenError
 import ai.slock.compose.data.SlockAgentsApiClient
 import ai.slock.compose.data.SlockAgentsNetworkApi
@@ -49,6 +58,8 @@ import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.model.SlockTimeContext
@@ -124,6 +135,7 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 const val MEMBERS_PAGE = "compose_members"
+const val MEMBER_DETAIL_PAGE = "compose_member_detail"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
 private const val MEMBERS_AGENT_DETAIL_VISUAL_PAGE = "compose_members_agent_detail_visual"
 private const val MEMBERS_PAGE_DATA_EVENT = "slockPageData"
@@ -280,6 +292,14 @@ internal class ComposeMembersPage : ai.slock.compose.base.BasePager() {
     }
 }
 
+@Page(MEMBER_DETAIL_PAGE, supportInLocal = true)
+internal class ComposeMemberDetailPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { MemberDetailPageContent() }
+    }
+}
+
 @Page(MEMBERS_AGENT_DETAIL_VISUAL_PAGE, supportInLocal = true)
 internal class ComposeMembersAgentDetailVisualPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
@@ -307,6 +327,16 @@ data class KuiklyMembersPayload(
      * Field was added by #43 to address QA-2 from #42 review.
      */
     val canCreateAgents: Boolean = true
+)
+
+data class KuiklyMemberDetailPayload(
+    val instanceId: String = "",
+    val memberId: String = "",
+    val initialAgentTab: String? = null,
+    val localOffsetMinutes: Int = 0,
+    val todayEpochDay: Long? = null,
+    val nowEpochMillis: Long? = null,
+    val timeFormat: String = SlockTimeFormat24Hour
 )
 
 @Serializable
@@ -794,6 +824,341 @@ internal fun MembersPageContent() {
     )
 }
 
+private sealed interface MemberDetailRouteState {
+    data object Loading : MemberDetailRouteState
+    data class Error(val code: String) : MemberDetailRouteState
+    data class Content(
+        val server: ServerSummary,
+        val member: MemberProfile,
+        val currentUserId: String?
+    ) : MemberDetailRouteState
+}
+
+private class MemberDetailRouteProvider(
+    val bridge: BridgeModule,
+    val authStore: SlockAuthSessionStore,
+    val memberRepository: MemberRepository,
+    val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val agentDetailStore: SharedAgentDetailStore
+) {
+    suspend fun loadMember(memberId: String): MemberDetailRouteState {
+        val selectedMemberId = memberId.trim()
+        if (selectedMemberId.isBlank()) return MemberDetailRouteState.Error("member_id_missing")
+        val session = authStore.readSession()
+        val serverId = session?.currentServerId
+        val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
+        if (session == null || serverId.isNullOrBlank() || server == null) {
+            return MemberDetailRouteState.Error("server_required")
+        }
+        return when (val result = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))) {
+            is DataResult.Content -> {
+                val member = result.data.members.firstOrNull { it.id.value == selectedMemberId }
+                if (member != null) {
+                    MemberDetailRouteState.Content(result.data.server, member, session.user.id)
+                } else {
+                    MemberDetailRouteState.Error("member_not_found")
+                }
+            }
+            is DataResult.Empty -> MemberDetailRouteState.Error("member_not_found")
+            is DataResult.Error -> MemberDetailRouteState.Error(result.error.code)
+            is DataResult.NoPermission -> MemberDetailRouteState.Error(result.blocker.code)
+        }
+    }
+
+    suspend fun loadAgentDetail(member: MemberProfile?) {
+        if (member == null || member.kind != MemberKind.Agent) {
+            agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+            return
+        }
+        agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
+        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
+        when (val result = memberRepository.getAgentDetail(DataRequestPriority.Visible, member.id)) {
+            is DataResult.Content ->
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
+            is DataResult.Empty ->
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
+            is DataResult.NoPermission ->
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
+                )
+            is DataResult.Error ->
+                agentDetailStore.dispatch(
+                    SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
+                )
+        }
+    }
+
+    suspend fun runLifecycleAction(
+        agentId: MemberId,
+        action: MembersAgentLifecycleAction
+    ): DataResult<AgentLifecycleActionResult> {
+        val result =
+            when (action) {
+                MembersAgentLifecycleAction.Start ->
+                    memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
+                MembersAgentLifecycleAction.Stop ->
+                    memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
+                MembersAgentLifecycleAction.Restart,
+                MembersAgentLifecycleAction.ResetSession,
+                MembersAgentLifecycleAction.ResetFull ->
+                    memberRepository.resetAgent(
+                        DataRequestPriority.Foreground,
+                        ai.slock.compose.data.AgentResetRequest(
+                            agentId,
+                            action.resetMode ?: AgentResetMode.Restart
+                        )
+                    )
+                MembersAgentLifecycleAction.Delete ->
+                    memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
+                MembersAgentLifecycleAction.UnassignMachine ->
+                    memberRepository.assignAgentMachine(
+                        DataRequestPriority.Foreground,
+                        AgentMachineAssignmentRequest(agentId, machineId = null)
+                    )
+            }
+        if (result is DataResult.Content && result.data.success) {
+            if (
+                action == MembersAgentLifecycleAction.ResetSession ||
+                action == MembersAgentLifecycleAction.ResetFull
+            ) {
+                memberRepository.clearAgentActivityCache(agentId)
+            }
+        }
+        return result
+    }
+
+    suspend fun updateAgentProfile(request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+        memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
+
+    suspend fun uploadAgentAvatar(
+        agentId: MemberId,
+        file: AttachmentUploadFile
+    ): DataResult<MemberProfile> =
+        memberRepository.uploadAgentAvatar(
+            priority = DataRequestPriority.Foreground,
+            request = AgentAvatarUploadRequest(agentId = agentId, file = file)
+        )
+
+    suspend fun pickAgentAvatarFile(): DataResult<AttachmentUploadFile> {
+        val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
+        val code = response?.optInt("code", 0) ?: 0
+        return if (code == 204) {
+            DataResult.Empty(EmptyReason.NoMembers)
+        } else if (code !in 200..299) {
+            val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "agent_avatar_picker_failed" }
+            DataResult.Error(ScreenError(code = errorCode, retryable = true))
+        } else {
+            val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
+            if (file != null) {
+                DataResult.Content(file)
+            } else {
+                DataResult.Error(ScreenError(code = "agent_avatar_picker_empty", retryable = true))
+            }
+        }
+    }
+
+    fun copyMemberId(member: MemberProfile) {
+        bridge.copyToPasteboard(member.id.value)
+        bridge.toast("Copied member id")
+    }
+
+    fun copyDiagnostics(diagnostics: String) {
+        bridge.copyToPasteboard(diagnostics)
+        bridge.toast("Copied agent diagnostics")
+    }
+
+    suspend fun reportIssue(diagnostics: String): Boolean {
+        bridge.log("agent_diagnostics_report ${diagnostics.toMemberDetailDiagnosticsLine()}")
+        val ok = settingsCapabilities.sendFeedback()
+        bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
+        return ok
+    }
+}
+
+@Composable
+private fun rememberMemberDetailRouteProvider(
+    pager: Pager,
+    bridge: BridgeModule
+): MemberDetailRouteProvider {
+    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
+    val networkClient =
+        remember {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<ai.slock.compose.network.SlockNetworkModule>(
+                    ai.slock.compose.network.SlockNetworkModule.MODULE_NAME
+                ),
+                warningLogger = { message -> bridge.log("member_detail_network $message") }
+            )
+        }
+    val memberRepository: MemberRepository =
+        remember(networkClient, authStore) {
+            RealMemberRepository(
+                sessionStore = authStore,
+                networkClient = networkClient,
+                logger = { message -> bridge.log("member_detail_repository $message") }
+            )
+        }
+    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
+    val agentDetailStore =
+        remember {
+            SharedAgentDetailStore(
+                logger = { message -> bridge.log("member_detail_store $message") }
+            )
+        }
+    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore) {
+        MemberDetailRouteProvider(
+            bridge = bridge,
+            authStore = authStore,
+            memberRepository = memberRepository,
+            settingsCapabilities = settingsCapabilities,
+            agentDetailStore = agentDetailStore
+        )
+    }
+}
+
+@Composable
+private fun MemberDetailPageContent() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = Utils.bridgeModule(pager.pagerId)
+    val payload = remember(pager.pageData.params.toString()) {
+        pager.pageData.params.toKuiklyMemberDetailPayload()
+    }
+    val provider = rememberMemberDetailRouteProvider(pager, bridge)
+    var routeState by remember(payload.memberId) {
+        mutableStateOf<MemberDetailRouteState>(MemberDetailRouteState.Loading)
+    }
+    var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
+    val agentDetailStoreState by provider.agentDetailStore.state.collectAsState()
+    val agentDetailState = agentDetailStoreState.toMembersAgentDetailLoadState()
+    val timeContext = payload.toSlockTimeContext()
+    val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
+
+    LaunchedEffect(payload.memberId) {
+        routeState = MemberDetailRouteState.Loading
+        routeState = provider.loadMember(payload.memberId)
+    }
+
+    val content = routeState as? MemberDetailRouteState.Content
+    val member = content?.member
+    LaunchedEffect(member?.id?.value, member?.kind, localAgentDetailRefreshKey) {
+        provider.loadAgentDetail(member)
+    }
+
+    when (val current = routeState) {
+        MemberDetailRouteState.Loading ->
+            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                SlockTopPageHeader(
+                    title = "Member",
+                    subtitle = "Loading profile",
+                    iconName = SlockLucideIconName.Users
+                )
+                SlockCenteredLoading()
+            }
+        is MemberDetailRouteState.Error ->
+            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+                SlockTopPageHeader(
+                    title = "Member",
+                    subtitle = "Profile",
+                    iconName = SlockLucideIconName.Users
+                )
+                SlockEmptyState(
+                    title = "Could not load member",
+                    detail = current.code,
+                    iconName = SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        is MemberDetailRouteState.Content -> {
+            val agentDetailActions =
+                remember(provider) {
+                    object : SharedAgentDetailActions {
+                        override suspend fun runLifecycleAction(
+                            agentId: MemberId,
+                            action: MembersAgentLifecycleAction
+                        ): DataResult<AgentLifecycleActionResult> {
+                            val result = provider.runLifecycleAction(agentId, action)
+                            if (result is DataResult.Content && result.data.success) {
+                                routeState = routeState.withMemberDetailLifecycleResult(action, agentId)
+                                localAgentDetailRefreshKey += 1
+                                if (action == MembersAgentLifecycleAction.Delete) {
+                                    provider.bridge.closePage()
+                                }
+                            }
+                            return result
+                        }
+
+                        override fun copyDiagnostics(diagnostics: String) {
+                            provider.copyDiagnostics(diagnostics)
+                        }
+
+                        override suspend fun reportIssue(diagnostics: String): Boolean {
+                            return provider.reportIssue(diagnostics)
+                        }
+
+                        override suspend fun updateAgentProfile(
+                            request: AgentProfileUpdateRequest
+                        ): DataResult<MemberProfile> {
+                            val result = provider.updateAgentProfile(request)
+                            if (result is DataResult.Content) {
+                                routeState = routeState.withMemberDetailProfile(result.data)
+                            }
+                            return result
+                        }
+                    }
+                }
+            MembersDetailContent(
+                member = current.member,
+                agentDetailState = agentDetailState,
+                canViewPrivateAgentSurfaces = { _, detail ->
+                    current.server.permissions.canManageSettings ||
+                        detail?.summary?.creatorId == current.currentUserId
+                },
+                canManageAgent = { _, detail ->
+                    current.server.permissions.canManageSettings ||
+                        detail?.summary?.creatorId == current.currentUserId
+                },
+                onBack = { provider.bridge.closePage() },
+                onOpenDirectMessage = { provider.bridge.settingsEvent(payload.instanceId, "openMember", current.member.id.value) },
+                onCopyMemberId = {
+                    provider.copyMemberId(current.member)
+                },
+                onOpenUrl = { provider.bridge.openUrl(it) },
+                agentDetailActions = agentDetailActions,
+                onUpdateAgentProfile = { request ->
+                    agentDetailActions.updateAgentProfile(request)
+                },
+                onPickAgentAvatarFile = {
+                    provider.pickAgentAvatarFile()
+                },
+                onUploadAgentAvatar = { agentId, file ->
+                    val result = provider.uploadAgentAvatar(agentId, file)
+                    if (result is DataResult.Content) {
+                        routeState = routeState.withMemberDetailProfile(result.data)
+                    }
+                    result
+                },
+                onAgentLifecycleAction = { agentId, action ->
+                    agentDetailActions.runLifecycleAction(agentId, action)
+                },
+                agentWorkspaceTreeLoader = { agentId ->
+                    provider.memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
+                },
+                agentWorkspaceChildrenLoader = { agentId, dirPath ->
+                    provider.memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
+                },
+                onCopyAgentDiagnostics = agentDetailActions::copyDiagnostics,
+                onReportAgentIssue = agentDetailActions::reportIssue,
+                onUnavailableAction = { bridge.toast(it) },
+                timeContext = timeContext,
+                sharedAgentDetailStore = provider.agentDetailStore,
+                initialAgentTab = initialAgentTab
+            )
+        }
+    }
+}
+
 @Composable
 private fun MembersAgentDetailVisualContent() {
     val pager = LocalActivity.current.getPager() as Pager
@@ -862,6 +1227,20 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
                     add(membersJson.optJSONObject(index).toMemberProfile())
                 }
             }
+    )
+}
+
+internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload {
+    val payloadText = optString("payload")
+    val payload = if (payloadText.isNotBlank()) JSONObject(payloadText) else this
+    return KuiklyMemberDetailPayload(
+        instanceId = payload.optString("instanceId").ifBlank { optString("instanceId") },
+        memberId = payload.optString("memberId").ifBlank { payload.optString("selectedMemberId") },
+        initialAgentTab = payload.optNullableString("initialAgentTab"),
+        localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
+        todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
+        nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
+        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour }
     )
 }
 
@@ -4179,6 +4558,64 @@ private fun KuiklyMembersPayload.toSlockTimeContext(): SlockTimeContext =
         nowEpochMillis = nowEpochMillis,
         timeFormat = timeFormat
     )
+
+private fun KuiklyMemberDetailPayload.toSlockTimeContext(): SlockTimeContext =
+    SlockTimeContext(
+        localOffsetMinutes = localOffsetMinutes,
+        todayEpochDay = todayEpochDay,
+        nowEpochMillis = nowEpochMillis,
+        timeFormat = timeFormat
+    )
+
+private fun MemberDetailRouteState.withMemberDetailProfile(member: MemberProfile): MemberDetailRouteState {
+    val content = this as? MemberDetailRouteState.Content ?: return this
+    return if (content.member.id == member.id) {
+        content.copy(member = member)
+    } else {
+        this
+    }
+}
+
+private fun MemberDetailRouteState.withMemberDetailLifecycleResult(
+    action: MembersAgentLifecycleAction,
+    agentId: MemberId
+): MemberDetailRouteState {
+    val content = this as? MemberDetailRouteState.Content ?: return this
+    if (content.member.id != agentId) return this
+    return when (action) {
+        MembersAgentLifecycleAction.Delete ->
+            MemberDetailRouteState.Error("agent_deleted")
+        MembersAgentLifecycleAction.Start,
+        MembersAgentLifecycleAction.Restart ->
+            content.copy(
+                member = content.member.copy(agentStatus = AgentStatus.Working, presence = Presence.Active)
+            )
+        MembersAgentLifecycleAction.Stop ->
+            content.copy(
+                member = content.member.copy(agentStatus = AgentStatus.Offline, presence = Presence.Offline)
+            )
+        MembersAgentLifecycleAction.UnassignMachine ->
+            content.copy(
+                member =
+                    content.member.copy(
+                        permissionBadges =
+                            content.member.permissionBadges.filterNot {
+                                it.startsWith("computer:") || it.startsWith("computer-id:")
+                            }
+                    )
+            )
+        MembersAgentLifecycleAction.ResetSession,
+        MembersAgentLifecycleAction.ResetFull ->
+            content
+    }
+}
+
+private fun String.toMemberDetailDiagnosticsLine(): String =
+    lineSequence()
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .joinToString(" | ")
+        .take(1200)
 
 private fun String?.membersActivityDisplayTime(timeContext: SlockTimeContext): String =
     formatSlockTimestampClockWithSeconds(this, timeContext)

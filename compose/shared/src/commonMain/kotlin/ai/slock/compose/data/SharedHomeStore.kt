@@ -505,6 +505,7 @@ class SharedHomeStore(
                                         previousContent = previousContent
                                     ),
                                 serverSwitchState = latestSwitch.complete(request.requestGeneration, cachedServerId),
+                                serverUnreadCounts = cached.data.serverUnreadCounts,
                                 appBadgeCount = effectiveCachedBadge
                             )
                         )
@@ -662,6 +663,7 @@ class SharedHomeStore(
                         } else {
                             latestSwitch
                         },
+                    serverUnreadCounts = freshSnapshot?.serverUnreadCounts ?: _state.value.serverUnreadCounts,
                     appBadgeCount = nextBadge
                 )
             )
@@ -1049,12 +1051,15 @@ class SharedHomeStore(
 
     private fun applyHomeSnapshotLocally(transform: (HomeSnapshot) -> HomeSnapshot) {
         val current = _state.value.content as? SharedHomeContentState.Content ?: return
+        val nextSnapshot = transform(current.snapshot)
+        val nextBaseSnapshot = transform(current.baseSnapshot)
         reduceState(
             _state.value.copy(
                 content = current.copy(
-                    snapshot = transform(current.snapshot),
-                    baseSnapshot = transform(current.baseSnapshot)
-                )
+                    snapshot = nextSnapshot,
+                    baseSnapshot = nextBaseSnapshot
+                ),
+                serverUnreadCounts = nextSnapshot.serverUnreadCounts
             )
         )
     }
@@ -1216,11 +1221,13 @@ private fun HomeSnapshot.withConversationUnread(
         return copy(channels = nextChannels, directMessages = nextDirectMessages)
     }
     val nextUnreadTotal = (unreadTotal + delta).coerceAtLeast(0)
+    val nextServerUnreadCount = (server.unreadCount + delta).coerceAtLeast(0)
     return copy(
         channels = nextChannels,
         directMessages = nextDirectMessages,
-        server = server.copy(unreadCount = (server.unreadCount + delta).coerceAtLeast(0)),
-        unreadTotal = nextUnreadTotal
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        unreadTotal = nextUnreadTotal,
+        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
     )
 }
 
@@ -1234,11 +1241,13 @@ private fun HomeSnapshot.withoutHomeConversation(conversationId: String): HomeSn
     val nextChannels = channels.filterNot(::shouldRemove)
     val nextDirectMessages = directMessages.filterNot(::shouldRemove)
     val nextUnreadTotal = (unreadTotal - removedUnread).coerceAtLeast(0)
+    val nextServerUnreadCount = (server.unreadCount - removedUnread).coerceAtLeast(0)
     return copy(
         channels = nextChannels,
         directMessages = nextDirectMessages,
-        server = server.copy(unreadCount = (server.unreadCount - removedUnread).coerceAtLeast(0)),
-        unreadTotal = nextUnreadTotal
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        unreadTotal = nextUnreadTotal,
+        serverUnreadCounts = serverUnreadCounts + (server.id.value to nextServerUnreadCount)
     )
 }
 
@@ -1255,6 +1264,7 @@ data class SharedHomeState(
     val selectedTopAction: SharedHomeTopAction? = null,
     val notifications: List<SharedHomeNotification> = emptyList(),
     val homeRealtimeDirty: Boolean = false,
+    val serverUnreadCounts: Map<String, Int> = emptyMap(),
     /**
      * #81: typed projection of the selected-server app badge. Derived from
      * the snapshot's [SharedHomeSnapshot.unreadTotal] (which is

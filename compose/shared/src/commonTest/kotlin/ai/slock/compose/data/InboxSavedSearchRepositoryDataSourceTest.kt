@@ -155,6 +155,29 @@ class InboxSavedSearchRepositoryDataSourceTest {
     }
 
     @Test
+    fun savedRepositoryKeepsMultipleMessagesFromSameChannel() = runBlocking {
+        val network =
+            FakeInboxNetworkClient(
+                savedJson = """
+                    {
+                      "saved": [
+                        {"messageId":"message-1","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"First saved note","senderType":"user","senderId":"user-1","senderName":"Artin","createdAt":"2026-05-01T00:00:00Z","savedAt":"2026-05-02T00:00:00Z"},
+                        {"messageId":"message-2","channelId":"channel-1","channelName":"android-dev","channelType":"channel","content":"Second saved note","senderType":"agent","senderId":"agent-1","senderName":"Android Dev","createdAt":"2026-05-03T00:00:00Z","savedAt":"2026-05-04T00:00:00Z"}
+                      ],
+                      "hasMore": false
+                    }
+                """.trimIndent()
+            )
+
+        val saved = RealSavedRepository(sampleStore(), network).loadInitial(ServerId("server-1"))
+
+        assertTrue(saved is DataResult.Content)
+        assertEquals(listOf("saved:message-1", "saved:message-2"), saved.data.items.map { it.key })
+        assertEquals(listOf("message-1", "message-2"), saved.data.items.map { it.lastMessageId?.value })
+        assertEquals(2, saved.data.totalCount)
+    }
+
+    @Test
     fun blankSearchWithoutFiltersReturnsEmptyWithoutServerRequest() = runBlocking {
         val network = FakeInboxNetworkClient(searchJson = """{"results":[]}""")
 

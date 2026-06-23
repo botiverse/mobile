@@ -1058,6 +1058,12 @@ private val SlockHomeSortMenuItems =
 internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
     presence ?: SlockPresence.Offline
 
+internal fun homeActivitySidebarUnreadCount(
+    homeUnreadCount: Int,
+    activityUnreadCount: Int
+): Int =
+    maxOf(homeUnreadCount, activityUnreadCount)
+
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,
     val conversationId: String? = null,

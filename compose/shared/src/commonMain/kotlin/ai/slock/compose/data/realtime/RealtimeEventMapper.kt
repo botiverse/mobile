@@ -126,13 +126,18 @@ class RealtimeEventMapper {
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
                 decodeOrNull(AgentActivityDto.serializer(), element)?.toDomain()
+            RealtimeSocketEvents.AgentSession ->
+                decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentCreated ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.AgentDeleted ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Agents, eventName)
             RealtimeSocketEvents.MachineStatus,
             RealtimeSocketEvents.MachineCapabilities,
-            RealtimeSocketEvents.MachineUpdated ->
+            RealtimeSocketEvents.MachineUpdated,
+            RealtimeSocketEvents.ComputerUpgradeProgress,
+            RealtimeSocketEvents.ComputerUpgradeDone,
+            RealtimeSocketEvents.DaemonStatus ->
                 decodeSubjectRefresh(element, RealtimeRefreshScope.Machines, eventName)
             RealtimeSocketEvents.ServerMemberAdded,
             RealtimeSocketEvents.ServerMemberUpdated,
@@ -215,6 +220,7 @@ class RealtimeEventMapper {
             subjectId =
                 stringField(element, "agentId")
                     ?: stringField(element, "machineId")
+                    ?: stringField(element, "daemonId")
                     ?: stringField(element, "reminderId")
                     ?: stringField(element, "id")
         )

@@ -50,9 +50,10 @@ class SharedHomeSearchSavedStore(
             }
             SharedHomeSearchSavedIntent.OpenSaved -> {
                 val saved = _state.value.saved
-                if (!saved.loading && !saved.refreshing) loadSaved(refresh = true)
+                if (!saved.loading && !saved.refreshing) loadSaved(refresh = true, pullRefresh = false)
             }
-            SharedHomeSearchSavedIntent.RefreshSaved -> loadSaved(refresh = true)
+            SharedHomeSearchSavedIntent.RefreshSaved -> loadSaved(refresh = true, pullRefresh = false)
+            SharedHomeSearchSavedIntent.PullRefreshSaved -> loadSaved(refresh = true, pullRefresh = true)
             SharedHomeSearchSavedIntent.LoadMoreSaved -> loadSaved(refresh = false)
             is SharedHomeSearchSavedIntent.Unsave -> unsave(intent.item)
             is SharedHomeSearchSavedIntent.SearchQueryChanged -> {
@@ -170,7 +171,10 @@ class SharedHomeSearchSavedStore(
             }
     }
 
-    private fun loadSaved(refresh: Boolean) {
+    private fun loadSaved(
+        refresh: Boolean,
+        pullRefresh: Boolean = false
+    ) {
         val current = _state.value.saved
         if (refresh && (current.loading || current.refreshing)) return
         if (!refresh && (current.loadingMore || !current.hasMore)) return
@@ -186,11 +190,12 @@ class SharedHomeSearchSavedStore(
                                 previous.copy(
                                     loading = !refreshInPlace,
                                     refreshing = refreshInPlace,
+                                    pullRefreshing = refreshInPlace && pullRefresh,
                                     errorCode = null,
                                     noPermissionCode = null
                                 )
                             } else {
-                                previous.copy(loadingMore = true, errorCode = null, noPermissionCode = null)
+                                previous.copy(pullRefreshing = false, loadingMore = true, errorCode = null, noPermissionCode = null)
                             }
                     )
                 try {
@@ -432,6 +437,7 @@ class SharedHomeSearchSavedStore(
                                 empty = items.isEmpty(),
                                 loading = false,
                                 refreshing = false,
+                                pullRefreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -446,6 +452,7 @@ class SharedHomeSearchSavedStore(
                                 nextOffset = null,
                                 loading = false,
                                 refreshing = false,
+                                pullRefreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
@@ -454,6 +461,7 @@ class SharedHomeSearchSavedStore(
                             current.copy(
                                 loading = false,
                                 refreshing = false,
+                                pullRefreshing = false,
                                 loadingMore = false,
                                 errorCode = result.error.code,
                                 noPermissionCode = null
@@ -462,6 +470,7 @@ class SharedHomeSearchSavedStore(
                             current.copy(
                                 loading = false,
                                 refreshing = false,
+                                pullRefreshing = false,
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
@@ -540,7 +549,7 @@ class SharedHomeSearchSavedStore(
     private fun setSavedError(code: String) {
         _state.value =
             _state.value.copy(
-                saved = _state.value.saved.copy(loading = false, refreshing = false, loadingMore = false, errorCode = code)
+                saved = _state.value.saved.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
             )
     }
 
@@ -572,7 +581,7 @@ class SharedHomeSearchSavedStore(
     }
 
     private fun restoreSaved(previous: SharedHomeSavedPanelState, code: String) {
-        _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, refreshing = false, loadingMore = false))
+        _state.value = _state.value.copy(saved = previous.copy(errorCode = code, loading = false, refreshing = false, pullRefreshing = false, loadingMore = false))
     }
 }
 
@@ -621,6 +630,7 @@ data class SharedHomeSavedPanelState(
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
+    val pullRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val empty: Boolean = false,
     val hasMore: Boolean = false,
@@ -663,6 +673,7 @@ sealed interface SharedHomeSearchSavedIntent {
     data object OpenSearch : SharedHomeSearchSavedIntent
     data object OpenSaved : SharedHomeSearchSavedIntent
     data object RefreshSaved : SharedHomeSearchSavedIntent
+    data object PullRefreshSaved : SharedHomeSearchSavedIntent
     data object LoadMoreSaved : SharedHomeSearchSavedIntent
     data class Unsave(val item: InboxItem) : SharedHomeSearchSavedIntent
     data class SearchQueryChanged(val query: String) : SharedHomeSearchSavedIntent

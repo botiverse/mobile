@@ -1947,7 +1947,9 @@ internal class SlockKuiklyBridgeModule(
                 "notificationStatusLabel" to "Managed by system settings",
                 "deviceLabel" to "${Build.MANUFACTURER} ${Build.MODEL}".trim(),
                 "platformLabel" to "Android ${Build.VERSION.RELEASE} / SDK ${Build.VERSION.SDK_INT}",
-                "baseUrl" to AndroidAuthApiFactory.BASE_URL
+                "baseUrl" to AndroidAuthApiFactory.BASE_URL,
+                "buildTime" to BuildConfig.BUILD_TIME,
+                "gitCommit" to BuildConfig.GIT_COMMIT
         )
     }
 

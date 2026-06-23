@@ -12,6 +12,7 @@ import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.SlockTimeFormat12Hour
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -2737,6 +2738,30 @@ class ThreadPayloadTest {
         val authorPayload = payload.toThreadMembersProfilePageData("user_artin")!!.optString("payload").toKuiklyMembersPayload()
         assertEquals("user_artin", authorPayload.selectedMemberId)
         assertEquals("Artin", authorPayload.members.first { it.id.value == "user_artin" }.displayName)
+    }
+
+    @Test
+    fun threadMemberDetailPageDataCarriesMemberIdentityOnly() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                sourceThreadId = "thread-source-1",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20623,
+                nowEpochMillis = 1782200000000,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        val pageData = payload.toThreadMemberDetailPageData("agent_android")!!
+
+        assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
+        assertEquals("agent_android", pageData.optString("memberId"))
+        assertEquals("thread-member-detail-thread-1-agent_android", pageData.optString("instanceId"))
+        assertEquals("", pageData.optString("members"))
+        assertEquals("480", pageData.optString("localOffsetMinutes"))
+        assertEquals("20623", pageData.optString("todayEpochDay"))
+        assertEquals("1782200000000", pageData.optString("nowEpochMillis"))
+        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
     }
 
     @Test

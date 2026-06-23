@@ -8,11 +8,14 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class RealtimeEventMapperTest {
     @Test
@@ -251,5 +254,83 @@ class RealtimeEventMapperTest {
         assertEquals(AgentStatus.Thinking, presence.agentStatus)
         assertEquals("Planning", presence.statusLabel)
         assertEquals(42L, presence.serverSeq)
+    }
+
+    @Test
+    fun serverWireEventsIncludeWebRealtimeContractEvents() {
+        val events = RealtimeSocketEvents.ServerWireEvents
+
+        assertTrue(RealtimeSocketEvents.AgentSession in events)
+        assertTrue(RealtimeSocketEvents.ComputerUpgradeProgress in events)
+        assertTrue(RealtimeSocketEvents.ComputerUpgradeDone in events)
+        assertTrue(RealtimeSocketEvents.DaemonStatus in events)
+    }
+
+    @Test
+    fun agentSessionRefreshesAgentsScope() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentSession,
+                """{"agentId":"agent-1","sessionId":"session-1"}"""
+            )
+
+        val refresh = assertIs<RealtimeRefreshRequired>(event)
+        assertEquals(RealtimeRefreshScope.Agents, refresh.scope)
+        assertEquals(RealtimeSocketEvents.AgentSession, refresh.reason)
+        assertEquals("agent-1", refresh.subjectId)
+    }
+
+    @Test
+    fun computerUpgradeEventsRefreshMachinesScope() {
+        val mapper = RealtimeEventMapper()
+
+        val progress =
+            mapper.map(
+                RealtimeSocketEvents.ComputerUpgradeProgress,
+                """
+                {
+                  "machineId": "machine-1",
+                  "requestId": "req-1",
+                  "phase": "downloading",
+                  "percent": 50
+                }
+                """.trimIndent()
+            )
+        val done =
+            mapper.map(
+                RealtimeSocketEvents.ComputerUpgradeDone,
+                """
+                {
+                  "machineId": "machine-1",
+                  "requestId": "req-1",
+                  "ok": true,
+                  "newVersion": "1.2.3"
+                }
+                """.trimIndent()
+            )
+
+        val progressRefresh = assertIs<RealtimeRefreshRequired>(progress)
+        assertEquals(RealtimeRefreshScope.Machines, progressRefresh.scope)
+        assertEquals(RealtimeSocketEvents.ComputerUpgradeProgress, progressRefresh.reason)
+        assertEquals("machine-1", progressRefresh.subjectId)
+
+        val doneRefresh = assertIs<RealtimeRefreshRequired>(done)
+        assertEquals(RealtimeRefreshScope.Machines, doneRefresh.scope)
+        assertEquals(RealtimeSocketEvents.ComputerUpgradeDone, doneRefresh.reason)
+        assertEquals("machine-1", doneRefresh.subjectId)
+    }
+
+    @Test
+    fun legacyDaemonStatusRefreshesMachinesScope() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.DaemonStatus,
+                """{"daemonId":"machine-legacy","status":"online","statusVersion":12}"""
+            )
+
+        val refresh = assertIs<RealtimeRefreshRequired>(event)
+        assertEquals(RealtimeRefreshScope.Machines, refresh.scope)
+        assertEquals(RealtimeSocketEvents.DaemonStatus, refresh.reason)
+        assertEquals("machine-legacy", refresh.subjectId)
     }
 }

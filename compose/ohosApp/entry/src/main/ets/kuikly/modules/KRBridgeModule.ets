@@ -587,7 +587,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
       "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
       "baseUrl": KRBridgeModule.AUTH_BASE_URL,
-      "filesDir": context.filesDir
+      "filesDir": context.filesDir,
+      "buildTime": new Date().toISOString(),
+      "gitCommit": "unknown"
     };
   }
 

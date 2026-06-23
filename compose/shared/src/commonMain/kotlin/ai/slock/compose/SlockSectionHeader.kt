@@ -146,9 +146,7 @@ internal fun SlockHeaderRefreshIndicator(
     Box(
         modifier =
             modifier
-                .size(HeaderRefreshIndicatorSize)
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                .size(HeaderRefreshIndicatorSize),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(

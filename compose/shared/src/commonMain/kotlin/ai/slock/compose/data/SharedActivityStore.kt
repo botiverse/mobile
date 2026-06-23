@@ -46,7 +46,8 @@ class SharedActivityStore(
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {
             SharedActivityIntent.LoadInitial -> load(refresh = true)
-            SharedActivityIntent.Refresh -> load(refresh = true)
+            SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false)
+            SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true)
             SharedActivityIntent.LoadMore -> load(refresh = false)
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
@@ -82,11 +83,14 @@ class SharedActivityStore(
         val current = _state.value
         if (current.loading || current.refreshing) return
         if (!current.loaded || current.snapshot != null) {
-            load(refresh = true)
+            load(refresh = true, pullRefresh = false)
         }
     }
 
-    private fun load(refresh: Boolean) {
+    private fun load(
+        refresh: Boolean,
+        pullRefresh: Boolean = false
+    ) {
         val current = _state.value
         if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) return
         loadJob?.cancel()
@@ -98,6 +102,7 @@ class SharedActivityStore(
                     previous.copy(
                         loading = refresh && previous.snapshot == null,
                         refreshing = refresh && previous.snapshot != null,
+                        pullRefreshing = refresh && pullRefresh && previous.snapshot != null,
                         loadingMore = !refresh,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -118,7 +123,7 @@ class SharedActivityStore(
                                 SharedActivityPageSize
                             )
                         }
-                    val senderProfiles = loadSenderAvatarProfiles(serverId)
+                    val senderProfiles = loadSenderProfiles(serverId)
                     applyLoadResult(
                         result = result,
                         server = server,
@@ -137,7 +142,7 @@ class SharedActivityStore(
         result: DataResult<InboxSnapshot>,
         server: ServerSummary,
         append: Boolean,
-        senderProfiles: Map<String, InboxSenderAvatarProfile>
+        senderProfiles: Map<String, SharedActivitySenderProfile>
     ) {
         val current = _state.value
         _state.value =
@@ -159,9 +164,11 @@ class SharedActivityStore(
                                 hasMore = result.data.hasMore,
                                 nextOffset = result.data.nextOffset
                             ),
+                        senderProfiles = if (append) current.senderProfiles + senderProfiles else senderProfiles,
                         loaded = true,
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -177,9 +184,11 @@ class SharedActivityStore(
                         }
                     current.copy(
                         snapshot = snapshot,
+                        senderProfiles = if (append) current.senderProfiles else senderProfiles,
                         loaded = true,
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -189,6 +198,7 @@ class SharedActivityStore(
                     current.copy(
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = if (append) null else result.error.code,
                         loadMoreErrorCode = if (append) result.error.code else null
@@ -197,6 +207,7 @@ class SharedActivityStore(
                     current.copy(
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = if (append) null else result.blocker.code,
                         loadMoreErrorCode = if (append) result.blocker.code else null
@@ -225,7 +236,7 @@ class SharedActivityStore(
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
-                load(refresh = true)
+                load(refresh = true, pullRefresh = false)
             } else {
                 refreshAfterFailure(previous, "activity_mark_all_read_failed")
             }
@@ -335,7 +346,7 @@ class SharedActivityStore(
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
-                load(refresh = true)
+                load(refresh = true, pullRefresh = false)
             } else {
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
             }
@@ -361,8 +372,8 @@ class SharedActivityStore(
         previous: SharedActivityState,
         code: String
     ) {
-        _state.value = previous.copy(loading = false, refreshing = false, loadingMore = false, errorCode = code)
-        load(refresh = true)
+        _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
+        load(refresh = true, pullRefresh = false)
     }
 
     private fun setLoadError(code: String, append: Boolean = false) {
@@ -370,6 +381,7 @@ class SharedActivityStore(
             _state.value.copy(
                 loading = false,
                 refreshing = false,
+                pullRefreshing = false,
                 loadingMore = false,
                 errorCode = if (append) null else code,
                 loadMoreErrorCode = if (append) code else null
@@ -379,15 +391,16 @@ class SharedActivityStore(
     private suspend fun currentServerId(): ServerId? =
         authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
 
-    private suspend fun loadSenderAvatarProfiles(serverId: ServerId): Map<String, InboxSenderAvatarProfile> =
+    private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
             when (val result = memberRepository?.getMembers(DataRequestPriority.Visible, serverId)) {
                 is DataResult.Content ->
                     result.data.members.associateBy(
                         keySelector = { it.id.value },
                         valueTransform = {
-                            InboxSenderAvatarProfile(
+                            SharedActivitySenderProfile(
                                 kind = it.kind,
+                                displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } },
                                 avatarWireValue = it.avatarWireValueForActivity()
                             )
                         }
@@ -402,9 +415,11 @@ class SharedActivityStore(
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
+    val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
+    val pullRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
     val loadMoreErrorCode: String? = null
@@ -424,6 +439,7 @@ data class SharedActivityState(
 sealed interface SharedActivityIntent {
     data object LoadInitial : SharedActivityIntent
     data object Refresh : SharedActivityIntent
+    data object PullRefresh : SharedActivityIntent
     data object LoadMore : SharedActivityIntent
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent
@@ -447,8 +463,9 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
         else -> false
     }
 
-private data class InboxSenderAvatarProfile(
+data class SharedActivitySenderProfile(
     val kind: MemberKind,
+    val displayName: String,
     val avatarWireValue: String?
 )
 
@@ -462,7 +479,7 @@ private fun MemberProfile.avatarWireValueForActivity(): String? =
     )
 
 private fun List<InboxItem>.withSenderAvatarProfiles(
-    senderProfiles: Map<String, InboxSenderAvatarProfile>
+    senderProfiles: Map<String, SharedActivitySenderProfile>
 ): List<InboxItem> {
     if (senderProfiles.isEmpty()) return this
     return map { item ->
