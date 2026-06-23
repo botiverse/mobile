@@ -1,5 +1,7 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotEquals
@@ -178,5 +180,30 @@ class ThreadRenderSignatureTest {
         assertEquals(null, deletedAgent.resolvedThreadAvatarWireValue())
         assertEquals("REMOVED", removedHuman.threadAuthorBadgeLabel())
         assertEquals(false, removedHuman.canOpenThreadAuthorProfile())
+    }
+
+    @Test
+    fun inactiveAgentStateSurvivesMessageRoundTrip() {
+        val origin =
+            KuiklyThreadMessageItem(
+                id = "origin-message",
+                authorId = "agent-deleted",
+                authorName = "Deleted KMP Agent",
+                authorKind = "agent",
+                avatarWireValue = "pixel:robot",
+                authorDeletedAt = "2026-06-06T00:00:00.000Z",
+                body = "Parent message"
+            )
+
+        val roundTripped =
+            origin
+                .toMessage(threadId = ThreadId("parent-channel"), channelId = ChannelId("parent-channel"))
+                .toKuiklyThreadMessageItem(currentUserId = null)
+
+        assertEquals("deleted", roundTripped.senderMembershipStatus)
+        assertEquals("2026-06-06T00:00:00.000Z", roundTripped.authorDeletedAt)
+        assertEquals("DELETED", roundTripped.threadAuthorBadgeLabel())
+        assertEquals(false, roundTripped.canOpenThreadAuthorProfile())
+        assertEquals(null, roundTripped.resolvedThreadAvatarWireValue())
     }
 }

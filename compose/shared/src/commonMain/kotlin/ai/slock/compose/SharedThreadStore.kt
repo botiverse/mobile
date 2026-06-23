@@ -4039,7 +4039,7 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
     )
 }
 
-private fun KuiklyThreadMessageItem.toMessage(
+internal fun KuiklyThreadMessageItem.toMessage(
     threadId: ThreadId,
     channelId: ChannelId
 ): Message {
@@ -4090,8 +4090,12 @@ private fun KuiklyThreadMessageItem.toMessage(
     )
 }
 
-private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
-    MemberProfile(
+private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
+    val cleanAuthorDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }
+    val cleanMembershipStatus =
+        senderMembershipStatus?.takeIf { it.isNotBlank() }
+            ?: if (authorKind.equals("agent", ignoreCase = true) && cleanAuthorDeletedAt != null) "deleted" else null
+    return MemberProfile(
         id = MemberId(authorId),
         displayName = authorName,
         handle = authorName.removePrefix("@"),
@@ -4100,8 +4104,11 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
-        presence = Presence.Offline
+        presence = Presence.Offline,
+        membershipStatus = cleanMembershipStatus,
+        agentDeletedAt = cleanAuthorDeletedAt
     )
+}
 
 private fun KuiklyThreadAttachmentItem.toAttachment(): Attachment =
     Attachment(
@@ -4146,7 +4153,7 @@ private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): M
     )
 }
 
-private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
+internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
     val pendingSendContext = metadata.localSendContextFromMetadata()
     val resolvedAvatar =
         resolveAvatarSlot(
@@ -4170,7 +4177,10 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
         gravatarHash = resolvedAvatar.gravatarHash,
-        senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
+        senderMembershipStatus =
+            senderMembershipStatus?.takeIf { it.isNotBlank() }
+                ?: author.membershipStatus?.takeIf { it.isNotBlank() },
+        authorDeletedAt = author.agentDeletedAt?.takeIf { it.isNotBlank() },
         seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
