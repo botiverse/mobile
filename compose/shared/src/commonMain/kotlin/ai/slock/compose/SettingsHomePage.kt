@@ -2513,7 +2513,6 @@ private fun SettingsAppShellContent(
                 SettingsLanguageRegionContent(
                     state = settingsState.languageRegion,
                     actionState = settingsState.actionState,
-                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.LanguageRegion),
                     languageDraft = languageRegionLanguageDraft,
                     displayDraft = languageRegionDisplayDraft,
                     timezoneDraft = languageRegionTimezoneDraft,
@@ -2570,7 +2569,6 @@ private fun SettingsAppShellContent(
                 SettingsAppearanceContent(
                     state = settingsState.appearance,
                     actionState = settingsState.actionState,
-                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Appearance),
                     fontSizeDraft = appearanceMessageFontSizeDraft,
                     bottomContentPadding = bottomContentPadding,
                     onFontSizeDraftChange = { appearanceMessageFontSizeDraft = it },
@@ -2825,7 +2823,6 @@ private fun SettingsAppShellContent(
                 SettingsNotificationsContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
-                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Notifications),
                     bottomContentPadding = bottomContentPadding,
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
@@ -2915,7 +2912,6 @@ private fun SharedSettingsSectionContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         payload.sections.forEach { section ->
             item { SharedSettingsSectionCard(section, onAction) }
         }
@@ -2961,7 +2957,6 @@ private fun SharedSettingsServerContent(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         item {
             SettingsServerProfileFormCard(
                 profile = serverSnapshot?.profile,
@@ -3156,18 +3151,10 @@ private fun SettingsConnectedAppsContent(
             onConfirmUninstall = onConfirmUninstall
         )
     }
-    val payload =
-        KuiklySharedSettingsPayload(
-            title = "Connected Apps",
-            detail = "Install marketplace apps and manage server-local OAuth clients.",
-            heroIconName = SlockLucideIconName.Blocks,
-            heroLabel = "Connected Apps"
-        )
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -3308,7 +3295,6 @@ private fun SettingsConnectedAppsContent(
 private fun SettingsLanguageRegionContent(
     state: ScreenLoadState<SettingsLanguageRegionSnapshot>,
     actionState: SharedSettingsActionState?,
-    refreshing: Boolean,
     languageDraft: String,
     displayDraft: String,
     timezoneDraft: String,
@@ -3323,23 +3309,10 @@ private fun SettingsLanguageRegionContent(
     onSaveTime: () -> Unit,
     onRetry: () -> Unit
 ) {
-    val payload =
-        KuiklySharedSettingsPayload(
-            title = "Language & Region",
-            detail =
-                if (refreshing) {
-                    "Refreshing language and region settings..."
-                } else {
-                    "Manage language, message display, timezone, and timestamp format."
-                },
-            heroIconName = SlockLucideIconName.Languages,
-            heroLabel = "Language & Region"
-        )
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -3523,30 +3496,16 @@ private fun SettingsServerTranslationPreferenceCard(
 private fun SettingsAppearanceContent(
     state: ScreenLoadState<SettingsAppearanceSnapshot>,
     actionState: SharedSettingsActionState?,
-    refreshing: Boolean,
     fontSizeDraft: String,
     bottomContentPadding: Dp,
     onFontSizeDraftChange: (String) -> Unit,
     onSave: () -> Unit,
     onRetry: () -> Unit
 ) {
-    val payload =
-        KuiklySharedSettingsPayload(
-            title = "Appearance",
-            detail =
-                if (refreshing) {
-                    "Refreshing appearance settings..."
-                } else {
-                    "Adjust message body text without changing chrome, buttons, labels, or code blocks."
-                },
-            heroIconName = SlockLucideIconName.Type,
-            heroLabel = "Appearance"
-        )
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -3707,7 +3666,6 @@ private fun SettingsMessageAlignmentCard(
 private fun SettingsNotificationsContent(
     state: ScreenLoadState<SettingsMobileSnapshot>,
     actionState: SharedSettingsActionState?,
-    refreshing: Boolean,
     bottomContentPadding: Dp,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onServerMuteChange: (Boolean) -> Unit,
@@ -3716,23 +3674,10 @@ private fun SettingsNotificationsContent(
     onTest: () -> Unit,
     onRetry: () -> Unit
 ) {
-    val payload =
-        KuiklySharedSettingsPayload(
-            title = "Notifications",
-            detail =
-                if (refreshing) {
-                    "Refreshing notification settings..."
-                } else {
-                    "Manage push status, test notifications, and workspace mute."
-                },
-            heroIconName = SlockLucideIconName.Bell,
-            heroLabel = "Notifications"
-        )
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { SharedSettingsHero(payload) }
         when (state) {
             ScreenLoadState.Loading ->
                 item {
@@ -5372,29 +5317,6 @@ private fun SettingsFormErrorText(text: String) {
 @Composable
 private fun SettingsFormDivider() {
     Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
-}
-
-@Composable
-private fun SharedSettingsHero(payload: KuiklySharedSettingsPayload) {
-    Row(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalAlignment = com.tencent.kuikly.compose.ui.Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Box(
-            modifier = Modifier.size(52.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = com.tencent.kuikly.compose.ui.Alignment.Center
-        ) {
-            SlockLucideIcon(
-                payload.heroIconName,
-                modifier = Modifier.size(26.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(payload.heroLabel.ifBlank { payload.title }, style = SlockType.PageTitle.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(payload.detail, style = SlockType.Caption.copy(color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        }
-    }
 }
 
 @Composable
@@ -11559,7 +11481,6 @@ private fun SettingsVisualLanguageRegionContent() {
     SettingsLanguageRegionContent(
         state = ScreenLoadState.Content(snapshot),
         actionState = null,
-        refreshing = false,
         languageDraft = snapshot.browserLanguage.selectedKey,
         displayDraft = if (snapshot.autoTranslation.enabled) "translated" else "original",
         timezoneDraft = snapshot.timezone.selectedKey,
@@ -11582,7 +11503,6 @@ private fun SettingsVisualAppearanceContent() {
     SettingsAppearanceContent(
         state = ScreenLoadState.Content(snapshot),
         actionState = null,
-        refreshing = false,
         fontSizeDraft = snapshot.messageBodyFontSize.selectedKey,
         bottomContentPadding = SlockSpacing.Lg,
         onFontSizeDraftChange = {},
@@ -11596,7 +11516,6 @@ private fun SettingsVisualNotificationsContent() {
     SettingsNotificationsContent(
         state = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
-        refreshing = false,
         bottomContentPadding = SlockSpacing.Lg,
         onNotificationPreferenceChange = {},
         onServerMuteChange = {},
