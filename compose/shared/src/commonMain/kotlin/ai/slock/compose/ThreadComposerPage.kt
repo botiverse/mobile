@@ -7,7 +7,9 @@ import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -205,7 +207,12 @@ internal data class KuiklyComposerMemberItem(
     val displayName: String,
     val handle: String,
     val inMentionChannel: Boolean = true,
-    val sourceServerLabel: String? = null
+    val sourceServerLabel: String? = null,
+    val kind: MemberKind = MemberKind.Human,
+    val description: String? = null,
+    val avatarWireValue: String? = null,
+    val gravatarHash: String? = null,
+    val avatarLabel: String = displayName.take(1).uppercase()
 )
 
 @Serializable
@@ -1052,32 +1059,46 @@ private fun ComposerMemberSuggestionRow(
     inChannel: Boolean,
     onClick: () -> Unit
 ) {
+    val description =
+        member.description
+            ?.takeIf { member.kind == MemberKind.Agent }
+            ?.takeIf { it.isNotBlank() }
+    val subtitle =
+        listOfNotNull(
+            description,
+            member.sourceServerLabel?.takeIf { it.isNotBlank() }
+        ).joinToString(" · ")
+    val handleColor = SlockColor.TextMutedGray
     ComposerSuggestionRow(
         leading = {
             Box(
                 modifier =
                     Modifier
                         .size(28.dp)
-                        .background(if (inChannel) SlockColor.BrandYellow else SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        .background(if (inChannel) SlockColor.SurfaceWhite else SlockColor.SurfaceCream),
                 contentAlignment = Alignment.Center
             ) {
-                if (inChannel) {
-                    Text(
-                        text = member.displayName.take(1).uppercase(),
-                        style = SlockType.Button.copy(fontSize = 12.sp),
-                        color = SlockColor.TextBlack
-                    )
-                } else {
-                    SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
-                }
+                SlockAvatar(
+                    avatarWireValue = member.avatarWireValue,
+                    label = member.avatarLabel.ifBlank { member.displayName },
+                    avatarSize = 28.dp,
+                    borderWidth = SlockStroke.Default,
+                    gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
+                )
             }
         },
         title = member.displayName,
-        subtitle = listOfNotNull(
-            "@${member.handle}",
-            member.sourceServerLabel?.takeIf { it.isNotBlank() }
-        ).joinToString(" · "),
+        subtitle = subtitle,
+        trailing = {
+            Text(
+                text = "@${member.handle}",
+                style = SlockType.Caption.copy(color = handleColor),
+                color = handleColor,
+                modifier = Modifier.width(72.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
         onClick = onClick
     )
 }
@@ -1318,6 +1339,7 @@ private fun ComposerSuggestionRow(
     leading: @Composable () -> Unit,
     title: String,
     subtitle: String,
+    trailing: (@Composable () -> Unit)? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -1350,6 +1372,7 @@ private fun ComposerSuggestionRow(
                 )
             }
         }
+        trailing?.invoke()
     }
 }
 
