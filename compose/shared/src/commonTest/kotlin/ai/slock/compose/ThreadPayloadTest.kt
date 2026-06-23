@@ -70,6 +70,29 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun defaultThreadMessageVisualFixtureMatchesReactProviderSeed() {
+        val payload = threadVisualFixture(THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT, "visual-thread-message-row")
+        val message = payload.messages.single()
+
+        assertEquals("visual-thread-message-row", payload.instanceId)
+        assertEquals("channel-design", payload.streamChannelId)
+        assertFalse(payload.showReplyActions)
+        assertFalse(payload.showTaskOpenActions)
+        assertFalse(message.isOwn)
+        assertEquals("agent-cindy", message.authorId)
+        assertEquals("Cindy", message.authorName)
+        assertEquals("agent", message.authorKind)
+        assertEquals("Captured the Android visual artifact for #product:f8e569cb and queued React parity.", message.body)
+        assertEquals("thread-msg-agent-reply", message.threadChannelId)
+        assertEquals(null, message.taskNumber)
+        assertEquals(0, message.replyCount)
+        assertEquals(1, message.reactions.size)
+        assertEquals("+1", message.reactions.single().emoji)
+        assertEquals(2, message.reactions.single().count)
+        assertFalse(message.reactions.single().selected)
+    }
+
+    @Test
     fun genericAttachmentNoPreviewMetaLineKeepsSizeAndMimeType() {
         val attachment =
             KuiklyThreadAttachmentItem(

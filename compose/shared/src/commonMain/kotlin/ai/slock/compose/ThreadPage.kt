@@ -4147,7 +4147,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
 
-private fun threadVisualFixture(
+internal fun threadVisualFixture(
     fixture: String,
     instanceId: String
 ): KuiklyThreadScreenPayload {
@@ -4160,53 +4160,46 @@ private fun threadVisualFixture(
                 subtitle = "Thread visual fixture",
                 status = "content",
                 surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                streamChannelId = "channel-1",
-                sourceThreadId = "channel-1",
+                streamChannelId = "channel-design",
+                sourceThreadId = "channel-design",
                 selectedTab = "chat",
                 showModeTabs = false,
-                showReplyActions = true,
+                showReplyActions = false,
                 alignOwnMessagesRight = true,
                 showMessageSaveAction = false,
-                showTaskOpenActions = true,
+                showTaskOpenActions = false,
                 showTaskStatusActions = false,
                 messages =
                     listOf(
                         KuiklyThreadMessageItem(
-                            id = "msg_user_reply",
-                            authorId = "user_artin",
-                            authorName = "Artin",
-                            authorKind = "human",
-                            isOwn = true,
-                            avatarLabel = "AR",
-                            timestampLabel = "05/20 12:48",
+                            id = "msg-agent-reply",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            isOwn = false,
+                            avatarLabel = "CI",
+                            timestampLabel = "06/22 10:30",
                             messageType = "Chat",
-                            body = "我这边确认一下 right-side self message：自己的短消息应该靠右，头像也在右侧。关联 #design 和 @agent_android。",
-                            replyCount = 5,
-                            unreadReplyCount = 2,
-                            firstUnreadReplyMessageId = "reply_2",
-                            taskId = "task_msg_10",
-                            taskNumber = 10,
-                            taskStatus = "in_review",
-                            taskAssigneeId = "user_artin",
-                            taskAssigneeName = "user_artin",
+                            body = "Captured the Android visual artifact for #product:f8e569cb and queued React parity.",
+                            threadChannelId = "thread-msg-agent-reply",
                             reactions =
                                 listOf(
-                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = true)
+                                    KuiklyThreadReactionItem(emoji = "+1", count = 2, selected = false)
                                 )
                         )
                     ),
                 members =
                     listOf(
                         KuiklyThreadMemberItem(
-                            id = "agent_android",
-                            displayName = "Android Developer",
-                            handle = "Android-Developer",
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
                             kind = "agent",
-                            avatarLabel = "AD"
+                            avatarLabel = "CI"
                         ),
                         KuiklyThreadMemberItem(
-                            id = "user_artin",
-                            displayName = "Artin",
+                            id = "visual-user",
+                            displayName = "artin",
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
@@ -6836,7 +6829,7 @@ private fun ThreadReactionChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            ThreadQuickReactionGlyph(reaction.emoji, modifier = Modifier.size(15.dp))
+            ThreadQuickReactionGlyph(threadDisplayReactionEmoji(reaction.emoji), modifier = Modifier.size(15.dp))
             if (reaction.count > 0) {
                 Text(
                     text = reaction.count.toString(),
@@ -7312,6 +7305,12 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
         }
     }
 }
+
+private fun threadDisplayReactionEmoji(emoji: String): String =
+    when (emoji) {
+        "+1" -> "👍"
+        else -> emoji
+    }
 
 @Composable
 private fun ThreadQuickReactionGlyph(
