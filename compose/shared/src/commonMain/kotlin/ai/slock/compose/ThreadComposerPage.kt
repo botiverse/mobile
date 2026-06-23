@@ -1198,12 +1198,11 @@ private fun ComposerMemberSuggestionRow(
 
 @Composable
 private fun ComposerAgentActivityDot() {
-    Box(
-        modifier =
-            Modifier
-                .size(ComposerAgentActivityDotSize)
-                .background(SlockColor.BrandYellow)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    SlockStatusIndicator(
+        color = SlockColor.BrandYellow,
+        size = ComposerAgentActivityDotSize,
+        borderColor = SlockColor.BorderBlack,
+        borderWidth = SlockStroke.Thin
     )
 }
 
@@ -1541,7 +1540,6 @@ private fun ComposerSuggestionInteractiveRow(
         ) {
             content()
         }
-        ComposerSuggestionDivider()
     }
 }
 
