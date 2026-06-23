@@ -979,8 +979,8 @@ private val settingsVisualItems = listOf(
     ),
     SlockTabItemPayload(
         key = "browser",
-        title = "Browser",
-        subtitle = "Notifications and local browser state",
+        title = "Device",
+        subtitle = "Notifications and local device state",
         iconName = SlockLucideIconName.AppWindow
     ),
     SlockTabItemPayload(
@@ -1023,7 +1023,7 @@ private val settingsPageVisualPayload = KuiklySharedSettingsPayload(
             title = "Session",
             rows = listOf(
                 KuiklySharedSettingsRow("password", SlockLucideIconName.Shield, "Password", "Change password and connected credentials.", status = "Enabled"),
-                KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this browser.", status = "Action")
+                KuiklySharedSettingsRow("logout", SlockLucideIconName.LogOut, "Log out", "Sign out of this device.", status = "Action")
             )
         )
     )
@@ -4024,7 +4024,7 @@ private fun SettingsNotificationsContent(
 @Composable
 private fun SettingsPwaInstallCard() {
     SettingsFormSectionCard(iconName = SlockLucideIconName.AppWindow, title = "Install app") {
-        SettingsFormDetailText("Install prompts are managed by browser PWA APIs on web. Native Android and OHOS builds use their platform app install flow.")
+        SettingsFormDetailText("Install prompts are managed by web PWA APIs outside native builds. Native Android and OHOS builds use their platform app install flow.")
         SettingsFormEmptyText("No install prompt is available inside this native Settings surface.")
     }
 }
@@ -6897,7 +6897,7 @@ private fun ScreenLoadState<SettingsLanguageRegionSnapshot>.toLanguageRegionPayl
                             languageRegion.browserLanguage.toMobileSelectionRow(
                                 key = LANGUAGE_REGION_ACTION_LANGUAGE,
                                 iconName = SlockLucideIconName.Globe,
-                                title = "Browser language",
+                                title = "Device language",
                                 fallbackStatus = "Others",
                                 actionState = actionState
                             )

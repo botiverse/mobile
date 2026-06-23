@@ -435,8 +435,8 @@ internal fun SlockBrutalReadOnlyField(
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = fieldMinHeight)
-                    .background(SlockColor.SurfaceCream)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(Color(0xFFF9FAFB))
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.30f))
                     .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.CenterStart
         ) {

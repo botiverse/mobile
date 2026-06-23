@@ -81,9 +81,9 @@ internal data class KuiklySettingsAccountPayload(
     val avatarInProgress: Boolean = false,
     val avatarErrorCode: String? = null,
     val logoutTitle: String = "Log out",
-    val logoutDetail: String = "Sign out of this browser. Your account and data stay; you can sign back in any time.",
+    val logoutDetail: String = "Sign out of this device. Your account and data stay; you can sign back in any time.",
     val logoutLabel: String = "Log out",
-    val logoutConfirmMessage: String = "Sign out of this browser? Your account and data are kept; you can log back in any time.",
+    val logoutConfirmMessage: String = "Sign out of this device? Your account and data are kept; you can log back in any time.",
     val logoutConfirmLabel: String = "Log out",
     val logoutCancelLabel: String = "Cancel",
     val changePasswordTitle: String = "Change password",
@@ -192,10 +192,7 @@ internal fun SettingsAccountContent(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item { SettingsAccountSectionHeader(payload.profileSectionTitle) }
-        item { SettingsAccountProfileCard(payload, onEvent, onPasswordChange) }
-        if (visibleConnectedAccounts.isNotEmpty()) {
-            item { SettingsConnectedAccounts(payload, visibleConnectedAccounts, onEvent) }
-        }
+        item { SettingsAccountProfileCard(payload, visibleConnectedAccounts, onEvent, onPasswordChange) }
         item { SettingsLogoutAction(payload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
     }
@@ -222,6 +219,7 @@ private fun SettingsAccountSectionHeader(title: String) {
 @Composable
 private fun SettingsAccountProfileCard(
     payload: KuiklySettingsAccountPayload,
+    connectedAccounts: List<KuiklySettingsConnectedAccount>,
     onEvent: (String, String?) -> Unit,
     onPasswordChange: (currentPassword: String, newPassword: String) -> Unit
 ) {
@@ -284,6 +282,10 @@ private fun SettingsAccountProfileCard(
             SettingsAccountWarning("Profile save failed: $code")
         }
         Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        if (connectedAccounts.isNotEmpty()) {
+            SettingsConnectedAccounts(payload, connectedAccounts, onEvent)
+            Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+        }
         SettingsPasswordDisclosure(
             title = payload.changePasswordTitle,
             expanded = passwordExpandedState.value,
@@ -441,7 +443,13 @@ private fun SettingsPasswordDisclosure(
             if (expanded) SlockLucideIconName.ChevronDown else SlockLucideIconName.ChevronRight,
             modifier = Modifier.size(14.dp)
         )
-        Text(title, style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(
+            title,
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -499,7 +507,13 @@ private fun SettingsConnectedAccounts(
     onEvent: (String, String?) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SettingsAccountSectionTitle(payload.connectedAccountsTitle.uppercase(), SlockLucideIconName.Link)
+        Text(
+            payload.connectedAccountsTitle,
+            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         if (accounts.isEmpty()) {
             SettingsAccountEmptyMessage("No connected accounts", "External login providers will show up here.")
         } else {
@@ -529,7 +543,13 @@ private fun SettingsConnectedAccountRow(
     val connected = status == "connected"
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 64.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.30f))
+                    .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -539,7 +559,13 @@ private fun SettingsConnectedAccountRow(
                 modifier = Modifier.size(28.dp)
             )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(account.provider.ifBlank { "Account ${index + 1}" }, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    account.provider.ifBlank { "Account ${index + 1}" },
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(account.identifier, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             if (account.canConnect && !connected) {
@@ -673,7 +699,7 @@ private fun SettingsProviderConnectButton(text: String, enabled: Boolean, onClic
         label = text,
         onClick = onClick,
         enabled = enabled,
-        backgroundColor = SlockColor.BrandYellow,
+        backgroundColor = SlockColor.SurfaceWhite,
         disabledBackgroundColor = SlockColor.EmptyStateGray,
         minWidth = 84.dp,
         minHeight = 32.dp,
