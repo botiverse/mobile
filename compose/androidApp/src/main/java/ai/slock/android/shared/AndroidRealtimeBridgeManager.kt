@@ -19,6 +19,7 @@ import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
+import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -368,6 +369,13 @@ internal object AndroidRealtimeBridgeManager {
     }
 
     private fun fanOutRawRealtimeEvent(serverId: ServerId, eventName: String, rawPayload: Any?) {
+        if (eventName == RealtimeSocketEvents.Heartbeat) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "raw_event_fanout_skip eventName=$eventName serverId=${serverId.value} reason=native_heartbeat"
+            )
+            return
+        }
         val snapshot = consumers.values.toList()
         snapshot.forEach { consumer ->
             consumer.sink(serverId, eventName, rawPayload)

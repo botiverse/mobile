@@ -153,7 +153,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
-        attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
         startRealtimeBridgeIfNeeded()
     }
@@ -166,6 +165,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     override fun onPause() {
+        detachRealtimeConsumerIfNeeded()
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
     }
@@ -176,6 +176,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
         sendAppShellLifecycleEvent("resume")
+        attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
         foregroundRealtimeOwnerIfNeeded()
     }
