@@ -2489,7 +2489,7 @@ class ThreadPayloadTest {
 
         val uuidOnlyMessage = message.copy(id = "message-241", taskNumber = 241).withLinkedTask(linkedTasks["message-241"])
         assertEquals(null, uuidOnlyMessage.taskAssigneeName)
-        assertEquals(null, threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName))
+        assertEquals("#241", threadMessageTaskMetaLabel(uuidOnlyMessage, uuidOnlyMessage.taskAssigneeName))
     }
 
     @Test
@@ -2655,7 +2655,7 @@ class ThreadPayloadTest {
         val message = payload.messages.first()
         assertEquals(assigneeId, message.taskAssigneeId)
         assertEquals(null, message.taskAssigneeName)
-        assertEquals(null, threadMessageTaskMetaLabel(message))
+        assertEquals("#236", threadMessageTaskMetaLabel(message))
     }
 
     @Test
@@ -2693,17 +2693,10 @@ class ThreadPayloadTest {
         assertEquals(assigneeId, message.taskAssigneeId)
         assertEquals("Android Developer", payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId))
         assertEquals(
-            null,
+            "#236",
             threadMessageTaskMetaLabel(
                 message,
                 resolvedTaskAssigneeName = null
-            )
-        )
-        assertEquals(
-            "#236 @Android Developer",
-            threadMessageTaskMetaLabel(
-                message,
-                resolvedTaskAssigneeName = payload.resolveTaskAssigneeDisplayName(message.taskAssigneeName, message.taskAssigneeId)
             )
         )
     }
