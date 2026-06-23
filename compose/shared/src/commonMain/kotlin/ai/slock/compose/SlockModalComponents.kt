@@ -7,6 +7,7 @@ import ai.slock.compose.components.SlockBrutalListSectionHeader
 import ai.slock.compose.components.SlockBrutalListShell
 import ai.slock.compose.components.SlockBrutalModalHeader
 import ai.slock.compose.components.SlockBrutalModalLayer
+import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockActionSheetRowModel
 import ai.slock.compose.components.SlockModalFieldLabelComponent
 import ai.slock.compose.components.SlockModalShellModel
@@ -96,19 +97,15 @@ internal fun SlockUnifiedDialog(
                     modifier
                         .padding(outerPadding)
                         .widthIn(min = minWidth, max = maxWidth)
+                        .padding(end = 4.dp, bottom = 4.dp)
+                        .background(SlockColor.ShadowBlack)
                         .clickable(enabled = false, onClick = {})
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .offset(x = 4.dp, y = 4.dp)
-                            .background(SlockColor.ShadowBlack)
-                )
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
+                            .padding(end = 4.dp, bottom = 4.dp)
                             .background(SlockColor.SurfaceWhite)
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
                             .padding(contentPadding),
@@ -207,20 +204,40 @@ internal fun SlockModalTextField(
     maxLines: Int = 1,
     errorText: String? = null
 ) {
-    SlockModalTextFieldComponent(
-        label = label,
-        value = value,
-        placeholder = placeholder,
-        onValueChange = onValueChange,
-        modifier = modifier,
-        required = required,
-        isError = isError,
-        leadingIcon = leadingIcon,
-        enabled = enabled,
-        fieldHeight = fieldHeight,
-        maxLines = maxLines,
-        errorText = errorText
-    )
+    if (
+        leadingIcon != null &&
+            maxLines == 1 &&
+            fieldHeight == 42.dp &&
+            !required &&
+            !isError &&
+            errorText == null
+    ) {
+        Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SlockModalFieldLabelComponent(label = label)
+            SlockBrutalSearchField(
+                value = value,
+                placeholder = placeholder,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                leadingIcon = leadingIcon
+            )
+        }
+    } else {
+        SlockModalTextFieldComponent(
+            label = label,
+            value = value,
+            placeholder = placeholder,
+            onValueChange = onValueChange,
+            modifier = modifier,
+            required = required,
+            isError = isError,
+            leadingIcon = leadingIcon,
+            enabled = enabled,
+            fieldHeight = fieldHeight,
+            maxLines = maxLines,
+            errorText = errorText
+        )
+    }
 }
 
 @Composable
