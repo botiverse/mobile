@@ -12,11 +12,14 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -92,6 +95,33 @@ class SharedActivityStoreTest {
         assertEquals(listOf(ChannelId("channel-1")), read.unreadChannelIds)
         assertEquals(1, store.state.value.items.single().unreadCount)
         assertEquals(1, store.state.value.totalUnreadCount)
+        scope.cancel()
+    }
+
+    @Test
+    fun activitySilentRefreshDoesNotDrivePullRefreshState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val inbox = DeferredInboxRepository()
+        val store = activityStore(scope, inbox)
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        inbox.completeNext(activityItem("channel-1"))
+
+        store.dispatch(SharedActivityIntent.Refresh)
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
+        inbox.completeNext(activityItem("channel-2"))
+
+        store.dispatch(SharedActivityIntent.PullRefresh)
+
+        assertEquals(false, store.state.value.loading)
+        assertEquals(true, store.state.value.refreshing)
+        assertEquals(true, store.state.value.pullRefreshing)
+        inbox.completeNext(activityItem("channel-3"))
+        assertEquals(false, store.state.value.refreshing)
+        assertEquals(false, store.state.value.pullRefreshing)
         scope.cancel()
     }
 
@@ -258,6 +288,35 @@ class SharedActivityStoreTest {
 
         override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
             DataResult.Content(ReadReceiptResult())
+    }
+
+    private inner class DeferredInboxRepository : InboxRepository {
+        private val pending = mutableListOf<CompletableDeferred<DataResult<InboxSnapshot>>>()
+
+        override suspend fun loadInitial(
+            serverId: ServerId,
+            filter: InboxFilter,
+            limit: Int
+        ): DataResult<InboxSnapshot> {
+            val result = CompletableDeferred<DataResult<InboxSnapshot>>()
+            pending += result
+            return withContext(NonCancellable) { result.await() }
+        }
+
+        override suspend fun loadMore(
+            serverId: ServerId,
+            filter: InboxFilter,
+            offset: Int,
+            limit: Int
+        ): DataResult<InboxSnapshot> =
+            DataResult.Empty(EmptyReason.NoInboxItems)
+
+        override suspend fun markDone(channelId: ChannelId): DataResult<InboxDoneResult> =
+            DataResult.Content(InboxDoneResult(channelId))
+
+        fun completeNext(item: InboxItem) {
+            pending.removeAt(0).complete(DataResult.Content(snapshot(listOf(item))))
+        }
     }
 
     private class FakeConversationRepository : ConversationRepository {

@@ -9625,7 +9625,7 @@ private fun SharedHomeSavedPanel(
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
     }
-    val pullToRefreshState = rememberPullToRefreshState(state.refreshing)
+    val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
     LazyColumn(
         state = listState,
         modifier =
@@ -9637,7 +9637,7 @@ private fun SharedHomeSavedPanel(
         pullToRefreshItem(
             state = pullToRefreshState,
             scrollState = listState,
-            onRefresh = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) },
+            onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
             content = { pullProgress, isRefreshing, _ ->
                 SlockRaftPullRefreshIndicator(
                     pullProgress = pullProgress,

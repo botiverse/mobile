@@ -87,9 +87,38 @@ class SharedHomeSearchSavedStoreTest {
 
         assertEquals(false, store.state.value.saved.loading)
         assertEquals(true, store.state.value.saved.refreshing)
+        assertEquals(false, store.state.value.saved.pullRefreshing)
         assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
         saved.completeNext("message-2")
         assertEquals(false, store.state.value.saved.refreshing)
+        assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
+        scope.cancel()
+    }
+
+    @Test
+    fun pullRefreshSavedShowsPullRefreshAffordanceDuringLoadedRefresh() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved = DeferredSavedRepository()
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+        saved.completeNext("message-1")
+
+        store.dispatch(SharedHomeSearchSavedIntent.PullRefreshSaved)
+
+        assertEquals(false, store.state.value.saved.loading)
+        assertEquals(true, store.state.value.saved.refreshing)
+        assertEquals(true, store.state.value.saved.pullRefreshing)
+        assertEquals(listOf("message-1"), store.state.value.saved.items.map { it.key })
+        saved.completeNext("message-2")
+        assertEquals(false, store.state.value.saved.refreshing)
+        assertEquals(false, store.state.value.saved.pullRefreshing)
         assertEquals(listOf("message-2"), store.state.value.saved.items.map { it.key })
         scope.cancel()
     }

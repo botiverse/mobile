@@ -46,7 +46,8 @@ class SharedActivityStore(
     fun dispatch(intent: SharedActivityIntent) {
         when (intent) {
             SharedActivityIntent.LoadInitial -> load(refresh = true)
-            SharedActivityIntent.Refresh -> load(refresh = true)
+            SharedActivityIntent.Refresh -> load(refresh = true, pullRefresh = false)
+            SharedActivityIntent.PullRefresh -> load(refresh = true, pullRefresh = true)
             SharedActivityIntent.LoadMore -> load(refresh = false)
             SharedActivityIntent.MarkAllRead -> markAllRead()
             is SharedActivityIntent.SetFilter -> setFilter(intent.filter)
@@ -82,11 +83,14 @@ class SharedActivityStore(
         val current = _state.value
         if (current.loading || current.refreshing) return
         if (!current.loaded || current.snapshot != null) {
-            load(refresh = true)
+            load(refresh = true, pullRefresh = false)
         }
     }
 
-    private fun load(refresh: Boolean) {
+    private fun load(
+        refresh: Boolean,
+        pullRefresh: Boolean = false
+    ) {
         val current = _state.value
         if (!refresh && (current.loading || current.refreshing || current.loadingMore || !current.hasMore)) return
         loadJob?.cancel()
@@ -98,6 +102,7 @@ class SharedActivityStore(
                     previous.copy(
                         loading = refresh && previous.snapshot == null,
                         refreshing = refresh && previous.snapshot != null,
+                        pullRefreshing = refresh && pullRefresh && previous.snapshot != null,
                         loadingMore = !refresh,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -162,6 +167,7 @@ class SharedActivityStore(
                         loaded = true,
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -180,6 +186,7 @@ class SharedActivityStore(
                         loaded = true,
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = null,
                         loadMoreErrorCode = null
@@ -189,6 +196,7 @@ class SharedActivityStore(
                     current.copy(
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = if (append) null else result.error.code,
                         loadMoreErrorCode = if (append) result.error.code else null
@@ -197,6 +205,7 @@ class SharedActivityStore(
                     current.copy(
                         loading = false,
                         refreshing = false,
+                        pullRefreshing = false,
                         loadingMore = false,
                         errorCode = if (append) null else result.blocker.code,
                         loadMoreErrorCode = if (append) result.blocker.code else null
@@ -225,7 +234,7 @@ class SharedActivityStore(
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
-                load(refresh = true)
+                load(refresh = true, pullRefresh = false)
             } else {
                 refreshAfterFailure(previous, "activity_mark_all_read_failed")
             }
@@ -335,7 +344,7 @@ class SharedActivityStore(
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
-                load(refresh = true)
+                load(refresh = true, pullRefresh = false)
             } else {
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
             }
@@ -361,8 +370,8 @@ class SharedActivityStore(
         previous: SharedActivityState,
         code: String
     ) {
-        _state.value = previous.copy(loading = false, refreshing = false, loadingMore = false, errorCode = code)
-        load(refresh = true)
+        _state.value = previous.copy(loading = false, refreshing = false, pullRefreshing = false, loadingMore = false, errorCode = code)
+        load(refresh = true, pullRefresh = false)
     }
 
     private fun setLoadError(code: String, append: Boolean = false) {
@@ -370,6 +379,7 @@ class SharedActivityStore(
             _state.value.copy(
                 loading = false,
                 refreshing = false,
+                pullRefreshing = false,
                 loadingMore = false,
                 errorCode = if (append) null else code,
                 loadMoreErrorCode = if (append) code else null
@@ -405,6 +415,7 @@ data class SharedActivityState(
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
+    val pullRefreshing: Boolean = false,
     val loadingMore: Boolean = false,
     val errorCode: String? = null,
     val loadMoreErrorCode: String? = null
@@ -424,6 +435,7 @@ data class SharedActivityState(
 sealed interface SharedActivityIntent {
     data object LoadInitial : SharedActivityIntent
     data object Refresh : SharedActivityIntent
+    data object PullRefresh : SharedActivityIntent
     data object LoadMore : SharedActivityIntent
     data object MarkAllRead : SharedActivityIntent
     data class SetFilter(val filter: InboxFilter) : SharedActivityIntent

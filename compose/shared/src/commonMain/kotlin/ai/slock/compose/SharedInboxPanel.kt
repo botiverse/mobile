@@ -271,7 +271,8 @@ private fun SharedActivityPanelContent(
                     actionLabel = if (state.refreshing || state.loading) "..." else "Retry",
                     onAction = { onIntent(SharedActivityIntent.Refresh) },
                     refreshing = state.refreshing,
-                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
                     bottomContentPadding = bottomContentPadding,
                     listState = listState
                 )
@@ -280,7 +281,8 @@ private fun SharedActivityPanelContent(
                     title = "Activity is empty",
                     detail = state.selectedFilter.emptyCopy(),
                     refreshing = state.refreshing,
-                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
                     bottomContentPadding = bottomContentPadding,
                     listState = listState
                 )
@@ -294,7 +296,8 @@ private fun SharedActivityPanelContent(
                         },
                     detail = state.selectedFilter.emptyCopy(),
                     refreshing = state.refreshing,
-                    onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                    pullRefreshing = state.pullRefreshing,
+                    onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
                     bottomContentPadding = bottomContentPadding,
                     listState = listState
                 )
@@ -302,6 +305,7 @@ private fun SharedActivityPanelContent(
                 SharedActivityList(
                     snapshot = snapshot,
                     refreshing = state.refreshing,
+                    pullRefreshing = state.pullRefreshing,
                     loadingMore = state.loadingMore,
                     loadMoreErrorCode = state.loadMoreErrorCode,
                     onOpenMessage = onOpenMessage,
@@ -409,6 +413,7 @@ private fun SharedActivityFilterBar(
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
     refreshing: Boolean,
+    pullRefreshing: Boolean,
     loadingMore: Boolean,
     loadMoreErrorCode: String?,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
@@ -419,7 +424,7 @@ private fun SharedActivityList(
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
-    val pullToRefreshState = rememberPullToRefreshState(refreshing)
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
         snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
             .distinctUntilChanged()
@@ -438,7 +443,7 @@ private fun SharedActivityList(
             pullToRefreshItem(
                 state = pullToRefreshState,
                 scrollState = listState,
-                onRefresh = { onIntent(SharedActivityIntent.Refresh) },
+                onRefresh = { onIntent(SharedActivityIntent.PullRefresh) },
                 content = { pullProgress, isRefreshing, _ ->
                     SlockRaftPullRefreshIndicator(
                         pullProgress = pullProgress,
@@ -773,12 +778,13 @@ private fun SharedActivityRefreshableStateBody(
     detail: String,
     actionLabel: String? = null,
     refreshing: Boolean,
+    pullRefreshing: Boolean,
     onRefresh: () -> Unit,
     bottomContentPadding: Dp,
     listState: LazyListState,
     onAction: () -> Unit = {}
 ) {
-    val pullToRefreshState = rememberPullToRefreshState(refreshing)
+    val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
