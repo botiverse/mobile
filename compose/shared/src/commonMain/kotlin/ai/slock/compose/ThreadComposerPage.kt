@@ -1111,20 +1111,17 @@ private fun ComposerMemberSuggestionRow(
     val muted = !inChannel
     val contentColor =
         when {
-            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.7f)
-            muted -> SlockColor.TextBlack.copy(alpha = 0.5f)
+            muted -> SlockColor.TextMutedGray
             else -> SlockColor.TextBlack
         }
     val handleColor =
         when {
-            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.4f)
-            muted -> SlockColor.TextBlack.copy(alpha = 0.3f)
+            muted -> SlockColor.TextMutedGray
             else -> SlockColor.TextBlack.copy(alpha = 0.4f)
         }
     val secondaryColor =
         when {
-            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.5f)
-            muted -> SlockColor.TextBlack.copy(alpha = 0.4f)
+            muted -> SlockColor.TextMutedGray
             selected -> SlockColor.TextBlack.copy(alpha = 0.7f)
             else -> SlockColor.TextBlack.copy(alpha = 0.5f)
         }
@@ -1159,7 +1156,7 @@ private fun ComposerMemberSuggestionRow(
                 SlockLucideIcon(
                     SlockLucideIconName.UserMinus,
                     modifier = Modifier.size(12.dp),
-                    color = "#66000000"
+                    color = SlockColor.TextMutedGrayArgb
                 )
             }
             Text(
