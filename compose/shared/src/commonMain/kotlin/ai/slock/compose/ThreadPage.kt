@@ -71,6 +71,7 @@ import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
 import ai.slock.compose.markdown.threadMarkdownTagDisplayLabel
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
@@ -7266,12 +7267,26 @@ private fun Modifier.threadMessageLongPressActions(
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
     val isAgent = authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
-    return resolveAvatarSlot(
+    val resolution = resolveAvatarSlot(
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
         id = authorId.ifBlank { authorName },
         avatarWireValue = avatarWireValue,
         gravatarHash = gravatarHash
-    ).effectiveAvatarWireValue
+    )
+    val effectiveAvatarWireValue = resolution.effectiveAvatarWireValue
+    if (effectiveAvatarWireValue?.isGravatarAvatarWireValue() == true) {
+        logThreadAvatarDiagnostic(
+            reason = if (isAgent) "render_agent_gravatar" else "render_human_gravatar",
+            message = this,
+            resolvedAvatarWireValue = effectiveAvatarWireValue,
+            profileKind = null,
+            profileAvatarWireValue = null,
+            profileAvatarUrl = null,
+            profileGravatarHash = null,
+            homeAvatarWireValue = null
+        )
+    }
+    return effectiveAvatarWireValue
 }
 
 private fun String.isLikelyThreadAgentId(): Boolean =

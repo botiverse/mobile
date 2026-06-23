@@ -3613,6 +3613,25 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
         } else {
             currentAvatar.effectiveAvatarWireValue ?: profileAvatar.effectiveAvatarWireValue
         }
+    if (resolvedAvatarWireValue?.isGravatarAvatarWireValue() == true ||
+        (isAgent && currentAvatarWireValue?.isGravatarAvatarWireValue() == true)
+    ) {
+        logThreadAvatarDiagnostic(
+            reason =
+                if (isAgent && currentAvatarWireValue?.isGravatarAvatarWireValue() == true) {
+                    "profile_merge_agent_gravatar_candidate"
+                } else {
+                    "profile_merge_resolved_gravatar"
+                },
+            message = this,
+            resolvedAvatarWireValue = resolvedAvatarWireValue,
+            profileKind = profile.kind,
+            profileAvatarWireValue = profile.avatar?.wireValue,
+            profileAvatarUrl = profile.avatarUrl,
+            profileGravatarHash = profile.gravatarHash,
+            homeAvatarWireValue = null
+        )
+    }
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
         authorKind =
@@ -3653,15 +3672,33 @@ private fun KuiklyThreadMessageItem.withHomeDirectMessageAvatar(avatarWireValue:
     val isAgent = authorKind.equals("agent", ignoreCase = true)
     if (!isAgent) return this
     val currentWireValue = this.avatarWireValue?.takeIf { it.isNotBlank() }
+    val nextWireValue =
+        if (currentWireValue == null || currentWireValue.isGravatarAvatarWireValue()) {
+            wireValue
+        } else if (currentWireValue.isAgentFallbackAvatarWireValue()) {
+            wireValue
+        } else {
+            currentWireValue
+        }
+    if (currentWireValue?.isGravatarAvatarWireValue() == true || nextWireValue.isGravatarAvatarWireValue()) {
+        logThreadAvatarDiagnostic(
+            reason =
+                if (nextWireValue.isGravatarAvatarWireValue()) {
+                    "home_dm_avatar_resolved_gravatar"
+                } else {
+                    "home_dm_avatar_overrode_gravatar_candidate"
+                },
+            message = this,
+            resolvedAvatarWireValue = nextWireValue,
+            profileKind = null,
+            profileAvatarWireValue = null,
+            profileAvatarUrl = null,
+            profileGravatarHash = null,
+            homeAvatarWireValue = wireValue
+        )
+    }
     return copy(
-        avatarWireValue =
-            if (currentWireValue == null || currentWireValue.isGravatarAvatarWireValue()) {
-                wireValue
-            } else if (currentWireValue.isAgentFallbackAvatarWireValue()) {
-                wireValue
-            } else {
-                currentWireValue
-            },
+        avatarWireValue = nextWireValue,
         gravatarHash = null
     )
 }
