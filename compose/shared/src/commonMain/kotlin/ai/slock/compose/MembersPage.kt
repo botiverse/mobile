@@ -3629,7 +3629,14 @@ private fun MembersAgentActivityTab(
                     .sortedWith(compareBy<AgentActivityEntry> { it.timestamp.membersActivitySortKey() }.thenBy { it.id })
             }
         if (rows.isEmpty()) {
-            MembersDetailField("Activity", "No activity yet. Start the agent to see its activity log.")
+            SlockEmptyState(
+                title = "No activity yet",
+                detail = "Start the agent to see its activity log.",
+                iconName = SlockLucideIconName.Activity,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 220.dp, max = 520.dp)
+            )
         } else {
             val listState = rememberLazyListState()
             var allowBottomAnchor by remember(detail?.agentId) { mutableStateOf(true) }
@@ -3691,7 +3698,6 @@ private fun MembersAgentActivityRow(
         modifier = Modifier
             .fillMaxWidth()
             .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
             .padding(SlockSpacing.Sm),
         horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
