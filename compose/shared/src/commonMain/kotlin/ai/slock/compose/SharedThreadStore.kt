@@ -1563,21 +1563,15 @@ internal class SharedThreadDataSource(
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
-        val sessionProfileById = session.senderProfileById()
-        val repository = memberRepository ?: return withSenderProfiles(sessionProfileById)
-        val serverId =
-            session.currentServerId
-                ?.takeIf { it.isNotBlank() }
-                ?.let(::ServerId)
-                ?: return withSenderProfiles(sessionProfileById)
+        val repository = memberRepository ?: return this
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
         val homeAvatarByMemberId =
             localWriteThrough
                 ?.readHomeSnapshot(serverId)
                 ?.directMessageAvatarWireValuesByMemberId()
                 .orEmpty()
         senderProfilesCache[serverId.value]?.let { profilesById ->
-            return withSenderProfiles(profilesById + sessionProfileById)
-                .withHomeDirectMessageAvatars(homeAvatarByMemberId)
+            return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
         }
         val result =
             try {
@@ -1585,10 +1579,10 @@ internal class SharedThreadDataSource(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
-                return withSenderProfiles(sessionProfileById)
+                return this
             }
-        if (result !is DataResult.Content) return withSenderProfiles(sessionProfileById)
-        val profilesById = result.data.members.associateBy { it.id.value } + sessionProfileById
+        if (result !is DataResult.Content) return this
+        val profilesById = result.data.members.associateBy { it.id.value }
         senderProfilesCache[serverId.value] = profilesById
         return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
@@ -1614,17 +1608,13 @@ internal class SharedThreadDataSource(
     private suspend fun KuiklyThreadScreenPayload.withCachedSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
-        val sessionProfileById = session.senderProfileById()
-        val serverId =
-            session.currentServerId
-                ?.takeIf { it.isNotBlank() }
-                ?: return withSenderProfiles(sessionProfileById)
+        val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return this
         val homeAvatarByMemberId =
             localWriteThrough
                 ?.readHomeSnapshot(ServerId(serverId))
                 ?.directMessageAvatarWireValuesByMemberId()
                 .orEmpty()
-        val cachedProfiles = senderProfilesCache[serverId].orEmpty() + sessionProfileById
+        val cachedProfiles = senderProfilesCache[serverId].orEmpty()
         return withSenderProfiles(cachedProfiles).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
 
@@ -3937,11 +3927,6 @@ internal fun StoredAuthSession.currentServerSlug(): String? =
             ?.let { selectedId -> servers.firstOrNull { it.id == selectedId }?.slug }
             ?.takeIf { it.isNotBlank() }
         ?: servers.firstOrNull()?.slug?.takeIf { it.isNotBlank() }
-
-private fun StoredAuthSession.senderProfileById(): Map<String, MemberProfile> {
-    val userId = user.id.takeIf { it.isNotBlank() } ?: return emptyMap()
-    return mapOf(userId to user.toMemberProfile())
-}
 
 private fun KuiklyThreadMessageCommentRef.toMessageCommentRef(): MessageCommentRef? {
     val cleanAttachmentId = attachmentId.takeIf { it.isNotBlank() } ?: return null

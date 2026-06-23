@@ -1196,59 +1196,6 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun fetchedThreadPayloadUsesCurrentUserAvatarBeforeFirstRender() = runBlocking {
-        val session =
-            sampleSession().copy(
-                user = sampleSession().user.copy(avatarUrl = "pixel:crown")
-            )
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(session)
-            )
-
-        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
-
-        val message = payload.messages.single()
-        assertEquals("Artin", message.authorName)
-        assertEquals("pixel:crown", message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
-    }
-
-    @Test
-    fun cachedSenderProfileUsesCurrentUserAvatarForRealtimeRows() = runBlocking {
-        val session =
-            sampleSession().copy(
-                user = sampleSession().user.copy(avatarUrl = "pixel:crown")
-            )
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
-                sessionStore = InMemorySlockAuthSessionStore(session)
-            )
-        val payload =
-            basePayload().copy(
-                status = "content",
-                messages =
-                    listOf(
-                        KuiklyThreadMessageItem(
-                            id = "m1",
-                            authorId = "u1",
-                            authorName = "Artin",
-                            authorKind = "human",
-                            body = "mine"
-                        )
-                    )
-            )
-
-        val enriched = dataSource.enrichCachedSenderProfiles(payload)
-
-        val message = enriched.messages.single()
-        assertEquals("pixel:crown", message.avatarWireValue)
-        assertEquals(null, message.gravatarHash)
-    }
-
-    @Test
     fun cachedThreadPayloadNormalizesAgentGravatarBeforeFirstRender() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(
