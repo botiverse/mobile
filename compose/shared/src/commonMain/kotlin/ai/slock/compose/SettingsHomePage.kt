@@ -9209,7 +9209,8 @@ private fun SharedHomeSearchPanel(
         homeSearchEntityResults(state.query, homeState, state.senderFilters)
     }
     val groupedResults = remember(state.items) { groupHomeSearchResults(state.items) }
-    var openFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
+    var openFilterId by remember(initialOpenFilterId) { mutableStateOf<String?>(null) }
+    var pendingInitialOpenFilterId by remember(initialOpenFilterId) { mutableStateOf(initialOpenFilterId) }
     var senderAnchor by remember { mutableStateOf(Offset.Zero) }
     var channelAnchor by remember { mutableStateOf(Offset.Zero) }
     var timeAnchor by remember { mutableStateOf(Offset.Zero) }
@@ -9219,8 +9220,16 @@ private fun SharedHomeSearchPanel(
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSearch)
     }
+    LaunchedEffect(initialOpenFilterId, senderAnchor, channelAnchor, timeAnchor, sortAnchor) {
+        val pending = pendingInitialOpenFilterId ?: return@LaunchedEffect
+        if (homeSearchFilterAnchorReady(pending, senderAnchor, channelAnchor, timeAnchor, sortAnchor)) {
+            openFilterId = pending
+            pendingInitialOpenFilterId = null
+        }
+    }
     SlockBackHandler(enabled = openFilterId != null) {
         openFilterId = null
+        pendingInitialOpenFilterId = null
     }
     Box(
         modifier =
@@ -9460,6 +9469,21 @@ private fun SharedHomeSearchPanelState.hasResumeSearchRefreshIntent(): Boolean =
         !selectedChannelId.isNullOrBlank() ||
         timeRange != SearchTimeRange.Any
 
+private fun homeSearchFilterAnchorReady(
+    filterId: String,
+    senderAnchor: Offset,
+    channelAnchor: Offset,
+    timeAnchor: Offset,
+    sortAnchor: Offset
+): Boolean =
+    when (filterId) {
+        "sender" -> senderAnchor != Offset.Zero
+        "channel" -> channelAnchor != Offset.Zero
+        "time" -> timeAnchor != Offset.Zero
+        "sort" -> sortAnchor != Offset.Zero
+        else -> false
+    }
+
 @Composable
 private fun SharedHomeSearchToolbar(
     query: String,
@@ -9572,7 +9596,7 @@ private fun SharedHomeSearchInput(
         )
     } else {
         SharedHomeSearchShadowSurface(
-            modifier = modifier.heightIn(min = 38.dp),
+            modifier = modifier.height(38.dp),
             background = SlockColor.SurfaceWhite,
             borderWidth = SlockStroke.Default,
             contentPaddingHorizontal = 0.dp,
@@ -9869,6 +9893,7 @@ private fun SharedHomeSearchFilters(
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
+                        onAnchorChanged = senderAnchorChanged,
                         onClick = { anchor ->
                             senderAnchorChanged(anchor)
                             onOpenFilter("sender")
@@ -9885,6 +9910,7 @@ private fun SharedHomeSearchFilters(
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
+                        onAnchorChanged = channelAnchorChanged,
                         onClick = { anchor ->
                             channelAnchorChanged(anchor)
                             onOpenFilter("channel")
@@ -9901,6 +9927,7 @@ private fun SharedHomeSearchFilters(
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
+                        onAnchorChanged = timeAnchorChanged,
                         onClick = { anchor ->
                             timeAnchorChanged(anchor)
                             onOpenFilter("time")
@@ -9918,6 +9945,7 @@ private fun SharedHomeSearchFilters(
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
+                        onAnchorChanged = channelAnchorChanged,
                         onClick = { anchor ->
                             channelAnchorChanged(anchor)
                             onOpenFilter("channel")
@@ -9936,6 +9964,7 @@ private fun SharedHomeSearchFilters(
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
                         reserveActiveShadowSpace = true,
+                        onAnchorChanged = timeAnchorChanged,
                         onClick = { anchor ->
                             timeAnchorChanged(anchor)
                             onOpenFilter("time")
@@ -9953,6 +9982,7 @@ private fun SharedHomeSearchFilters(
                     activeBackgroundColor = SlockColor.BrandYellow,
                     activeShadowOffset = SearchControlShadowOffset,
                     reserveActiveShadowSpace = true,
+                    onAnchorChanged = sortAnchorChanged,
                     onClick = { anchor ->
                         sortAnchorChanged(anchor)
                         onOpenFilter("sort")
@@ -12602,7 +12632,6 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
     val pager = LocalActivity.current.getPager() as Pager
     val openFilterId =
         initialOpenFilterId ?: pager.pageData.params.optString("openFilterId").takeIf { it.isNotBlank() }
-    val channelFilters = remember(homeSearchVisualHomeState) { homeSearchChannelFilters(homeSearchVisualHomeState) }
     Box(modifier = Modifier.width(342.dp).height(620.dp)) {
         SharedHomeSearchPanel(
             state = homeSearchVisualSearchState,
@@ -12612,32 +12641,12 @@ private fun HomeSearchVisualContent(initialOpenFilterId: String? = null) {
             interactiveSearchField = false,
             includeTopSafeArea = false,
             showSenderFilter = true,
-            initialOpenFilterId = if (openFilterId == "channel") null else openFilterId,
+            initialOpenFilterId = openFilterId,
             onOpenItem = {},
             onOpenEntity = {},
             bottomContentPadding = 12.dp,
             modifier = Modifier.fillMaxSize()
         )
-        if (openFilterId == "channel") {
-            SlockFilterPopover(
-                anchor = Offset(132f, 58f),
-                title = "Channels",
-                searchPlaceholder = "Search...",
-                searchText = "",
-                onSearchChange = {},
-                options = channelFilters.map { SlockFilterOption(it.id, it.label, it.icon) },
-                selectedIds = setOf("ch_design"),
-                onToggle = {},
-                onClear = {},
-                onDismiss = {},
-                widthDp = 220f,
-                multiSelect = false,
-                surfaceBorderColor = SearchPopoverBorderColor,
-                surfaceShadowColor = SearchPopoverShadowColor,
-                selectedRowColor = SlockColor.SurfaceWhite,
-                showClearWhenSelected = true
-            )
-        }
     }
 }
 

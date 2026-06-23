@@ -697,7 +697,8 @@ internal fun SlockAnchoredToolbarChip(
     disabledBorderColor: Color = SlockColor.EmptyStateGray,
     activeShadowOffset: Dp = 0.dp,
     reserveActiveShadowSpace: Boolean = false,
-    activeShadowColor: Color = SlockColor.ShadowBlack
+    activeShadowColor: Color = SlockColor.ShadowBlack,
+    onAnchorChanged: ((Offset) -> Unit)? = null
 ) {
     val density = LocalDensity.current
     val anchor = remember { SlockMutableOffsetRef() }
@@ -706,7 +707,11 @@ internal fun SlockAnchoredToolbarChip(
             modifier.onGloballyPositioned { coords ->
                 val root = coords.positionInRoot().toSlockDpOffset(density)
                 val height = with(density) { coords.size.height.toDp().value }
-                anchor.update(Offset(root.x, root.y + height))
+                val next = Offset(root.x, root.y + height)
+                if (!anchor.hasValue || anchor.value != next) {
+                    anchor.update(next)
+                    onAnchorChanged?.invoke(next)
+                }
             }
     ) {
         SlockToolbarChip(

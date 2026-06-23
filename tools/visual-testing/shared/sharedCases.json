@@ -3237,14 +3237,14 @@
       "surface": "home",
       "group": "product-home",
       "status": "baseline",
-      "notes": "Real React MessageSearchPage filtered results vs Android rendering of shared Home Search panel after Search/Saved parity. Covers query field, sender/channel/time/sort filters, entity results, grouped thread hits, and load-more affordance.",
+      "notes": "Real React MessageSearchPage filtered results vs Android rendering of shared Home Search panel. Covers query field, reusable filter primitives, entity results, grouped thread hits, and load-more affordance.",
       "providers": [
         {
           "id": "react",
           "status": "ready",
           "components": [
             "MessageSearchPage",
-            "SearchableFilterPopover",
+            "SelectionPopover",
             "SegmentedControl"
           ],
           "path": "packages/web/src/components/search/MessageSearchPage.tsx",
@@ -3282,14 +3282,14 @@
       "surface": "home",
       "group": "product-home",
       "status": "baseline",
-      "notes": "Focused open-state canonical for the search channel filter. Covers trigger alignment, popover border/shadow, internal search input chrome, and channel option rows without DM leakage.",
+      "notes": "Focused open-state canonical for the search channel filter. React opens the real MessageSearchPage SelectionPopover; Android opens SharedHomeSearchPanel's real SlockFilterPopover through initialOpenFilterId after the channel trigger anchor is measured. Covers trigger alignment, popover border/shadow, internal search input chrome, and channel option rows without DM leakage.",
       "providers": [
         {
           "id": "react",
           "status": "ready",
           "components": [
             "MessageSearchPage",
-            "SearchableFilterPopover"
+            "SelectionPopover"
           ],
           "path": "packages/web/src/components/search/MessageSearchPage.tsx",
           "fixture": "fixtures/components.home.search.results.json"
