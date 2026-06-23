@@ -840,7 +840,7 @@ internal fun LoginContent(
             )
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Signing In..." else "Sign In",
+                text = if (submitting) "Signing in…" else "Sign In",
                 onClick = submitCurrentDraft,
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
@@ -954,7 +954,7 @@ internal fun RegisterContent(
             AuthTermsAgreement(termsAccepted, { termsAccepted = it })
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Creating account..." else "Create Account",
+                text = if (submitting) "Creating account…" else "Create Account",
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
                 enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && emailError == null,
@@ -988,7 +988,7 @@ internal fun ForgotPasswordContent(
             modifier = Modifier.authPageStaticTextFocus()
         )
         Text(
-            text = "Enter your email and we’ll send you a link to\nreset your password.",
+            text = "Enter your email and we'll send you a link to reset your password.",
             style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
             color = SlockColor.TextMutedGray,
             textAlign = TextAlign.Center,
@@ -1009,19 +1009,19 @@ internal fun ForgotPasswordContent(
             AuthError(errorMessage)
             if (sent) {
                 AuthSuccessNotice(
-                    title = "Reset link sent",
-                    detail = "Check ${email.ifBlank { "your email" }} for your secure reset link."
+                    title = "Check your email",
+                    detail = "If an account exists with ${email.ifBlank { "your email" }}, we've sent a password reset link."
                 )
             }
             AuthActionButton(
-                text = if (sending) "Sending link..." else "Send reset link",
+                text = if (sending) "Sending…" else "Send Reset Link",
                 onClick = onSubmit,
                 tone = AuthButtonTone.Pink,
                 enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
             )
-            AuthTextLink("Back to sign in") { onBackToSignIn() }
+            AuthTextLink("Back to Sign In") { onBackToSignIn() }
         }
     }
 }
@@ -1061,10 +1061,16 @@ private fun AuthLegalNotice(
                 modifier = Modifier.authPageStaticTextFocus()
             )
             Text(
-                "Privacy Policy.",
+                "Privacy Policy",
                 style = AuthLegalNoticeLinkStyle,
                 color = SlockColor.TextBlack,
                 modifier = Modifier.clickable { onOpenPrivacy() }
+            )
+            Text(
+                ".",
+                style = AuthLegalNoticeTextStyle,
+                color = AuthLegalNoticeTextColor,
+                modifier = Modifier.authPageStaticTextFocus()
             )
         }
     }
@@ -1110,7 +1116,8 @@ private fun AuthTermsAgreement(checked: Boolean, onCheckedChange: (Boolean) -> U
                     color = AuthTermsTextColor,
                     modifier = Modifier.authPageStaticTextFocus()
                 )
-                Text("Privacy Policy.", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+                Text("Privacy Policy", style = AuthTermsLinkStyle, color = SlockColor.TextBlack)
+                Text(".", style = AuthTermsTextStyle, color = AuthTermsTextColor)
             }
         }
     }
