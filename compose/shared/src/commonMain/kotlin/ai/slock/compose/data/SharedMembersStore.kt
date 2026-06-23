@@ -6,6 +6,7 @@ import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.avatarSlotResolution
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -614,6 +615,7 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
             ?: continue
         val key = handle.lowercase()
         if (!deduped.containsKey(key)) {
+            val avatar = member.avatarSlotResolution()
             deduped[key] =
                 SharedMembersMemberSuggestion(
                     displayName = member.displayName.trim().ifBlank { handle },
@@ -622,8 +624,8 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
                     sourceServerLabel = member.remoteSourceServerLabel(localServerId),
                     kind = member.kind,
                     description = member.description?.trim()?.takeIf { it.isNotBlank() },
-                    avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl?.trim()?.takeIf { it.isNotBlank() },
-                    gravatarHash = member.gravatarHash?.trim()?.takeIf { it.isNotBlank() },
+                    avatarWireValue = avatar.effectiveAvatarWireValue,
+                    gravatarHash = avatar.gravatarHash,
                     avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
                         ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() }
                 )
@@ -648,7 +650,7 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
                         inMentionChannel = true,
                         sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
                         description = existing.description ?: suggestion.description,
-                        avatarWireValue = existing.avatarWireValue ?: suggestion.avatarWireValue,
+                        avatarWireValue = existing.avatarWireValue.preferConcreteSuggestionAvatar(suggestion.avatarWireValue),
                         gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash
                     )
                 else -> existing
@@ -656,6 +658,14 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
     }
     return deduped.values.toList()
 }
+
+private fun String?.preferConcreteSuggestionAvatar(candidate: String?): String? =
+    when {
+        isNullOrBlank() -> candidate
+        startsWith("random:", ignoreCase = true) && !candidate.isNullOrBlank() &&
+            !candidate.startsWith("random:", ignoreCase = true) -> candidate
+        else -> this
+    }
 
 private fun MemberProfile.remoteSourceServerLabel(localServerId: String?): String? {
     val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null

@@ -2,6 +2,8 @@ package ai.slock.compose
 
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.avatarSlotResolution
+import ai.slock.compose.model.toGravatarAvatarUrl
 
 internal data class SharedConversationHeaderEntry(
     val ids: Set<String>,
@@ -102,14 +104,15 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
             surfaceKind = surfaceKind,
             identityIds = ids
         )
+    val avatar = avatarSlotResolution()
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,
         channelKind = channelType?.takeIf { it.isNotBlank() } ?: kind.name.lowercase(),
         title = displayName,
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
-        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        avatarWireValue = avatar.effectiveAvatarWireValue,
         avatarLabel = displayName.take(2).uppercase(),
-        gravatarUrl = gravatarUrl
+        gravatarUrl = avatar.gravatarHash?.toGravatarAvatarUrl()
     )
 }
