@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -664,12 +665,13 @@ private fun SharedActivityCountPill(
     textColor: com.tencent.kuikly.compose.ui.graphics.Color = SlockColor.TextBlack,
     modifier: Modifier = Modifier
 ) {
+    val pillShape = RoundedCornerShape(SlockRadius.Sm)
     Box(
         modifier =
             modifier
                 .widthIn(min = 22.dp)
-                .background(backgroundColor)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .background(backgroundColor, pillShape)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack, pillShape)
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         contentAlignment = Alignment.Center
     ) {
