@@ -123,7 +123,7 @@ class SharedActivityStore(
                                 SharedActivityPageSize
                             )
                         }
-                    val senderProfiles = loadSenderAvatarProfiles(serverId)
+                    val senderProfiles = loadSenderProfiles(serverId)
                     applyLoadResult(
                         result = result,
                         server = server,
@@ -142,7 +142,7 @@ class SharedActivityStore(
         result: DataResult<InboxSnapshot>,
         server: ServerSummary,
         append: Boolean,
-        senderProfiles: Map<String, InboxSenderAvatarProfile>
+        senderProfiles: Map<String, SharedActivitySenderProfile>
     ) {
         val current = _state.value
         _state.value =
@@ -164,6 +164,7 @@ class SharedActivityStore(
                                 hasMore = result.data.hasMore,
                                 nextOffset = result.data.nextOffset
                             ),
+                        senderProfiles = if (append) current.senderProfiles + senderProfiles else senderProfiles,
                         loaded = true,
                         loading = false,
                         refreshing = false,
@@ -183,6 +184,7 @@ class SharedActivityStore(
                         }
                     current.copy(
                         snapshot = snapshot,
+                        senderProfiles = if (append) current.senderProfiles else senderProfiles,
                         loaded = true,
                         loading = false,
                         refreshing = false,
@@ -389,14 +391,14 @@ class SharedActivityStore(
     private suspend fun currentServerId(): ServerId? =
         authStore.readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
 
-    private suspend fun loadSenderAvatarProfiles(serverId: ServerId): Map<String, InboxSenderAvatarProfile> =
+    private suspend fun loadSenderProfiles(serverId: ServerId): Map<String, SharedActivitySenderProfile> =
         try {
             when (val result = memberRepository?.getMembers(DataRequestPriority.Visible, serverId)) {
                 is DataResult.Content ->
                     result.data.members.associateBy(
                         keySelector = { it.id.value },
                         valueTransform = {
-                            InboxSenderAvatarProfile(
+                            SharedActivitySenderProfile(
                                 kind = it.kind,
                                 displayName = it.displayName.ifBlank { it.handle.ifBlank { it.id.value } },
                                 avatarWireValue = it.avatarWireValueForActivity()
@@ -413,6 +415,7 @@ class SharedActivityStore(
 data class SharedActivityState(
     val selectedFilter: InboxFilter = InboxFilter.All,
     val snapshot: InboxSnapshot? = null,
+    val senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap(),
     val loaded: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
@@ -460,7 +463,7 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
         else -> false
     }
 
-private data class InboxSenderAvatarProfile(
+data class SharedActivitySenderProfile(
     val kind: MemberKind,
     val displayName: String,
     val avatarWireValue: String?
@@ -476,7 +479,7 @@ private fun MemberProfile.avatarWireValueForActivity(): String? =
     )
 
 private fun List<InboxItem>.withSenderAvatarProfiles(
-    senderProfiles: Map<String, InboxSenderAvatarProfile>
+    senderProfiles: Map<String, SharedActivitySenderProfile>
 ): List<InboxItem> {
     if (senderProfiles.isEmpty()) return this
     return map { item ->
@@ -484,10 +487,8 @@ private fun List<InboxItem>.withSenderAvatarProfiles(
         val latestSender = item.latestActivitySenderId?.let(senderProfiles::get)
         item.copy(
             lastMessageSenderKind = lastSender?.kind ?: item.lastMessageSenderKind,
-            lastMessageSenderName = item.lastMessageSenderName ?: lastSender?.displayName,
             lastMessageSenderAvatarWireValue = lastSender?.avatarWireValue ?: item.lastMessageSenderAvatarWireValue,
             latestActivitySenderKind = latestSender?.kind ?: item.latestActivitySenderKind,
-            latestActivitySenderName = item.latestActivitySenderName ?: latestSender?.displayName,
             latestActivitySenderAvatarWireValue = latestSender?.avatarWireValue ?: item.latestActivitySenderAvatarWireValue
         )
     }

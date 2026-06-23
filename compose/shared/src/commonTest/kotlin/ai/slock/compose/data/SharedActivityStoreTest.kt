@@ -132,7 +132,7 @@ class SharedActivityStoreTest {
             threadItem("thread-channel-1", unreadCount = 1)
                 .copy(
                     latestActivitySenderId = "agent-1",
-                    latestActivitySenderName = null,
+                    latestActivitySenderName = "@agent-one",
                     latestActivityPreview = "Latest reply"
                 )
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(row))))
@@ -156,7 +156,9 @@ class SharedActivityStoreTest {
 
         store.dispatch(SharedActivityIntent.LoadInitial)
 
-        assertEquals("Agent One", store.state.value.items.single().latestActivitySenderName)
+        val item = store.state.value.items.single()
+        assertEquals("@agent-one", item.latestActivitySenderName)
+        assertEquals("Agent One", store.state.value.senderProfiles.getValue("agent-1").displayName)
         scope.cancel()
     }
 

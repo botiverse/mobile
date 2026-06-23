@@ -15,6 +15,7 @@ import ai.slock.compose.data.RealMemberRepository
 import ai.slock.compose.data.RealReadReceiptRepository
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SharedActivityIntent
+import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.data.SharedActivityState
 import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.markdown.traceMarkdownSection
@@ -304,6 +305,7 @@ private fun SharedActivityPanelContent(
             else ->
                 SharedActivityList(
                     snapshot = snapshot,
+                    senderProfiles = state.senderProfiles,
                     refreshing = state.refreshing,
                     pullRefreshing = state.pullRefreshing,
                     loadingMore = state.loadingMore,
@@ -412,6 +414,7 @@ private fun SharedActivityFilterBar(
 @Composable
 private fun SharedActivityList(
     snapshot: InboxSnapshot,
+    senderProfiles: Map<String, SharedActivitySenderProfile>,
     refreshing: Boolean,
     pullRefreshing: Boolean,
     loadingMore: Boolean,
@@ -455,6 +458,7 @@ private fun SharedActivityList(
                 val item = snapshot.items[index]
                 SharedActivityRow(
                     item = item,
+                    senderProfiles = senderProfiles,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
                     onOpen = {
@@ -519,6 +523,7 @@ private fun SharedActivityList(
 @Composable
 private fun SharedActivityRow(
     item: InboxItem,
+    senderProfiles: Map<String, SharedActivitySenderProfile>,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
     onOpen: () -> Unit,
@@ -564,7 +569,7 @@ private fun SharedActivityRow(
                     SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
                 }
                 Text(
-                    text = item.primaryPreviewText(),
+                    text = item.primaryPreviewText(senderProfiles),
                     style =
                         if (item.unreadCount > 0) {
                             SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
@@ -577,7 +582,7 @@ private fun SharedActivityRow(
                     modifier = Modifier.weight(1f)
                 )
             }
-            item.secondaryPreviewText()?.let { secondary ->
+            item.secondaryPreviewText(senderProfiles)?.let { secondary ->
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = secondary,
@@ -866,8 +871,28 @@ private fun InboxItem.channelLabel(): String =
         InboxItemKind.Channel, InboxItemKind.System -> "#${channelName.ifBlank { channelId.value }}"
     }
 
-private fun InboxItem.senderDisplayName(): String? =
-    latestActivitySenderName ?: lastMessageSenderName
+private fun InboxItem.senderDisplayName(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String? =
+    if (kind == InboxItemKind.Thread) {
+        latestActivitySenderId
+            ?.let(senderProfiles::get)
+            ?.displayName
+            ?: latestActivitySenderName.takeIf { latestActivitySenderId.isNullOrBlank() }
+            ?: lastMessageSenderId
+                ?.let(senderProfiles::get)
+                ?.displayName
+            ?: lastMessageSenderName.takeIf { lastMessageSenderId.isNullOrBlank() }
+    } else {
+        lastMessageSenderId
+            ?.let(senderProfiles::get)
+            ?.displayName
+            ?: lastMessageSenderName
+            ?: latestActivitySenderId
+                ?.let(senderProfiles::get)
+                ?.displayName
+            ?: latestActivitySenderName
+    }
 
 private fun InboxItem.senderAvatarWireValue(): String? =
     when {
@@ -899,18 +924,22 @@ private fun InboxItem.previewText(): String =
         lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
     }
 
-private fun InboxItem.primaryPreviewText(): String =
+private fun InboxItem.primaryPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String =
     if (kind == InboxItemKind.Thread) {
         previewText()
     } else {
-        senderDisplayName()?.let { "$it: ${previewText()}" } ?: previewText()
+        senderDisplayName(senderProfiles)?.let { "$it: ${previewText()}" } ?: previewText()
     }
 
-private fun InboxItem.secondaryPreviewText(): String? =
+private fun InboxItem.secondaryPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): String? =
     latestActivityPreview
         ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
         ?.let { preview ->
-            senderDisplayName()?.let { "$it: $preview" } ?: preview
+            senderDisplayName(senderProfiles)?.let { "$it: $preview" } ?: preview
         }
 
 private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): SlockLucideIconName =
