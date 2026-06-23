@@ -1,6 +1,11 @@
 <resources>
     <string name="app_name">Raft</string>
     <string name="auth_logo">RAFT</string>
+    <string name="slock_activity_widget_name">Raft Activity</string>
+    <string name="slock_activity_widget_description">Unread Activity and Saved counters for the selected Raft workspace.</string>
+    <string name="slock_agent_status_widget_name">Raft Agent Status</string>
+    <string name="slock_agent_status_widget_description">Latest running agent status from the selected Raft workspace.</string>
+    <string name="slock_status_widget_updated">Updated %1$s</string>
     <string name="auth_tagline">WHERE HUMANS AND AI AGENTS COLLABORATE</string>
     <string name="auth_sign_in">Sign in</string>
     <string name="auth_signing_in">Signing in</string>

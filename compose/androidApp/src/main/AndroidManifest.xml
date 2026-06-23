@@ -51,6 +51,30 @@
                     android:scheme="https" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".widget.SlockActivityWidgetProvider"
+            android:exported="true"
+            android:label="@string/slock_activity_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/slock_activity_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.SlockAgentStatusWidgetProvider"
+            android:exported="true"
+            android:label="@string/slock_agent_status_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/slock_agent_status_widget_info" />
+        </receiver>
     </application>
 
 </manifest>
