@@ -31,7 +31,9 @@ class ThreadBottomAnchorSignatureTest {
         taskId: String? = null,
         attachments: List<KuiklyThreadAttachmentItem> = emptyList(),
         reactions: List<KuiklyThreadReactionItem> = emptyList(),
-        metadata: Map<String, String> = emptyMap()
+        metadata: Map<String, String> = emptyMap(),
+        deliveryState: String = ThreadMessageDeliverySent,
+        pendingSendContext: KuiklyThreadPendingSendContext? = null
     ): KuiklyThreadMessageItem = KuiklyThreadMessageItem(
         id = id,
         authorId = "user-$id",
@@ -42,7 +44,9 @@ class ThreadBottomAnchorSignatureTest {
         taskId = taskId,
         attachments = attachments,
         reactions = reactions,
-        metadata = metadata
+        metadata = metadata,
+        deliveryState = deliveryState,
+        pendingSendContext = pendingSendContext
     )
 
     private fun payload(
@@ -64,6 +68,9 @@ class ThreadBottomAnchorSignatureTest {
 
     private fun KuiklyThreadScreenPayload.latestMessageListItemIndexPublic(): Int =
         latestMessageListItemIndex()
+
+    private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKeyPublic(): String? =
+        latestLocalSendBottomAnchorKey()
 
     @Test
     fun latestMessageLayoutKey_equivalentListReferenceSameContent_keepsKeyEqual() {
@@ -178,6 +185,42 @@ class ThreadBottomAnchorSignatureTest {
         val a = payload(messages = listOf(message("m1")), originStatus = "content")
         val b = payload(messages = listOf(message("m1"), message("m2")), originStatus = "content")
         assertNotEquals(a.latestMessageListItemIndexPublic(), b.latestMessageListItemIndexPublic())
+    }
+
+    @Test
+    fun latestLocalSendBottomAnchor_allowsReplyThreadOriginList() {
+        val pendingContext =
+            KuiklyThreadPendingSendContext(
+                channelId = "parent-channel",
+                body = "reply",
+                parentMessageId = "origin-message",
+                streamChannelId = "thread-channel"
+            )
+        val replyThreadPayload =
+            payload(
+                originStatus = "content",
+                messages =
+                    listOf(
+                        message("reply-1"),
+                        message(
+                            "local-send-1",
+                            body = "reply",
+                            deliveryState = ThreadMessageDeliverySending,
+                            pendingSendContext = pendingContext
+                        )
+                    )
+            )
+        val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
+
+        assertEquals(0, threadInitialFirstVisibleItemIndex(latestIndex, topAnchoredContent = true))
+        assertEquals(3, latestIndex)
+        assertEquals(
+            true,
+            shouldAnchorLatestLocalSendToBottom(
+                latestLocalSendBottomAnchorKey = replyThreadPayload.latestLocalSendBottomAnchorKeyPublic(),
+                latestItemIndex = latestIndex
+            )
+        )
     }
 
     @Test

@@ -5487,8 +5487,9 @@ private fun ThreadMessagesList(
         previousOlderMessagesStatus = payload.olderMessagesStatus
     }
     LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
-        if (topAnchoredOriginContent) return@LaunchedEffect
-        if (latestLocalSendBottomAnchorKey == null || latestItemIndex < 0) return@LaunchedEffect
+        if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+            return@LaunchedEffect
+        }
         allowBottomAutoAnchor = true
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
@@ -6098,7 +6099,13 @@ internal fun KuiklyThreadScreenPayload.latestMessageLayoutKey(): String {
     }
 }
 
-private fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
+internal fun shouldAnchorLatestLocalSendToBottom(
+    latestLocalSendBottomAnchorKey: String?,
+    latestItemIndex: Int
+): Boolean =
+    latestLocalSendBottomAnchorKey != null && latestItemIndex >= 0
+
+internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
     val latest = messages.lastOrNull() ?: return null
     if (!latest.deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) ||
         latest.pendingSendContext == null
