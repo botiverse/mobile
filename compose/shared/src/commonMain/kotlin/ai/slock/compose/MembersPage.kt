@@ -1478,54 +1478,7 @@ private fun MembersDetailContent(
             )
             return
         }
-        scope.launch {
-            val nextState =
-                try {
-                    callback(member.id, path).toMembersWorkspaceFileState(path)
-                } catch (cancellation: CancellationException) {
-                    throw cancellation
-                } catch (_: Throwable) {
-                    MembersAgentWorkspaceFileState.Error(path, "workspace_file_failed")
-                }
-            val previewPayload =
-                when (nextState) {
-                    is MembersAgentWorkspaceFileState.Content ->
-                        nextState.snapshot.preview.toSlockFilePreviewPayload(nextState.snapshot.path)
-                    is MembersAgentWorkspaceFileState.Empty ->
-                        SlockFilePreviewPayload(
-                            kind = "error",
-                            title = "Preview unavailable",
-                            subtitle = path,
-                            name = path,
-                            path = path,
-                            message = "File content is unavailable.",
-                            error = "empty_preview"
-                        )
-                    is MembersAgentWorkspaceFileState.Error ->
-                        SlockFilePreviewPayload(
-                            kind = "error",
-                            title = "Preview unavailable",
-                            subtitle = path,
-                            name = path,
-                            path = path,
-                            message = "Failed to load: ${nextState.code}",
-                            error = nextState.code
-                        )
-                    is MembersAgentWorkspaceFileState.NoPermission ->
-                        SlockFilePreviewPayload(
-                            kind = "error",
-                            title = "Preview hidden",
-                            subtitle = path,
-                            name = path,
-                            path = path,
-                            message = "File hidden: ${nextState.code}",
-                            error = nextState.code
-                        )
-                    MembersAgentWorkspaceFileState.None,
-                    is MembersAgentWorkspaceFileState.Loading -> null
-                }
-            previewPayload?.let { pager.openSlockFilePreviewPage(it) }
-        }
+        pager.openSlockFilePreviewPage(agentWorkspaceLazyPreviewPayload(agentId = member.id.value, path = path))
     }
     LaunchedEffect(member.id.value, selectedTab, canViewPrivate, agentWorkspaceTreeLoader) {
         if (

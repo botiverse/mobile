@@ -2,9 +2,20 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.data.DataRequestPriority
+import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.KuiklySlockNetworkClient
+import ai.slock.compose.data.NetworkSlockThreadApi
+import ai.slock.compose.data.RealMemberRepository
+import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.SlockThreadApiClient
+import ai.slock.compose.data.ThreadApiResult
 import ai.slock.compose.markdown.SlockMarkdownBody
+import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.SlockWorkspaceFilePreview
+import ai.slock.compose.network.SlockNetworkModule
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +52,7 @@ import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -48,6 +60,9 @@ import kotlinx.coroutines.launch
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
+private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
+private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
+private const val SlockFilePreviewMarkdownMaxChars = 80_000
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
 
@@ -66,7 +81,10 @@ internal data class SlockFilePreviewPayload(
     val error: String? = null,
     val externalUrl: String? = null,
     val externalFileName: String = "",
-    val externalMimeType: String = ""
+    val externalMimeType: String = "",
+    val source: String = "",
+    val attachmentId: String = "",
+    val agentId: String = ""
 )
 
 @Page(SLOCK_FILE_PREVIEW_PAGE, supportInLocal = true)
@@ -81,20 +99,87 @@ internal class ComposeSlockFilePreviewPage : ai.slock.compose.base.BasePager() {
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
+    val networkClient =
+        remember {
+            KuiklySlockNetworkClient(
+                sessionStore = sharedStores.authStore,
+                networkModule = networkModule,
+                warningLogger = { message -> bridge.log("file_preview_network $message") }
+            )
+        }
+    val threadApi =
+        remember(networkClient) {
+            SlockThreadApiClient(
+                transport = NetworkSlockThreadApi(networkClient),
+                diagnosticsLogger = { message -> bridge.log("file_preview_thread_api $message") }
+            )
+        }
+    val memberRepository =
+        remember(networkClient) {
+            RealMemberRepository(
+                sessionStore = sharedStores.authStore,
+                networkClient = networkClient,
+                warningLogger = { message -> bridge.log("file_preview_member_warning $message") },
+                logger = { message -> bridge.log("file_preview_member $message") }
+            )
+        }
     val coroutineScope = rememberCoroutineScope()
-    val payload = remember(pager.pageData.params.toString()) {
-        pager.pageData.params.optString("payload")
-            .takeIf { it.isNotBlank() }
-            ?.let { source ->
-                runCatching { SlockFilePreviewJson.decodeFromString(SlockFilePreviewPayload.serializer(), source) }
-                    .getOrNull()
-            } ?: SlockFilePreviewPayload(
-            title = "Preview unavailable",
-            subtitle = "File preview",
-            message = "Preview payload could not be loaded.",
-            error = "payload_parse_failed"
+    var payload by remember(pager.pageData.params.toString()) {
+        mutableStateOf(
+            pager.pageData.params.optString("payload")
+                .takeIf { it.isNotBlank() }
+                ?.let { source ->
+                    runCatching { SlockFilePreviewJson.decodeFromString(SlockFilePreviewPayload.serializer(), source) }
+                        .getOrNull()
+                } ?: SlockFilePreviewPayload(
+                title = "Preview unavailable",
+                subtitle = "File preview",
+                message = "Preview payload could not be loaded.",
+                error = "payload_parse_failed"
+            )
         )
     }
+    LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
+        val nextPayload =
+            when (payload.source) {
+                SlockFilePreviewSourceThreadAttachment ->
+                    payload.loadThreadAttachmentPreview(threadApi, networkModule)
+                SlockFilePreviewSourceAgentWorkspace ->
+                    payload.loadAgentWorkspacePreview(memberRepository)
+                else -> null
+            }
+        if (nextPayload != null) {
+            payload = nextPayload
+        }
+    }
+    suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload): String? {
+        val externalUrl =
+            currentPayload.externalUrl?.takeIf { it.isNotBlank() }
+                ?: currentPayload.threadAttachmentExternalUrl(threadApi)
+                ?: return "Unable to download attachment"
+        val result =
+            bridge.openAttachment(
+                url = externalUrl,
+                attachmentId = currentPayload.attachmentId.ifBlank { currentPayload.path.ifBlank { currentPayload.name } },
+                fileName =
+                    currentPayload.externalFileName
+                        .ifBlank { currentPayload.name }
+                        .ifBlank { currentPayload.path }
+                        .ifBlank { "attachment" },
+                mimeType = currentPayload.externalMimeType
+            )
+        return when (result?.optString("status").orEmpty()) {
+            "opened", "" -> null
+            "no_app" -> result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
+            "storage_failed" -> result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
+            else -> result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
+        }
+    }
+    val canOpenWith =
+        payload.externalUrl?.isNotBlank() == true ||
+            (payload.source == SlockFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
     SlockFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -102,7 +187,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         onBack = { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() },
         contentPadding = 0.dp,
         overflowMenuItems =
-            payload.externalUrl?.takeIf { it.isNotBlank() }?.let {
+            if (canOpenWith) {
                 listOf(
                     SlockBrutalDropdownMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
@@ -110,36 +195,14 @@ private fun SlockFilePreviewStandalonePageContent() {
                         icon = SlockLucideIconName.ExternalLink
                     )
                 )
-            }.orEmpty(),
+            } else {
+                emptyList()
+            },
         onOverflowMenuSelect = { id ->
             if (id != SlockFilePreviewOpenWithActionId) return@SlockFilePreviewPageScaffold
-            val externalUrl = payload.externalUrl?.takeIf { it.isNotBlank() } ?: return@SlockFilePreviewPageScaffold
             coroutineScope.launch {
-                val result =
-                    bridge.openAttachment(
-                        url = externalUrl,
-                        attachmentId = payload.path.ifBlank { payload.name },
-                        fileName =
-                            payload.externalFileName
-                                .ifBlank { payload.name }
-                                .ifBlank { payload.path }
-                                .ifBlank { "attachment" },
-                        mimeType = payload.externalMimeType
-                    )
-                when (result?.optString("status").orEmpty()) {
-                    "opened", "" -> Unit
-                    "no_app" ->
-                        bridge.toast(
-                            result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
-                        )
-                    "storage_failed" ->
-                        bridge.toast(
-                            result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
-                        )
-                    else ->
-                        bridge.toast(
-                            result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
-                        )
+                openPayloadExternally(payload)?.let { message ->
+                    bridge.toast(message)
                 }
             }
         }
@@ -159,6 +222,189 @@ internal fun Pager.openSlockFilePreviewPage(payload: SlockFilePreviewPayload) {
             put("payload", SlockFilePreviewJson.encodeToString(payload))
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(SLOCK_FILE_PREVIEW_PAGE, pageData)
+}
+
+internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kind: String): SlockFilePreviewPayload =
+    SlockFilePreviewPayload(
+        kind = "loading",
+        title = when (kind) {
+            "image" -> "Image preview"
+            "markdown" -> "Markdown preview"
+            else -> "File preview"
+        },
+        subtitle = name.ifBlank { "Attachment" },
+        name = name.ifBlank { "Attachment" },
+        path = name,
+        meta = genericAttachmentMetaLine(),
+        message = "Loading preview...",
+        externalFileName = name.ifBlank { "attachment-${id.take(8)}" },
+        externalMimeType = mimeType,
+        source = SlockFilePreviewSourceThreadAttachment,
+        attachmentId = id
+    )
+
+internal fun agentWorkspaceLazyPreviewPayload(agentId: String, path: String): SlockFilePreviewPayload =
+    SlockFilePreviewPayload(
+        kind = "loading",
+        title = "Loading preview...",
+        subtitle = path,
+        name = path,
+        path = path,
+        message = "Loading file preview...",
+        source = SlockFilePreviewSourceAgentWorkspace,
+        agentId = agentId
+    )
+
+private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkModule: SlockNetworkModule
+): SlockFilePreviewPayload? {
+    if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
+    val wantsMarkdown = externalMimeType.isMarkdownMimeType() || name.isMarkdownFileName() || path.isMarkdownFileName()
+    val wantsImage = externalMimeType.substringBefore(';').trim().startsWith("image/", ignoreCase = true)
+    return when {
+        wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkModule)
+        wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        else ->
+            copy(
+                kind = "unsupported",
+                title = "File preview",
+                message = "No preview is available for this file type."
+            )
+    }
+}
+
+private fun String.isMarkdownMimeType(): Boolean =
+    substringBefore(';').trim().let { normalized ->
+        normalized.equals("text/markdown", ignoreCase = true) ||
+            normalized.equals("text/x-markdown", ignoreCase = true)
+    }
+
+private fun String.isMarkdownFileName(): Boolean =
+    endsWith(".md", ignoreCase = true) || endsWith(".markdown", ignoreCase = true)
+
+private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
+    threadApi: SlockThreadApiClient
+): SlockFilePreviewPayload {
+    val imageUrl =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        }
+    return copy(
+        kind = "image",
+        title = "Image preview",
+        imageUrl = imageUrl,
+        message = if (imageUrl == null) "Image preview is unavailable." else "",
+        error = if (imageUrl == null) "image_preview_unavailable" else null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadMarkdownAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkModule: SlockNetworkModule
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load markdown preview.",
+            error = "markdown_preview_url_failed"
+        )
+    val response =
+        try {
+            networkModule.request(
+                JSONObject().apply {
+                    put("url", target)
+                    put("method", "GET")
+                    put("headers", JSONObject())
+                    put("timeoutMillis", 30_000)
+                }
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Unable to load markdown preview.",
+                error = "markdown_preview_fetch_failed"
+            )
+        }
+    if (response.code !in 200..299) {
+        return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load markdown preview.",
+            error = "markdown_preview_fetch_failed"
+        )
+    }
+    val body =
+        response.bodyText.takeIf { it.isNotBlank() }
+            ?: return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Markdown file is empty.",
+                error = "markdown_preview_empty"
+            )
+    val previewBody =
+        if (body.length > SlockFilePreviewMarkdownMaxChars) {
+            body.take(SlockFilePreviewMarkdownMaxChars) +
+                "\n\n_Preview truncated. Open with system viewer for the full file._"
+        } else {
+            body
+        }
+    return copy(
+        kind = "markdown",
+        title = "Markdown preview",
+        content = previewBody,
+        markdown = true,
+        message = "",
+        error = null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.threadAttachmentExternalUrl(
+    threadApi: SlockThreadApiClient
+): String? {
+    if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank()) return null
+    return when (val response = threadApi.attachmentUrl(attachmentId, disposition = "attachment")) {
+        is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+        is ThreadApiResult.Failure -> null
+    }
+}
+
+private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
+    memberRepository: RealMemberRepository
+): SlockFilePreviewPayload? {
+    if (source != SlockFilePreviewSourceAgentWorkspace || agentId.isBlank() || path.isBlank() || kind != "loading") return null
+    return when (val result = memberRepository.readAgentWorkspaceFile(DataRequestPriority.Visible, MemberId(agentId), path)) {
+        is DataResult.Content -> result.data.preview.toSlockFilePreviewPayload(result.data.path).copy(source = source, agentId = agentId)
+        is DataResult.Empty ->
+            copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "File content is unavailable.",
+                error = "empty_preview"
+            )
+        is DataResult.Error ->
+            copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Failed to load: ${result.error.code}",
+                error = result.error.code
+            )
+        is DataResult.NoPermission ->
+            copy(
+                kind = "error",
+                title = "Preview hidden",
+                message = "File hidden: ${result.blocker.code}",
+                error = result.blocker.code
+            )
+    }
 }
 
 internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): SlockFilePreviewPayload =

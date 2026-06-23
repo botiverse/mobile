@@ -175,7 +175,6 @@ private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
-private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
@@ -736,11 +735,6 @@ private data class ThreadAttachmentNoPreviewState(
     val markdownStatus: String = "idle",
     val markdownBody: String? = null,
     val markdownError: String? = null
-)
-
-private data class ThreadAttachmentMarkdownLoadResult(
-    val body: String? = null,
-    val error: String? = null
 )
 
 private const val ThreadAttachmentPreviewOpenWithActionId = "open-with"
@@ -2300,12 +2294,6 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    suspend fun resolveAttachmentExternalUrl(attachment: KuiklyThreadAttachmentItem): String? =
-        when (val response = dataSource.attachmentUrl(attachment.id, disposition = "attachment")) {
-            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
-            is ThreadApiResult.Failure -> null
-        }
-
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank()) return
         imagePreviewState = null
@@ -3493,51 +3481,6 @@ private suspend fun openSharedThreadAttachment(
         is ThreadApiResult.Failure ->
             ThreadAttachmentOpenResult(status = "failed", message = "Unable to download attachment")
     }
-}
-
-private suspend fun loadSharedThreadMarkdownAttachment(
-    dataSource: SharedThreadDataSource,
-    networkModule: SlockNetworkModule,
-    attachment: KuiklyThreadAttachmentItem
-): ThreadAttachmentMarkdownLoadResult {
-    if (!attachment.isMarkdownAttachment()) {
-        return ThreadAttachmentMarkdownLoadResult(error = "No markdown preview is available for this file type.")
-    }
-    val target =
-        when (val response = dataSource.attachmentUrl(attachment.id, disposition = "inline")) {
-            is ThreadApiResult.Success -> response.data
-            is ThreadApiResult.Failure -> return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
-        }
-    val url = target.url.takeIf { it.isNotBlank() }
-        ?: return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
-    val response =
-        try {
-            networkModule.request(
-                JSONObject().apply {
-                    put("url", url)
-                    put("method", "GET")
-                    put("headers", JSONObject())
-                    put("timeoutMillis", 30_000)
-                }
-            )
-        } catch (cancellation: CancellationException) {
-            throw cancellation
-        } catch (_: Throwable) {
-            return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
-        }
-    if (response.code !in 200..299) {
-        return ThreadAttachmentMarkdownLoadResult(error = "Unable to load markdown preview.")
-    }
-    val body = response.bodyText.takeIf { it.isNotBlank() }
-        ?: return ThreadAttachmentMarkdownLoadResult(error = "Markdown file is empty.")
-    val previewBody =
-        if (body.length > ThreadMarkdownAttachmentPreviewMaxChars) {
-            body.take(ThreadMarkdownAttachmentPreviewMaxChars) +
-                "\n\n_Preview truncated. Open with system viewer for the full file._"
-        } else {
-            body
-        }
-    return ThreadAttachmentMarkdownLoadResult(body = previewBody)
 }
 
 internal fun String.toSlockThreadWebLinkTarget(): SlockThreadWebLinkTarget? {
