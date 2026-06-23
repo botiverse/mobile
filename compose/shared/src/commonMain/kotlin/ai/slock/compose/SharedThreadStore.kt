@@ -540,7 +540,9 @@ internal class SharedThreadDataSource(
                         basePayload = resolvedBasePayload,
                         page = page,
                         session = session
-                    ).withCachedSenderProfiles(session)
+                    )
+                        .withCachedSenderProfiles(session)
+                        .withSenderProfiles(session)
                 )
             }
         val payload =
@@ -3468,7 +3470,10 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
     val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
     val resolvedAvatarWireValue =
         if (isAgent) {
-            if (currentAvatarWireValue == null || currentAvatarWireValue.isGravatarAvatarWireValue()) {
+            if (currentAvatarWireValue == null ||
+                currentAvatarWireValue.isGravatarAvatarWireValue() ||
+                currentAvatarWireValue.isAgentFallbackAvatarWireValue()
+            ) {
                 profileAvatarWireValue
             } else {
                 avatarWireValueForAvatarSlot(
@@ -3493,6 +3498,9 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
         gravatarHash = if (isAgent) null else gravatarHash ?: profile.gravatarHash
     )
 }
+
+private fun String.isAgentFallbackAvatarWireValue(): Boolean =
+    startsWith("random:", ignoreCase = true)
 
 private fun KuiklyThreadScreenPayload.withSenderProfiles(
     profilesById: Map<String, MemberProfile>
