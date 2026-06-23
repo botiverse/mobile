@@ -3801,22 +3801,91 @@ private fun MembersAgentProfileTab(
         // overlay, owned by `MembersDetailContent`. The body AVATAR section + the in-page
         // picker invocation that previously lived here were removed in this commit so the
         // avatar entry point is consistent with React `AgentDetailPanel.tsx`.
-        MembersAgentSkillsSection(detail)
         MembersAgentCreatedAgentsSection(detail)
+        MembersAgentSkillsSection(detail)
     }
 }
 
 @Composable
 private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
-    MembersDetailSection(title = "SKILLS") {
-        val groups = detail?.skills?.groups.orEmpty()
+    val groups = detail?.skills?.groups.orEmpty()
+    val totalSkills = groups.sumOf { group -> group.paths.sumOf { path -> path.skills.size } }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        MembersDetailSectionDivider()
+        MembersDetailSectionTitle("SKILLS ($totalSkills)")
         if (groups.isEmpty()) {
-            MembersDetailField("Skills", "No skills exposed.")
+            Text(
+                text = "No skills installed",
+                style = SlockType.Body.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    fontStyle = FontStyle.Italic
+                ),
+                color = SlockColor.TextMutedGray
+            )
         } else {
             groups.forEach { group ->
-                MembersDetailField(group.title, "${group.count} skills")
-                group.paths.flatMap { it.skills }.take(4).forEach { skill ->
-                    MembersDetailField(skill.name, skill.detail ?: "Available")
+                MembersAgentSkillSubSection(group)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentSkillSubSection(group: AgentSkillGroup) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(
+                name = if (group.title.equals("workspace", ignoreCase = true)) {
+                    SlockLucideIconName.FolderOpen
+                } else {
+                    SlockLucideIconName.Globe
+                },
+                modifier = Modifier.size(13.dp),
+                color = SlockColor.TextMutedGrayArgb
+            )
+            Text(
+                text = group.title,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
+            )
+            Text(
+                text = "(${group.paths.sumOf { path -> path.skills.size }})",
+                style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+            )
+        }
+        if (group.paths.isEmpty()) {
+            Text(
+                text = if (group.title.equals("workspace", ignoreCase = true)) {
+                    "No skills in this agent's workspace"
+                } else {
+                    "No global skills installed on this computer"
+                },
+                style = SlockType.Caption.copy(
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    fontStyle = FontStyle.Italic
+                ),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+            ) {
+                group.paths.forEach { pathGroup ->
+                    MembersAgentSkillPathGroup(pathGroup)
                 }
             }
         }
@@ -3824,19 +3893,159 @@ private fun MembersAgentSkillsSection(detail: AgentDetailSnapshot?) {
 }
 
 @Composable
-private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
-    MembersDetailSection(title = "CREATED AGENTS") {
-        val createdAgents = detail?.summary?.createdAgents.orEmpty()
-        if (createdAgents.isEmpty()) {
-            MembersDetailField("Agents", "No created agents exposed.")
-        } else {
-            createdAgents.take(6).forEach { agent ->
-                MembersDetailField(
-                    agent.displayName?.takeIf { it.isNotBlank() } ?: agent.name,
-                    listOfNotNull(agent.runtime, agent.status?.toMembersDisplayLabel()).joinToString(" · ").ifBlank { agent.id }
-                )
+private fun MembersAgentSkillPathGroup(pathGroup: AgentSkillPathGroup) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = pathGroup.path,
+                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.8f),
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "(${pathGroup.skills.size})",
+                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+            )
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            pathGroup.skills.forEach { skill ->
+                MembersAgentSkillCard(skill)
             }
         }
+    }
+}
+
+@Composable
+private fun MembersAgentSkillCard(skill: AgentSkillSummary) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = SlockSpacing.Md, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = skill.name,
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        skill.detail?.takeIf { it.isNotBlank() }?.let { detail ->
+            Text(
+                text = detail,
+                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentCreatedAgentsSection(detail: AgentDetailSnapshot?) {
+    val createdAgents = detail?.summary?.createdAgents.orEmpty()
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        MembersDetailSectionDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            MembersDetailSectionTitle("CREATED AGENTS", modifier = Modifier.weight(1f))
+            Text(
+                text = createdAgents.size.toString(),
+                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            )
+        }
+        if (createdAgents.isEmpty()) {
+            Text(
+                text = "No created agents",
+                style = SlockType.Body.copy(
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    fontStyle = FontStyle.Italic
+                ),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.7f)
+            )
+        } else {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                createdAgents.forEach { agent ->
+                    MembersAgentCreatedAgentRow(agent)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentCreatedAgentRow(agent: AgentCreatedSummary) {
+    val profile = remember(agent) { agent.toMemberProfile() }
+    val statusDisplayState = profile.membersAgentStatusDisplayState(agent.status, agent.status)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 12.dp, vertical = SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        MembersAvatar(
+            member = profile,
+            avatarSize = 32.dp,
+            statusSize = 0.dp,
+            showStatusOverlay = false
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = profile.displayName,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = agent.runtime?.takeIf { it.isNotBlank() }?.let { getRuntimeDisplayName(it) }
+                    ?: "Agent",
+                style = SlockType.Input.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        SlockStatusIndicator(
+            color = statusDisplayState.color,
+            size = 10.dp,
+            pulsing = statusDisplayState.pulsing
+        )
     }
 }
 
@@ -4975,6 +5184,23 @@ private fun AgentCreatorSummary.toMemberProfile(): MemberProfile? {
         gravatarHash = gravatarHash,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = display.take(1).uppercase()
+    )
+}
+
+private fun AgentCreatedSummary.toMemberProfile(): MemberProfile {
+    val display = displayName?.takeIf { it.isNotBlank() } ?: name.ifBlank { id }
+    val status = AgentStatus.fromWireValue(status)
+    return MemberProfile(
+        id = MemberId(id),
+        displayName = display,
+        handle = name.takeIf { it.isNotBlank() } ?: id,
+        kind = MemberKind.Agent,
+        avatarUrl = avatarUrl,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = display.take(1).uppercase(),
+        presence = status?.presence ?: Presence.Offline,
+        agentStatus = status,
+        roleDescription = runtime
     )
 }
 
