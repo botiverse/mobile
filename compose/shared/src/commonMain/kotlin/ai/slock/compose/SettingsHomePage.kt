@@ -3731,7 +3731,6 @@ private fun SettingsNotificationsContent(
                 }
             is ScreenLoadState.Content -> {
                 val snapshot = state.data
-                item { SettingsPwaInstallCard() }
                 item {
                     SettingsPushStatusCard(
                         snapshot = snapshot,
