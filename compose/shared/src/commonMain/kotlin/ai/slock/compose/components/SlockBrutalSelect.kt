@@ -57,20 +57,19 @@ internal fun SlockBrutalSelectField(
     val selectedOption = options.firstOrNull { it.id == selectedId }
     val displayLabel = selectedLabel.ifBlank { selectedOption?.label.orEmpty() }.ifBlank { placeholder }
     val shadowOffset = if (enabled) 3.dp else 0.dp
-    val reservedShadowOffset = 3.dp
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Box(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(triggerHeight + reservedShadowOffset)
+                    .height(triggerHeight)
         ) {
             if (enabled) {
                 Box(
                     modifier =
                         Modifier
-                            .matchParentSize()
-                            .padding(end = reservedShadowOffset, bottom = reservedShadowOffset)
+                            .fillMaxWidth()
+                            .height(triggerHeight)
                             .offset(x = shadowOffset, y = shadowOffset)
                             .background(SlockColor.ShadowBlack)
                 )

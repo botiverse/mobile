@@ -4,6 +4,7 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberProfile
@@ -879,12 +880,32 @@ internal fun ThreadComposerContent(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             if (surface.showTaskButton) {
-                                ComposerAsTaskToggle(
-                                    checked = asTask,
-                                    enabled = composerEnabled
-                                ) { checked ->
-                                    asTask = checked
-                                    onEvent("toggleAsTask", null, checked, null)
+                                Row(
+                                    modifier = Modifier
+                                        .clickable(enabled = composerEnabled) {
+                                            val newValue = !asTask
+                                            asTask = newValue
+                                            onEvent("toggleAsTask", null, newValue, null)
+                                        }
+                                        .heightIn(min = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    SlockCheckbox(
+                                        checked = asTask,
+                                        onCheckedChange = { checked ->
+                                            asTask = checked
+                                            onEvent("toggleAsTask", null, checked, null)
+                                        },
+                                        enabled = composerEnabled,
+                                        size = 14.dp
+                                    )
+                                    val labelColor = if (composerEnabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
+                                    Text(
+                                        text = "As Task",
+                                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
+                                        color = labelColor
+                                    )
                                 }
                             }
                             ComposerSendButton(
@@ -1278,36 +1299,6 @@ private fun ComposerIconButton(
         shadowOffset = 2.dp,
         iconSize = ThreadComposerIconSize
     )
-}
-
-@Composable
-private fun ComposerAsTaskToggle(
-    checked: Boolean,
-    enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.clickable(enabled = enabled) { onCheckedChange(!checked) }.heightIn(min = 18.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier.size(14.dp)
-                .background(if (checked) SlockColor.TextBlack else SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            if (checked) {
-                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(10.dp), color = "#FFFFFFFF", strokeWidth = 4f)
-            }
-        }
-        val labelColor = if (enabled) SlockColor.TextBlack.copy(alpha = 0.6f) else SlockColor.TextMutedGray
-        Text(
-            text = "As Task",
-            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(lineHeight = 18.sp, color = labelColor),
-            color = labelColor
-        )
-    }
 }
 
 @Composable

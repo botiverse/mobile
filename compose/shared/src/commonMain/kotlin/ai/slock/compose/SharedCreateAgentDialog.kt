@@ -5,6 +5,7 @@ import ai.slock.compose.components.SlockBrutalSelectField
 import ai.slock.compose.components.SlockBrutalSelectOption
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.model.RuntimeConfig
 import ai.slock.compose.model.RuntimeProviderMode
 import ai.slock.compose.model.RUNTIME_MODELS
@@ -908,7 +909,7 @@ private fun AdvancedRuntimeSection(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(
+                SlockCheckbox(
                     checked = fastMode,
                     onCheckedChange = { onFastModeChange(it) },
                     enabled = enabled
@@ -1064,29 +1065,5 @@ private fun EnvVarsEditor(
                 .let { if (enabled) it.clickable { onChange(entries + ("" to "")) } else it }
                 .padding(vertical = 4.dp)
         )
-    }
-}
-
-@Composable
-private fun Checkbox(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    enabled: Boolean
-) {
-    Box(
-        modifier = Modifier
-            .size(18.dp)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
-            .background(if (checked) SlockColor.BrandYellow else SlockColor.SurfaceWhite)
-            .let { if (enabled) it.clickable { onCheckedChange(!checked) } else it },
-        contentAlignment = Alignment.Center
-    ) {
-        if (checked) {
-            Text(
-                text = "✓",
-                style = SlockType.Caption,
-                color = SlockColor.TextBlack
-            )
-        }
     }
 }
