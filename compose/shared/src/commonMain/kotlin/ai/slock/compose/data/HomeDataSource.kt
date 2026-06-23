@@ -30,12 +30,14 @@ class SharedHomeDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val api: SlockHomeApi,
     announcementsApi: SlockAnnouncementsRemindersApi? = null,
+    computersApi: SlockComputersApi? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val parseHome: (HomeNetworkPayload, StoredAuthSession) -> DataResult<HomeSnapshot>,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
     private val typedApi = SlockHomeApiClient(api, diagnosticsLogger)
     private val typedAnnouncementsApi = announcementsApi?.let(::SlockAnnouncementsRemindersApiClient)
+    private val typedComputersApi = computersApi?.let(::SlockComputersApiClient)
 
     suspend fun currentSessionSnapshot(): DataResult<ai.slock.compose.model.SessionSnapshot> {
         val session = sessionStore.readSession()
@@ -138,6 +140,12 @@ class SharedHomeDataSource(
     }
 
     suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> {
+        val announcementResult = loadAnnouncementNotifications()
+        val machineResult = loadMachineNotifications()
+        return mergeHomeNotificationResults(announcementResult, machineResult)
+    }
+
+    private suspend fun loadAnnouncementNotifications(): DataResult<List<SharedHomeNotification>> {
         val client = typedAnnouncementsApi
             ?: return DataResult.Content(emptyList())
         return when (val result = client.activeAnnouncements()) {
@@ -148,10 +156,55 @@ class SharedHomeDataSource(
         }
     }
 
+    private suspend fun loadMachineNotifications(): DataResult<List<SharedHomeNotification>> {
+        val client = typedComputersApi
+            ?: return DataResult.Content(emptyList())
+        val session = sessionStore.readSession()
+            ?: return DataResult.Error(ScreenError(code = "unauthenticated", retryable = false))
+        val serverId = session.currentServerId?.let(::ServerId)
+            ?: return DataResult.Content(emptyList())
+        return when (val result = client.machines(serverId)) {
+            is DataResult.Content -> DataResult.Content(result.data.toSharedHomeMachineNotifications())
+            is DataResult.Empty -> DataResult.Content(emptyList())
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
     suspend fun dismissNotification(id: String): DataResult<AnnouncementCommandResult> {
+        if (id.isLocalHomeNotificationId()) {
+            return DataResult.Content(AnnouncementCommandResult(ok = true))
+        }
         val client = typedAnnouncementsApi
             ?: return DataResult.Empty(EmptyReason.NoChannels)
         return client.dismissAnnouncement(id)
+    }
+}
+
+private fun mergeHomeNotificationResults(
+    first: DataResult<List<SharedHomeNotification>>,
+    second: DataResult<List<SharedHomeNotification>>
+): DataResult<List<SharedHomeNotification>> {
+    val merged = mutableListOf<SharedHomeNotification>()
+    var sawContent = false
+    var firstNoPermission: DataResult.NoPermission? = null
+    var firstError: DataResult.Error? = null
+    listOf(first, second).forEach { result ->
+        when (result) {
+            is DataResult.Content -> {
+                sawContent = true
+                merged += result.data
+            }
+            is DataResult.Empty -> sawContent = true
+            is DataResult.Error -> if (firstError == null) firstError = result
+            is DataResult.NoPermission -> if (firstNoPermission == null) firstNoPermission = result
+        }
+    }
+    return when {
+        sawContent -> DataResult.Content(merged)
+        firstNoPermission != null -> firstNoPermission
+        firstError != null -> firstError
+        else -> DataResult.Content(emptyList())
     }
 }
 
@@ -188,6 +241,33 @@ enum class SharedHomeNotificationKind {
     Warning,
     Info,
     Error
+}
+
+internal fun String.isLocalHomeNotificationId(): Boolean =
+    startsWith("machine-offline:")
+
+private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
+    val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }
+    if (offlineMachines.isEmpty()) return emptyList()
+    val sortedIds = offlineMachines.map { it.id }.sorted()
+    val names = offlineMachines.joinToString(", ") { it.name }
+    val verb = if (offlineMachines.size == 1) "is offline" else "are offline"
+    val body =
+        if (offlineMachines.size == 1) {
+            "No agents are active on this computer right now - reconnect when you need it next."
+        } else {
+            "No agents are active on these computers right now - reconnect when you need them next."
+        }
+    return listOf(
+        SharedHomeNotification(
+            id = "machine-offline:${sortedIds.joinToString(",")}",
+            title = "$names $verb",
+            body = body,
+            actionLabel = "View",
+            targetId = offlineMachines.first().id,
+            kind = SharedHomeNotificationKind.Warning
+        )
+    )
 }
 
 private fun AnnouncementItem.toSharedHomeNotification(): SharedHomeNotification =

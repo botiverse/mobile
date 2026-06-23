@@ -98,6 +98,7 @@ class SharedHomeStore(
     private var hiddenHomeSnapshotDirty: Boolean = false
     private var lastHomeNetworkRefreshServerId: ServerId? = null
     private var lastHomeNetworkRefreshAtMillis: Long = 0L
+    private val dismissedLocalNotificationIds = mutableSetOf<String>()
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -798,7 +799,11 @@ class SharedHomeStore(
     private suspend fun loadNotifications() {
         when (val result = dataSource.loadNotifications()) {
             is DataResult.Content ->
-                reduceState(_state.value.copy(notifications = result.data))
+                reduceState(
+                    _state.value.copy(
+                        notifications = result.data.filterNot { it.id in dismissedLocalNotificationIds }
+                    )
+                )
             is DataResult.Empty ->
                 reduceState(_state.value.copy(notifications = emptyList()))
             is DataResult.Error,
@@ -1074,6 +1079,11 @@ class SharedHomeStore(
         val next = previous.filterNot { it.id == id }
         if (next == previous) return
         reduceState(_state.value.copy(notifications = next))
+        val isLocalNotification = id.isLocalHomeNotificationId()
+        if (isLocalNotification) {
+            dismissedLocalNotificationIds += id
+            return
+        }
         when (dataSource.dismissNotification(id)) {
             is DataResult.Content,
             is DataResult.Empty -> Unit

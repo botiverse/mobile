@@ -21,7 +21,7 @@ private val computersApiJson = Json {
  * calls it Computers. Keep route and field names exact here; UI/repository
  * code can expose the user-facing Computer naming without guessing aliases.
  */
-internal interface SlockComputersApi {
+interface SlockComputersApi {
     suspend fun machines(serverId: ServerId): HomeNetworkResponse
     suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse
     suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse

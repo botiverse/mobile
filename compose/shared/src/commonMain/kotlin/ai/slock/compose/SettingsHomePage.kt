@@ -670,6 +670,7 @@ private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) 
                 sessionStore = environment.authStore,
                 api = NetworkSlockHomeApi(environment.networkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
+                computersApi = SlockComputersNetworkApi(environment.networkClient),
                 localWriteThrough = environment.localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> environment.bridge.log(message) }
@@ -1225,6 +1226,7 @@ private fun SlockAppShellContent() {
                 sessionStore = authStore,
                 api = NetworkSlockHomeApi(appShellNetworkClient),
                 announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
+                computersApi = SlockComputersNetworkApi(appShellNetworkClient),
                 localWriteThrough = localWriteThrough,
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }

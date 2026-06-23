@@ -1264,6 +1264,39 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun startLoadsOfflineMachinesIntoHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
+        val computersApi = RecordingComputersApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = RecordingHomeApi(),
+                    announcementsApi = announcementsApi,
+                    computersApi = computersApi
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val notification = store.state.value.notifications.single()
+        assertEquals("machine-offline:machine-1", notification.id)
+        assertEquals("OranixSlockTest is offline", notification.title)
+        assertEquals(
+            "No agents are active on this computer right now - reconnect when you need it next.",
+            notification.body
+        )
+        assertEquals("View", notification.actionLabel)
+        assertEquals("machine-1", notification.targetId)
+        assertEquals(SharedHomeNotificationKind.Warning, notification.kind)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        assertEquals(listOf("GET machines:server-1"), computersApi.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun cachedHomeStartStillLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -1353,6 +1386,30 @@ class SharedHomeStoreTest {
             listOf("GET announcements/active", "POST announcements/announcement-1/dismiss"),
             announcementsApi.calls
         )
+        scope.cancel()
+    }
+
+    @Test
+    fun dismissLocalMachineNotificationDoesNotCallAnnouncementsApi() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val announcementsApi = RecordingAnnouncementsApi(activeBody = """{"announcements":[]}""")
+        val computersApi = RecordingComputersApi()
+        val store = SharedHomeStore(
+            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            dataSource =
+                source(
+                    api = RecordingHomeApi(),
+                    announcementsApi = announcementsApi,
+                    computersApi = computersApi
+                ),
+            scope = scope
+        )
+        store.accept(SharedHomeIntent.Start)
+
+        store.accept(SharedHomeIntent.DismissNotification("machine-offline:machine-1"))
+
+        assertEquals(emptyList(), store.state.value.notifications)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
         scope.cancel()
     }
 
@@ -1550,12 +1607,14 @@ class SharedHomeStoreTest {
     private fun source(
         api: SlockHomeApi,
         announcementsApi: SlockAnnouncementsRemindersApi? = null,
+        computersApi: SlockComputersApi? = null,
         sessionStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession())
     ): SharedHomeDataSource =
         SharedHomeDataSource(
             sessionStore = sessionStore,
             api = api,
             announcementsApi = announcementsApi,
+            computersApi = computersApi,
             parseHome = { payload, _ -> DataResult.Content(sampleHome(payload.serverId)) }
         )
 
@@ -1854,8 +1913,7 @@ class SharedHomeStoreTest {
             error("not reached")
     }
 
-    private class RecordingAnnouncementsApi : SlockAnnouncementsRemindersApi {
-        val calls = mutableListOf<String>()
+    private class RecordingAnnouncementsApi(
         var activeBody: String =
             """
             {
@@ -1870,6 +1928,8 @@ class SharedHomeStoreTest {
               ]
             }
             """.trimIndent()
+    ) : SlockAnnouncementsRemindersApi {
+        val calls = mutableListOf<String>()
 
         override suspend fun activeAnnouncements(): HomeNetworkResponse {
             calls += "GET announcements/active"
@@ -1885,6 +1945,55 @@ class SharedHomeStoreTest {
         }
 
         override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
+            error("not reached")
+    }
+
+    private class RecordingComputersApi : SlockComputersApi {
+        val calls = mutableListOf<String>()
+
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            calls += "GET machines:${serverId.value}"
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "machines": [
+                        {
+                          "id": "machine-1",
+                          "name": "OranixSlockTest",
+                          "status": "offline",
+                          "statusVersion": 1
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        }
+
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
+            error("not reached")
+
+        override suspend fun deleteMachineWorkspace(
+            serverId: ServerId,
+            machineId: String,
+            directoryName: String
+        ): HomeNetworkResponse =
             error("not reached")
     }
 
