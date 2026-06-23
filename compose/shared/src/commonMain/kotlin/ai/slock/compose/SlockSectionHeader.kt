@@ -24,7 +24,6 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
-import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.material3.Text
@@ -41,8 +40,7 @@ private val SectionChevronSize = 12.dp
 private val HeaderActionShadowOffset = 2.dp
 private val SectionHeaderActionSize = 30.dp
 private val SectionHeaderActionIconSize = 16.dp
-private val HeaderRefreshIndicatorWidth = 96.dp
-private val HeaderRefreshIndicatorHeight = 28.dp
+private val HeaderRefreshIndicatorSize = 28.dp
 private val HeaderRefreshIconSize = 14.dp
 
 internal object SlockCollapsibleSectionTokens {
@@ -58,7 +56,6 @@ internal fun SlockTopPageHeader(
     backgroundColor: Color = SlockColor.BrandYellow,
     modifier: Modifier = Modifier,
     refreshing: Boolean = false,
-    refreshLabel: String = "Updating...",
     leadingContent: (@Composable BoxScope.() -> Unit)? = null,
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
@@ -111,7 +108,7 @@ internal fun SlockTopPageHeader(
             }
         }
         if (refreshing) {
-            SlockHeaderRefreshIndicator(label = refreshLabel)
+            SlockHeaderRefreshIndicator()
         }
         if (trailingContent != null) {
             Box(content = trailingContent)
@@ -128,8 +125,7 @@ internal fun SlockTopPageHeader(
 
 @Composable
 internal fun SlockHeaderRefreshIndicator(
-    modifier: Modifier = Modifier,
-    label: String = "Updating..."
+    modifier: Modifier = Modifier
 ) {
     val transition = rememberInfiniteTransition(label = "slock-header-refresh-spinner")
     val rotation by transition.animateFloat(
@@ -142,16 +138,13 @@ internal fun SlockHeaderRefreshIndicator(
             ),
         label = "slock-header-refresh-spinner-rotation"
     )
-    Row(
+    Box(
         modifier =
             modifier
-                .width(HeaderRefreshIndicatorWidth)
-                .height(HeaderRefreshIndicatorHeight)
+                .size(HeaderRefreshIndicatorSize)
                 .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                .border(SlockStroke.Default, SlockColor.BorderBlack),
+        contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
             SlockLucideIconName.LoaderCircle,
@@ -160,13 +153,6 @@ internal fun SlockHeaderRefreshIndicator(
                     .size(HeaderRefreshIconSize)
                     .graphicsLayer(rotationZ = rotation),
             color = "#FF000000"
-        )
-        Text(
-            text = label,
-            style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 10.sp, lineHeight = 12.sp),
-            color = SlockColor.TextBlack.copy(alpha = 0.64f),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
         )
     }
 }
