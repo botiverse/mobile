@@ -7950,7 +7950,7 @@ private fun AppShellAuthErrorContent(
         )
         AuthError(message)
         AuthActionButton(text = "Retry", onClick = onRetry, tone = AuthButtonTone.Pink)
-        AuthActionButton(text = "Sign in", onClick = onSignIn, tone = AuthButtonTone.White)
+        AuthActionButton(text = "Sign In", onClick = onSignIn, tone = AuthButtonTone.White)
     }
 }
 

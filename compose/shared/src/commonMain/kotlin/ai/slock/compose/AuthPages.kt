@@ -720,7 +720,7 @@ internal fun LoginContent(
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
-            text = "Sign in",
+            text = "Sign In",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
@@ -757,7 +757,7 @@ internal fun LoginContent(
             )
             AuthError(errorMessage)
             AuthActionButton(
-                text = if (submitting) "Signing in..." else "Sign in",
+                text = if (submitting) "Signing In..." else "Sign In",
                 onClick = submitCurrentDraft,
                 tone = if (submitting) AuthButtonTone.Pink else AuthButtonTone.Pink,
                 enabled = canSubmit,
@@ -872,9 +872,10 @@ internal fun RegisterContent(
                 tone = AuthButtonTone.Pink,
                 enabled = formEnabled && termsAccepted && name.isNotBlank() && email.isNotBlank() && password.isNotBlank() && emailError == null,
                 loading = submitting,
-                preserveDisabledVisual = true
+                preserveDisabledVisual = true,
+                variant = AuthActionButtonVariant.Large
             )
-            AuthInlineAction("Already have an account?", "Sign in") { onBackToSignIn() }
+            AuthInlineAction("Already have an account?", "Sign In") { onBackToSignIn() }
         }
     }
 }

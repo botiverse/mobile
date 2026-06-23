@@ -55,6 +55,11 @@ internal enum class AuthButtonTone {
     Disabled
 }
 
+internal enum class AuthActionButtonVariant {
+    Default,
+    Large
+}
+
 private val AuthInputTextStyle =
     SlockType.Input.copy(
         fontSize = 16.sp,
@@ -334,6 +339,7 @@ internal fun AuthActionButton(
     enabled: Boolean = true,
     loading: Boolean = false,
     preserveDisabledVisual: Boolean = false,
+    variant: AuthActionButtonVariant = AuthActionButtonVariant.Default,
     leadingContent: (@Composable () -> Unit)? = null
 ) {
     val background = when (tone) {
@@ -346,15 +352,25 @@ internal fun AuthActionButton(
     }
     val contentColor = if (tone == AuthButtonTone.Black) SlockColor.SurfaceWhite else SlockColor.TextBlack
     val buttonBackground = if (enabled || preserveDisabledVisual) background else SlockColor.EmptyStateGray
-    Box(modifier = modifier.fillMaxWidth().height(36.dp).padding(end = 2.dp, bottom = 2.dp)) {
-        Box(Modifier.fillMaxSize().offset(x = 2.dp, y = 2.dp).background(SlockColor.ShadowBlack))
+    val height = if (variant == AuthActionButtonVariant.Large) 44.dp else 36.dp
+    val shadowOffset = if (variant == AuthActionButtonVariant.Large) 3.dp else 2.dp
+    val horizontalPadding = if (variant == AuthActionButtonVariant.Large) 14.dp else 12.dp
+    val verticalPadding = if (variant == AuthActionButtonVariant.Large) 9.dp else 6.dp
+    val textStyle =
+        if (variant == AuthActionButtonVariant.Large) {
+            SlockType.Button.copy(fontSize = 13.sp, lineHeight = 18.sp, color = contentColor)
+        } else {
+            SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor)
+        }
+    Box(modifier = modifier.fillMaxWidth().height(height).padding(end = shadowOffset, bottom = shadowOffset)) {
+        Box(Modifier.fillMaxSize().offset(x = shadowOffset, y = shadowOffset).background(SlockColor.ShadowBlack))
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(buttonBackground)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .clickable(enabled = enabled && !loading, role = Role.Button, onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             contentAlignment = Alignment.Center
         ) {
             Row(
@@ -368,7 +384,7 @@ internal fun AuthActionButton(
                 }
                 Text(
                     text = if (loading && !text.endsWith("...")) "$text..." else text,
-                    style = SlockType.Button.copy(fontSize = 12.sp, lineHeight = 16.sp, color = contentColor),
+                    style = textStyle,
                     color = contentColor,
                     textAlign = TextAlign.Center
                 )
@@ -624,13 +640,13 @@ private fun AuthComponentPreview() {
     AuthScaffold {
         AuthBrandBlock()
         Text(
-            text = "Sign in",
+            text = "Sign In",
             style = SlockType.PageTitle.copy(fontSize = 32.sp, lineHeight = 38.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack
         )
         AuthTextField(value = "", onValueChange = {}, label = "Email", required = true, forceFocused = true)
         AuthTextField(value = "not-an-email", onValueChange = {}, label = "Email", required = true, isError = true, errorText = "Enter a valid email.")
-        AuthActionButton(text = "Sign in", onClick = {}, tone = AuthButtonTone.Pink)
+        AuthActionButton(text = "Sign In", onClick = {}, tone = AuthButtonTone.Pink)
         AuthActionButton(text = "Continue with GitHub", onClick = {}, tone = AuthButtonTone.Black, preserveDisabledVisual = true)
         AuthSuccessNotice("Reset link sent", "Check artin@raft.build for your secure link.")
     }
