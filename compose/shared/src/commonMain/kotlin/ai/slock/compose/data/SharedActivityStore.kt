@@ -35,6 +35,7 @@ class SharedActivityStore(
     private val readReceiptRepository: ReadReceiptRepository,
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
+    private val localWriteThrough: ComposeLocalWriteThrough? = null,
     private val scope: CoroutineScope
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
@@ -286,6 +287,8 @@ class SharedActivityStore(
                 errorCode = null
             )
         scope.launch {
+            val serverId = currentServerId()
+            localWriteThrough?.clearConversationUnread(targetChannelId, "shared_activity_mark_read", serverId)
             val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
                 refreshAfterFailure(previous, "activity_mark_read_failed")

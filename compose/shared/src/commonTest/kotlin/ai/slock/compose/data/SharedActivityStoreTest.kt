@@ -1,8 +1,13 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.toConversationSummary
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -46,7 +51,15 @@ class SharedActivityStoreTest {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1", unreadCount = 2)), totalUnreadCount = 2)))
         val read = FakeReadReceiptRepository()
-        val store = activityStore(scope, inbox, readReceiptRepository = read)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(homeSnapshot(activityItem("channel-1", unreadCount = 2).toConversationSummary(), unreadTotal = 2))
+        val store =
+            activityStore(
+                scope,
+                inbox,
+                readReceiptRepository = read,
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
 
         store.dispatch(SharedActivityIntent.SetFilter(InboxFilter.Unread))
         store.dispatch(SharedActivityIntent.MarkRead(store.state.value.items.single()))
@@ -54,6 +67,8 @@ class SharedActivityStoreTest {
         assertEquals(emptyList(), store.state.value.items)
         assertEquals(0, store.state.value.totalUnreadCount)
         assertEquals(listOf(ChannelId("channel-1")), read.readAllChannelIds)
+        assertEquals(0, localStore.readHome(ServerId("server-1"))?.channels?.single()?.unreadCount)
+        assertEquals(0, localStore.readHome(ServerId("server-1"))?.unreadTotal)
         scope.cancel()
     }
 
@@ -172,13 +187,15 @@ class SharedActivityStoreTest {
         scope: CoroutineScope,
         inboxRepository: FakeInboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(emptyList()))),
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
-        conversationRepository: FakeConversationRepository = FakeConversationRepository()
+        conversationRepository: FakeConversationRepository = FakeConversationRepository(),
+        localWriteThrough: ComposeLocalWriteThrough? = null
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
             inboxRepository = inboxRepository,
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
+            localWriteThrough = localWriteThrough,
             scope = scope
         )
 
@@ -349,6 +366,24 @@ class SharedActivityStoreTest {
             totalUnreadCount = totalUnreadCount,
             hasMore = hasMore,
             nextOffset = nextOffset
+        )
+
+    private fun homeSnapshot(
+        conversation: ConversationSummary,
+        unreadTotal: Int
+    ): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(id = ServerId("server-1"), name = "Slock", unreadCount = unreadTotal),
+            currentMember =
+                MemberProfile(
+                    id = MemberId("user-1"),
+                    displayName = "User One",
+                    handle = "user",
+                    kind = MemberKind.Human
+                ),
+            channels = listOf(conversation),
+            directMessages = emptyList(),
+            unreadTotal = unreadTotal
         )
 
     private fun sampleSession(): StoredAuthSession =

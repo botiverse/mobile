@@ -1072,6 +1072,7 @@ private fun SlockAppShellContent() {
             homeReadReceiptRepository,
             conversationRepository,
             memberRepository,
+            localWriteThrough,
             appShellCoroutineScope
         ) {
             SharedActivityStore(
@@ -1080,6 +1081,7 @@ private fun SlockAppShellContent() {
                 readReceiptRepository = homeReadReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                localWriteThrough = localWriteThrough,
                 scope = appShellCoroutineScope
             )
         }
