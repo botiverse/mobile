@@ -5024,7 +5024,12 @@ private fun ThreadComposerContentWithSuggestions(
                     displayName = suggestion.displayName,
                     handle = suggestion.handle,
                     inMentionChannel = suggestion.inMentionChannel,
-                    sourceServerLabel = suggestion.sourceServerLabel
+                    sourceServerLabel = suggestion.sourceServerLabel,
+                    kind = suggestion.kind,
+                    description = suggestion.description,
+                    avatarWireValue = suggestion.avatarWireValue,
+                    gravatarHash = suggestion.gravatarHash,
+                    avatarLabel = suggestion.avatarLabel
                 )
             }
         }

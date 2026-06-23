@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +26,12 @@ data class SharedMembersMemberSuggestion(
     val displayName: String,
     val handle: String,
     val inMentionChannel: Boolean = true,
-    val sourceServerLabel: String? = null
+    val sourceServerLabel: String? = null,
+    val kind: MemberKind = MemberKind.Human,
+    val description: String? = null,
+    val avatarWireValue: String? = null,
+    val gravatarHash: String? = null,
+    val avatarLabel: String = displayName.take(1).uppercase()
 )
 
 data class SharedMembersChannelSuggestion(
@@ -613,7 +619,13 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
                     displayName = member.displayName.trim().ifBlank { handle },
                     handle = handle,
                     inMentionChannel = inMentionChannelIds?.contains(member.id.value) ?: fallbackInMentionChannel,
-                    sourceServerLabel = member.remoteSourceServerLabel(localServerId)
+                    sourceServerLabel = member.remoteSourceServerLabel(localServerId),
+                    kind = member.kind,
+                    description = member.description?.trim()?.takeIf { it.isNotBlank() },
+                    avatarWireValue = member.avatar?.wireValue ?: member.avatarUrl?.trim()?.takeIf { it.isNotBlank() },
+                    gravatarHash = member.gravatarHash?.trim()?.takeIf { it.isNotBlank() },
+                    avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
+                        ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() }
                 )
         }
     }
@@ -634,7 +646,10 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
                 suggestion.inMentionChannel && !existing.inMentionChannel ->
                     existing.copy(
                         inMentionChannel = true,
-                        sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel
+                        sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
+                        description = existing.description ?: suggestion.description,
+                        avatarWireValue = existing.avatarWireValue ?: suggestion.avatarWireValue,
+                        gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash
                     )
                 else -> existing
             }

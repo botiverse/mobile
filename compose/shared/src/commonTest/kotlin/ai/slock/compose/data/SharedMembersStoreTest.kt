@@ -143,6 +143,47 @@ class SharedMembersStoreTest {
     }
 
     @Test
+    fun memberSuggestionsPreserveAvatarAndDescriptionMetadata() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("a1"),
+                            displayName = "Build Agent",
+                            handle = "build",
+                            kind = MemberKind.Agent,
+                            description = "Builds and validates Android changes",
+                            avatar = AvatarReference.Pixel("build-agent"),
+                            gravatarHash = "ABC123",
+                            avatarLabel = "BA"
+                        )
+                    )
+            )
+        memberRepository.channelMembersByChannel["channel-1"] =
+            listOf(MemberProfile(MemberId("a1"), "Build Agent", "@build", MemberKind.Agent))
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(serverId = "server-1", mentionChannelId = "channel-1")
+
+        assertEquals(
+            listOf(
+                SharedMembersMemberSuggestion(
+                    displayName = "Build Agent",
+                    handle = "build",
+                    inMentionChannel = true,
+                    kind = MemberKind.Agent,
+                    description = "Builds and validates Android changes",
+                    avatarWireValue = "pixel:build-agent",
+                    gravatarHash = "ABC123",
+                    avatarLabel = "BA"
+                )
+            ),
+            store.state.value.memberSuggestions
+        )
+    }
+
+    @Test
     fun switchingMentionScopeReloadsMembersWithoutRefetchingLoadedChannels() = runBlocking {
         val memberRepository = FakeMemberRepository()
         memberRepository.channelMembersByChannel["dm-1"] =
