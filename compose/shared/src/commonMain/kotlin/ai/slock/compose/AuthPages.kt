@@ -404,6 +404,8 @@ private fun ForgotPasswordScreen() {
             }
         },
         onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
+        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
+        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
@@ -872,7 +874,7 @@ internal fun LoginContent(
                     )
                 }
             }
-            AuthLoginLegalNotice(
+            AuthLegalNotice(
                 onOpenTerms = onOpenTerms,
                 onOpenPrivacy = onOpenPrivacy
             )
@@ -977,12 +979,14 @@ internal fun ForgotPasswordContent(
     onEmailChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
+    onOpenTerms: () -> Unit = {},
+    onOpenPrivacy: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {}
 ) {
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
         AuthCenterMark()
         Text(
-            text = "Reset password",
+            text = "Reset Password",
             style = SlockType.PageTitle.copy(fontSize = 20.sp, lineHeight = 24.sp, color = SlockColor.TextBlack),
             color = SlockColor.TextBlack,
             modifier = Modifier.authPageStaticTextFocus()
@@ -1021,13 +1025,17 @@ internal fun ForgotPasswordContent(
                 loading = sending,
                 preserveDisabledVisual = true
             )
+            AuthLegalNotice(
+                onOpenTerms = onOpenTerms,
+                onOpenPrivacy = onOpenPrivacy
+            )
             AuthTextLink("Back to sign in") { onBackToSignIn() }
         }
     }
 }
 
 @Composable
-private fun AuthLoginLegalNotice(
+private fun AuthLegalNotice(
     onOpenTerms: () -> Unit,
     onOpenPrivacy: () -> Unit
 ) {
