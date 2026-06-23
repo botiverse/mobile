@@ -6,6 +6,7 @@ import ai.slock.compose.base.bridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalListRow
+import ai.slock.compose.components.SlockBrutalPanelShell
 import ai.slock.compose.data.KeyValueRouterPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
 import androidx.compose.runtime.Composable
@@ -15,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
+import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -200,6 +202,10 @@ internal fun ComposeRouteImpl() {
     }
     val statusBarHeight = LocalActivity.current.pageData.statusBarHeight
     val routeCount = remember { DeveloperRouteGroups.fold(0) { count, group -> count + group.routes.size } }
+    val allRoutes = remember { DeveloperRouteGroups.flatMap { it.routes } }
+    val suggestions = remember(textFieldValue, allRoutes) {
+        developerRouteSuggestions(textFieldValue, allRoutes)
+    }
 
     LazyColumn(
         modifier =
@@ -216,6 +222,10 @@ internal fun ComposeRouteImpl() {
             DeveloperRouterJumpCard(
                 value = textFieldValue,
                 onValueChange = { textFieldValue = it },
+                suggestions = suggestions,
+                onSuggestionSelected = { route ->
+                    textFieldValue = textFieldValue.withDeveloperRoutePageName(route.pageName)
+                },
                 onOpen = {
                     val normalized = textFieldValue.trim()
                     if (normalized.isEmpty()) {
@@ -274,23 +284,15 @@ private fun DeveloperRouterHeader(routeCount: Int) {
 private fun DeveloperRouterJumpCard(
     value: String,
     onValueChange: (String) -> Unit,
+    suggestions: List<DeveloperRouteItem>,
+    onSuggestionSelected: (DeveloperRouteItem) -> Unit,
     onOpen: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxWidth().padding(end = 3.dp, bottom = 3.dp)) {
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(124.dp)
-                    .padding(start = 3.dp, top = 3.dp)
-                    .background(SlockColor.ShadowBlack)
-        )
+    SlockBrutalPanelShell(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .background(SlockColor.SurfaceWhite)
-                    .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -320,6 +322,63 @@ private fun DeveloperRouterJumpCard(
                     minHeight = 42.dp
                 )
             }
+            if (suggestions.isNotEmpty()) {
+                DeveloperRouterSuggestionList(
+                    suggestions = suggestions,
+                    onSuggestionSelected = onSuggestionSelected
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeveloperRouterSuggestionList(
+    suggestions: List<DeveloperRouteItem>,
+    onSuggestionSelected: (DeveloperRouteItem) -> Unit
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Thin, SlockColor.BorderBlack),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        suggestions.forEachIndexed { index, route ->
+            val isLast = index == suggestions.lastIndex
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .background(SlockColor.SurfaceWhite)
+                        .clickable(onClick = { onSuggestionSelected(route) })
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = route.pageName,
+                    style = SlockType.Button.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = route.title,
+                    style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (!isLast) {
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(SlockStroke.Thin)
+                            .background(SlockColor.BorderBlack)
+                )
+            }
         }
     }
 }
@@ -344,6 +403,45 @@ private fun DeveloperRouteGroupHeader(title: String, count: Int) {
             color = SlockColor.TextMutedGray,
             maxLines = 1
         )
+    }
+}
+
+private fun developerRouteSuggestions(input: String, routes: List<DeveloperRouteItem>): List<DeveloperRouteItem> {
+    val query = input.developerRouteQueryToken().lowercase()
+    if (query.isBlank()) {
+        return emptyList()
+    }
+    return routes
+        .filter { route ->
+            val pageName = route.pageName.lowercase()
+            val title = route.title.lowercase()
+            pageName.contains(query) || title.contains(query)
+        }
+        .sortedWith(
+            compareBy<DeveloperRouteItem> { !it.pageName.lowercase().startsWith(query) }
+                .thenBy { !it.title.lowercase().startsWith(query) }
+                .thenBy { it.pageName }
+        )
+        .take(5)
+}
+
+private fun String.developerRouteQueryToken(): String {
+    val normalized = trim().removePrefix("?")
+    val firstToken = normalized.substringBefore("&")
+    return firstToken.removePrefix("pageName=").trim()
+}
+
+private fun String.withDeveloperRoutePageName(pageName: String): String {
+    val normalized = trim().removePrefix("?")
+    if (normalized.isBlank()) {
+        return pageName
+    }
+    val suffix = normalized.substringAfter("&", missingDelimiterValue = "")
+    val paramsSuffix = if (suffix.isBlank()) "" else "&$suffix"
+    return if (normalized.startsWith("pageName=")) {
+        "pageName=$pageName$paramsSuffix"
+    } else {
+        "$pageName$paramsSuffix"
     }
 }
 
