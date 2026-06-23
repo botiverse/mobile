@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
@@ -45,6 +46,7 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.text.TextStyle
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
+import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -141,6 +143,8 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         )
     }
+    var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
+    var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
         val nextPayload =
             when (payload.source) {
@@ -180,6 +184,22 @@ private fun SlockFilePreviewStandalonePageContent() {
     val canOpenWith =
         payload.externalUrl?.isNotBlank() == true ||
             (payload.source == SlockFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
+    fun requestExternalOpen() {
+        if (!canOpenWith || downloadStatus == "downloading") return
+        downloadStatus = "downloading"
+        downloadMessage = ""
+        coroutineScope.launch {
+            val error = openPayloadExternally(payload)
+            if (error == null) {
+                downloadStatus = "idle"
+                downloadMessage = ""
+            } else {
+                downloadStatus = "failed"
+                downloadMessage = error
+                bridge.toast(error)
+            }
+        }
+    }
     SlockFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -200,16 +220,20 @@ private fun SlockFilePreviewStandalonePageContent() {
             },
         onOverflowMenuSelect = { id ->
             if (id != SlockFilePreviewOpenWithActionId) return@SlockFilePreviewPageScaffold
-            coroutineScope.launch {
-                openPayloadExternally(payload)?.let { message ->
-                    bridge.toast(message)
-                }
-            }
+            requestExternalOpen()
         }
     ) {
         SlockFilePreviewPayloadContent(
             payload = payload,
             onOpenUrl = {},
+            downloadStatusLabel =
+                when (downloadStatus) {
+                    "downloading" -> "Downloading..."
+                    "failed" -> downloadMessage.ifBlank { "Download failed" }
+                    else -> null
+                },
+            downloadInProgress = downloadStatus == "downloading",
+            onDownload = if (canOpenWith) ::requestExternalOpen else null,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
     }
@@ -466,6 +490,9 @@ internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): 
 internal fun SlockFilePreviewPayloadContent(
     payload: SlockFilePreviewPayload,
     onOpenUrl: (String) -> Unit,
+    downloadStatusLabel: String? = null,
+    downloadInProgress: Boolean = false,
+    onDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     when (payload.kind) {
@@ -506,7 +533,16 @@ internal fun SlockFilePreviewPayloadContent(
                     name = payload.name.ifBlank { payload.path },
                     meta = payload.meta,
                     message = payload.message.ifBlank { "Image preview is unavailable." },
-                    modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
+                    statusLabel = downloadStatusLabel,
+                    actionLabel = if (onDownload != null) {
+                        if (downloadInProgress) "Downloading..." else "Download"
+                    } else {
+                        null
+                    },
+                    actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                    actionEnabled = !downloadInProgress,
+                    onAction = onDownload,
+                    modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
                 )
             }
         "loading" ->
@@ -529,7 +565,16 @@ internal fun SlockFilePreviewPayloadContent(
                 name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
                 meta = payload.meta,
                 message = payload.message.ifBlank { "No preview is available for this file type." },
-                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
+                statusLabel = downloadStatusLabel,
+                actionLabel = if (onDownload != null) {
+                    if (downloadInProgress) "Downloading..." else "Download"
+                } else {
+                    null
+                },
+                actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                actionEnabled = !downloadInProgress,
+                onAction = onDownload,
+                modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
             )
     }
 }
@@ -695,46 +740,69 @@ internal fun SlockFilePreviewGenericCard(
     meta: String,
     message: String,
     statusLabel: String? = null,
+    actionLabel: String? = null,
+    actionIcon: SlockLucideIconName? = null,
+    actionEnabled: Boolean = true,
+    onAction: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier
             .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .padding(SlockSpacing.Md),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            .padding(SlockSpacing.Xl),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        SlockLucideIcon(iconName, modifier = Modifier.size(24.dp), color = "#FF000000")
+        SlockLucideIcon(iconName, modifier = Modifier.size(72.dp), color = "#FF000000")
+        Box(modifier = Modifier.height(SlockSpacing.Md))
         Text(
             text = name.ifBlank { "File" },
-            style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp),
+            style = SlockType.Input.copy(fontSize = 18.sp, lineHeight = 22.sp),
             color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
         )
         if (meta.isNotBlank()) {
+            Box(modifier = Modifier.height(4.dp))
             Text(
                 text = meta,
                 style = SlockType.Body,
                 color = SlockColor.TextMutedGray,
                 maxLines = 2,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
             )
         }
+        Box(modifier = Modifier.height(SlockSpacing.Md))
         Text(
             text = message,
             style = SlockType.Body,
-            color = SlockColor.TextBlack,
+            color = SlockColor.TextMutedGray,
             maxLines = 3,
-            overflow = TextOverflow.Ellipsis
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
         )
         statusLabel?.let {
+            Box(modifier = Modifier.height(SlockSpacing.Sm))
             Text(
                 text = it,
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center
+            )
+        }
+        if (actionLabel != null && onAction != null) {
+            Box(modifier = Modifier.height(SlockSpacing.Lg))
+            SlockBrutalActionButton(
+                label = actionLabel,
+                onClick = onAction,
+                enabled = actionEnabled,
+                leadingIcon = actionIcon,
+                minWidth = 132.dp,
+                minHeight = 40.dp
             )
         }
     }
