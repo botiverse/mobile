@@ -211,6 +211,12 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadOriginContentInitializesAtTop() {
+        assertEquals(0, threadInitialFirstVisibleItemIndex(latestItemIndex = 8, topAnchoredContent = true))
+        assertEquals(8, threadInitialFirstVisibleItemIndex(latestItemIndex = 8, topAnchoredContent = false))
+    }
+
+    @Test
     fun floatingOverlayPositionHandlesCrampedAndBottomAnchors() {
         val cramped = SlockFloatingOverlayLayout(size = Size(width = 200f, height = 100f))
         assertEquals(
