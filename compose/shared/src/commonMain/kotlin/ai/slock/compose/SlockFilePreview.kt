@@ -967,7 +967,8 @@ internal fun SlockFilePreviewImagePanel(
         placeholderLabel = placeholderLabel,
         modifier = modifier.fillMaxWidth(),
         backgroundColor = backgroundColor,
-        borderWidth = borderWidth
+        borderWidth = borderWidth,
+        zoomable = true
     )
 }
 

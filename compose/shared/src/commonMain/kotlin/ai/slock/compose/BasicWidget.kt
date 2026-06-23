@@ -20,6 +20,7 @@ import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
+import com.tencent.kuikly.compose.foundation.gestures.detectTransformGestures
 import com.tencent.kuikly.compose.foundation.gestures.forEachGesture
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
@@ -43,6 +44,8 @@ import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.clip
+import com.tencent.kuikly.compose.ui.draw.clipToBounds
+import com.tencent.kuikly.compose.ui.draw.scale
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusRequester
 import com.tencent.kuikly.compose.ui.focus.onFocusChanged
@@ -68,6 +71,7 @@ import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.max
@@ -81,6 +85,7 @@ import com.tencent.kuikly.core.views.KeyboardParams
 import com.tencent.kuikly.core.views.ModalView
 import kotlinx.coroutines.delay
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 fun Modifier.backgroundColor(color: Color): Modifier {
     return this.background(color)
@@ -108,7 +113,8 @@ internal fun SlockAspectFitImagePreviewSurface(
     modifier: Modifier = Modifier,
     placeholderLabel: String = "IMG",
     backgroundColor: Color = SlockColor.SurfaceCream,
-    borderWidth: Dp = SlockStroke.Default
+    borderWidth: Dp = SlockStroke.Default,
+    zoomable: Boolean = false
 ) {
     Box(
         modifier = modifier
@@ -117,12 +123,20 @@ internal fun SlockAspectFitImagePreviewSurface(
         contentAlignment = Alignment.Center
     ) {
         if (source != null) {
-            SlockCachedImage(
-                source = source,
-                contentDescription = contentDescription,
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
+            if (zoomable) {
+                SlockZoomableCachedImage(
+                    source = source,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                SlockCachedImage(
+                    source = source,
+                    contentDescription = contentDescription,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         } else {
             Text(
                 text = placeholderLabel,
@@ -131,6 +145,53 @@ internal fun SlockAspectFitImagePreviewSurface(
                 maxLines = 1
             )
         }
+    }
+}
+
+@Composable
+private fun SlockZoomableCachedImage(
+    source: String,
+    contentDescription: String?,
+    modifier: Modifier = Modifier
+) {
+    var scale by remember(source) { mutableStateOf(1f) }
+    var pan by remember(source) { mutableStateOf(Offset.Zero) }
+    var viewportSize by remember(source) { mutableStateOf(IntSize.Zero) }
+
+    fun clampedPan(candidate: Offset, currentScale: Float): Offset {
+        if (currentScale <= 1f || viewportSize.width == 0 || viewportSize.height == 0) {
+            return Offset.Zero
+        }
+        val maxX = viewportSize.width * (currentScale - 1f) / 2f
+        val maxY = viewportSize.height * (currentScale - 1f) / 2f
+        return Offset(
+            x = candidate.x.coerceIn(-maxX, maxX),
+            y = candidate.y.coerceIn(-maxY, maxY)
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .clipToBounds()
+            .onSizeChanged { viewportSize = it }
+            .pointerInput(source) {
+                detectTransformGestures(panZoomLock = true) { _, panChange, zoomChange, _ ->
+                    val nextScale = (scale * zoomChange).coerceIn(1f, 4f)
+                    scale = nextScale
+                    pan = clampedPan(pan + panChange, nextScale)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        SlockCachedImage(
+            source = source,
+            contentDescription = contentDescription,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .offset { IntOffset(pan.x.roundToInt(), pan.y.roundToInt()) }
+                .scale(scale)
+        )
     }
 }
 
