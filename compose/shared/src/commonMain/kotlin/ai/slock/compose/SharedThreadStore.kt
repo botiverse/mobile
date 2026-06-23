@@ -2848,8 +2848,7 @@ private fun KuiklyThreadScreenPayload.replyThreadContentChannelId(): String? {
 
 private fun Message.belongsToReplyThreadContent(threadChannelId: String): Boolean =
     channelId?.value == threadChannelId ||
-        threadId.value == threadChannelId ||
-        threadChannelId == this.threadChannelId?.value
+        threadId.value == threadChannelId
 
 private fun KuiklyThreadScreenPayload.isUsableCachedPayloadForRoute(route: KuiklyThreadScreenPayload): Boolean =
     ThreadCandidateProofGate
@@ -3064,22 +3063,35 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
     currentUserId: String?,
     activeReplyParentMessageId: MessageId?
 ): KuiklyThreadScreenPayload {
-    val matchesExisting = messages.any { it.id == message.id.value } || originMessage?.id == message.id.value
-    if (!matchesExisting && !message.matchesSharedThread(this, activeReplyParentMessageId)) return this
     val incoming = message.toKuiklyThreadMessageItem(currentUserId)
+    val matchesTimeline = messages.any { it.id == incoming.id }
+    val matchesOrigin = originMessage?.id == incoming.id
+    val replyThreadContentChannelId = replyThreadContentChannelId()
+    val matchesThreadContent =
+        if (replyThreadContentChannelId != null) {
+            message.belongsToReplyThreadContent(replyThreadContentChannelId)
+        } else {
+            message.matchesSharedThread(this, activeReplyParentMessageId)
+        }
+    val shouldUpdateTimeline = matchesTimeline || matchesThreadContent
+    if (!matchesOrigin && !shouldUpdateTimeline) return this
     val reactionUpdate = message.reactions.toRealtimeThreadReactionItems(currentUserId)
     val updatedMessages =
-        messages.map { item ->
-            if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming, reactionUpdate) else item
+        if (shouldUpdateTimeline) {
+            messages.map { item ->
+                if (item.id == incoming.id) item.mergeRealtimeUpdate(incoming, reactionUpdate) else item
+            }
+        } else {
+            messages
         }
     val mergedMessages =
-        if (updatedMessages.any { it.id == incoming.id }) {
+        if (!shouldUpdateTimeline || updatedMessages.any { it.id == incoming.id }) {
             updatedMessages
         } else {
             updatedMessages + incoming
         }
     val updatedOrigin =
-        if (originMessage?.id == incoming.id) {
+        if (matchesOrigin) {
             originMessage.mergeRealtimeUpdate(incoming, reactionUpdate)
         } else {
             originMessage

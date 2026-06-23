@@ -2517,6 +2517,75 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val route =
+            basePayload().copy(
+                instanceId = "shared-shell-thread-thread-m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                showModeTabs = false
+            )
+        dataSource.cachePayload(
+            route.copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "reply-1",
+                            authorId = "u2",
+                            authorName = "Cindy",
+                            body = "reply body"
+                        )
+                    ),
+                originMessage =
+                    KuiklyThreadMessageItem(
+                        id = "m1",
+                        authorId = "u1",
+                        authorName = "Artin",
+                        body = "parent body",
+                        threadChannelId = "thread-m1",
+                        replyCount = 1
+                    ),
+                originStatus = "loaded"
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(route))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageUpdated(
+                    message(
+                        threadId = "channel-1",
+                        id = "m1",
+                        seq = 1,
+                        body = "parent edited",
+                        threadChannelId = "thread-m1",
+                        replyCount = 1
+                    )
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("reply-1"), payload.messages.map { it.id })
+        assertEquals(listOf("reply body"), payload.messages.map { it.body })
+        assertEquals("parent edited", payload.originMessage?.body)
+        assertEquals("thread-m1", payload.originMessage?.threadChannelId)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
