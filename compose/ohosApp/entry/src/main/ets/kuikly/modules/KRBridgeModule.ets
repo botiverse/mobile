@@ -49,6 +49,11 @@ interface OhosStorageRowPayload {
   clearEnabled: boolean;
 }
 
+interface OhosAttachmentCacheEntry {
+  path: string;
+  mtime: number;
+}
+
 export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = "HRBridgeModule";
   static readonly SHOW_ALERT = "showAlert";
@@ -74,6 +79,8 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
   static readonly AUTH_BASE_URL = SLOCK_API_BASE_URL;
   static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
+  static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
+  static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
   syncMode(): boolean {
     return false;
@@ -225,28 +232,18 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       return;
     }
     const context = getContext(this) as common.UIAbilityContext;
-    const request = http.createHttp();
     try {
       const cacheDir = `${context.cacheDir}/slock-attachments`;
       fs.mkdirSync(cacheDir, true);
-      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName)}`;
-      const response = await request.request(url, {
-        method: http.RequestMethod.GET,
-        header: { "Accept": "*/*" },
-        connectTimeout: 30000,
-        readTimeout: 60000
-      });
-      const responseCode = Number(response.responseCode ?? 0);
-      if (responseCode < 200 || responseCode >= 300) {
-        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${responseCode}`);
-        callback({ "status": "failed", "message": "Unable to download attachment" });
-        return;
-      }
-      const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
-      try {
-        fs.writeSync(file.fd, this.httpResultToArrayBuffer(response.result));
-      } finally {
-        fs.closeSync(file);
+      this.cleanupAttachmentCache(cacheDir);
+      const path = `${cacheDir}/${this.safeAttachmentCacheFileName(attachmentId, fileName, mimeType)}`;
+      const cached = this.isUsableAttachmentCacheFile(path);
+      if (!cached) {
+        const downloaded = await this.downloadAttachmentToCache(url, path, attachmentId);
+        if (!downloaded) {
+          callback({ "status": "failed", "message": "Unable to download attachment" });
+          return;
+        }
       }
       const uri = fileUri.getUriFromPath(path);
       try {
@@ -255,7 +252,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           uri: uri,
           type: mimeType
         });
-        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened`);
+        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=opened cached=${cached}`);
         callback({ "status": "opened" });
       } catch (error) {
         const businessError = error as BusinessError;
@@ -272,8 +269,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${businessError.code ?? "unknown"}`
       );
       callback({ "status": "failed", "message": "Unable to download attachment" });
-    } finally {
-      request.destroy();
     }
   }
 
@@ -949,11 +944,109 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     };
   }
 
-  private safeAttachmentCacheFileName(attachmentId: string, fileName: string): string {
+  private safeAttachmentCacheFileName(attachmentId: string, fileName: string, mimeType?: string): string {
     const safeId = this.safeAttachmentPathSegment(attachmentId).slice(0, 36) || "attachment";
     const rawName = fileName.split("/").pop()?.split("\\").pop() ?? "attachment";
-    const safeName = this.safeAttachmentPathSegment(rawName).slice(0, 120) || "attachment";
+    const extension = rawName.indexOf(".") < 0 ? this.extensionForMimeType(mimeType) : "";
+    const safeName = this.safeAttachmentPathSegment(`${rawName}${extension}`).slice(0, 120) || "attachment";
     return `${safeId}-${safeName}`;
+  }
+
+  private extensionForMimeType(mimeType?: string): string {
+    switch ((mimeType ?? "").toLowerCase()) {
+      case "application/pdf":
+        return ".pdf";
+      case "text/plain":
+        return ".txt";
+      case "image/png":
+        return ".png";
+      case "image/jpeg":
+      case "image/jpg":
+        return ".jpg";
+      case "image/gif":
+        return ".gif";
+      case "image/webp":
+        return ".webp";
+      case "application/json":
+        return ".json";
+      case "application/zip":
+        return ".zip";
+      case "application/vnd.android.package-archive":
+        return ".apk";
+      default:
+        return "";
+    }
+  }
+
+  private isUsableAttachmentCacheFile(path: string): boolean {
+    try {
+      const stat = fs.statSync(path);
+      const ageMs = Date.now() - (stat.mtime * 1000);
+      return stat.isFile() && stat.size > 0 && ageMs >= 0 && ageMs <= KRBridgeModule.ATTACHMENT_CACHE_MAX_AGE_MS;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  private cleanupAttachmentCache(cacheDir: string) {
+    try {
+      const entries: Array<OhosAttachmentCacheEntry> = [];
+      fs.listFileSync(cacheDir).forEach((name: string) => {
+        try {
+          const path = `${cacheDir}/${name}`;
+          const stat = fs.statSync(path);
+          if (stat.isFile()) {
+            entries.push({ path: path, mtime: stat.mtime });
+          }
+        } catch (_) {
+        }
+      });
+      entries.sort((left: OhosAttachmentCacheEntry, right: OhosAttachmentCacheEntry) => right.mtime - left.mtime);
+      entries.slice(KRBridgeModule.ATTACHMENT_CACHE_MAX_FILES).forEach((entry: OhosAttachmentCacheEntry) => {
+        this.safeUnlink(entry.path);
+      });
+    } catch (_) {
+    }
+  }
+
+  private async downloadAttachmentToCache(url: string, path: string, attachmentId: string): Promise<boolean> {
+    const tempPath = `${path}.part`;
+    const request = http.createHttp();
+    try {
+      const response = await request.request(url, {
+        method: http.RequestMethod.GET,
+        header: { "Accept": "*/*" },
+        connectTimeout: 30000,
+        readTimeout: 60000
+      });
+      const responseCode = Number(response.responseCode ?? 0);
+      if (responseCode < 200 || responseCode >= 300) {
+        SlockOhosDiagnostics.record("SlockAttachmentOpen", `attachmentId=${attachmentId.substring(0, 8)} status=failed code=${responseCode}`);
+        return false;
+      }
+      this.safeUnlink(tempPath);
+      const file = fs.openSync(tempPath, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
+      try {
+        fs.writeSync(file.fd, this.httpResultToArrayBuffer(response.result));
+      } finally {
+        fs.closeSync(file);
+      }
+      this.safeUnlink(path);
+      fs.renameSync(tempPath, path);
+      return true;
+    } catch (_) {
+      this.safeUnlink(tempPath);
+      return false;
+    } finally {
+      request.destroy();
+    }
+  }
+
+  private safeUnlink(path: string) {
+    try {
+      fs.unlinkSync(path);
+    } catch (_) {
+    }
   }
 
   private safeAttachmentPathSegment(value: string): string {
