@@ -34,6 +34,12 @@ class SlockAppShellTest {
     }
 
     @Test
+    fun androidHostExcludedNavigationBarSuppressesBottomSafeArea() {
+        assertEquals(0f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = true, nativeDp = 48f, hostDp = 48f))
+        assertEquals(48f, resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar = false, nativeDp = 24f, hostDp = 48f))
+    }
+
+    @Test
     fun sharedBottomTabHostKeepsSafeAreaOutsideTabContent() {
         assertEquals(58.dp, slockSharedBottomTabBarHostHeight(0.dp))
         assertEquals(76.dp, slockSharedBottomTabBarHostHeight(18.dp))

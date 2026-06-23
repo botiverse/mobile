@@ -24,12 +24,16 @@ internal fun slockTopSafeAreaPadding(): Dp {
 internal fun slockBottomSafeAreaPadding(): Dp {
     val pageData = (LocalActivity.current.getPager() as Pager).pageData
     val params = pageData.params
-    val nativeInsetDp = resolveSlockSafeAreaDp(pageData.safeAreaInsets.bottom, pageData.androidBottomBavBarHeight).dp
+    val nativeInsetDp = resolveSlockSafeAreaDp(pageData.safeAreaInsets.bottom, pageData.androidBottomBavBarHeight)
     val hostInsetDp =
         with(LocalDensity.current) {
-            resolveSlockSafeAreaPx(params.safeAreaPx("safeAreaBottom"), params.safeAreaPx("navigationBarHeight")).toDp()
+            resolveSlockSafeAreaPx(params.safeAreaPx("safeAreaBottom"), params.safeAreaPx("navigationBarHeight")).toDp().value
         }
-    return maxSafeAreaDp(nativeInsetDp, hostInsetDp)
+    return resolveSlockBottomSafeAreaDp(
+        hostExcludesNavigationBar = params.optBoolean("slockHostExcludesNavigationBar", false),
+        nativeDp = nativeInsetDp,
+        hostDp = hostInsetDp
+    ).dp
 }
 
 internal fun resolveSlockSafeAreaDp(primaryDp: Float, fallbackDp: Float): Float =
@@ -37,6 +41,9 @@ internal fun resolveSlockSafeAreaDp(primaryDp: Float, fallbackDp: Float): Float 
 
 internal fun resolveSlockSafeAreaPx(primaryPx: Float, fallbackPx: Float): Float =
     primaryPx.coerceAtLeast(fallbackPx).coerceAtLeast(0f)
+
+internal fun resolveSlockBottomSafeAreaDp(hostExcludesNavigationBar: Boolean, nativeDp: Float, hostDp: Float): Float =
+    if (hostExcludesNavigationBar) 0f else nativeDp.coerceAtLeast(hostDp).coerceAtLeast(0f)
 
 private fun maxSafeAreaDp(primary: Dp, fallback: Dp): Dp =
     if (primary >= fallback) primary else fallback
