@@ -868,6 +868,7 @@ internal fun MembersPageContent() {
                 bridge.toast("Unable to open profile")
                 bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
             } else {
+                sharedStores.agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
                 pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
                     .openPage(MEMBER_DETAIL_PAGE, pageData)
             }

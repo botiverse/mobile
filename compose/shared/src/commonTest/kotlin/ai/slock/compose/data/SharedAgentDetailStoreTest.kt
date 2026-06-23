@@ -2,8 +2,10 @@ package ai.slock.compose.data
 
 import ai.slock.compose.MembersAgentLifecycleAction
 import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.Presence
 import kotlin.test.Test
@@ -68,6 +70,85 @@ class SharedAgentDetailStoreTest {
         val s = store()
         s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
         assertEquals(testMemberId, s.state.value.agentId)
+    }
+
+    @Test
+    fun seedDetailFromAgentMemberSetsContentSnapshot() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Agent One",
+                    handle = "agent-one",
+                    kind = MemberKind.Agent,
+                    description = "Building Android",
+                    roleDescription = "gpt-5-codex",
+                    avatarUrl = "https://example.com/avatar.png",
+                    avatar = AvatarReference.fromWireValue("pixel:agent-one"),
+                    presence = Presence.Active,
+                    agentStatus = AgentStatus.Working,
+                    permissionBadges = listOf("computer:Jiachengs-MacBook-Pro", "computer-id:machine-1")
+                )
+            )
+        )
+
+        val state = s.state.value
+        val summary = state.detail?.summary
+        assertEquals(testMemberId, state.agentId)
+        assertEquals(testMemberId, state.detail?.agentId)
+        assertEquals(SharedAgentDetailLoadStatus.Content, state.detailLoadStatus)
+        assertEquals("agent-one", summary?.name)
+        assertEquals("Agent One", summary?.displayName)
+        assertEquals("Working", summary?.status)
+        assertEquals("Working", summary?.activity)
+        assertEquals("Building Android", summary?.activityDetail)
+        assertEquals("gpt-5-codex", summary?.runtime)
+        assertEquals("pixel:agent-one", summary?.avatarUrl)
+        assertEquals("Jiachengs-MacBook-Pro", summary?.machineName)
+        assertEquals("machine-1", summary?.machineId)
+    }
+
+    @Test
+    fun seedDetailFromHumanMemberIsIgnored() {
+        val s = store()
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = MemberId("user-1"),
+                    displayName = "Artin",
+                    handle = "artin",
+                    kind = MemberKind.Human
+                )
+            )
+        )
+
+        val state = s.state.value
+        assertNull(state.agentId)
+        assertNull(state.detail)
+        assertEquals(SharedAgentDetailLoadStatus.Idle, state.detailLoadStatus)
+    }
+
+    @Test
+    fun seedDetailFromMemberDoesNotReplaceExistingMatchingDetail() {
+        val s = store()
+        s.dispatch(SharedAgentDetailIntent.SelectMember(testMemberId))
+        s.dispatch(SharedAgentDetailIntent.SetDetail(testMemberId, detailWithSummary(status = "Online")))
+
+        s.dispatch(
+            SharedAgentDetailIntent.SeedDetailFromMember(
+                MemberProfile(
+                    id = testMemberId,
+                    displayName = "Stale Agent",
+                    handle = "stale-agent",
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Offline
+                )
+            )
+        )
+
+        assertEquals("Agent One", s.state.value.detail?.summary?.name)
+        assertEquals("Online", s.state.value.detail?.summary?.status)
     }
 
     @Test

@@ -85,6 +85,7 @@ internal interface SharedAgentDetailActions {
 
 internal sealed interface SharedAgentDetailIntent {
     data class SelectMember(val memberId: MemberId) : SharedAgentDetailIntent
+    data class SeedDetailFromMember(val member: MemberProfile) : SharedAgentDetailIntent
     data object DeselectMember : SharedAgentDetailIntent
 
     data class SetDetailLoading(val agentId: MemberId) : SharedAgentDetailIntent
@@ -156,6 +157,7 @@ internal class SharedAgentDetailStore(
                         agentActivitySeq = current.agentActivitySeq
                     )
                 }
+            is SharedAgentDetailIntent.SeedDetailFromMember -> current.seedDetailFromMember(intent.member)
             SharedAgentDetailIntent.DeselectMember -> SharedAgentDetailState(
                 agentActivityObservedAt = current.agentActivityObservedAt,
                 agentActivityVersions = current.agentActivityVersions,
@@ -412,6 +414,53 @@ private fun SharedAgentDetailState.applyAgentActivityUpdate(
     )
 }
 
+private fun SharedAgentDetailState.seedDetailFromMember(member: MemberProfile): SharedAgentDetailState {
+    if (member.kind != MemberKind.Agent) return this
+    if (agentId == member.id && detail?.agentId == member.id) return this
+    return copy(
+        agentId = member.id,
+        detail = member.toAgentDetailSeed(),
+        detailLoadStatus = SharedAgentDetailLoadStatus.Content,
+        detailErrorCode = null,
+        lifecycleActionInFlight = null,
+        diagnosticActionInFlight = null,
+        pendingConfirmation = null,
+        lastActionResult = null,
+        displayNameEditing = false,
+        displayNameDraft = null,
+        displayNameSaving = false,
+        displayNameError = null,
+        roleEditing = false,
+        roleDraft = null,
+        roleSaving = false,
+        roleError = null
+    )
+}
+
+private fun MemberProfile.toAgentDetailSeed(): AgentDetailSnapshot {
+    val fallbackName = handle.ifBlank { displayName.ifBlank { id.value } }
+    val display = displayName.ifBlank { fallbackName }
+    val status = agentStatus?.label
+    return AgentDetailSnapshot(
+        agentId = id,
+        summary = AgentDetailSummary(
+            id = id.value,
+            name = fallbackName,
+            displayName = display,
+            status = status,
+            runtime = roleDescription,
+            avatarUrl = avatar?.wireValue ?: avatarUrl,
+            activity = status,
+            activityDetail = description,
+            machineName = permissionBadges.firstNotNullOfOrNull { it.memberComputerLabelOrNull() },
+            machineId = permissionBadges.firstNotNullOfOrNull { it.memberComputerIdOrNull() }
+        ),
+        directMessages = emptyList(),
+        reminders = emptyList(),
+        activity = emptyList()
+    )
+}
+
 private fun MemberPresenceUpdated.shouldApplyAfter(previousSeq: Long?): Boolean {
     val nextSeq = serverSeq
     if (nextSeq != null && previousSeq != null && nextSeq <= previousSeq) return false
@@ -450,3 +499,12 @@ private fun AgentDetailSnapshot.withAgentActivity(event: MemberPresenceUpdated):
 }
 
 private fun String?.nonBlankOrNull(): String? = this?.takeIf { it.isNotBlank() }
+
+private fun String.memberComputerLabelOrNull(): String? =
+    removePrefix(MemberComputerBadgePrefix).takeIf { startsWith(MemberComputerBadgePrefix) && it.isNotBlank() }
+
+private fun String.memberComputerIdOrNull(): String? =
+    removePrefix(MemberComputerIdBadgePrefix).takeIf { startsWith(MemberComputerIdBadgePrefix) && it.isNotBlank() }
+
+private const val MemberComputerBadgePrefix = "computer:"
+private const val MemberComputerIdBadgePrefix = "computer-id:"
