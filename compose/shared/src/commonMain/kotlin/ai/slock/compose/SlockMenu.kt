@@ -35,12 +35,14 @@ import com.tencent.kuikly.compose.ui.unit.sp
 internal data class SlockBaseMenuItem(
     val id: String,
     val label: String,
-    val icon: SlockLucideIconName? = null
+    val icon: SlockLucideIconName? = null,
+    val dividerBefore: Boolean = false
 )
 
 private val SlockBaseMenuMinWidth = 136.dp
 private val SlockBaseMenuMaxWidth = 280.dp
 private val SlockBaseMenuRowHeight = 34.dp
+private val SlockBaseMenuIconSize = 14.dp
 private val SlockBaseMenuShadowOffset = 4.dp
 private val SlockBaseMenuHorizontalOffset = (-8).dp
 private val SlockBaseMenuVerticalOffset = 8.dp
@@ -72,7 +74,10 @@ internal fun SlockBaseMenuOverlay(
     val menuSize = with(density) {
         Size(
             width = (menuWidth + shadowOffset).toPx(),
-            height = SlockBaseMenuRowHeight.toPx() * items.size + shadowOffset.toPx()
+            height =
+                SlockBaseMenuRowHeight.toPx() * items.size +
+                    SlockStroke.Default.toPx() * items.count { it.dividerBefore } +
+                    shadowOffset.toPx()
         )
     }
     val horizontalOffsetPx = with(density) { SlockBaseMenuHorizontalOffset.toPx() }
@@ -109,6 +114,9 @@ internal fun SlockBaseMenuOverlay(
                     .slockFloatingContentClickTarget()
             ) {
                 items.forEach { item ->
+                    if (item.dividerBefore) {
+                        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                    }
                     val selected = item.id == selectedId
                     SlockBaseMenuRow(
                         item = item,
@@ -155,11 +163,10 @@ private fun SlockBaseMenuRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            if (selected) {
-                SlockLucideIcon(SlockLucideIconName.Check, modifier = Modifier.size(12.dp), color = "#FF000000")
-            } else {
-                Spacer(modifier = Modifier.width(12.dp))
-            }
+            val leadingIcon = item.icon ?: SlockLucideIconName.Check.takeIf { selected }
+            leadingIcon?.let { icon ->
+                SlockLucideIcon(icon, modifier = Modifier.size(SlockBaseMenuIconSize), color = "#FF000000")
+            } ?: Spacer(modifier = Modifier.width(SlockBaseMenuIconSize))
             Text(
                 text = if (uppercaseLabel) item.label.uppercase() else item.label,
                 style = SlockType.Caption.copy(
@@ -171,9 +178,6 @@ private fun SlockBaseMenuRow(
                 maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
-            item.icon?.let { icon ->
-                SlockLucideIcon(icon, modifier = Modifier.size(12.dp), color = "#80000000")
-            }
         }
     }
 }

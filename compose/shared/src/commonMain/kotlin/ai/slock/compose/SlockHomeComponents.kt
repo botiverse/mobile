@@ -942,7 +942,14 @@ fun SlockStructuralHomeShell(
                     if (activeIsDirectMessage) {
                         add(SlockBaseMenuItem(id = "close-dm", label = labels.closeChat, icon = SlockLucideIconName.X))
                     } else if (activeCanArchive) {
-                        add(SlockBaseMenuItem(id = "archive-channel", label = labels.archive, icon = SlockLucideIconName.Archive))
+                        add(
+                            SlockBaseMenuItem(
+                                id = "archive-channel",
+                                label = labels.archive,
+                                icon = SlockLucideIconName.Archive,
+                                dividerBefore = true
+                            )
+                        )
                     }
                 }
             }
