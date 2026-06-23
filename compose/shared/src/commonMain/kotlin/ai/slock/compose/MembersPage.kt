@@ -129,6 +129,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -283,8 +284,7 @@ internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
             MembersRouteContent(
                 payload = membersSmokePayload,
                 onAddHuman = {},
-                onOpenDirectMessage = {},
-                onCopyMemberId = {}
+                onOpenMemberDetail = {}
             )
         }
     }
@@ -320,7 +320,6 @@ data class KuiklyMembersPayload(
     val title: String = "Members",
     val labels: KuiklyMembersLabels = KuiklyMembersLabels(),
     val members: List<MemberProfile> = emptyList(),
-    val selectedMemberId: String? = null,
     val initialAgentTab: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
@@ -781,39 +780,14 @@ internal fun MembersPageContent() {
     MembersRouteContent(
         payload = payload.copy(members = localMembers),
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
-        onOpenDirectMessage = { bridge.settingsEvent(payload.instanceId, "openMember", it.id.value) },
-        onCopyMemberId = {
-            bridge.copyToPasteboard(it.id.value)
-            bridge.toast("Copied member id")
-        },
-        onOpenUrl = { bridge.openUrl(it) },
-        agentDetailLoader = { agentId ->
-            if (payload.selectedMemberId == membersAgentDetailVisualMember.id.value &&
-                agentId == membersAgentDetailVisualMember.id
-            ) {
-                DataResult.Content(membersAgentDetailVisualSnapshot)
+        onOpenMemberDetail = { member ->
+            val pageData = payload.toMemberDetailPageData(member.id.value)
+            if (pageData == null) {
+                bridge.toast("Unable to open profile")
+                bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
             } else {
-                DataResult.Empty(EmptyReason.NoMembers)
-            }
-        },
-        canViewPrivateAgentSurfaces = { member, _ ->
-            member.id == membersAgentDetailVisualMember.id
-        },
-        canManageAgent = { member, _ ->
-            member.id == membersAgentDetailVisualMember.id
-        },
-        agentWorkspaceTreeLoader = { agentId ->
-            if (agentId == membersAgentDetailVisualMember.id) {
-                DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot)
-            } else {
-                DataResult.Empty(EmptyReason.NoMembers)
-            }
-        },
-        agentWorkspaceChildrenLoader = { agentId, path ->
-            if (agentId == membersAgentDetailVisualMember.id && path == "notes") {
-                DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
-            } else {
-                DataResult.Empty(EmptyReason.NoMembers)
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                    .openPage(MEMBER_DETAIL_PAGE, pageData)
             }
         },
         canCreateAgents = payload.canCreateAgents,
@@ -841,9 +815,12 @@ internal fun MembersPageContent() {
 private sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
-    data class Ready(
+    data class Agent(
         val server: ServerSummary,
         val currentUserId: String?
+    ) : MemberDetailRouteState
+    data class Human(
+        val member: MemberProfile
     ) : MemberDetailRouteState
 }
 
@@ -854,7 +831,7 @@ private class MemberDetailRouteProvider(
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore
 ) {
-    suspend fun cachedContext(memberId: String): MemberDetailRouteState.Ready? {
+    suspend fun cachedContext(memberId: String): MemberDetailRouteState.Agent? {
         val selectedMemberId = memberId.trim()
         if (selectedMemberId.isBlank()) return null
         val selectedId = MemberId(selectedMemberId)
@@ -866,7 +843,7 @@ private class MemberDetailRouteProvider(
         val session = authStore.readSession() ?: return null
         val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
-        return MemberDetailRouteState.Ready(
+        return MemberDetailRouteState.Agent(
             server = server,
             currentUserId = session.user.id
         )
@@ -892,14 +869,34 @@ private class MemberDetailRouteProvider(
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
-                return MemberDetailRouteState.Ready(
+                return MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = session.user.id
                 )
             }
             is DataResult.Empty -> {
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
-                return MemberDetailRouteState.Error("member_not_found")
+                return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId)) {
+                    is DataResult.Content -> {
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+                        MemberDetailRouteState.Human(memberResult.data)
+                    }
+                    is DataResult.Empty -> {
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
+                        MemberDetailRouteState.Error("member_not_found")
+                    }
+                    is DataResult.Error -> {
+                        agentDetailStore.dispatch(
+                            SharedAgentDetailIntent.SetDetailError(selectedId, memberResult.error.code)
+                        )
+                        MemberDetailRouteState.Error(memberResult.error.code)
+                    }
+                    is DataResult.NoPermission -> {
+                        agentDetailStore.dispatch(
+                            SharedAgentDetailIntent.SetDetailNoPermission(selectedId, memberResult.blocker.code)
+                        )
+                        MemberDetailRouteState.Error(memberResult.blocker.code)
+                    }
+                }
             }
             is DataResult.Error -> {
                 agentDetailStore.dispatch(
@@ -1115,7 +1112,7 @@ private fun MemberDetailPageContent() {
                 detail = current.code,
                 onBack = { provider.bridge.closePage() }
             )
-        is MemberDetailRouteState.Ready -> {
+        is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toMemberProfile(current.server)
             if (member == null) {
                 Box(
@@ -1211,6 +1208,32 @@ private fun MemberDetailPageContent() {
                 )
             }
         }
+        is MemberDetailRouteState.Human -> {
+            MembersDetailContent(
+                member = current.member,
+                agentDetailState = MembersAgentDetailLoadState.Idle,
+                canViewPrivateAgentSurfaces = { _, _ -> false },
+                canManageAgent = { _, _ -> false },
+                onBack = { provider.bridge.closePage() },
+                onOpenDirectMessage = {
+                    provider.bridge.settingsEvent(payload.instanceId, "openMember", current.member.id.value)
+                },
+                onCopyMemberId = {
+                    provider.copyMemberId(current.member)
+                },
+                onOpenUrl = { provider.bridge.openUrl(it) },
+                onUpdateAgentProfile = null,
+                onUploadAgentAvatar = null,
+                onAgentLifecycleAction = null,
+                agentWorkspaceTreeLoader = null,
+                agentWorkspaceChildrenLoader = null,
+                onCopyAgentDiagnostics = {},
+                onReportAgentIssue = null,
+                onUnavailableAction = { bridge.toast(it) },
+                timeContext = timeContext,
+                initialAgentTab = initialAgentTab
+            )
+        }
     }
 }
 
@@ -1297,7 +1320,6 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
-        selectedMemberId = payload.optNullableString("selectedMemberId"),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
@@ -1313,6 +1335,20 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
                 }
             }
     )
+}
+
+internal fun KuiklyMembersPayload.toMemberDetailPageData(memberId: String): JSONObject? {
+    val selected = memberId.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "members-detail-${instanceId.ifBlank { "members" }}-$selected")
+        put("memberId", selected)
+        initialAgentTab?.let { put("initialAgentTab", it) }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
 }
 
 internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload {
@@ -1377,30 +1413,13 @@ private fun JSONObject.optNullableString(key: String): String? =
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
     refreshing: Boolean = false,
-    sharedAgentDetailStore: SharedAgentDetailStore? = null,
     onAddHuman: () -> Unit,
-    onOpenDirectMessage: (MemberProfile) -> Unit,
-    onCopyMemberId: (MemberProfile) -> Unit,
-    onOpenUrl: (String) -> Unit = {},
-    agentDetailActions: SharedAgentDetailActions? = null,
-    agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
-    agentDetailRefreshKey: Any? = Unit,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
-    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)? = null,
-    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)? = null,
-    agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)? = null,
-    agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)? = null,
-    onCopyAgentDiagnostics: (String) -> Unit = {},
-    onReportAgentIssue: (suspend (String) -> Boolean)? = null,
-    canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
-    canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
-    onUnavailableAction: (String) -> Unit = {},
+    onOpenMemberDetail: (MemberProfile) -> Unit,
     /**
      * Optional create-agent flow. When non-null, the agents section "+" opens a
      * SharedCreateAgentDialog and submit is forwarded to this host callback.
-     * The host is responsible for the actual API call and refreshing the
-     * members payload. Mirrors the existing onAgentLifecycleAction pattern.
+     * The host is responsible for the actual API call and refreshing the members
+     * payload.
      */
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
@@ -1426,131 +1445,26 @@ internal fun MembersRouteContent(
     inviteHumanLoadJoinLink: () -> Unit = {},
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    var selectedMemberId by remember(payload.instanceId, payload.selectedMemberId) {
-        mutableStateOf(payload.selectedMemberId)
-    }
-    val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
-    val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
-    val timeContext = payload.toSlockTimeContext()
-    val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
-    val effectiveAgentDetailStore = sharedAgentDetailStore ?: fallbackAgentDetailStore
-    val agentDetailStoreState by effectiveAgentDetailStore.state.collectAsState()
-    var localAgentDetailState by remember(selectedMember?.id?.value) {
-        mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
-    }
-    val storeBackedAgentDetail = sharedAgentDetailStore != null
-    val agentDetailState =
-        if (storeBackedAgentDetail) {
-            agentDetailStoreState.toMembersAgentDetailLoadState()
-        } else {
-            localAgentDetailState
-        }
-    LaunchedEffect(selectedMemberId, selectedMember?.id?.value) {
-        if (selectedMemberId != null && selectedMember == null) {
-            selectedMemberId = null
-        }
-    }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey, storeBackedAgentDetail) {
-        val member = selectedMember
-        if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
-            if (storeBackedAgentDetail) {
-                effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            } else {
-                localAgentDetailState = MembersAgentDetailLoadState.Idle
-            }
-            return@LaunchedEffect
-        }
-        if (storeBackedAgentDetail) {
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
-        } else if (localAgentDetailState !is MembersAgentDetailLoadState.Content) {
-            localAgentDetailState = MembersAgentDetailLoadState.Loading
-        }
-        when (val result = agentDetailLoader(member.id)) {
-            is DataResult.Content ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Content(result.data)
-                }
-            is DataResult.Empty ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Empty
-                }
-            is DataResult.NoPermission ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(
-                        SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
-                    )
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.NoPermission(result.blocker.code)
-                }
-            is DataResult.Error ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(
-                        SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
-                    )
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Error(result.error.code)
-                }
-        }
-    }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, storeBackedAgentDetail) {
-        if (storeBackedAgentDetail && (selectedMember == null || selectedMember.kind != MemberKind.Agent)) {
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-        }
-    }
-    SlockBackHandler(enabled = selectedMember != null) {
-        selectedMemberId = null
-    }
-    if (selectedMember != null) {
-        MembersDetailContent(
-            member = selectedMember,
-            agentDetailState = agentDetailState,
-            canViewPrivateAgentSurfaces = canViewPrivateAgentSurfaces,
-            canManageAgent = canManageAgent,
-            onBack = { selectedMemberId = null },
-            onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
-            onCopyMemberId = { onCopyMemberId(selectedMember) },
-            onOpenUrl = onOpenUrl,
-            agentDetailActions = agentDetailActions,
-            onUpdateAgentProfile = onUpdateAgentProfile,
-            onUploadAgentAvatar = onUploadAgentAvatar,
-            onPickAgentAvatarFile = onPickAgentAvatarFile,
-            onAgentLifecycleAction = onAgentLifecycleAction,
-            agentWorkspaceTreeLoader = agentWorkspaceTreeLoader,
-            agentWorkspaceChildrenLoader = agentWorkspaceChildrenLoader,
-            onCopyAgentDiagnostics = onCopyAgentDiagnostics,
-            onReportAgentIssue = onReportAgentIssue,
-            onUnavailableAction = onUnavailableAction,
-            timeContext = timeContext,
-            sharedAgentDetailStore = sharedAgentDetailStore,
-            initialAgentTab = initialAgentTab
-        )
-    } else {
-        MembersListContent(
-            payload = payload,
-            refreshing = refreshing,
-            onAddHuman = onAddHuman,
-            onOpenMember = { selectedMemberId = it.id.value },
-            canCreateAgents = canCreateAgents,
-            createAgentSubmit = createAgentSubmit,
-            createAgentMachines = createAgentMachines,
-            createAgentMachinesLoading = createAgentMachinesLoading,
-            createAgentCurrentAgentCount = createAgentCurrentAgentCount,
-            createAgentMaxAgents = createAgentMaxAgents,
-            createAgentLoadMachines = createAgentLoadMachines,
-            inviteHumanSubmit = inviteHumanSubmit,
-            inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
-            inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
-            inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
-            inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
-            bottomContentPadding = bottomContentPadding
-        )
-    }
+    MembersListContent(
+        payload = payload,
+        refreshing = refreshing,
+        onAddHuman = onAddHuman,
+        onOpenMember = onOpenMemberDetail,
+        canCreateAgents = canCreateAgents,
+        createAgentSubmit = createAgentSubmit,
+        createAgentMachines = createAgentMachines,
+        createAgentMachinesLoading = createAgentMachinesLoading,
+        createAgentCurrentAgentCount = createAgentCurrentAgentCount,
+        createAgentMaxAgents = createAgentMaxAgents,
+        createAgentLoadMachines = createAgentLoadMachines,
+        inviteHumanSubmit = inviteHumanSubmit,
+        inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
+        inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
+        inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
+        inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
+        inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+        bottomContentPadding = bottomContentPadding
+    )
 }
 
 @Composable

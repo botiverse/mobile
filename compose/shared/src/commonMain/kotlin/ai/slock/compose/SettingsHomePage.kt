@@ -2286,9 +2286,7 @@ private fun SlockAppShellContent() {
                             memberRepository = memberRepository,
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
-                            settingsCapabilities = settingsCapabilities,
                             membersRefreshKey = membersListRefreshKey,
-                            agentDetailRefreshKey = membersAgentDetailRefreshKey,
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset
                         )
@@ -8331,20 +8329,13 @@ private fun SharedMembersScreen(
     memberRepository: MemberRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
-    settingsCapabilities: BridgeSettingsPlatformCapabilities,
     membersRefreshKey: Int,
-    agentDetailRefreshKey: Int,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var refreshing by remember { mutableStateOf(false) }
-    var localAgentDetailRefreshKey by remember { mutableStateOf(0) }
-    val sharedAgentDetailStore = remember {
-        SharedAgentDetailStore(
-            logger = { message -> bridge.log("shared_members_screen $message") }
-        )
-    }
+    val pager = LocalActivity.current.getPager() as Pager
 
     LaunchedEffect(membersRefreshKey) {
         val previousContent = state as? SharedMembersUiState.Content
@@ -8440,145 +8431,20 @@ private fun SharedMembersScreen(
                     is DataResult.NoPermission -> result
                 }
             }
-            val agentDetailActions =
-                remember(memberRepository, settingsCapabilities, bridge) {
-                    object : SharedAgentDetailActions {
-                        override suspend fun runLifecycleAction(
-                            agentId: MemberId,
-                            action: MembersAgentLifecycleAction
-                        ): DataResult<AgentLifecycleActionResult> {
-                            val result =
-                                when (action) {
-                                    MembersAgentLifecycleAction.Start ->
-                                        memberRepository.startAgent(DataRequestPriority.Foreground, agentId)
-                                    MembersAgentLifecycleAction.Stop ->
-                                        memberRepository.stopAgent(DataRequestPriority.Foreground, agentId)
-                                    MembersAgentLifecycleAction.Restart,
-                                    MembersAgentLifecycleAction.ResetSession,
-                                    MembersAgentLifecycleAction.ResetFull ->
-                                        memberRepository.resetAgent(
-                                            DataRequestPriority.Foreground,
-                                            AgentResetRequest(agentId, action.resetMode ?: AgentResetMode.Restart)
-                                        )
-                                    MembersAgentLifecycleAction.Delete ->
-                                        memberRepository.deleteAgent(DataRequestPriority.Foreground, agentId)
-                                    MembersAgentLifecycleAction.UnassignMachine ->
-                                        memberRepository.assignAgentMachine(
-                                            DataRequestPriority.Foreground,
-                                            AgentMachineAssignmentRequest(agentId, machineId = null)
-                                        )
-                                }
-                            if (result is DataResult.Content && result.data.success) {
-                                if (
-                                    action == MembersAgentLifecycleAction.ResetSession ||
-                                    action == MembersAgentLifecycleAction.ResetFull
-                                ) {
-                                    memberRepository.clearAgentActivityCache(agentId)
-                                }
-                                state = state.withMembersLifecycleResult(action, agentId)
-                                localAgentDetailRefreshKey += 1
-                            }
-                            return result
-                        }
-
-                        override fun copyDiagnostics(diagnostics: String) {
-                            bridge.copyToPasteboard(diagnostics)
-                            bridge.toast("Copied agent diagnostics")
-                        }
-
-                        override suspend fun reportIssue(diagnostics: String): Boolean {
-                            bridge.log("agent_diagnostics_report ${diagnostics.toSingleLineDiagnostics()}")
-                            val ok = settingsCapabilities.sendFeedback()
-                            bridge.toast(if (ok) "Agent issue report sent" else "Unable to report agent issue")
-                            return ok
-                        }
-
-                        override suspend fun updateAgentProfile(
-                            request: AgentProfileUpdateRequest
-                        ): DataResult<MemberProfile> {
-                            val result = memberRepository.updateAgentProfile(DataRequestPriority.Foreground, request)
-                            if (result is DataResult.Content) {
-                                state =
-                                    when (val latest = state) {
-                                        is SharedMembersUiState.Content ->
-                                            latest.copy(
-                                                members =
-                                                    latest.members.map { member ->
-                                                        if (member.id == result.data.id) result.data else member
-                                                    }
-                                            )
-                                        else -> latest
-                                    }
-                            }
-                            return result
-                        }
-                    }
-                }
             MembersRouteContent(
                 payload = membersPayload,
                 refreshing = refreshing,
-                sharedAgentDetailStore = sharedAgentDetailStore,
                 onAddHuman = { bridge.toast("Add member is not available yet") },
-                onOpenDirectMessage = { bridge.toast("Direct message is not available yet") },
-                onCopyMemberId = {
-                    bridge.copyToPasteboard(it.id.value)
-                    bridge.toast("Copied member id")
-                },
-                onOpenUrl = { bridge.openUrl(it) },
-                agentDetailActions = agentDetailActions,
-                agentDetailLoader = { agentId ->
-                    memberRepository.getAgentDetail(DataRequestPriority.Visible, agentId)
-                },
-                agentDetailRefreshKey = "$agentDetailRefreshKey:$localAgentDetailRefreshKey",
-                onPickAgentAvatarFile = {
-                    val response = bridge.threadAttachmentUpload(channelId = "agent-avatar-picker", imageOnly = true)
-                    val code = response?.optInt("code", 0) ?: 0
-                    if (code == 204) {
-                        DataResult.Empty(EmptyReason.NoMembers)
-                    } else if (code !in 200..299) {
-                        val errorCode = response?.optString("errorCode").orEmpty().ifBlank { "agent_avatar_picker_failed" }
-                        DataResult.Error(ScreenError(code = errorCode, retryable = true))
+                onOpenMemberDetail = { member ->
+                    val pageData = membersPayload.toMemberDetailPageData(member.id.value)
+                    if (pageData == null) {
+                        bridge.toast("Unable to open profile")
+                        bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                     } else {
-                        val file = parseSharedThreadPickedAttachmentFiles(response).firstOrNull()
-                        if (file != null) DataResult.Content(file)
-                        else DataResult.Error(ScreenError(code = "agent_avatar_picker_empty", retryable = true))
+                        pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                            .openPage(MEMBER_DETAIL_PAGE, pageData)
                     }
                 },
-                onUploadAgentAvatar = { agentId, file ->
-                    val result = memberRepository.uploadAgentAvatar(
-                        priority = DataRequestPriority.Foreground,
-                        request = AgentAvatarUploadRequest(agentId = agentId, file = file)
-                    )
-                    if (result is DataResult.Content) {
-                        state =
-                            when (val latest = state) {
-                                is SharedMembersUiState.Content ->
-                                    latest.copy(
-                                        members =
-                                            latest.members.map { member ->
-                                                if (member.id == result.data.id) result.data else member
-                                            }
-                                    )
-                                else -> latest
-                            }
-                    }
-                    result
-                },
-                agentWorkspaceTreeLoader = { agentId ->
-                    memberRepository.getAgentWorkspaceTree(DataRequestPriority.Visible, agentId)
-                },
-                agentWorkspaceChildrenLoader = { agentId, dirPath ->
-                    memberRepository.getAgentWorkspaceChildren(DataRequestPriority.Visible, agentId, dirPath)
-                },
-                canViewPrivateAgentSurfaces = { _, detail ->
-                    current.server.permissions.canManageSettings ||
-                        detail?.summary?.creatorId == current.currentUserId
-                },
-                canManageAgent = { _, detail ->
-                    current.server.permissions.canManageSettings ||
-                        detail?.summary?.creatorId == current.currentUserId
-                },
-                onUnavailableAction = { bridge.toast(it) },
                 canCreateAgents = membersPayload.canCreateAgents,
                 createAgentSubmit = createAgentSubmit,
                 createAgentMachines = computersSlice.machines,
@@ -11663,7 +11529,7 @@ private fun Pager.openHomeSearchEntity(
     val payload =
         JSONObject().apply {
             put("instanceId", instanceId)
-            put("selectedMemberId", memberId)
+            put("memberId", memberId)
             put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
             timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
             timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
@@ -11671,11 +11537,11 @@ private fun Pager.openHomeSearchEntity(
         }
     val pageData =
         JSONObject().apply {
-            put("pageName", MEMBERS_PAGE)
+            put("pageName", MEMBER_DETAIL_PAGE)
             put("payload", payload.toString())
             put("instanceId", instanceId)
         }
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBERS_PAGE, pageData)
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBER_DETAIL_PAGE, pageData)
 }
 
 internal fun buildStandaloneConversationThreadLaunchPayload(

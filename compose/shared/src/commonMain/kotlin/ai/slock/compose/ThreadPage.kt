@@ -615,28 +615,6 @@ private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
         put("instanceId", instanceId)
     }
 
-internal fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMemberId: String): JSONObject? {
-    val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
-    val memberProfiles = threadMemberProfilesForProfilePage(selected)
-    if (memberProfiles.none { it.id.value == selected }) return null
-    val membersPayload =
-        KuiklyMembersPayload(
-            instanceId = "thread-members-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected",
-            title = "Members",
-            members = memberProfiles,
-            selectedMemberId = selected,
-            localOffsetMinutes = localOffsetMinutes,
-            todayEpochDay = todayEpochDay,
-            nowEpochMillis = nowEpochMillis,
-            timeFormat = timeFormat,
-            canCreateAgents = false
-        )
-    return JSONObject().apply {
-        put("payload", threadPageJson.encodeToString(membersPayload))
-        put("instanceId", membersPayload.instanceId)
-    }
-}
-
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
     val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
     return JSONObject().apply {
@@ -649,10 +627,6 @@ internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemb
         put("timeFormat", timeFormat)
     }
 }
-
-private fun KuiklyThreadScreenPayload.threadMemberProfilesForProfilePage(selectedMemberId: String): List<MemberProfile> =
-    (members.map { it.toMemberProfile() } + listOfNotNull(findThreadAuthorProfile(selectedMemberId)))
-        .distinctBy { it.id.value }
 
 private fun KuiklyThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
     (listOfNotNull(originMessage) + messages)
