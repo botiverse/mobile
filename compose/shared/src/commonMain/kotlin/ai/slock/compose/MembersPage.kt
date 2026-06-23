@@ -54,6 +54,7 @@ import ai.slock.compose.model.SlockWorkspaceFileKind
 import ai.slock.compose.model.SlockWorkspaceFilePreview
 import ai.slock.compose.model.SlockWorkspaceNode
 import ai.slock.compose.model.SlockTimeContext
+import ai.slock.compose.model.SlockTimeFormat12Hour
 import ai.slock.compose.model.SlockTimeFormat24Hour
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampClockWithSeconds
@@ -115,6 +116,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import kotlin.math.abs
+import kotlin.math.roundToLong
 
 const val MEMBERS_PAGE = "compose_members"
 const val MEMBERS_SMOKE_PAGE = "compose_members_smoke"
@@ -1768,6 +1771,7 @@ private fun MembersDetailContent(
                         MembersAgentDetailTab.Reminders ->
                             MembersAgentRemindersTab(
                                 detail = detail,
+                                timeContext = timeContext,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         MembersAgentDetailTab.Workspace ->
@@ -3331,16 +3335,128 @@ private fun String?.membersDmRelativeTime(): String {
 }
 
 @Composable
-private fun MembersAgentRemindersTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
-    MembersDetailSection(title = "REMINDERS", modifier = modifier) {
-        val rows = detail?.reminders.orEmpty()
+private fun MembersAgentRemindersTab(
+    detail: AgentDetailSnapshot?,
+    timeContext: SlockTimeContext,
+    modifier: Modifier = Modifier
+) {
+    val rows = detail?.reminders.orEmpty()
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         if (rows.isEmpty()) {
-            MembersDetailField("Reminders", "No scheduled reminders.")
+            SlockEmptyState(
+                title = "No reminders yet",
+                detail = "This agent hasn't scheduled anything. Reminders appear here in real time as soon as the agent schedules them.",
+                iconName = SlockLucideIconName.BellRing,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 220.dp, max = 520.dp)
+            )
         } else {
             rows.take(8).forEach { reminder ->
-                MembersDetailField(reminder.title, listOfNotNull(reminder.fireAt, reminder.status).joinToString(" · "))
+                MembersAgentReminderCard(reminder, timeContext)
             }
         }
+    }
+}
+
+@Composable
+private fun MembersAgentReminderCard(
+    reminder: AgentReminderSummary,
+    timeContext: SlockTimeContext
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.3f))
+            .background(SlockColor.SurfaceWhite)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Text(
+            text = reminder.title,
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp)
+                .withSlockFontWeight(FontWeight.Bold),
+            color = SlockColor.TextBlack,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.Clock3,
+                    modifier = Modifier.size(12.dp),
+                    color = "#99000000"
+                )
+                Text(
+                    text = reminder.fireAt.membersReminderRelativeTime(timeContext),
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium)
+                        .copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = reminder.fireAt.membersReminderShortDateTime(timeContext),
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack.copy(alpha = 0.5f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+        }
+        reminder.recurrenceDescription?.takeIf { it.isNotBlank() }?.let { recurrence ->
+            MembersAgentReminderChip(
+                iconName = SlockLucideIconName.RefreshCw,
+                text = recurrence,
+                background = SlockColor.AccentLavender.copy(alpha = 0.3f),
+                textColor = SlockColor.TextBlack
+            )
+        }
+        reminder.messageRef?.takeIf { it.isNotBlank() }?.let { messageRef ->
+            MembersAgentReminderChip(
+                iconName = SlockLucideIconName.Link2,
+                text = messageRef,
+                background = SlockColor.SurfaceWhite,
+                textColor = SlockColor.TextBlack.copy(alpha = 0.7f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentReminderChip(
+    iconName: SlockLucideIconName,
+    text: String,
+    background: Color,
+    textColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(background)
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(iconName, modifier = Modifier.size(11.dp), color = SlockColor.TextBlackArgb)
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 14.sp),
+            color = textColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -4322,6 +4438,95 @@ private fun String?.membersActivityDisplayTime(timeContext: SlockTimeContext): S
     formatSlockTimestampClockWithSeconds(this, timeContext)
         .takeIf { it.isNotBlank() }
         ?: "No time"
+
+private fun String?.membersReminderRelativeTime(timeContext: SlockTimeContext): String {
+    val trimmed = this?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val fireAtMillis =
+        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+    val nowMillis = timeContext.nowEpochMillis ?: return trimmed.membersReminderShortDateTime(timeContext)
+    val diffMillis = fireAtMillis - nowMillis
+    val absMillis = abs(diffMillis)
+    val unitMillis =
+        when {
+            absMillis < MembersReminderMillisPerHour -> MembersReminderMillisPerMinute
+            absMillis < MembersReminderMillisPerDay -> MembersReminderMillisPerHour
+            else -> MembersReminderMillisPerDay
+        }
+    val unit =
+        when (unitMillis) {
+            MembersReminderMillisPerMinute -> "minute"
+            MembersReminderMillisPerHour -> "hour"
+            else -> "day"
+        }
+    val amount = (diffMillis.toDouble() / unitMillis.toDouble()).roundToLong()
+    val absoluteAmount = abs(amount)
+    if (absoluteAmount == 0L) return "now"
+    val label = "$absoluteAmount $unit${if (absoluteAmount == 1L) "" else "s"}"
+    return if (amount > 0L) "in $label" else "$label ago"
+}
+
+private fun String?.membersReminderShortDateTime(timeContext: SlockTimeContext): String {
+    val trimmed = this?.trim().orEmpty()
+    if (trimmed.isEmpty()) return ""
+    val epochMillis =
+        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
+    val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
+    val millisOfDay = membersReminderFloorMod(localMillis, MembersReminderMillisPerDay)
+    val date = membersReminderCivilDateFromEpochDay(epochDay)
+    val hour = (millisOfDay / MembersReminderMillisPerHour).toInt()
+    val minute = ((millisOfDay % MembersReminderMillisPerHour) / MembersReminderMillisPerMinute).toInt()
+    return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
+}
+
+private fun membersReminderClock(hour: Int, minute: Int, timeFormat: String): String {
+    if (timeFormat != SlockTimeFormat12Hour) {
+        return "${hour.membersReminderTwoDigits()}:${minute.membersReminderTwoDigits()}"
+    }
+    val displayHour = (hour % 12).let { if (it == 0) 12 else it }
+    return "${displayHour.membersReminderTwoDigits()}:${minute.membersReminderTwoDigits()} ${if (hour < 12) "AM" else "PM"}"
+}
+
+private data class MembersReminderCivilDate(
+    val year: Int,
+    val month: Int,
+    val day: Int
+)
+
+private fun membersReminderCivilDateFromEpochDay(epochDay: Long): MembersReminderCivilDate {
+    val zeroDay = epochDay + 719_468L
+    val era = membersReminderFloorDiv(zeroDay, 146_097L)
+    val dayOfEra = zeroDay - era * 146_097L
+    val yearOfEra =
+        (dayOfEra - dayOfEra / 1_460L + dayOfEra / 36_524L - dayOfEra / 146_096L) / 365L
+    val year = yearOfEra + era * 400L
+    val dayOfYear = dayOfEra - (365L * yearOfEra + yearOfEra / 4L - yearOfEra / 100L)
+    val monthPrime = (5L * dayOfYear + 2L) / 153L
+    val day = dayOfYear - (153L * monthPrime + 2L) / 5L + 1L
+    val month = monthPrime + if (monthPrime < 10L) 3L else -9L
+    val adjustedYear = year + if (month <= 2L) 1L else 0L
+    return MembersReminderCivilDate(adjustedYear.toInt(), month.toInt(), day.toInt())
+}
+
+private fun membersReminderFloorDiv(value: Long, divisor: Long): Long {
+    val quotient = value / divisor
+    val remainder = value % divisor
+    return if (remainder != 0L && (value xor divisor) < 0L) quotient - 1 else quotient
+}
+
+private fun membersReminderFloorMod(value: Long, divisor: Long): Long =
+    value - membersReminderFloorDiv(value, divisor) * divisor
+
+private fun Int.membersReminderTwoDigits(): String =
+    if (this < 10) "0$this" else toString()
+
+private val MembersReminderMonthNames =
+    listOf("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+private const val MembersReminderMillisPerMinute = 60_000L
+private const val MembersReminderMillisPerHour = 3_600_000L
+private const val MembersReminderMillisPerDay = 86_400_000L
 
 private fun String.membersActivityTypeLabel(): String =
     when (this) {
