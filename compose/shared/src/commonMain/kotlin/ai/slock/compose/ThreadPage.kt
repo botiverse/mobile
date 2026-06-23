@@ -5585,6 +5585,8 @@ private fun ThreadMessagesList(
     var initialBottomAnchorReady by remember(payload.instanceId, topAnchoredOriginContent) {
         mutableStateOf(topAnchoredOriginContent)
     }
+    var latestLocalSendBottomAnchorActiveKey by remember(payload.instanceId) { mutableStateOf<String?>(null) }
+    var userScrollGeneration by remember(payload.instanceId) { mutableStateOf(0) }
     var lastComposerKeyboardInsetDp by remember(payload.instanceId) { mutableStateOf(composerKeyboardInsetDp) }
     var pendingKeyboardBottomAnchor by remember(payload.instanceId) { mutableStateOf(false) }
     var activeFocusedMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
@@ -5746,19 +5748,32 @@ private fun ThreadMessagesList(
     }
     LaunchedEffect(payload.instanceId, latestLocalSendBottomAnchorKey, latestItemIndex) {
         if (!shouldAnchorLatestLocalSendToBottom(latestLocalSendBottomAnchorKey, latestItemIndex)) {
+            latestLocalSendBottomAnchorActiveKey = null
             return@LaunchedEffect
         }
+        val anchorKey = latestLocalSendBottomAnchorKey
+        val startUserScrollGeneration = userScrollGeneration
+        latestLocalSendBottomAnchorActiveKey = anchorKey
         allowBottomAutoAnchor = true
         listState.awaitThreadMessagesLayoutFrame()
         listState.awaitThreadMessagesLayoutStability(latestItemIndex)
-        repeat(ThreadBackToBottomAnchorAttempts) { attempt ->
+        var attempt = 0
+        while (
+            shouldContinueLatestLocalSendBottomAnchor(
+                activeAnchorKey = latestLocalSendBottomAnchorActiveKey,
+                targetAnchorKey = anchorKey,
+                startUserScrollGeneration = startUserScrollGeneration,
+                currentUserScrollGeneration = userScrollGeneration,
+                isAtRenderedBottom = listState.isLatestItemAtRenderedBottom(latestItemIndex),
+                attempt = attempt
+            )
+        ) {
             listState.scrollLatestItemToRenderedBottom(latestItemIndex)
             delay(ThreadLayoutStabilityFrameDelayMs)
-            if (attempt >= ThreadBottomAnchorMinimumAttempts &&
-                listState.isLatestItemAtRenderedBottom(latestItemIndex)
-            ) {
-                return@LaunchedEffect
-            }
+            attempt += 1
+        }
+        if (latestLocalSendBottomAnchorActiveKey == anchorKey) {
+            latestLocalSendBottomAnchorActiveKey = null
         }
     }
     LaunchedEffect(
@@ -5879,6 +5894,13 @@ private fun ThreadMessagesList(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
+                    .touchListener { type, _ ->
+                        if (type == TouchType.Move && latestLocalSendBottomAnchorActiveKey != null) {
+                            latestLocalSendBottomAnchorActiveKey = null
+                            allowBottomAutoAnchor = false
+                            userScrollGeneration += 1
+                        }
+                    }
                     .alpha(if (initialBottomAnchorReady || latestItemIndex < 0) 1f else 0f)
                     .bouncesEnable(false),
                 verticalArrangement = if (topAnchoredOriginContent) Arrangement.Top else Arrangement.Bottom,
@@ -6370,6 +6392,19 @@ internal fun shouldAnchorLatestLocalSendToBottom(
     latestItemIndex: Int
 ): Boolean =
     latestLocalSendBottomAnchorKey != null && latestItemIndex >= 0
+
+internal fun shouldContinueLatestLocalSendBottomAnchor(
+    activeAnchorKey: String?,
+    targetAnchorKey: String?,
+    startUserScrollGeneration: Int,
+    currentUserScrollGeneration: Int,
+    isAtRenderedBottom: Boolean,
+    attempt: Int
+): Boolean {
+    if (targetAnchorKey == null || activeAnchorKey != targetAnchorKey) return false
+    if (currentUserScrollGeneration != startUserScrollGeneration) return false
+    return !isAtRenderedBottom || attempt < ThreadBottomAnchorMinimumAttempts
+}
 
 internal fun KuiklyThreadScreenPayload.latestLocalSendBottomAnchorKey(): String? {
     val latest = messages.lastOrNull() ?: return null

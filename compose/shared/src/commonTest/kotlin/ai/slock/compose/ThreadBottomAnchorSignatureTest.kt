@@ -224,6 +224,47 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun latestLocalSendBottomAnchor_continuesUntilRenderedBottomWithoutUserScroll() {
+        assertEquals(
+            true,
+            shouldContinueLatestLocalSendBottomAnchor(
+                activeAnchorKey = "local-send",
+                targetAnchorKey = "local-send",
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0,
+                isAtRenderedBottom = false,
+                attempt = 64
+            )
+        )
+        assertEquals(
+            false,
+            shouldContinueLatestLocalSendBottomAnchor(
+                activeAnchorKey = "local-send",
+                targetAnchorKey = "local-send",
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 0,
+                isAtRenderedBottom = true,
+                attempt = 3
+            )
+        )
+    }
+
+    @Test
+    fun latestLocalSendBottomAnchor_stopsWhenUserScrolls() {
+        assertEquals(
+            false,
+            shouldContinueLatestLocalSendBottomAnchor(
+                activeAnchorKey = "local-send",
+                targetAnchorKey = "local-send",
+                startUserScrollGeneration = 0,
+                currentUserScrollGeneration = 1,
+                isAtRenderedBottom = false,
+                attempt = 1
+            )
+        )
+    }
+
+    @Test
     fun visibleReadAllMarkerKey_tracksLatestMessageOnly() {
         val a =
             payload(
