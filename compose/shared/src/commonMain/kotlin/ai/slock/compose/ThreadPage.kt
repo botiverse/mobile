@@ -300,7 +300,6 @@ internal const val ThreadReplyEmptyDetail = ""
 private val threadPageJson = Json { ignoreUnknownKeys = true }
 private val ThreadComposerBottomBasePadding = 12.dp
 private val ThreadComposerBottomSafeAreaLift = 2.dp
-private val ThreadLoadingComposerPlaceholderContentHeight = 66.dp
 private val ThreadHeaderActionSize = 30.dp
 private val ThreadHeaderActionShadowOffset = 2.dp
 private val ThreadHeaderActionIconSize = 15.dp
@@ -313,10 +312,6 @@ internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea:
     val safeAreaInset = if (keyboardInsetDp > 0f) 0.dp else bottomSafeArea
     return ThreadComposerBottomBasePadding + ThreadComposerBottomSafeAreaLift + keyboardInset + safeAreaInset
 }
-
-internal fun threadLoadingComposerPlaceholderHeight(bottomSafeArea: Dp): Dp =
-    SlockStroke.Default + 12.dp + ThreadLoadingComposerPlaceholderContentHeight +
-        threadComposerBottomPadding(keyboardInsetDp = 0f, bottomSafeArea = bottomSafeArea)
 
 internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
     val raw = channelName?.trim().orEmpty()
@@ -4818,8 +4813,6 @@ private fun ThreadPageContent(
                         )
                     }
                 }
-            } else if (payload.status == "loading" && showComposerForSelectedTab) {
-                ThreadLoadingComposerPlaceholder(composerBottomSafeArea)
             }
         }
         when (activeModal) {
@@ -4863,17 +4856,6 @@ private fun ThreadPageContent(
                     }
                 )
         }
-    }
-}
-
-@Composable
-private fun ThreadLoadingComposerPlaceholder(bottomSafeArea: Dp) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
-            .height(threadLoadingComposerPlaceholderHeight(bottomSafeArea))
-            .background(SlockColor.SurfaceWhite)
-    ) {
-        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
     }
 }
 

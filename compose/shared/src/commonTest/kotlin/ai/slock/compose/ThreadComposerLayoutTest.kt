@@ -21,11 +21,6 @@ class ThreadComposerLayoutTest {
     }
 
     @Test
-    fun threadLoadingComposerPlaceholderReservesClosedComposerHeight() {
-        assertEquals(118.dp, threadLoadingComposerPlaceholderHeight(bottomSafeArea = 24.dp))
-    }
-
-    @Test
     fun mentionSuggestionInsertMovesCursorAfterInsertedMention() {
         val edit = applyKuiklyComposerSuggestionEdit(
             text = "ping @ar",
