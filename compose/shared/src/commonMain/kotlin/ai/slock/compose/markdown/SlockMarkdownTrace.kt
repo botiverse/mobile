@@ -28,6 +28,7 @@ package ai.slock.compose.markdown
  */
 internal expect fun traceBegin(name: String)
 internal expect fun traceEnd()
+internal expect fun slockTraceDiagnosticsEnabled(): Boolean
 
 /**
  * KMP-friendly monotonic clock for #192 phase duration measurement.
@@ -51,6 +52,9 @@ internal inline fun <T> traceMarkdownSectionNonComposable(
     name: String,
     block: () -> T
 ): T {
+    if (!slockTraceDiagnosticsEnabled()) {
+        return block()
+    }
     traceBegin(name)
     val t0 = slockNanoTimeNanos()
     val result = block()
@@ -111,6 +115,9 @@ internal fun <T> traceMarkdownSection(
     bodyLength: Int,
     block: @androidx.compose.runtime.Composable () -> T
 ): T {
+    if (!slockTraceDiagnosticsEnabled()) {
+        return block()
+    }
     traceBegin(name)
     val t0 = slockNanoTimeNanos()
     val result = block()

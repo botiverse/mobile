@@ -11,6 +11,8 @@ internal actual fun traceEnd() {
     // No-op
 }
 
+internal actual fun slockTraceDiagnosticsEnabled(): Boolean = false
+
 internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,

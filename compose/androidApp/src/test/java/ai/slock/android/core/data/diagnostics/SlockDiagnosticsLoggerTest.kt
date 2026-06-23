@@ -7,10 +7,10 @@ import org.junit.Test
 
 class SlockDiagnosticsLoggerTest {
     @Test
-    fun recordRoutesThroughSanitizedBuffer() {
+    fun warningRoutesThroughSanitizedBuffer() {
         SanitizedDiagnosticsLogBuffer.clear()
 
-        SlockDiagnosticsLogger.record(
+        SlockDiagnosticsLogger.w(
             tag = "Diagnostics",
             message = "authorization: Bearer secret accessToken=token password=hunter2"
         )
@@ -21,5 +21,20 @@ class SlockDiagnosticsLoggerTest {
         assertFalse(recent.single().message.contains("secret"))
         assertFalse(recent.single().message.contains("hunter2"))
         assertTrue(recent.single().message.contains("[redacted]"))
+    }
+
+    @Test
+    fun debugBuildKeepsVerboseLogsWhenProfilerToggleTurnsOff() {
+        SanitizedDiagnosticsLogBuffer.clear()
+
+        SlockDiagnosticsLogger.setVerboseLoggingEnabled(false)
+        SlockDiagnosticsLogger.record("Diagnostics", "debug detail")
+        SlockDiagnosticsLogger.i("Diagnostics", "info detail")
+        assertEquals(2, SanitizedDiagnosticsLogBuffer.recent().size)
+
+        SlockDiagnosticsLogger.w("Diagnostics", "warning detail")
+        assertEquals("warning detail", SanitizedDiagnosticsLogBuffer.recent().last().message)
+
+        SlockDiagnosticsLogger.setVerboseLoggingEnabled(true)
     }
 }

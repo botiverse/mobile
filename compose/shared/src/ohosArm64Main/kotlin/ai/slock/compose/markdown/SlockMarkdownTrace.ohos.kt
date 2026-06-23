@@ -19,6 +19,8 @@ internal actual fun traceEnd() {
     // No-op: OHOS tracing is out of scope for #192 phase attribution.
 }
 
+internal actual fun slockTraceDiagnosticsEnabled(): Boolean = false
+
 internal actual fun logMarkdownSpike(
     phase: String,
     durationUs: Long,

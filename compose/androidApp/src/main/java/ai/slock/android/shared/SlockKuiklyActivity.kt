@@ -884,15 +884,15 @@ private object SlockKuiklyLogAdapter : IKRLogAdapter {
     override val asyncLogEnable: Boolean = true
 
     override fun i(tag: String, msg: String) {
-        Log.i(tag, msg)
+        SlockDiagnosticsLogger.i(tag, msg)
     }
 
     override fun d(tag: String, msg: String) {
-        Log.d(tag, msg)
+        SlockDiagnosticsLogger.d(tag, msg)
     }
 
     override fun e(tag: String, msg: String) {
-        Log.e(tag, msg)
+        SlockDiagnosticsLogger.e(tag, msg)
     }
 }
 
@@ -1184,12 +1184,11 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
-                SanitizedDiagnosticsLogBuffer.record("SlockKuikly", content)
                 when (level) {
-                    SlockBridgeLogLevel.DEBUG -> Unit
-                    SlockBridgeLogLevel.INFO -> Log.i("SlockKuikly", content)
-                    SlockBridgeLogLevel.WARN -> Log.w("SlockKuikly", content)
-                    SlockBridgeLogLevel.ERROR -> Log.e("SlockKuikly", content)
+                    SlockBridgeLogLevel.DEBUG -> SlockDiagnosticsLogger.d("SlockKuikly", content)
+                    SlockBridgeLogLevel.INFO -> SlockDiagnosticsLogger.i("SlockKuikly", content)
+                    SlockBridgeLogLevel.WARN -> SlockDiagnosticsLogger.w("SlockKuikly", content)
+                    SlockBridgeLogLevel.ERROR -> SlockDiagnosticsLogger.e("SlockKuikly", content)
                 }
                 null
             }
@@ -1434,6 +1433,7 @@ internal class SlockKuiklyBridgeModule(
                         "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
+                            SlockDiagnosticsLogger.setVerboseLoggingEnabled(enabled)
                             SlockDiagnosticsLogger.record(
                                     "SlockDiagnostics",
                                     "shared_recomposition_profiler_enabled=$enabled"

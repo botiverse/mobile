@@ -1,6 +1,7 @@
 package ai.slock.compose.markdown
 
 import android.os.Trace
+import com.tencent.kuikly.compose.profiler.RecompositionProfiler
 
 /**
  * Android actual for `SlockMarkdownTrace`. Delegates to `android.os.Trace.beginSection` /
@@ -20,6 +21,9 @@ internal actual fun traceEnd() {
     Trace.endSection()
 }
 
+internal actual fun slockTraceDiagnosticsEnabled(): Boolean =
+    RecompositionProfiler.isEnabled
+
 private const val SpikeLogTag = "SlockMarkdownSpike"
 
 internal actual fun logMarkdownSpike(
@@ -28,6 +32,7 @@ internal actual fun logMarkdownSpike(
     bodyLength: Int,
     extra: String
 ) {
+    if (!slockTraceDiagnosticsEnabled()) return
     val extras = if (extra.isNotEmpty()) " $extra" else ""
     android.util.Log.i(
         SpikeLogTag,
