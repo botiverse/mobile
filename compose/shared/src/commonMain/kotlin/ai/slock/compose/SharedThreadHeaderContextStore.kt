@@ -69,6 +69,7 @@ internal object SharedThreadHeaderContextStore {
                 },
             subtitle =
                 when (surfaceKind) {
+                    KuiklyThreadSurfaceKind.DirectMessage -> null
                     KuiklyThreadSurfaceKind.ReplyThread ->
                         existingThreadChannelHeaderSubtitle(conversation.subtitle)
                             ?: threadChannelHeaderSubtitle(conversation.name)

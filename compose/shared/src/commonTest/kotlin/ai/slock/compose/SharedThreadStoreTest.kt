@@ -1505,6 +1505,72 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun openMessageContextKeepsExplicitDirectMessageParentSurfaceWhenSnapshotLooksThread() = runBlocking {
+        val parentMessage =
+            message(
+                threadId = "dm-1",
+                id = "parent-1",
+                seq = 12,
+                body = "Parent DM message"
+            )
+        val repository =
+            FakeConversationRepository(
+                messageContextResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "reply-thread-1",
+                            messages = listOf(parentMessage),
+                            parentMessage = parentMessage,
+                            conversation =
+                                ConversationSummary(
+                                    threadId = ThreadId("reply-thread-1"),
+                                    channelId = ChannelId("dm-1"),
+                                    kind = ConversationKind.Thread,
+                                    name = "Thread",
+                                    subtitle = "#Cindy",
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("dm-1"),
+                                            parentMessageId = MessageId("parent-1"),
+                                            streamChannelId = ChannelId("reply-thread-1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val parentRoute =
+            directMessagePayload().copy(
+                title = "Cindy",
+                dmPeerName = "Cindy",
+                dmPeerAvatarUrl = "pixel:cindy",
+                dmPeerAvatarLabel = "CI",
+                dmPeerGravatarUrl = null,
+                focusedMessageId = "parent-1"
+            )
+
+        val payload = (dataSource.openMessageContext("parent-1", parentRoute) as DataResult.Content).data
+
+        assertEquals(listOf(MessageId("parent-1")), repository.getMessageContextRequests)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals("dm-1", payload.sourceThreadId)
+        assertEquals("dm-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
+        assertEquals("Cindy", payload.title)
+        assertEquals(null, payload.subtitle)
+        assertEquals("Cindy", payload.dmPeerName)
+        assertEquals("pixel:cindy", payload.dmPeerAvatarUrl)
+        assertEquals("CI", payload.dmPeerAvatarLabel)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.resolveThreadComposer().surfaceKind)
+    }
+
+    @Test
     fun fetchThreadPayloadPrefersConversationRepositorySnapshotWhenAvailable() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(

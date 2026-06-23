@@ -3816,10 +3816,26 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     base: KuiklyThreadScreenPayload,
     currentUserId: String?
 ): KuiklyThreadScreenPayload {
-    val routeIsReplyThread =
+    val baseHasReplyThreadIdentity =
         base.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread ||
-            conversation.kind == ConversationKind.Thread ||
-            conversation.thread != null
+            (
+                base.parentChannelId?.isNotBlank() == true &&
+                    (base.parentMessageId?.isNotBlank() == true || base.originParentMessageId?.isNotBlank() == true)
+                )
+    val baseTargetsParentConversation =
+        !baseHasReplyThreadIdentity &&
+            base.parentChannelId.isNullOrBlank() &&
+            base.focusedMessageId?.isNotBlank() == true &&
+            (
+                base.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage ||
+                    base.surfaceKind == KuiklyThreadSurfaceKind.Channel
+                )
+    val routeIsReplyThread =
+        baseHasReplyThreadIdentity ||
+            (
+                !baseTargetsParentConversation &&
+                    (conversation.kind == ConversationKind.Thread || conversation.thread != null)
+                )
     val parentId =
         if (routeIsReplyThread) {
             parentMessage?.id?.value
@@ -3848,8 +3864,18 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             } else {
                 conversation.channelId?.value ?: conversation.threadId.value
             }
-    val parentChannelId = base.parentChannelId ?: conversation.thread?.parentChannelId?.value
-    val parentMessageId = base.parentMessageId ?: resolvedParentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
+    val parentChannelId =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            base.parentChannelId ?: conversation.thread?.parentChannelId?.value
+        } else {
+            null
+        }
+    val parentMessageId =
+        if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+            base.parentMessageId ?: resolvedParentMessage?.id?.value ?: conversation.thread?.parentMessageId?.value
+        } else {
+            null
+        }
     val sourceThreadId =
         base.sourceThreadId
             ?: conversation.thread?.streamChannelId?.value
