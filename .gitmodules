@@ -21,15 +21,6 @@
 	path = third_party/kuikly-ui
 	url = https://github.com/bytemain/KuiklyUI.git
 	branch = staging2
-[submodule "third_party/moko-graphics"]
-	path = third_party/moko-graphics
-	url = https://github.com/bytemain/moko-graphics.git
-	branch = 0.10.1-ohos
-	ignore = untracked
-[submodule "third_party/moko-resources"]
-	path = third_party/moko-resources
-	url = https://github.com/bytemain/moko-resources.git
-	branch = 0.26.0-ohos
 [submodule "third_party/slock-visual-testing"]
 	path = third_party/slock-visual-testing
 	url = https://github.com/bytemain/slock-visual-testing.git
