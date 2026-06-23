@@ -1,9 +1,12 @@
 package ai.slock.compose
 
 import ai.slock.compose.base.Utils
+import ai.slock.compose.GitHubIconDataUri
+import ai.slock.compose.GoogleIconDataUri
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalTextField
+import ai.slock.compose.SlockCachedImage
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -517,7 +520,11 @@ private fun SettingsConnectedAccountRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            IconBox(providerIcon(account.provider), if (connected) SlockColor.TextBlack else SlockColor.SurfaceWhite, invert = connected)
+            SlockCachedImage(
+                source = providerIconDataUri(account.provider),
+                contentDescription = account.provider,
+                modifier = Modifier.size(28.dp)
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(account.provider.ifBlank { "Account ${index + 1}" }, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(account.identifier, style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -689,11 +696,11 @@ private fun IconBox(iconName: SlockLucideIconName, color: Color, invert: Boolean
     }
 }
 
-private fun providerIcon(provider: String): SlockLucideIconName =
+private fun providerIconDataUri(provider: String): String =
     when {
-        provider.lowercase().contains("github") -> SlockLucideIconName.Key
-        provider.lowercase().contains("google") -> SlockLucideIconName.Mail
-        else -> SlockLucideIconName.Key
+        provider.lowercase().contains("github") -> GitHubIconDataUri
+        provider.lowercase().contains("google") -> GoogleIconDataUri
+        else -> GoogleIconDataUri
     }
 
 @Composable

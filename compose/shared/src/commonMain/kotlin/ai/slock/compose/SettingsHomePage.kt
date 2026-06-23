@@ -4943,14 +4943,33 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
-    SlockBrutalTextField(
-        label = "Server slug",
-        value = value,
-        placeholder = placeholder,
-        onValueChange = onValueChange,
-        enabled = enabled,
-        required = true
-    )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SlockBrutalSectionLabel(label = "Server slug")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .height(42.dp)
+                    .width(42.dp)
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
+            }
+            SlockBrutalTextField(
+                label = "Server slug",
+                value = value,
+                placeholder = placeholder,
+                onValueChange = onValueChange,
+                enabled = enabled,
+                required = true,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
 }
 
 @Composable
