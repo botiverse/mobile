@@ -1387,7 +1387,19 @@ private fun ThreadPageScreen() {
             }
             routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
-        realtimeEventSignal = threadRealtimeEventSignal
+        realtimeEventSignal = threadRealtimeEventSignal,
+        onOpenMemberProfile = { currentPayload, memberId ->
+            val pageData = currentPayload.toThreadMembersProfilePageData(memberId)
+            if (pageData == null) {
+                bridge.toast("Unable to open profile")
+                bridge.logWarn(
+                    "thread_member_profile_skip reason=missing_member memberId=$memberId " +
+                        "instanceId=${currentPayload.instanceId}"
+                )
+            } else {
+                routerModule.openPage(MEMBERS_PAGE, pageData)
+            }
+        }
     )
 }
 
