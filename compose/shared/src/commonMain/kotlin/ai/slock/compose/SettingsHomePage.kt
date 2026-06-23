@@ -1944,6 +1944,9 @@ private fun SlockAppShellContent() {
                                     activityUnreadCount = homeActivityState.totalUnreadCount,
                                     savedCount = homeSearchSavedState.saved.totalCount,
                                     onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
+                                    onNotificationDismiss = { id ->
+                                        homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
+                                    },
                                     selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
                                     onSelectedConversationCleared = {
                                         homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
@@ -8460,6 +8463,7 @@ private fun SharedHomeScreen(
     activityUnreadCount: Int = 0,
     savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
+    onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
     selectedConversationId: String? = null,
     onSelectedConversationCleared: () -> Unit = {},
     onOpenSearch: () -> Unit,
@@ -8603,7 +8607,7 @@ private fun SharedHomeScreen(
                     } ?: bridge.toast("Notification opened")
                 },
                 onNotificationDismiss = { notification ->
-                    onIntent(SharedHomeIntent.DismissNotification(notification.id))
+                    onNotificationDismiss(notification.id)
                 },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]

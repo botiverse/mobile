@@ -19,7 +19,10 @@ data class SharedHomeShellState(
     val destination: String? = null,
     val selectedConversationId: String? = null,
     val primarySurfaceVisible: Boolean = false
-)
+) {
+    val notifications: List<SharedHomeNotification>
+        get() = home.notifications
+}
 
 sealed interface SharedHomeShellIntent {
     data object Start : SharedHomeShellIntent
@@ -32,6 +35,7 @@ sealed interface SharedHomeShellIntent {
     data object CloseSecondaryDestination : SharedHomeShellIntent
     data class SetSelectedConversation(val conversationId: String?) : SharedHomeShellIntent
     data class SelectTopAction(val action: SharedHomeTopAction) : SharedHomeShellIntent
+    data class DismissNotification(val id: String) : SharedHomeShellIntent
     data class ApplyRealtimeEvent(val serverId: String, val event: RealtimeEvent) : SharedHomeShellIntent
     data class Home(val intent: SharedHomeIntent) : SharedHomeShellIntent
     data class Activity(val intent: SharedActivityIntent) : SharedHomeShellIntent
@@ -92,6 +96,8 @@ class SharedHomeShellStore(
                 _state.value = _state.value.copy(selectedConversationId = intent.conversationId)
             is SharedHomeShellIntent.SelectTopAction ->
                 dispatchHome(SharedHomeIntent.SelectTopAction(intent.action))
+            is SharedHomeShellIntent.DismissNotification ->
+                dispatchHome(SharedHomeIntent.DismissNotification(intent.id))
             is SharedHomeShellIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
             is SharedHomeShellIntent.Home -> dispatchHome(intent.intent)
             is SharedHomeShellIntent.Activity -> dispatchActivity(intent.intent)
@@ -117,6 +123,7 @@ class SharedHomeShellStore(
         _state.value = _state.value.copy(primarySurfaceVisible = visible)
         dispatchHome(SharedHomeIntent.SetSurfaceVisible(visible))
         if (visible) {
+            dispatchHome(SharedHomeIntent.Start)
             preloadBadgeSummaries()
         }
     }

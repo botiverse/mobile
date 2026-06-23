@@ -36,6 +36,7 @@ class SharedHomeShellStoreTest {
         assertEquals(
             listOf<SharedHomeIntent>(
                 SharedHomeIntent.SetSurfaceVisible(true),
+                SharedHomeIntent.Start,
                 SharedHomeIntent.SetSurfaceVisible(false)
             ),
             fixture.homeIntents
@@ -43,6 +44,33 @@ class SharedHomeShellStoreTest {
         assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.LoadInitial), fixture.activityIntents)
         assertEquals(listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.OpenSaved), fixture.searchSavedIntents)
         assertEquals(false, store.state.value.primarySurfaceVisible)
+        fixture.cancel()
+    }
+
+    @Test
+    fun notificationsAreProjectedFromHomeStateThroughShellState() {
+        val notification =
+            SharedHomeNotification(
+                id = "announcement-1",
+                title = "Upgrade available",
+                body = "Install the newest daemon."
+            )
+        val fixture = fixture(homeState = SharedHomeState(notifications = listOf(notification)))
+
+        assertEquals(listOf(notification), fixture.store.state.value.notifications)
+        fixture.cancel()
+    }
+
+    @Test
+    fun dismissNotificationRoutesThroughHomeStore() {
+        val fixture = fixture()
+
+        fixture.store.dispatch(SharedHomeShellIntent.DismissNotification("announcement-1"))
+
+        assertEquals(
+            listOf<SharedHomeIntent>(SharedHomeIntent.DismissNotification("announcement-1")),
+            fixture.homeIntents
+        )
         fixture.cancel()
     }
 
@@ -116,16 +144,20 @@ class SharedHomeShellStoreTest {
         fixture.cancel()
     }
 
-    private fun fixture(): ShellFixture {
+    private fun fixture(
+        homeState: SharedHomeState = SharedHomeState(),
+        activityState: SharedActivityState = SharedActivityState(),
+        searchSavedState: SharedHomeSearchSavedState = SharedHomeSearchSavedState()
+    ): ShellFixture {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val homeIntents = mutableListOf<SharedHomeIntent>()
         val activityIntents = mutableListOf<SharedActivityIntent>()
         val searchSavedIntents = mutableListOf<SharedHomeSearchSavedIntent>()
         val store =
             SharedHomeShellStore(
-                homeState = MutableStateFlow(SharedHomeState()),
-                activityState = MutableStateFlow(SharedActivityState()),
-                searchSavedState = MutableStateFlow(SharedHomeSearchSavedState()),
+                homeState = MutableStateFlow(homeState),
+                activityState = MutableStateFlow(activityState),
+                searchSavedState = MutableStateFlow(searchSavedState),
                 dispatchHome = homeIntents::add,
                 dispatchActivity = activityIntents::add,
                 dispatchSearchSaved = searchSavedIntents::add,

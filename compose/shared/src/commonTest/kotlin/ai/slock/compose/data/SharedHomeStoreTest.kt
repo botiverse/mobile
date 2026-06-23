@@ -1264,6 +1264,34 @@ class SharedHomeStoreTest {
     }
 
     @Test
+    fun cachedHomeStartStillLoadsActiveAnnouncementsIntoHomeNotifications() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(sampleHome(ServerId("server-1")))
+        val announcementsApi = RecordingAnnouncementsApi()
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val store = SharedHomeStore(
+            authStore = sessionStore,
+            dataSource =
+                SharedHomeDataSource(
+                    sessionStore = sessionStore,
+                    api = ThrowingHomeApi(),
+                    announcementsApi = announcementsApi,
+                    localWriteThrough = ComposeLocalWriteThrough(localStore),
+                    parseHome = { _, _ -> error("cached home should not parse network payload") }
+                ),
+            scope = scope
+        )
+
+        store.accept(SharedHomeIntent.Start)
+
+        val notification = store.state.value.notifications.single()
+        assertEquals("announcement-1", notification.id)
+        assertEquals(listOf("GET announcements/active"), announcementsApi.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeAnnouncementRefreshesHomeNotifications() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val announcementsApi = RecordingAnnouncementsApi()

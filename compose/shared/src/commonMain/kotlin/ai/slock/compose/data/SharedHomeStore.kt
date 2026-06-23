@@ -509,6 +509,7 @@ class SharedHomeStore(
                                 appBadgeCount = effectiveCachedBadge
                             )
                         )
+                        loadNotifications()
                         launchNetworkRefresh(
                             request = request,
                             activeSession = activeSession,

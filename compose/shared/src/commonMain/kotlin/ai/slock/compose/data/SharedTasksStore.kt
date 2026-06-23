@@ -139,7 +139,7 @@ sealed interface TasksPresentationIntent {
     data object ClearAllFilters : TasksPresentationIntent
 }
 
-class SharedTasksViewModel(
+internal class SharedTasksViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedTasksDataSource,
     private val scope: SharedTasksScope = SharedTasksScope.Server,
