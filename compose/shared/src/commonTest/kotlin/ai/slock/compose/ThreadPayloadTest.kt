@@ -1647,6 +1647,53 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneActivityThreadLaunchShowsOpenInConversationAction() {
+        val request =
+            InboxItem(
+                key = "thread:message-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream-name",
+                threadChannelId = ChannelId("thread-channel-1"),
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityMessageId = MessageId("reply-message-1"),
+                latestActivityPreview = "Latest reply"
+            ).toHomeMessageOpenRequest()
+
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation = request.conversation,
+                timeContext = AppShellThreadTimeContext(localOffsetMinutes = 480),
+                anchorMessageId = request.anchorMessageId
+            )
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals("thread-channel-1", launch.threadId)
+        assertEquals("thread-channel-1", launch.streamChannelId)
+        assertEquals("channel-1", launch.parentChannelId)
+        assertEquals("message-1", launch.parentMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.parentSurfaceKind)
+        assertEquals("message-1", launch.originParentMessageId)
+        assertEquals("reply-message-1", launch.focusedMessageId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.parentSurfaceKind)
+        assertEquals("message-1", initialPayload.originParentMessageId)
+        assertEquals("reply-message-1", initialPayload.focusedMessageId)
+        assertEquals(false, initialPayload.showModeTabs)
+        assertEquals(false, initialPayload.showMembersAction)
+        assertEquals(false, initialPayload.showSettingsAction)
+        assertEquals(true, initialPayload.showOpenInChannelAction)
+    }
+
+    @Test
     fun screenPayloadWireLaunchDropsDisplayAndProductState() {
         val launch =
             KuiklyThreadScreenPayload(
