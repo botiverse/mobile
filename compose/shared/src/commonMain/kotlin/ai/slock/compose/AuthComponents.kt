@@ -31,6 +31,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -68,7 +69,7 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandWidth = 156.dp
+private val AuthTopBarBrandWidth = 203.dp
 private val AuthTopBarBrandHeight = 50.dp
 
 private fun Modifier.authStaticTextFocus(): Modifier =
@@ -159,7 +160,8 @@ private fun AuthSmallBrand(modifier: Modifier = Modifier) {
     SlockCachedImage(
         source = RaftLogoSvgDataUri,
         contentDescription = null,
-        modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight)
+        modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight),
+        contentScale = ContentScale.FillBounds
     )
 }
 
