@@ -69,6 +69,11 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     sourceSets {
         getByName("connectedTest") {
             res.srcDir("src/connectedTest/res")
