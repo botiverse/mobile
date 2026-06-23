@@ -322,36 +322,7 @@ class SocketIoRealtimeClient(
     companion object {
         const val DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL
 
-        val RealtimeWireEventNames = listOf(
-            RealtimeSocketEvents.MessageNew,
-            RealtimeSocketEvents.DirectMessageNew,
-            RealtimeSocketEvents.MessageUpdated,
-            RealtimeSocketEvents.ThreadUpdated,
-            RealtimeSocketEvents.ChannelUpdated,
-            RealtimeSocketEvents.ChannelMembersUpdated,
-            RealtimeSocketEvents.TaskCreated,
-            RealtimeSocketEvents.TaskUpdated,
-            RealtimeSocketEvents.TaskDeleted,
-            RealtimeSocketEvents.AgentActivity,
-            RealtimeSocketEvents.AgentCreated,
-            RealtimeSocketEvents.AgentDeleted,
-            RealtimeSocketEvents.MachineStatus,
-            RealtimeSocketEvents.MachineCapabilities,
-            RealtimeSocketEvents.MachineUpdated,
-            RealtimeSocketEvents.ServerMemberAdded,
-            RealtimeSocketEvents.ServerMemberUpdated,
-            RealtimeSocketEvents.ServerMemberLeft,
-            RealtimeSocketEvents.ServerMemberRemoved,
-            RealtimeSocketEvents.ServerMembershipRemoved,
-            RealtimeSocketEvents.ServerDeleted,
-            RealtimeSocketEvents.ServerPlanUpdated,
-            RealtimeSocketEvents.AnnouncementNew,
-            RealtimeSocketEvents.ReminderFired,
-            RealtimeSocketEvents.ReminderScheduled,
-            RealtimeSocketEvents.ReminderCanceled,
-            RealtimeSocketEvents.SyncResumeResponse,
-            RealtimeSocketEvents.Heartbeat
-        )
+        val RealtimeWireEventNames = RealtimeSocketEvents.ServerWireEvents
     }
 
     /**

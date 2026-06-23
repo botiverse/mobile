@@ -29,11 +29,15 @@ object RealtimeSocketEvents {
     const val TaskUpdated = "task:updated"
     const val TaskDeleted = "task:deleted"
     const val AgentActivity = "agent:activity"
+    const val AgentSession = "agent:session"
     const val AgentCreated = "agent:created"
     const val AgentDeleted = "agent:deleted"
     const val MachineStatus = "machine:status"
     const val MachineCapabilities = "machine:capabilities"
     const val MachineUpdated = "machine:updated"
+    const val ComputerUpgradeProgress = "computer:upgrade:progress"
+    const val ComputerUpgradeDone = "computer:upgrade:done"
+    const val DaemonStatus = "daemon:status"
     const val ServerMemberAdded = "server:member-added"
     const val ServerMemberUpdated = "server:member-updated"
     const val ServerMemberLeft = "server:member:left"
@@ -45,4 +49,39 @@ object RealtimeSocketEvents {
     const val ReminderFired = "reminder:fired"
     const val ReminderScheduled = "reminder:scheduled"
     const val ReminderCanceled = "reminder:canceled"
+
+    val ServerWireEvents: List<String> = listOf(
+        MessageNew,
+        DirectMessageNew,
+        MessageUpdated,
+        ThreadUpdated,
+        ChannelUpdated,
+        ChannelMembersUpdated,
+        TaskCreated,
+        TaskUpdated,
+        TaskDeleted,
+        AgentActivity,
+        AgentSession,
+        AgentCreated,
+        AgentDeleted,
+        MachineStatus,
+        MachineCapabilities,
+        MachineUpdated,
+        ComputerUpgradeProgress,
+        ComputerUpgradeDone,
+        DaemonStatus,
+        ServerMemberAdded,
+        ServerMemberUpdated,
+        ServerMemberLeft,
+        ServerMemberRemoved,
+        ServerMembershipRemoved,
+        ServerDeleted,
+        ServerPlanUpdated,
+        AnnouncementNew,
+        ReminderFired,
+        ReminderScheduled,
+        ReminderCanceled,
+        SyncResumeResponse,
+        Heartbeat
+    )
 }
