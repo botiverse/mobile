@@ -7579,16 +7579,28 @@ private fun ThreadMessageReactionRow(onReact: (String) -> Unit) {
 }
 
 private fun threadDisplayReactionEmoji(emoji: String): String =
-    when (emoji) {
-        "+1" -> "👍"
-        else -> emoji
-    }
+    emoji
 
 @Composable
 private fun ThreadQuickReactionGlyph(
     emoji: String,
     modifier: Modifier = Modifier
 ) {
+    if (!threadHasCustomReactionGlyph(emoji)) {
+        Box(modifier = modifier, contentAlignment = Alignment.Center) {
+            Text(
+                text = emoji,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(
+                    fontSize = if (emoji.length > 1) 10.sp else 13.sp,
+                    lineHeight = 12.sp
+                ),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Visible
+            )
+        }
+        return
+    }
     Canvas(modifier = modifier) {
         val unit = size.width / 24f
         fun scaledSize(width: Float, height: Float) = Size(width * unit, height * unit)
@@ -7796,13 +7808,28 @@ private fun ThreadQuickReactionGlyph(
                 drawPath(box, ink, style = stroke2)
                 drawPath(check, ink, style = Stroke(width = 2.6f * unit))
             }
-            else -> {
-                drawCircle(yellow, radius = 9f * unit, center = scaledOffset(12f, 12f))
-                drawCircle(ink, radius = 9f * unit, center = scaledOffset(12f, 12f), style = stroke2)
-            }
+            else -> Unit
         }
     }
 }
+
+private fun threadHasCustomReactionGlyph(emoji: String): Boolean =
+    when (emoji) {
+        "👍",
+        "❤️",
+        "❤",
+        "🎉",
+        "👀",
+        "🔥",
+        "😂",
+        "✅",
+        "☑",
+        "☑️",
+        "✔",
+        "✔️",
+        "✓" -> true
+        else -> false
+    }
 
 @Composable
 private fun ThreadMessageMenuItem(action: ThreadMessageMenuAction) {
