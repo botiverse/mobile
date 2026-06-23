@@ -1312,11 +1312,20 @@ private fun ThreadPageScreen() {
             )
         }
     val dataSource =
-        remember(networkClient, authStore, localWriteThrough, memberRepository, channelRepository, createAgentCoordinator) {
+        remember(
+            networkClient,
+            authStore,
+            localWriteThrough,
+            sharedStores.realtimeStore,
+            memberRepository,
+            channelRepository,
+            createAgentCoordinator
+        ) {
             SharedThreadDataSource(
                 networkApi = NetworkSlockThreadApi(networkClient),
                 sessionStore = authStore,
                 localWriteThrough = localWriteThrough,
+                sharedRealtimeStore = sharedStores.realtimeStore,
                 memberRepository = memberRepository,
                 conversationRepository =
                     RealConversationRepository(

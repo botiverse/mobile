@@ -109,6 +109,7 @@ internal class SharedThreadDataSource(
     private val api: SlockThreadApi,
     private val sessionStore: SlockAuthSessionStore,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    private val sharedRealtimeStore: ai.slock.compose.data.SharedRealtimeStore? = null,
     private val memberRepository: MemberRepository? = null,
     private val conversationRepository: ConversationRepository? = null,
     private val channelRepository: ChannelRepository? = null,
@@ -140,6 +141,7 @@ internal class SharedThreadDataSource(
         networkApi: SharedThreadNetworkApi,
         sessionStore: SlockAuthSessionStore,
         localWriteThrough: ComposeLocalWriteThrough? = null,
+        sharedRealtimeStore: ai.slock.compose.data.SharedRealtimeStore? = null,
         memberRepository: MemberRepository? = null,
         conversationRepository: ConversationRepository? = null,
         channelRepository: ChannelRepository? = null,
@@ -152,6 +154,7 @@ internal class SharedThreadDataSource(
         api = SlockThreadApiClient(networkApi, diagnosticsLogger),
         sessionStore = sessionStore,
         localWriteThrough = localWriteThrough,
+        sharedRealtimeStore = sharedRealtimeStore,
         memberRepository = memberRepository,
         conversationRepository = conversationRepository,
         channelRepository = channelRepository,
@@ -1199,11 +1202,18 @@ internal class SharedThreadDataSource(
         writeRealtimeEvents(listOf(event))
     }
 
-    suspend fun writeRealtimeEvents(events: List<RealtimeEvent>) {
+    suspend fun writeRealtimeEvents(
+        events: List<RealtimeEvent>,
+        activeConversationId: String? = null
+    ) {
         if (events.isEmpty()) return
         val serverId = readSession()?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
             ?: return
-        localWriteThrough?.writeRealtimeEvents(serverId, events)
+        if (sharedRealtimeStore != null) {
+            sharedRealtimeStore.acceptRealtimeEvents(serverId, events, activeConversationId)
+        } else {
+            localWriteThrough?.writeRealtimeEvents(serverId, events, activeConversationId)
+        }
     }
 
     suspend fun markChannelReadAll(channelId: String): DataResult<ReadReceiptResult> {
@@ -2150,7 +2160,11 @@ internal class SharedThreadStore(
                 pendingRealtimePersistenceEvents.clear()
                 try {
                     runCatching {
-                        dataSource.writeRealtimeEvents(events)
+                        dataSource.writeRealtimeEvents(
+                            events,
+                            activeConversationId = _state.value.payload.sourceThreadId
+                                ?: _state.value.payload.streamChannelId
+                        )
                     }.onFailure { throwable ->
                         if (throwable is CancellationException) throw throwable
                         diagnosticsLogger?.invoke(

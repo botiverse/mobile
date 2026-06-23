@@ -966,7 +966,8 @@ private fun SlockAppShellContent() {
                 parseHome = { payload, session ->
                     parseSlockHome(payload, session) { message -> bridge.log(message) }
                 },
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
+                sharedRealtimeStore = sharedStores.realtimeStore
             )
         }
     val memberRepository =
