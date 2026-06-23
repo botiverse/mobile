@@ -2422,6 +2422,44 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadMemberProfilePageDataPreselectsMemberOrAuthorFallback() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-1",
+                localOffsetMinutes = 480,
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent_android",
+                            displayName = "Android Developer",
+                            handle = "Android-Developer",
+                            kind = "agent",
+                            avatarLabel = "AD"
+                        )
+                    ),
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "user_artin",
+                            authorName = "Artin",
+                            authorKind = "human",
+                            avatarLabel = "AR",
+                            body = "hello"
+                        )
+                    )
+            )
+
+        val memberPayload = payload.toThreadMembersProfilePageData("agent_android")!!.optString("payload").toKuiklyMembersPayload()
+        assertEquals("agent_android", memberPayload.selectedMemberId)
+        assertEquals("Android Developer", memberPayload.members.first { it.id.value == "agent_android" }.displayName)
+
+        val authorPayload = payload.toThreadMembersProfilePageData("user_artin")!!.optString("payload").toKuiklyMembersPayload()
+        assertEquals("user_artin", authorPayload.selectedMemberId)
+        assertEquals("Artin", authorPayload.members.first { it.id.value == "user_artin" }.displayName)
+    }
+
+    @Test
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))

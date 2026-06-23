@@ -585,7 +585,7 @@ private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
         put("instanceId", instanceId)
     }
 
-private fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMemberId: String): JSONObject? {
+internal fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMemberId: String): JSONObject? {
     val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
     val memberProfiles = threadMemberProfilesForProfilePage(selected)
     if (memberProfiles.none { it.id.value == selected }) return null
@@ -4619,6 +4619,7 @@ private fun ThreadPageContent(
     onFilesAuthRequired: (String?) -> Unit,
     onOpenFilesAttachment: (KuiklyThreadAttachmentItem, ThreadImageAttachmentGroup?) -> Unit,
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
+    onOpenMemberProfile: (String) -> Unit,
     highlightedMentions: Set<String>,
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
@@ -4733,7 +4734,7 @@ private fun ThreadPageContent(
                             currentServerSlug = currentServerSlug,
                             contentExtrasVisible = contentExtrasVisible,
                             onThreadEvent = onThreadEvent,
-                            onOpenMember = {},
+                            onOpenMember = onOpenMemberProfile,
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
                             diagnosticsLogger = diagnosticsLogger
