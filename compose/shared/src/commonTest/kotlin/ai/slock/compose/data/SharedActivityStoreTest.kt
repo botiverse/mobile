@@ -99,6 +99,37 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun markAllReadRequestsUnreadCountRefreshAfterCommit() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val read = FakeReadReceiptRepository()
+        val inbox =
+            FakeInboxRepository(
+                initialSnapshots =
+                    listOf(
+                        snapshot(listOf(activityItem("channel-1", unreadCount = 1)), totalUnreadCount = 1),
+                        snapshot(emptyList(), totalUnreadCount = 0)
+                    )
+            )
+        var unreadRefreshRequests = 0
+        val store =
+            activityStore(
+                scope,
+                inbox,
+                readReceiptRepository = read,
+                onUnreadCountsChanged = { unreadRefreshRequests += 1 }
+            )
+
+        store.dispatch(SharedActivityIntent.LoadInitial)
+        store.dispatch(SharedActivityIntent.MarkAllRead)
+
+        assertEquals(listOf(ServerId("server-1")), read.inboxReadAllServerIds)
+        assertEquals(1, unreadRefreshRequests)
+        assertEquals(0, store.state.value.totalUnreadCount)
+        assertEquals(2, inbox.initialLoadCount)
+        scope.cancel()
+    }
+
+    @Test
     fun activitySilentRefreshDoesNotDrivePullRefreshState() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val inbox = DeferredInboxRepository()
@@ -256,7 +287,8 @@ class SharedActivityStoreTest {
         readReceiptRepository: FakeReadReceiptRepository = FakeReadReceiptRepository(),
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
         memberRepository: MemberRepository? = null,
-        localWriteThrough: ComposeLocalWriteThrough? = null
+        localWriteThrough: ComposeLocalWriteThrough? = null,
+        onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
             authStore = InMemorySlockAuthSessionStore(sampleSession()),
@@ -265,6 +297,7 @@ class SharedActivityStoreTest {
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
             localWriteThrough = localWriteThrough,
+            onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
         )
 
@@ -308,6 +341,7 @@ class SharedActivityStoreTest {
     private class FakeReadReceiptRepository : ReadReceiptRepository {
         val readAllChannelIds = mutableListOf<ChannelId>()
         val unreadChannelIds = mutableListOf<ChannelId>()
+        val inboxReadAllServerIds = mutableListOf<ServerId>()
 
         override suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot> =
             error("unused")
@@ -325,8 +359,10 @@ class SharedActivityStoreTest {
             return DataResult.Content(ReadReceiptResult(channelId = channelId, unreadCount = 1))
         }
 
-        override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> =
-            DataResult.Content(ReadReceiptResult())
+        override suspend fun markInboxReadAll(serverId: ServerId): DataResult<ReadReceiptResult> {
+            inboxReadAllServerIds += serverId
+            return DataResult.Content(ReadReceiptResult())
+        }
     }
 
     private inner class DeferredInboxRepository : InboxRepository {

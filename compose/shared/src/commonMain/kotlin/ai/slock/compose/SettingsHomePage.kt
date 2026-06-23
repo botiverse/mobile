@@ -1338,6 +1338,29 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("shared_home_activity_warning $message") }
             )
         }
+    val homeSidebarOrderRepository =
+        remember {
+            RealSettingsRepository(
+                sessionStore = authStore,
+                networkClient = appShellNetworkClient,
+                logger = { message -> bridge.log("shared_home_sidebar_order $message") },
+                warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
+            )
+        }
+    val homeViewModel: SharedHomeViewModel =
+        viewModel(key = "shared-home") {
+            SharedHomeViewModel(
+                authStore = authStore,
+                dataSource = homeDataSource,
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
+                loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
+                updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
+                markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
+                markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
+                archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
+                pinUpdateFailureCallback = { message -> bridge.toast(message) }
+            )
+        }
     val homeActivityStore =
         remember(
             authStore,
@@ -1346,6 +1369,7 @@ private fun SlockAppShellContent() {
             conversationRepository,
             memberRepository,
             localWriteThrough,
+            homeViewModel,
             appShellCoroutineScope
         ) {
             SharedActivityStore(
@@ -1355,6 +1379,7 @@ private fun SlockAppShellContent() {
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 localWriteThrough = localWriteThrough,
+                onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 scope = appShellCoroutineScope
             )
         }
@@ -1407,29 +1432,6 @@ private fun SlockAppShellContent() {
             SharedAuthGateViewModel(authDataSource)
         }
     val authGateState by authGateViewModel.state.collectAsState()
-    val homeSidebarOrderRepository =
-        remember {
-            RealSettingsRepository(
-                sessionStore = authStore,
-                networkClient = appShellNetworkClient,
-                logger = { message -> bridge.log("shared_home_sidebar_order $message") },
-                warningLogger = { message -> bridge.log("shared_home_sidebar_order_warning $message") }
-            )
-        }
-    val homeViewModel: SharedHomeViewModel =
-        viewModel(key = "shared-home") {
-            SharedHomeViewModel(
-                authStore = authStore,
-                dataSource = homeDataSource,
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") },
-                loadSidebarOrder = { homeSidebarOrderRepository.getServerSidebarOrder() },
-                updateSidebarOrder = { request -> homeSidebarOrderRepository.updateServerSidebarOrder(request) },
-                markChannelReadAll = { channelId -> homeReadReceiptRepository.markChannelReadAll(channelId) },
-                markChannelUnread = { channelId -> homeReadReceiptRepository.markChannelUnread(channelId) },
-                archiveChannel = { channelId -> channelRepository.archiveChannel(channelId) },
-                pinUpdateFailureCallback = { message -> bridge.toast(message) }
-            )
-        }
     val hostThreadTimeContext = remember(pager.pageData.params.toString()) {
         pager.pageData.params.threadTimeContext()
     }

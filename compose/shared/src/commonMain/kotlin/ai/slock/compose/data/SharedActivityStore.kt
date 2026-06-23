@@ -36,6 +36,7 @@ class SharedActivityStore(
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    private val onUnreadCountsChanged: () -> Unit = {},
     private val scope: CoroutineScope
 ) {
     private val _state = MutableStateFlow(SharedActivityState())
@@ -236,8 +237,10 @@ class SharedActivityStore(
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {
+                onUnreadCountsChanged()
                 load(refresh = true, pullRefresh = false)
             } else {
+                onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_all_read_failed")
             }
         }
@@ -302,7 +305,10 @@ class SharedActivityStore(
             localWriteThrough?.clearConversationUnread(targetChannelId, "shared_activity_mark_read", serverId)
             val result = readReceiptRepository.markChannelReadAll(targetChannelId)
             if (result !is DataResult.Content && result !is DataResult.Empty) {
+                onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_read_failed")
+            } else {
+                onUnreadCountsChanged()
             }
         }
     }
@@ -346,8 +352,10 @@ class SharedActivityStore(
         scope.launch {
             val result = readReceiptRepository.markChannelUnread(targetChannelId)
             if (result is DataResult.Content || result is DataResult.Empty) {
+                onUnreadCountsChanged()
                 load(refresh = true, pullRefresh = false)
             } else {
+                onUnreadCountsChanged()
                 refreshAfterFailure(previous, "activity_mark_unread_failed")
             }
         }
