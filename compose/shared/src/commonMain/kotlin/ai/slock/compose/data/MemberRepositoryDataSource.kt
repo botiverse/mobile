@@ -863,6 +863,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         id = id,
         name = name,
         displayName = displayName,
+        description = description,
         status = status,
         runtime = runtime,
         model = model,

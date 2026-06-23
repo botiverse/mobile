@@ -179,6 +179,7 @@ data class AgentDetailSummary(
     val id: String,
     val name: String,
     val displayName: String? = null,
+    val description: String? = null,
     val status: String? = null,
     val runtime: String? = null,
     val model: String? = null,

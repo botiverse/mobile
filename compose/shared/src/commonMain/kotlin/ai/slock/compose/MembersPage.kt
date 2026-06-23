@@ -782,7 +782,7 @@ internal fun MembersPageContent() {
                         displayName = result.data.displayName?.takeIf { it.isNotBlank() } ?: result.data.name,
                         handle = result.data.name,
                         kind = ai.slock.compose.model.MemberKind.Agent,
-                        description = result.data.activityDetail,
+                        description = result.data.description,
                         roleDescription = result.data.model,
                         avatarUrl = result.data.avatarUrl,
                         avatar = ai.slock.compose.model.AvatarReference.fromWireValue(result.data.avatarUrl),
@@ -2456,16 +2456,14 @@ private fun MembersDetailHeader(
 ) {
     val summary = detail?.summary
     val threeDotButtonCenter = remember { SlockMutableOffsetRef() }
+    val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val statusLabel =
         if (deleted) {
             "Deleted"
         } else {
-            summary?.activityDetail?.takeIf { it.isNotBlank() }
-                ?: summary?.activity?.takeIf { it.isNotBlank() }?.toMembersDisplayLabel()
-                ?: member.detailStatusLabel
+            agentStatusDisplayState.status?.label ?: member.detailStatusLabel
         }
     val avatarClick = onAvatarClick
-    val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -5716,9 +5714,7 @@ private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberPr
         displayName = label,
         handle = handle,
         kind = MemberKind.Agent,
-        description =
-            summary?.activityDetail?.takeIf { it.isNotBlank() }
-                ?: summary?.activity?.takeIf { it.isNotBlank() },
+        description = summary?.description?.takeIf { it.isNotBlank() },
         roleDescription = summary?.runtime?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
@@ -5742,6 +5738,7 @@ private fun AgentDetailSnapshot.withMemberProfileProjection(member: MemberProfil
         (summary ?: AgentDetailSummary(id = member.id.value, name = fallbackName)).copy(
             name = fallbackName,
             displayName = member.displayName.ifBlank { fallbackName },
+            description = member.description?.takeIf { it.isNotBlank() },
             status = member.agentStatus?.label ?: summary?.status,
             runtime = member.roleDescription ?: summary?.runtime,
             avatarUrl = member.avatar?.wireValue ?: member.avatarUrl ?: summary?.avatarUrl
