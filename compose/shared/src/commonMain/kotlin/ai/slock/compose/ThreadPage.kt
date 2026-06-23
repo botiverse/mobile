@@ -151,7 +151,6 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -1802,28 +1801,6 @@ internal fun SharedThreadRouteContent(
     }
     val memberSuggestionScopeChannelId = memberSuggestionScopePayload.threadComposerMentionScopeChannelId(initialPayload)
     val memberSuggestionScopedMentions = memberSuggestionScopePayload.threadComposerMemberScopedMentions()
-    val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
-    val memberSuggestionsFlow =
-        remember(
-        membersStore,
-        memberSuggestionScopeChannelId,
-        memberSuggestionScopedMentions
-    ) {
-        membersStore?.memberSuggestionSliceFlow(
-            mentionChannelId = memberSuggestionScopeChannelId,
-            memberScopedMentions = memberSuggestionScopedMentions
-        )
-            ?.map { slice -> slice.suggestions }
-            ?.distinctUntilChanged()
-            ?: emptyMemberSuggestionsFlow
-    }
-    val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
-    val channelSuggestionsFlow = remember(membersStore) {
-        membersStore?.channelSuggestionSliceFlow()
-            ?.map { slice -> slice.suggestions }
-            ?.distinctUntilChanged()
-            ?: emptyChannelSuggestionsFlow
-    }
     val filesViewModel: SharedThreadFilesViewModel =
         viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
@@ -1882,14 +1859,6 @@ internal fun SharedThreadRouteContent(
         )
     }
 
-    LaunchedEffect(membersStore, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
-        membersStore?.dispatch(
-            SharedMembersIntent.EnsureSuggestions(
-                mentionChannelId = memberSuggestionScopeChannelId,
-                memberScopedMentions = memberSuggestionScopedMentions
-            )
-        )
-    }
     LaunchedEffect(realtimeEventSignal?.sequence, initialPayload.instanceId) {
         val signal = realtimeEventSignal ?: return@LaunchedEffect
         val activeReplyParentMessageId =
@@ -2656,8 +2625,9 @@ internal fun SharedThreadRouteContent(
             composerSurface = composerSurface,
             composerState = renderedComposer,
             tasksState = renderedTasks,
-            memberSuggestionsFlow = memberSuggestionsFlow,
-            channelSuggestionsFlow = channelSuggestionsFlow,
+            membersStore = membersStore,
+            memberSuggestionScopeChannelId = memberSuggestionScopeChannelId,
+            memberSuggestionScopedMentions = memberSuggestionScopedMentions,
             contentExtrasVisible = firstContentExtrasVisible,
             onTasksIntent = { intent -> tasksViewModel?.dispatch(intent) },
             highlightedMentions = threadState.highlightedMentions,
@@ -4668,8 +4638,9 @@ private fun ThreadPageContent(
     composerSurface: ThreadComposerSurface,
     composerState: KuiklyThreadComposerPayload,
     tasksState: TasksUiState,
-    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
-    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    membersStore: SharedMembersStore?,
+    memberSuggestionScopeChannelId: String?,
+    memberSuggestionScopedMentions: Boolean,
     contentExtrasVisible: Boolean,
     onTasksIntent: (SharedTasksRouteIntent) -> Unit,
     highlightedMentions: Set<String>,
@@ -4841,8 +4812,9 @@ private fun ThreadPageContent(
                         ThreadComposerContentWithSuggestions(
                             surface = composerSurface,
                             state = composerState.toThreadComposerUiState(),
-                            memberSuggestionsFlow = memberSuggestionsFlow,
-                            channelSuggestionsFlow = channelSuggestionsFlow,
+                            membersStore = membersStore,
+                            memberSuggestionScopeChannelId = memberSuggestionScopeChannelId,
+                            memberSuggestionScopedMentions = memberSuggestionScopedMentions,
                             onEvent = onComposerEvent,
                             onKeyboardHeightChange = { nextInset ->
                                 if (nextInset != composerKeyboardInsetDp) {
@@ -5010,13 +4982,45 @@ private fun ThreadHeaderIconButton(icon: SlockLucideIconName, onClick: () -> Uni
 private fun ThreadComposerContentWithSuggestions(
     surface: ThreadComposerSurface,
     state: ThreadComposerUiState,
-    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
-    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    membersStore: SharedMembersStore?,
+    memberSuggestionScopeChannelId: String?,
+    memberSuggestionScopedMentions: Boolean,
     onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
     onKeyboardHeightChange: (Float) -> Unit,
     contentPaddingTop: Dp,
     contentPaddingBottom: Dp
 ) {
+    LaunchedEffect(membersStore, memberSuggestionScopeChannelId, memberSuggestionScopedMentions) {
+        membersStore?.dispatch(
+            SharedMembersIntent.EnsureSuggestions(
+                mentionChannelId = memberSuggestionScopeChannelId,
+                memberScopedMentions = memberSuggestionScopedMentions
+            )
+        )
+    }
+    val emptyMemberSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersMemberSuggestion>()) }
+    val memberSuggestionsFlow =
+        remember(
+            membersStore,
+            memberSuggestionScopeChannelId,
+            memberSuggestionScopedMentions
+        ) {
+            membersStore?.memberSuggestionSliceFlow(
+                mentionChannelId = memberSuggestionScopeChannelId,
+                memberScopedMentions = memberSuggestionScopedMentions
+            )
+                ?.map { slice -> slice.suggestions }
+                ?.distinctUntilChanged()
+                ?: emptyMemberSuggestionsFlow
+        }
+    val emptyChannelSuggestionsFlow = remember { MutableStateFlow(emptyList<SharedMembersChannelSuggestion>()) }
+    val channelSuggestionsFlow =
+        remember(membersStore) {
+            membersStore?.channelSuggestionSliceFlow()
+                ?.map { slice -> slice.suggestions }
+                ?.distinctUntilChanged()
+                ?: emptyChannelSuggestionsFlow
+        }
     val memberSuggestions by memberSuggestionsFlow.collectAsState(emptyList())
     val channelSuggestions by channelSuggestionsFlow.collectAsState(emptyList())
     val loadedMemberSuggestions =
