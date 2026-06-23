@@ -365,6 +365,9 @@ const val BOTTOM_TAB_BAR_SMOKE_PAGE = "compose_bottom_tabbar_smoke"
 const val BOTTOM_TAB_BAR_VISUAL_PAGE = "compose_bottom_tabbar_visual"
 private const val SETTINGS_ROW_VISUAL_PAGE = "compose_settings_row_visual"
 private const val SETTINGS_PAGE_VISUAL_PAGE = "compose_settings_page_visual"
+private const val HOME_SEARCH_PAGE = "compose_home_search"
+private const val HOME_SAVED_PAGE = "compose_home_saved"
+private const val HOME_ACTIVITY_PAGE = "compose_home_activity"
 private const val HOME_SEARCH_VISUAL_PAGE = "compose_home_search_visual"
 private const val HOME_SEARCH_CHANNEL_DROPDOWN_VISUAL_PAGE = "compose_home_search_channel_dropdown_visual"
 private const val HOME_SAVED_VISUAL_PAGE = "compose_home_saved_visual"
@@ -522,6 +525,264 @@ internal class ComposeSettingsPageVisualPage : ai.slock.compose.base.BasePager()
     override fun willInit() {
         super.willInit()
         setContent { SettingsPageVisualContent() }
+    }
+}
+
+@Page(HOME_SEARCH_PAGE, supportInLocal = true)
+internal class ComposeHomeSearchPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSecondaryRouterContent(HomeDestinationSearch) }
+    }
+}
+
+@Page(HOME_SAVED_PAGE, supportInLocal = true)
+internal class ComposeHomeSavedPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSecondaryRouterContent(HomeDestinationSaved) }
+    }
+}
+
+@Page(HOME_ACTIVITY_PAGE, supportInLocal = true)
+internal class ComposeHomeActivityPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { HomeSecondaryRouterContent(HomeDestinationActivity) }
+    }
+}
+
+private data class HomeSecondaryRouteEnvironment(
+    val pager: Pager,
+    val bridge: ai.slock.compose.base.BridgeModule,
+    val authStore: SlockAuthSessionStore,
+    val networkClient: KuiklySlockNetworkClient,
+    val localWriteThrough: ComposeLocalWriteThrough,
+    val timeContext: AppShellThreadTimeContext?,
+    val alignOwnMessagesRight: Boolean,
+    val shellScope: SlockAppShellScope
+)
+
+@Composable
+private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironment {
+    RememberKmmResourceLocaleSeedFromLocalActivity()
+    val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
+    val networkClient =
+        remember(authStore, pager) {
+            KuiklySlockNetworkClient(
+                sessionStore = authStore,
+                networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME),
+                warningLogger = { message -> bridge.log("home_secondary_network $message") }
+            )
+        }
+    val localWriteThrough =
+        remember(sharedStores.localDataStore, bridge) {
+            ComposeLocalWriteThrough(
+                sharedStores.localDataStore,
+                logger = { message -> bridge.logDebug("home_secondary_cache $message") }
+            )
+        }
+    val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val chatLayoutPreferenceRepository =
+        remember(sharedPreferenceStore) {
+            PersistentChatLayoutPreferenceRepository(KeyValueChatLayoutPreferenceStore(sharedPreferenceStore))
+        }
+    var myMessageAlignment by remember { mutableStateOf(MyMessageAlignmentPreference.Default) }
+    LaunchedEffect(chatLayoutPreferenceRepository) {
+        myMessageAlignment =
+            chatLayoutPreferenceRepository.getChatLayoutPreference().myMessageAlignment
+    }
+    val timeContext =
+        remember(pager.pageData.params.toString()) {
+            pager.pageData.params.threadTimeContext()
+        }
+    val shellScope = rememberSlockAppShellScope()
+    return remember(
+        pager,
+        bridge,
+        authStore,
+        networkClient,
+        localWriteThrough,
+        timeContext,
+        myMessageAlignment,
+        shellScope
+    ) {
+        HomeSecondaryRouteEnvironment(
+            pager = pager,
+            bridge = bridge,
+            authStore = authStore,
+            networkClient = networkClient,
+            localWriteThrough = localWriteThrough,
+            timeContext = timeContext,
+            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
+            shellScope = shellScope
+        )
+    }
+}
+
+@Composable
+private fun HomeSecondaryRouterContent(destination: String) {
+    val environment = rememberHomeSecondaryRouteEnvironment()
+    val retainedDestination = retainedHomeSecondaryDestination(destination)
+    PerformanceSceneEffect(
+        bridge = environment.bridge,
+        routeName = retainedDestination?.let(::homeSecondaryPerformanceRoute) ?: "kuikly_home_secondary",
+        active = true
+    )
+    when (retainedDestination) {
+        HomeDestinationActivity -> HomeActivityRouterContent(environment)
+        HomeDestinationSearch -> HomeSearchRouterContent(environment)
+        HomeDestinationSaved -> HomeSavedRouterContent(environment)
+        else -> SlockCenteredLoading(message = "Opening...")
+    }
+}
+
+@Composable
+private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment) {
+    SharedHomeActivityScreen(
+        bridge = environment.bridge,
+        authStore = environment.authStore,
+        onOpenMessage = { request ->
+            environment.pager.openStandaloneHomeMessageRequest(
+                bridge = environment.bridge,
+                request = request,
+                source = "home_activity",
+                timeContext = environment.timeContext,
+                alignOwnMessagesRight = environment.alignOwnMessagesRight
+            )
+        },
+        onClose = { environment.pager.closeHomeSecondaryPage() },
+        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+        timeContext = environment.timeContext,
+        shellScope = environment.shellScope
+    )
+}
+
+@Composable
+private fun HomeSearchRouterContent(environment: HomeSecondaryRouteEnvironment) {
+    val homeDataSource =
+        remember(environment.authStore, environment.networkClient, environment.localWriteThrough) {
+            SharedHomeDataSource(
+                sessionStore = environment.authStore,
+                api = NetworkSlockHomeApi(environment.networkClient),
+                announcementsApi = NetworkSlockAnnouncementsRemindersApi(environment.networkClient),
+                localWriteThrough = environment.localWriteThrough,
+                parseHome = { payload, session ->
+                    parseSlockHome(payload, session) { message -> environment.bridge.log(message) }
+                },
+                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+            )
+        }
+    val homeViewModel: SharedHomeViewModel =
+        viewModel(key = "home-secondary-home") {
+            SharedHomeViewModel(
+                authStore = environment.authStore,
+                dataSource = homeDataSource,
+                diagnosticsLogger = { message -> environment.bridge.log("home_secondary_home $message") }
+            )
+        }
+    val homeState by homeViewModel.state.collectAsState()
+    LaunchedEffect(homeViewModel) {
+        homeViewModel.dispatch(SharedHomeIntent.Start)
+    }
+    val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-search")
+    val searchSavedState by searchSavedViewModel.state.collectAsState()
+    val listState = rememberLazyListState()
+    SharedHomeSearchPanel(
+        state = searchSavedState.search,
+        homeState = homeState,
+        onIntent = searchSavedViewModel::dispatch,
+        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onOpenItem = { item ->
+            environment.pager.openStandaloneHomeMessageRequest(
+                bridge = environment.bridge,
+                request = item.toHomeMessageOpenRequest(),
+                source = "home_search",
+                timeContext = environment.timeContext,
+                alignOwnMessagesRight = environment.alignOwnMessagesRight
+            )
+        },
+        onOpenEntity = { entity ->
+            environment.pager.openHomeSearchEntity(
+                bridge = environment.bridge,
+                entity = entity,
+                timeContext = environment.timeContext,
+                alignOwnMessagesRight = environment.alignOwnMessagesRight
+            )
+        },
+        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+        timeContext = environment.timeContext,
+        shellScope = environment.shellScope,
+        listState = listState
+    )
+}
+
+@Composable
+private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
+    val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
+    val searchSavedState by searchSavedViewModel.state.collectAsState()
+    val listState = rememberLazyListState()
+    SharedHomeSavedPanel(
+        state = searchSavedState.saved,
+        onIntent = searchSavedViewModel::dispatch,
+        onClose = { environment.pager.closeHomeSecondaryPage() },
+        onOpenItem = { item ->
+            environment.pager.openStandaloneHomeMessageRequest(
+                bridge = environment.bridge,
+                request = item.toHomeMessageOpenRequest(),
+                source = "home_saved",
+                timeContext = environment.timeContext,
+                alignOwnMessagesRight = environment.alignOwnMessagesRight
+            )
+        },
+        bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
+        timeContext = environment.timeContext,
+        shellScope = environment.shellScope,
+        listState = listState
+    )
+}
+
+@Composable
+private fun rememberHomeSearchSavedViewModel(
+    environment: HomeSecondaryRouteEnvironment,
+    key: String
+): SharedHomeSearchSavedViewModel {
+    val savedRepository =
+        remember(environment.authStore, environment.networkClient) {
+            RealSavedRepository(
+                sessionStore = environment.authStore,
+                networkClient = environment.networkClient,
+                warningLogger = { message -> environment.bridge.log("home_secondary_saved $message") }
+            )
+        }
+    val searchRepository =
+        remember(environment.authStore, environment.networkClient) {
+            RealSearchRepository(
+                sessionStore = environment.authStore,
+                networkClient = environment.networkClient,
+                warningLogger = { message -> environment.bridge.log("home_secondary_search $message") }
+            )
+        }
+    val memberRepository =
+        remember(environment.authStore, environment.networkClient) {
+            RealMemberRepository(
+                sessionStore = environment.authStore,
+                networkClient = environment.networkClient,
+                logger = { message -> environment.bridge.log("home_secondary_member $message") },
+                warningLogger = { message -> environment.bridge.log("home_secondary_member_warning $message") }
+            )
+        }
+    return viewModel(key = key) {
+        SharedHomeSearchSavedViewModel(
+            authStore = environment.authStore,
+            savedRepository = savedRepository,
+            searchRepository = searchRepository,
+            memberRepository = memberRepository,
+            timeRangeBoundsProvider = { range -> environment.timeContext.toSearchIsoBounds(range) }
+        )
     }
 }
 
@@ -1258,9 +1519,6 @@ private fun SlockAppShellContent() {
             hostThreadTimeContext.withTimeFormat(loadedSettingsTimeFormat ?: sessionTimeFormat)
         }
     val shellScope = rememberSlockAppShellScope()
-    val homeSearchListState = rememberLazyListState()
-    val homeSavedListState = rememberLazyListState()
-    val homeActivityListState = rememberLazyListState()
     val realtimeEventMapper = remember { RealtimeEventMapper() }
     var realtimeLastSeq by remember { mutableStateOf(0L) }
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
@@ -1448,15 +1706,6 @@ private fun SlockAppShellContent() {
         pager.openStandaloneThreadLaunchPayload(launchPayload)
     }
 
-    fun openHomeMessage(request: HomeMessageOpenRequest, source: String, pushCurrent: Boolean = true) {
-        openHomeConversation(
-            conversation = request.conversation,
-            source = source,
-            anchorMessageId = request.anchorMessageId,
-            pushCurrent = pushCurrent
-        )
-    }
-
     fun popMainRoute(): Boolean {
         if (createChannelDialogOpen) {
             createChannelDialogOpen = false
@@ -1498,11 +1747,7 @@ private fun SlockAppShellContent() {
 
     fun openHomeSecondaryDestination(destination: String) {
         retainedHomeSecondaryDestination(destination)?.let { retainedDestination ->
-            when (retainedDestination) {
-                HomeDestinationActivity -> homeShellStore.dispatch(SharedHomeShellIntent.OpenActivity)
-                HomeDestinationSaved -> homeShellStore.dispatch(SharedHomeShellIntent.OpenSaved)
-                HomeDestinationSearch -> homeShellStore.dispatch(SharedHomeShellIntent.OpenSearch)
-            }
+            pager.openHomeSecondaryPage(retainedDestination, threadTimeContext)
         }
     }
 
@@ -1934,106 +2179,37 @@ private fun SlockAppShellContent() {
                         )
                     }
                     val homeTabContent: @Composable (active: Boolean) -> Unit = { active ->
-                        when (val destination = retainedHomeSecondaryDestination(selectedHomeDestination)) {
-                            null -> {
-                                PerformanceSceneEffect(bridge, "kuikly_home", active = active)
-                                SharedHomeScreen(
-                                    bridge = bridge,
-                                    state = homeState,
-                                    active = active,
-                                    activityUnreadCount = homeActivityState.totalUnreadCount,
-                                    savedCount = homeSearchSavedState.saved.totalCount,
-                                    onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
-                                    onNotificationDismiss = { id ->
-                                        homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
-                                    },
-                                    selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
-                                    onSelectedConversationCleared = {
-                                        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                                    },
-                                    onOpenSearch = {
-                                        openHomeSecondaryDestination(HomeDestinationSearch)
-                                    },
-                                    onOpenActivity = {
-                                        openHomeSecondaryDestination(HomeDestinationActivity)
-                                    },
-                                    onOpenSaved = {
-                                        openHomeSecondaryDestination(HomeDestinationSaved)
-                                    },
-                                    onOpenServerSelection = { pager.openAuthChooseServerPage() },
-                                    onCreateChannel = { openCreateChannelDialog() },
-                                    onOpenConversation = { conversation ->
-                                        openHomeConversation(conversation, "home")
-                                    },
-                                    bottomContentPadding = appShellBottomContentInset
-                                )
-                            }
-                            HomeDestinationActivity -> {
-                                PerformanceSceneEffect(bridge, homeSecondaryPerformanceRoute(destination), active = active)
-                                SharedHomeActivityScreen(
-                                    state = homeActivityState,
-                                    onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Activity(intent)) },
-                                    onClose = { homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination) },
-                                    onOpenMessage = { request ->
-                                        openHomeMessage(request, "home_activity")
-                                    },
-                                    bottomContentPadding = appShellBottomContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope,
-                                    listState = homeActivityListState
-                                )
-                            }
-                            HomeDestinationSearch -> {
-                                PerformanceSceneEffect(bridge, homeSecondaryPerformanceRoute(destination), active = active)
-                                SharedHomeSearchPanel(
-                                    state = homeSearchSavedState.search,
-                                    homeState = homeState,
-                                    onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.SearchSaved(intent)) },
-                                    onClose = {
-                                        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-                                    },
-                                    onOpenItem = { item ->
-                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_search", pushCurrent = true)
-                                    },
-                                    onOpenEntity = { entity ->
-                                        homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination)
-                                        val threadId = entity.threadId
-                                        if (threadId != null) {
-                                            val conversation = entity.conversation
-                                            if (conversation != null) {
-                                                openHomeConversation(conversation, "home_search_entity")
-                                            } else {
-                                                homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(threadId))
-                                            }
-                                        } else {
-                                            selectedTab = "members"
-                                            retainedAppShellTabs = retainedAppShellTabs + "members"
-                                            homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
-                                        }
-                                    },
-                                    bottomContentPadding = appShellBottomContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope,
-                                    listState = homeSearchListState
-                                )
-                            }
-                            HomeDestinationSaved -> {
-                                PerformanceSceneEffect(bridge, homeSecondaryPerformanceRoute(destination), active = active)
-                                SharedHomeSavedPanel(
-                                    state = homeSearchSavedState.saved,
-                                    onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.SearchSaved(intent)) },
-                                    onClose = { homeShellStore.dispatch(SharedHomeShellIntent.CloseSecondaryDestination) },
-                                    onOpenItem = { item ->
-                                        openHomeMessage(item.toHomeMessageOpenRequest(), "home_saved", pushCurrent = true)
-                                    },
-                                    bottomContentPadding = appShellBottomContentInset,
-                                    timeContext = threadTimeContext,
-                                    shellScope = shellScope,
-                                    listState = homeSavedListState
-                                )
-                            }
-                            else -> SlockCenteredLoading(message = "Opening...")
-                        }
+                        PerformanceSceneEffect(bridge, "kuikly_home", active = active)
+                        SharedHomeScreen(
+                            bridge = bridge,
+                            state = homeState,
+                            active = active,
+                            activityUnreadCount = homeActivityState.totalUnreadCount,
+                            savedCount = homeSearchSavedState.saved.totalCount,
+                            onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
+                            onNotificationDismiss = { id ->
+                                homeShellStore.dispatch(SharedHomeShellIntent.DismissNotification(id))
+                            },
+                            selectedConversationId = selectedHomeConversationId ?: homeState.selectedConversationId,
+                            onSelectedConversationCleared = {
+                                homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(null))
+                            },
+                            onOpenSearch = {
+                                openHomeSecondaryDestination(HomeDestinationSearch)
+                            },
+                            onOpenActivity = {
+                                openHomeSecondaryDestination(HomeDestinationActivity)
+                            },
+                            onOpenSaved = {
+                                openHomeSecondaryDestination(HomeDestinationSaved)
+                            },
+                            onOpenServerSelection = { pager.openAuthChooseServerPage() },
+                            onCreateChannel = { openCreateChannelDialog() },
+                            onOpenConversation = { conversation ->
+                                openHomeConversation(conversation, "home")
+                            },
+                            bottomContentPadding = appShellBottomContentInset
+                        )
                     }
                     val membersTabContent: @Composable (active: Boolean) -> Unit = {
                         SharedMembersScreen(
@@ -10807,6 +10983,7 @@ private data class SearchEntityResult(
     val title: String,
     val subtitle: String,
     val threadId: String?,
+    val memberId: String?,
     val conversation: ConversationSummary?,
     val avatarWireValue: String? = null,
     val presence: SlockPresence? = null,
@@ -10884,6 +11061,7 @@ private fun homeSearchEntityResults(
                 title = if (type == SearchEntityType.Channel) "#${conversation.name}" else conversation.name,
                 subtitle = conversation.subtitle?.takeIf { it.isNotBlank() } ?: if (type == SearchEntityType.Channel) "Channel" else "DM",
                 threadId = conversation.threadId.value,
+                memberId = conversation.presenceMemberId?.value,
                 conversation = conversation,
                 avatarWireValue = conversation.avatar?.wireValue ?: conversation.avatarUrl,
                 presence = conversation.presence.toSharedPresence(),
@@ -10905,6 +11083,7 @@ private fun homeSearchEntityResults(
                         if (conversation == null) append(" · Members")
                     },
                 threadId = conversation?.threadId?.value,
+                memberId = sender.id,
                 conversation = conversation,
                 avatarWireValue = conversation?.avatar?.wireValue ?: conversation?.avatarUrl ?: sender.avatarWireValue ?: "random:${sender.id}",
                 presence = (conversation?.presence ?: sender.agentStatus?.presence ?: sender.presence).toSharedPresence(),
@@ -11168,6 +11347,124 @@ private fun Pager.openStandaloneThreadLaunchPayload(launchPayload: WireThreadLau
             put("instanceId", launchPayload.instanceId)
         }
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
+}
+
+private fun Pager.closeHomeSecondaryPage() {
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage()
+}
+
+private fun Pager.openHomeSecondaryPage(destination: String, timeContext: AppShellThreadTimeContext?) {
+    val pageName =
+        when (retainedHomeSecondaryDestination(destination)) {
+            HomeDestinationActivity -> HOME_ACTIVITY_PAGE
+            HomeDestinationSearch -> HOME_SEARCH_PAGE
+            HomeDestinationSaved -> HOME_SAVED_PAGE
+            else -> return
+        }
+    val pageData =
+        JSONObject().apply {
+            put("pageName", pageName)
+            put("destination", destination)
+            put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
+            timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
+            timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
+            put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+        }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(pageName, pageData)
+}
+
+private fun Pager.openStandaloneHomeMessageRequest(
+    bridge: ai.slock.compose.base.BridgeModule,
+    request: HomeMessageOpenRequest,
+    source: String,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean
+) {
+    openStandaloneHomeConversation(
+        bridge = bridge,
+        conversation = request.conversation,
+        source = source,
+        timeContext = timeContext,
+        alignOwnMessagesRight = alignOwnMessagesRight,
+        anchorMessageId = request.anchorMessageId
+    )
+}
+
+private fun Pager.openStandaloneHomeConversation(
+    bridge: ai.slock.compose.base.BridgeModule,
+    conversation: ConversationSummary,
+    source: String,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean,
+    anchorMessageId: String? = null
+) {
+    bridge.log(
+        "home_open_conversation threadId=${conversation.threadId.value} " +
+            "kind=${conversation.kind.name} source=$source anchorMessageId=${anchorMessageId.orEmpty()}"
+    )
+    bridge.performanceMarker(
+        phase = "home_open",
+        routeName = "kuikly_home",
+        event = "instant",
+        threadId = conversation.threadId.value,
+        metadata =
+            mapOf(
+                "kind" to conversation.kind.name,
+                "source" to source,
+                "anchor" to (anchorMessageId != null).toString()
+            )
+    )
+    val launchPayload =
+        buildStandaloneConversationThreadLaunchPayload(
+            conversation = conversation,
+            timeContext = timeContext,
+            alignOwnMessagesRight = alignOwnMessagesRight,
+            anchorMessageId = anchorMessageId
+        )
+    bridge.log(
+        "home_open_thread_launch source=$source threadId=${conversation.threadId.value} " +
+            "sourceThreadId=${launchPayload.sourceThreadId.orEmpty()} surface=${launchPayload.surfaceKind} " +
+            "parentChannelId=${launchPayload.parentChannelId.orEmpty()} parentMessageId=${launchPayload.parentMessageId.orEmpty()} " +
+            "anchorMessageId=${anchorMessageId.orEmpty()} originParentMessageId=${launchPayload.originParentMessageId.orEmpty()}"
+    )
+    openStandaloneThreadLaunchPayload(launchPayload)
+}
+
+private fun Pager.openHomeSearchEntity(
+    bridge: ai.slock.compose.base.BridgeModule,
+    entity: SearchEntityResult,
+    timeContext: AppShellThreadTimeContext?,
+    alignOwnMessagesRight: Boolean
+) {
+    val conversation = entity.conversation
+    if (conversation != null) {
+        openStandaloneHomeConversation(
+            bridge = bridge,
+            conversation = conversation,
+            source = "home_search_entity",
+            timeContext = timeContext,
+            alignOwnMessagesRight = alignOwnMessagesRight
+        )
+        return
+    }
+    val memberId = entity.memberId?.takeIf { it.isNotBlank() } ?: return
+    val instanceId = "home-search-member-$memberId"
+    val payload =
+        JSONObject().apply {
+            put("instanceId", instanceId)
+            put("selectedMemberId", memberId)
+            put("localOffsetMinutes", timeContext?.localOffsetMinutes ?: 0)
+            timeContext?.todayEpochDay?.let { put("todayEpochDay", it) }
+            timeContext?.nowEpochMillis?.let { put("nowEpochMillis", it) }
+            put("timeFormat", timeContext?.timeFormat ?: SlockTimeFormat24Hour)
+        }
+    val pageData =
+        JSONObject().apply {
+            put("pageName", MEMBERS_PAGE)
+            put("payload", payload.toString())
+            put("instanceId", instanceId)
+        }
+    acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(MEMBERS_PAGE, pageData)
 }
 
 internal fun buildStandaloneConversationThreadLaunchPayload(
