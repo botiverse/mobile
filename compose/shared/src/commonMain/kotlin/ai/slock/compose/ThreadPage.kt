@@ -294,6 +294,12 @@ private val ThreadComposerBottomSafeAreaLift = 2.dp
 private val threadHeaderUuidRegex =
     Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
 private val threadHeaderShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
+private val ThreadHeaderActionSize = 30.dp
+private val ThreadHeaderActionShadowOffset = 2.dp
+private val ThreadHeaderActionIconSize = 15.dp
+private val ThreadHeaderActionLabelMinWidth = 46.dp
+private val ThreadHeaderChannelTileSize = 34.dp
+private val ThreadHeaderChannelIconSize = 16.dp
 
 internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
@@ -315,6 +321,9 @@ internal fun threadChannelHeaderSubtitle(channelName: String?): String? {
 
 internal fun existingThreadChannelHeaderSubtitle(subtitle: String?): String? =
     subtitle?.trim()?.takeIf { it.startsWith("#") }?.let(::threadChannelHeaderSubtitle)
+
+internal fun threadHeaderDisplayTitle(title: String): String =
+    title.trim().removePrefix("#").takeIf { it.isNotBlank() } ?: title
 
 @Page(THREAD_PAGE, supportInLocal = true)
 internal class ComposeThreadPage : ai.slock.compose.base.BasePager() {
@@ -4732,6 +4741,7 @@ private fun ThreadPageHeader(
     onShowSettings: () -> Unit
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
+    val displayTitle = threadHeaderDisplayTitle(payload.title)
     Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -4756,8 +4766,8 @@ private fun ThreadPageHeader(
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = payload.title,
-                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    text = displayTitle,
+                    style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
                     color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -4789,14 +4799,14 @@ private fun ThreadPageHeader(
 @Composable
 private fun ThreadChannelTile(channelKind: String) {
     Box(
-        modifier = Modifier.size(40.dp)
+        modifier = Modifier.size(ThreadHeaderChannelTileSize)
             .background(SlockColor.BrandYellow)
             .border(SlockStroke.Default, SlockColor.BorderBlack),
         contentAlignment = Alignment.Center
     ) {
         SlockLucideIcon(
             channelKind.threadChannelHeaderIcon(),
-            modifier = Modifier.size(18.dp),
+            modifier = Modifier.size(ThreadHeaderChannelIconSize),
             color = "#FF141111"
         )
     }
@@ -4818,7 +4828,7 @@ private fun ThreadDmPeerAvatarTile(
     SlockAvatar(
         avatarWireValue = avatarWireValue,
         label = avatarLabel,
-        avatarSize = 40.dp,
+        avatarSize = ThreadHeaderChannelTileSize,
         borderWidth = SlockStroke.Default,
         gravatarUrl = gravatarUrl
     )
@@ -4826,7 +4836,7 @@ private fun ThreadDmPeerAvatarTile(
 
 @Composable
 private fun ThreadHeaderIconButton(icon: SlockLucideIconName, onClick: () -> Unit) {
-    SlockHeaderIconAction(icon = icon, contentDescription = icon.wireName, onClick = onClick)
+    ThreadHeaderCompactAction(icon = icon, onClick = onClick)
 }
 
 @Composable
@@ -4914,12 +4924,56 @@ private fun ThreadComposerContentWithSuggestions(
 
 @Composable
 private fun ThreadMembersHeaderButton(count: Int, onClick: () -> Unit) {
-    SlockHeaderIconAction(
+    ThreadHeaderCompactAction(
         icon = SlockLucideIconName.Users,
-        contentDescription = "Members",
         onClick = onClick,
-        label = count.takeIf { it > 0 }?.toString().orEmpty()
+        label = count.takeIf { it > 0 }?.toString()
     )
+}
+
+@Composable
+private fun ThreadHeaderCompactAction(
+    icon: SlockLucideIconName,
+    onClick: () -> Unit,
+    label: String? = null
+) {
+    Box(modifier = Modifier.padding(end = ThreadHeaderActionShadowOffset, bottom = ThreadHeaderActionShadowOffset)) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .offset(x = ThreadHeaderActionShadowOffset, y = ThreadHeaderActionShadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .heightIn(min = ThreadHeaderActionSize)
+                .widthIn(min = if (label == null) ThreadHeaderActionSize else ThreadHeaderActionLabelMinWidth)
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = if (label == null) 0.dp else SlockSpacing.Xs)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs, Alignment.CenterHorizontally)
+            ) {
+                SlockLucideIcon(
+                    name = icon,
+                    modifier = Modifier.size(ThreadHeaderActionIconSize),
+                    color = "#FF000000"
+                )
+                label?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(fontSize = 11.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

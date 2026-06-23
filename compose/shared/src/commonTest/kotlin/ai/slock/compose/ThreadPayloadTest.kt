@@ -827,6 +827,13 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadHeaderDisplayTitleDropsLeadingChannelHash() {
+        assertEquals("首页专修", threadHeaderDisplayTitle("#首页专修"))
+        assertEquals("design", threadHeaderDisplayTitle("design"))
+        assertEquals("#", threadHeaderDisplayTitle("#"))
+    }
+
+    @Test
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
         val request =
             InboxItem(
