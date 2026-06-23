@@ -7551,7 +7551,13 @@ private fun AppShellAuthGateContent(
     var mode by remember { mutableStateOf("login") }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
+    val registerReducer = remember { CreateAccountFormReducer() }
+    var registerState by remember { mutableStateOf(CreateAccountFormState()) }
+    val forgotPasswordReducer = remember { ForgotPasswordFormReducer() }
+    var forgotPasswordState by remember { mutableStateOf(ForgotPasswordFormState()) }
     var pendingLogin by remember { mutableStateOf<PendingAppShellLogin?>(null) }
+    var pendingRegister by remember { mutableStateOf<PendingAppShellRegister?>(null) }
+    var pendingForgotPassword by remember { mutableStateOf<PendingAppShellForgotPassword?>(null) }
     var pendingSocialAuth by remember { mutableStateOf<PendingAppShellSocialAuth?>(null) }
     var socialSubmittingProvider by remember { mutableStateOf<AuthProvider?>(null) }
     val socialProviders = remember(pager.pageData.params.toString()) { pager.appShellSocialAuthProviders() }
@@ -7572,6 +7578,56 @@ private fun AppShellAuthGateContent(
             SharedAuthResult.Unauthenticated ->
                 state = state.copy(submitting = false, errorMessage = "Sign in failed. Try again.")
         }
+    }
+
+    LaunchedEffect(pendingRegister) {
+        val effect = pendingRegister ?: return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation {
+                authDataSource.register(
+                    name = effect.name,
+                    email = effect.email,
+                    password = effect.password
+                )
+            }.getOrElse {
+                SharedAuthResult.Failure(
+                    SharedAuthErrorCode.Unknown,
+                    "Create account could not finish setup. Try again."
+                )
+            }
+        pendingRegister = null
+        when (result) {
+            is SharedAuthResult.Success -> {
+                registerState = registerState.copy(submitting = false, errorMessage = null)
+                onSignedIn(result.data)
+            }
+            is SharedAuthResult.Failure ->
+                registerState = registerState.copy(submitting = false, errorMessage = result.message)
+            SharedAuthResult.Unauthenticated ->
+                registerState = registerState.copy(submitting = false, errorMessage = "Create account failed. Try again.")
+        }
+    }
+
+    LaunchedEffect(pendingForgotPassword) {
+        val effect = pendingForgotPassword ?: return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
+                .getOrElse {
+                    SharedAuthResult.Failure(
+                        SharedAuthErrorCode.Unknown,
+                        "Reset password could not finish setup. Try again."
+                    )
+                }
+        pendingForgotPassword = null
+        forgotPasswordState =
+            when (result) {
+                is SharedAuthResult.Success ->
+                    forgotPasswordState.copy(submitting = false, sent = true, errorMessage = null)
+                is SharedAuthResult.Failure ->
+                    forgotPasswordState.copy(submitting = false, sent = false, errorMessage = result.message)
+                SharedAuthResult.Unauthenticated ->
+                    forgotPasswordState.copy(submitting = false, sent = false, errorMessage = "Reset password failed. Try again.")
+            }
     }
 
     LaunchedEffect(pendingSocialAuth) {
@@ -7630,26 +7686,64 @@ private fun AppShellAuthGateContent(
     when (mode) {
         "register" ->
             RegisterContent(
-                name = "",
-                email = "",
-                password = "",
-                submitting = false,
-                errorMessage = "Create account is not available here yet.",
-                onNameChange = {},
-                onEmailChange = {},
-                onPasswordChange = {},
-                onSubmit = {},
+                name = registerState.name,
+                email = registerState.email,
+                password = registerState.password,
+                submitting = registerState.submitting,
+                errorMessage = registerState.errorMessage,
+                nameError = registerState.nameError,
+                emailError = registerState.emailFormatError,
+                passwordError = registerState.passwordError,
+                onNameChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.NameChanged(it)).state },
+                onEmailChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.EmailChanged(it)).state },
+                onPasswordChange = { registerState = registerReducer.reduce(registerState, CreateAccountFormEvent.PasswordChanged(it)).state },
+                onSubmit = {
+                    if (pendingRegister == null) {
+                        val update = registerReducer.reduce(registerState, CreateAccountFormEvent.Submit)
+                        registerState = update.state
+                        when (val effect = update.effect) {
+                            is CreateAccountFormEffect.SubmitCreateAccount ->
+                                pendingRegister =
+                                    PendingAppShellRegister(
+                                        nonce = (pendingRegister?.nonce ?: 0) + 1,
+                                        name = effect.name,
+                                        email = effect.email,
+                                        password = effect.password
+                                    )
+                            CreateAccountFormEffect.FocusName -> Unit
+                            CreateAccountFormEffect.FocusEmail -> Unit
+                            CreateAccountFormEffect.FocusPassword -> Unit
+                            null -> Unit
+                        }
+                    }
+                },
                 onBackToSignIn = { mode = "login" },
                 onOpenDiagnostics = onOpenDiagnostics
             )
         "forgot" ->
             ForgotPasswordContent(
-                email = "",
-                sending = false,
-                sent = false,
-                errorMessage = "Password reset is not available here yet.",
-                onEmailChange = {},
-                onSubmit = {},
+                email = forgotPasswordState.email,
+                sending = forgotPasswordState.submitting,
+                sent = forgotPasswordState.sent,
+                errorMessage = forgotPasswordState.errorMessage,
+                emailError = forgotPasswordState.emailFormatError,
+                onEmailChange = { forgotPasswordState = forgotPasswordReducer.reduce(forgotPasswordState, ForgotPasswordFormEvent.EmailChanged(it)).state },
+                onSubmit = {
+                    if (pendingForgotPassword == null) {
+                        val update = forgotPasswordReducer.reduce(forgotPasswordState, ForgotPasswordFormEvent.Submit)
+                        forgotPasswordState = update.state
+                        when (val effect = update.effect) {
+                            is ForgotPasswordFormEffect.SubmitForgotPassword ->
+                                pendingForgotPassword =
+                                    PendingAppShellForgotPassword(
+                                        nonce = (pendingForgotPassword?.nonce ?: 0) + 1,
+                                        email = effect.email
+                                    )
+                            ForgotPasswordFormEffect.FocusEmail -> Unit
+                            null -> Unit
+                        }
+                    }
+                },
                 onBackToSignIn = { mode = "login" },
                 onOpenDiagnostics = onOpenDiagnostics
             )
@@ -7687,6 +7781,18 @@ private data class PendingAppShellLogin(
     val nonce: Int,
     val email: String,
     val password: String
+)
+
+private data class PendingAppShellRegister(
+    val nonce: Int,
+    val name: String,
+    val email: String,
+    val password: String
+)
+
+private data class PendingAppShellForgotPassword(
+    val nonce: Int,
+    val email: String
 )
 
 private data class PendingAppShellSocialAuth(
