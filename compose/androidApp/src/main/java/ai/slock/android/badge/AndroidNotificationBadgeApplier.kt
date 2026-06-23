@@ -1,6 +1,6 @@
 package ai.slock.android.badge
 
-import android.app.NotificationChannel
+import android.app.Notification
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -8,27 +8,46 @@ import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
 import ai.slock.android.MainActivity
-import ai.slock.android.R
 
 /**
- * Android implementation of [BadgeApplier]. Posts a headless notification with
- * `setNumber(count)` to a dedicated badge channel. The Android system derives the
- * launcher icon badge number from the visible notifications on this channel.
+ * Android v1 implementation of [BadgeApplier] (per #100, v1.1 per @artin 2026-06-24
+ * 02:33).
  *
- * **Why headless?** The user already gets per-message system tray notifications via
- * `postUnreadNotification` (separate channels per category). This badge channel is
- * a separate, `IMPORTANCE_MIN`, `setShowBadge(true)` channel used solely to drive
- * the launcher icon number — the user sees a small status-bar icon but no heads-up
- * and no per-message body. On app resume / sign-out the channel is cleared so the
- * tray doesn't accumulate ghosts.
+ * **Approach:** reuse the existing `slock-unread-general-v1` channel (created by
+ * `SlockKuiklyActivity.ensureSharedNotificationChannels()`) and post a single
+ * headless notification on it with `setNumber(count)`. The launcher icon badge
+ * number on Pixel/AOSP launchers and on launchers that respect `setNumber` is
+ * taken from the most recent such notification on the channel.
  *
- * **Killed-app path:** This same channel and posting code will be reused by the
- * FCM data message handler (per #93 spec). The FCM payload will call into this
- * applier with the server-pushed count.
+ * We picked the **general** channel (not channel/dm/mention) so the badge sits
+ * in a single place independent of message category, matching the
+ * cross-category nature of "unread count".
  *
- * @param appContext The application context used to access `NotificationManager`.
+ * **Why reuse an existing channel?** Per @artin 2026-06-24 02:33: "用现有的其他
+ * 三个已有的 channel, setNumber 试一下". Creating a new `slock-app-badge-v1`
+ * channel was deemed redundant — the existing unread channels are already
+ * created and already drive the launcher badge dot. Reusing the general channel
+ * for the badge notification keeps the channel count small and matches the
+ * convention of "badge lives in an existing notification channel".
+ *
+ * **Trade-off:** per-message notifications on `slock-unread-general-v1` coexist
+ * with this single badge notification. The user may see one or two icons in the
+ * status bar. The badge notification has `setOngoing(false)` and is replaced on
+ * each `apply()` so it doesn't accumulate. Per-message notifications on the
+ * same channel still get their title/body and contribute to the launcher
+ * notification count separately.
+ *
+ * **Why keep the [BadgeApplier] interface at all?** Per @artin 2026-06-24
+ * 02:33: "BadgeApplier 这些先留着呗，毕竟还要兼容 ohos, oppo 各种系统呢".
+ * OHOS will need its own impl (no NotificationManager; push badges go through
+ * OHOS push or a live view), and OPPO/小米/华为 launchers may need their own
+ * badge intent dispatching. Keeping the interface lets the bridge
+ * `call("appBadge", ...)` switch be platform-agnostic and the parser stay
+ * testable in isolation.
+ *
+ * **Boundary rule (per #81, 2026-06-15 12:59):** we only use [count] to drive
+ * host behavior. [source] and [isStale] are diagnostics-only.
  */
 internal class AndroidNotificationBadgeApplier(
     private val appContext: Context,
@@ -37,31 +56,23 @@ internal class AndroidNotificationBadgeApplier(
     private val notificationManager: NotificationManagerCompat =
         NotificationManagerCompat.from(appContext)
 
-    init {
-        ensureBadgeChannel()
-    }
-
     override fun apply(count: Int, source: String, isStale: Boolean) {
-        // Surface source/isStale as diagnostics only. Host must not branch on these.
         android.util.Log.i(
             BADGE_TAG,
             "apply count=$count source=$source isStale=$isStale",
         )
-        if (!hasNotificationPermission()) {
-            android.util.Log.w(
-                BADGE_TAG,
-                "apply skipped: notification permission not granted",
-            )
-            return
-        }
         if (count <= 0) {
             clear()
             return
         }
-        if (isChannelBlocked()) {
+        if (!hasNotificationPermission()) {
+            android.util.Log.w(BADGE_TAG, "apply skipped: notification permission not granted")
+            return
+        }
+        if (isChannelBlocked(BADGE_CHANNEL_ID)) {
             android.util.Log.w(
                 BADGE_TAG,
-                "apply skipped: badge channel is blocked by user",
+                "apply skipped: channel $BADGE_CHANNEL_ID is blocked by user",
             )
             return
         }
@@ -88,7 +99,7 @@ internal class AndroidNotificationBadgeApplier(
         }
     }
 
-    private fun buildBadgeNotification(count: Int): android.app.Notification {
+    private fun buildBadgeNotification(count: Int): Notification {
         val contentIntent = PendingIntent.getActivity(
             appContext,
             BADGE_NOTIFICATION_ID,
@@ -98,11 +109,12 @@ internal class AndroidNotificationBadgeApplier(
         )
         return NotificationCompat.Builder(appContext, BADGE_CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle(appContext.getString(R.string.app_badge_notification_title))
-            .setContentText(appContext.getString(R.string.app_badge_notification_text, count))
+            .setContentTitle("Unread")
+            .setContentText("$count unread")
             .setNumber(count)
             .setOnlyAlertOnce(true)
-            .setOngoing(true)
+            .setOngoing(false)
+            .setAutoCancel(false)
             .setShowWhen(false)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -111,42 +123,27 @@ internal class AndroidNotificationBadgeApplier(
             .build()
     }
 
-    private fun ensureBadgeChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager =
-            appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (manager.getNotificationChannel(BADGE_CHANNEL_ID) != null) return
-        val channel = NotificationChannel(
-            BADGE_CHANNEL_ID,
-            appContext.getString(R.string.app_badge_channel_name),
-            NotificationManager.IMPORTANCE_MIN,
-        ).apply {
-            description = appContext.getString(R.string.app_badge_channel_description)
-            setShowBadge(true)
-            enableVibration(false)
-            setSound(null, null)
-        }
-        manager.createNotificationChannel(channel)
-    }
-
-    private fun isChannelBlocked(): Boolean {
+    private fun isChannelBlocked(channelId: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
         val manager =
             appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        return manager.getNotificationChannel(BADGE_CHANNEL_ID)?.importance ==
+        return manager.getNotificationChannel(channelId)?.importance ==
             NotificationManager.IMPORTANCE_NONE
     }
 
     private fun hasNotificationPermission(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
-        return ContextCompat.checkSelfPermission(
+        return androidx.core.content.ContextCompat.checkSelfPermission(
             appContext,
             android.Manifest.permission.POST_NOTIFICATIONS,
         ) == android.content.pm.PackageManager.PERMISSION_GRANTED
     }
 
     private companion object {
-        const val BADGE_CHANNEL_ID = "slock-app-badge-v1"
+        // Reuse the existing general unread channel created by
+        // SlockKuiklyActivity.ensureSharedNotificationChannels() — no new
+        // channel is created by this applier.
+        const val BADGE_CHANNEL_ID = "slock-unread-general-v1"
         const val BADGE_NOTIFICATION_ID = 0x5BAD6E
         const val BADGE_TAG = "SlockAppBadge"
     }
