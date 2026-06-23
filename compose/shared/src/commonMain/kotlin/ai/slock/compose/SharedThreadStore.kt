@@ -1402,6 +1402,7 @@ internal class SharedThreadDataSource(
         val parentChannelId = basePayload.parentChannelId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_channel_missing", retryable = false))
         val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
+            ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->

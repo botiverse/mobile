@@ -1421,6 +1421,61 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchReplyThreadPayloadUsesOriginParentMessageFallbackForParentPair() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "reply body",
+                            id = "reply-1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val base =
+            basePayload().copy(
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = null,
+                originParentMessageId = "m1"
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base) as DataResult.Content).data
+
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(emptyList(), repository.getThreadRequests)
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("thread-m1", payload.sourceThreadId)
+        assertEquals("thread-m1", payload.streamChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertEquals("m1", payload.originParentMessageId)
+        assertEquals("reply body", payload.messages.single().body)
+        assertEquals("parent body", payload.originMessage?.body)
+    }
+
+    @Test
     fun fetchReplyThreadPayloadVerifiesStreamHintBeforeEmitting() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
