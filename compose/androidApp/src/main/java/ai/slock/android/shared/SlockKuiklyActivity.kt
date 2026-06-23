@@ -2083,6 +2083,12 @@ internal class SlockKuiklyBridgeModule(
 
     private fun shareFeedbackWithDiagnosticsFile() {
         val diagnosticsFile = writeDiagnosticsFeedbackFile()
+        val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
+        SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
+                fileName = diagnosticsFile.name,
+                sizeBytes = diagnosticsFile.length(),
+                attachmentRegistered = buglyAttachmentRegistered
+        )
         shareTextWithAttachment(
                 subject = "Raft feedback",
                 text = buildFeedbackText(diagnosticsFile.name),
@@ -2094,6 +2100,12 @@ internal class SlockKuiklyBridgeModule(
     private fun prepareDiagnosticsFeedbackDraft(): Map<String, Any> {
         val diagnosticsFile = writeDiagnosticsFeedbackFile()
         val bytes = diagnosticsFile.readBytes()
+        val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
+        SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
+                fileName = diagnosticsFile.name,
+                sizeBytes = bytes.size.toLong(),
+                attachmentRegistered = buglyAttachmentRegistered
+        )
         SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
         return mapOf(
                 "status" to "ok",

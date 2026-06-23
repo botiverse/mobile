@@ -6,9 +6,11 @@ import android.os.Build
 import com.tencent.bugly.library.Bugly
 import com.tencent.bugly.library.BuglyAppVersionMode
 import com.tencent.bugly.library.BuglyBuilder
+import com.tencent.bugly.library.BuglyCustomLog
 import com.tencent.bugly.library.BuglyConstants
 import com.tencent.bugly.library.BuglyLogLevel
 import com.tencent.bugly.launch.AppLaunchProxy
+import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 
@@ -36,6 +38,7 @@ object SlockAndroidBuglyDiagnostics {
 
         runCatching {
             val appContext = context.applicationContext
+            val deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
             val builder =
                 BuglyBuilder(appId, appKey).apply {
                     setServerHostType(BuglyBuilder.ServerHostTypeBuglyPro)
@@ -48,7 +51,7 @@ object SlockAndroidBuglyDiagnostics {
                             BuglyAppVersionMode.RELEASE
                         }
                     appChannel = "android"
-                    deviceModel = "${Build.MANUFACTURER} ${Build.MODEL}".trim()
+                    this.deviceModel = deviceModel
                     debugMode = BuildConfig.DEBUG
                     logLevel =
                         if (BuildConfig.DEBUG) {
@@ -66,6 +69,7 @@ object SlockAndroidBuglyDiagnostics {
                 initialized.set(true)
                 Bugly.setPerformanceMonitorAble(LooperMetricMonitor, true)
                 Bugly.setPerformanceMonitorAble(LooperStackMonitor, true)
+                Bugly.updateDeviceModel(appContext, deviceModel)
                 SlockDiagnosticsLogger.d(
                     Tag,
                     "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG}"
@@ -75,6 +79,76 @@ object SlockAndroidBuglyDiagnostics {
             }
         }.onFailure { error ->
             SlockDiagnosticsLogger.w(Tag, "init_failed ${error.javaClass.simpleName}:${error.message.orEmpty()}")
+        }
+    }
+
+    fun isInitialized(): Boolean = initialized.get()
+
+    fun recordLog(level: String, tag: String, message: String) {
+        if (!initialized.get()) return
+        val cleanTag = tag.buglyValueOrNull() ?: return
+        val cleanMessage = SanitizedDiagnosticsLogBuffer.sanitize(message).buglyValueOrNull() ?: return
+        runCatching {
+            when (level.lowercase()) {
+                "verbose" -> BuglyCustomLog.v(cleanTag, cleanMessage)
+                "debug" -> BuglyCustomLog.d(cleanTag, cleanMessage)
+                "info" -> BuglyCustomLog.i(cleanTag, cleanMessage)
+                "warn" -> BuglyCustomLog.w(cleanTag, cleanMessage)
+                "error" -> BuglyCustomLog.e(cleanTag, cleanMessage)
+                else -> BuglyCustomLog.i(cleanTag, cleanMessage)
+            }
+        }
+    }
+
+    fun registerDiagnosticsAttachment(file: File): Boolean {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "diagnostics_attachment bugly=disabled")
+            return false
+        }
+        if (!file.isFile || file.length() <= 0L) {
+            SlockDiagnosticsLogger.w(Tag, "diagnostics_attachment bugly=skipped reason=invalid_file")
+            return false
+        }
+        return runCatching {
+            Bugly.setAdditionalAttachmentPaths(arrayOf(file.absolutePath))
+        }.onSuccess { registered ->
+            SlockDiagnosticsLogger.d(
+                Tag,
+                "diagnostics_attachment bugly=${if (registered) "registered" else "not_registered"} bytes=${file.length()}"
+            )
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "diagnostics_attachment bugly=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
+        }.getOrDefault(false)
+    }
+
+    fun reportDiagnosticsFeedbackPrepared(
+        fileName: String,
+        sizeBytes: Long,
+        attachmentRegistered: Boolean
+    ) {
+        if (!initialized.get()) {
+            SlockDiagnosticsLogger.d(Tag, "diagnostics_feedback bugly=disabled")
+            return
+        }
+        val metrics = mapOf(
+            "size_bytes" to sizeBytes.coerceAtLeast(0L).toDouble()
+        )
+        val dimensions = mapOf(
+            "file_name" to (fileName.buglyValueOrNull() ?: "slock-feedback.txt"),
+            "attachment_registered" to attachmentRegistered.toString()
+        )
+        runCatching {
+            Bugly.monitorEvent("slock_diagnostics_feedback_prepared", metrics, dimensions)
+        }.onSuccess { reported ->
+            SlockDiagnosticsLogger.d(Tag, "diagnostics_feedback bugly_event=${if (reported) "reported" else "not_reported"}")
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                Tag,
+                "diagnostics_feedback bugly_event=failed ${error.javaClass.simpleName}:${error.message.orEmpty()}"
+            )
         }
     }
 
@@ -95,6 +169,7 @@ object SlockAndroidBuglyDiagnostics {
             putOrRemoveUserData(appContext, "slock_user_id", cleanUserId)
             putOrRemoveUserData(appContext, "slock_server_id", selectedServerId.buglyValueOrNull())
             putOrRemoveUserData(appContext, "slock_server_slug", selectedServerSlug.buglyValueOrNull())
+            putOrRemoveUserData(appContext, "slock_platform", "android")
         }.onSuccess {
             SlockDiagnosticsLogger.d(Tag, "user_context bugly=updated user=${userId.isNullOrBlank().not()}")
         }.onFailure { error ->

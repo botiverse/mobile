@@ -15,22 +15,26 @@ object SlockDiagnosticsLogger {
         if (!verboseLoggingEnabled.get()) return
         runCatching { Log.d(tag, message) }
         SanitizedDiagnosticsLogBuffer.record(tag, message)
+        SlockAndroidBuglyDiagnostics.recordLog("debug", tag, SanitizedDiagnosticsLogBuffer.sanitize(message))
     }
 
     fun i(tag: String, message: String) {
         if (!verboseLoggingEnabled.get()) return
         runCatching { Log.i(tag, message) }
         SanitizedDiagnosticsLogBuffer.record(tag, message)
+        SlockAndroidBuglyDiagnostics.recordLog("info", tag, SanitizedDiagnosticsLogBuffer.sanitize(message))
     }
 
     fun w(tag: String, message: String) {
         runCatching { Log.w(tag, message) }
         SanitizedDiagnosticsLogBuffer.record(tag, message)
+        SlockAndroidBuglyDiagnostics.recordLog("warn", tag, SanitizedDiagnosticsLogBuffer.sanitize(message))
     }
 
     fun e(tag: String, message: String) {
         runCatching { Log.e(tag, message) }
         SanitizedDiagnosticsLogBuffer.record(tag, message)
+        SlockAndroidBuglyDiagnostics.recordLog("error", tag, SanitizedDiagnosticsLogBuffer.sanitize(message))
     }
 
     fun record(tag: String, message: String) {
