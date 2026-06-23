@@ -826,7 +826,6 @@ internal fun MembersPageContent() {
 
 private sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
-    data object NoOp : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
     data class Content(
         val server: ServerSummary,
@@ -864,9 +863,9 @@ private class MemberDetailRouteProvider(
                     agentDetailSeeded = true
                 )
             }
-            is DataResult.Empty,
-            is DataResult.Error,
-            is DataResult.NoPermission -> return MemberDetailRouteState.NoOp
+            is DataResult.Empty -> return MemberDetailRouteState.Error("member_not_found")
+            is DataResult.Error -> return MemberDetailRouteState.Error(detailResult.error.code)
+            is DataResult.NoPermission -> return MemberDetailRouteState.Error(detailResult.blocker.code)
         }
     }
 
@@ -1062,26 +1061,12 @@ private fun MemberDetailPageContent() {
             ) {
                 SlockCenteredLoading()
             }
-        MemberDetailRouteState.NoOp -> {
-            LaunchedEffect(Unit) {
-                provider.bridge.closePage()
-            }
-            Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite))
-        }
         is MemberDetailRouteState.Error ->
-            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                SlockTopPageHeader(
-                    title = "Member",
-                    subtitle = "Profile",
-                    iconName = SlockLucideIconName.Users
-                )
-                SlockEmptyState(
-                    title = "Could not load member",
-                    detail = current.code,
-                    iconName = SlockLucideIconName.TriangleAlert,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            MemberDetailErrorPageShell(
+                title = "Could not load member",
+                detail = current.code,
+                onBack = { provider.bridge.closePage() }
+            )
         is MemberDetailRouteState.Content -> {
             val agentDetailActions =
                 remember(provider) {
@@ -1168,6 +1153,36 @@ private fun MemberDetailPageContent() {
                 initialAgentTab = initialAgentTab
             )
         }
+    }
+}
+
+@Composable
+private fun MemberDetailErrorPageShell(
+    title: String,
+    detail: String,
+    onBack: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        SlockTopPageHeader(
+            title = "Member",
+            subtitle = "Profile",
+            iconName = SlockLucideIconName.Users,
+            backgroundColor = SlockColor.SurfaceWhite,
+            leadingContent = {
+                SlockBrutalIconButton(
+                    iconName = SlockLucideIconName.ArrowLeft,
+                    onClick = onBack,
+                    size = 30.dp,
+                    shadowOffset = 2.dp
+                )
+            }
+        )
+        SlockEmptyState(
+            title = title,
+            detail = detail,
+            iconName = SlockLucideIconName.TriangleAlert,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
