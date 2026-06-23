@@ -171,7 +171,8 @@ data class AgentDetailSnapshot(
     val directMessages: List<AgentDmSummary>,
     val reminders: List<AgentReminderSummary>,
     val activity: List<AgentActivityEntry>,
-    val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId)
+    val skills: AgentSkillsSnapshot = AgentSkillsSnapshot(agentId = agentId),
+    val appLogins: AgentAppLoginSnapshot = AgentAppLoginSnapshot(agentId = agentId)
 )
 
 data class AgentDetailSummary(
@@ -259,6 +260,43 @@ data class AgentSkillsSnapshot(
     val agentId: MemberId,
     val groups: List<AgentSkillGroup> = emptyList()
 )
+
+data class AgentAppLoginSnapshot(
+    val agentId: MemberId,
+    val items: List<AgentAppLoginItem> = emptyList(),
+    val loadState: AgentAppLoginLoadState = AgentAppLoginLoadState.Content,
+    val errorCode: String? = null
+)
+
+enum class AgentAppLoginLoadState {
+    Content,
+    Empty,
+    NoPermission,
+    Error
+}
+
+data class AgentAppLoginItem(
+    val id: String,
+    val type: AgentAppLoginType,
+    val clientId: String,
+    val clientKey: String? = null,
+    val clientName: String,
+    val clientDescription: String? = null,
+    val clientHomepageUrl: String? = null,
+    val clientReturnUrl: String? = null,
+    val clientAgentManifestUrl: String? = null,
+    val scopes: List<String> = emptyList(),
+    val remember: Boolean = false,
+    val createdAt: String? = null,
+    val resolvedAt: String? = null,
+    val resolvedByUserId: String? = null,
+    val revokedAt: String? = null
+)
+
+enum class AgentAppLoginType {
+    Pending,
+    Active
+}
 
 data class AgentSkillGroup(
     val title: String,

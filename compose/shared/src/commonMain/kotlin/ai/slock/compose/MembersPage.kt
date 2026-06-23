@@ -12,6 +12,10 @@ import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
+import ai.slock.compose.data.AgentAppLoginItem
+import ai.slock.compose.data.AgentAppLoginLoadState
+import ai.slock.compose.data.AgentAppLoginSnapshot
+import ai.slock.compose.data.AgentAppLoginType
 import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentCreatorSummary
@@ -130,6 +134,7 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.module.RouterModule
+import com.tencent.kuikly.core.nvi.serialization.json.JSONArray
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -175,6 +180,38 @@ internal fun membersVisibleAgentTabs(canViewPrivateSurfaces: Boolean, deleted: B
             else -> canViewPrivateSurfaces
         }
     }
+
+internal fun membersOrderedAgentTabs(
+    visibleTabs: List<MembersAgentDetailTab>,
+    storedOrder: List<String>
+): List<MembersAgentDetailTab> {
+    if (visibleTabs.isEmpty() || storedOrder.isEmpty()) return visibleTabs
+    val visibleByKey = visibleTabs.associateBy { it.persistedOrderKey }
+    val ordered = mutableListOf<MembersAgentDetailTab>()
+    storedOrder.forEach { rawKey ->
+        val tab = visibleByKey[rawKey.toMembersAgentTabOrderKey()] ?: return@forEach
+        if (tab !in ordered) ordered += tab
+    }
+    return ordered + visibleTabs.filterNot { it in ordered }
+}
+
+private val MembersAgentDetailTab.persistedOrderKey: String
+    get() =
+        when (this) {
+            MembersAgentDetailTab.Dms -> "dms"
+            else -> name.lowercase()
+        }
+
+private fun String.toMembersAgentTabOrderKey(): String =
+    trim().lowercase()
+        .replace("-", "_")
+        .let { key ->
+            when (key) {
+                "agent_dms", "agentdms", "dm", "direct_messages", "directmessages" -> "dms"
+                "integrations", "connected_apps", "connectedapps", "app_logins", "applogins" -> "apps"
+                else -> key
+            }
+        }
 
 private fun String?.toMembersAgentDetailTabOrNull(): MembersAgentDetailTab? {
     val normalized = this?.trim()?.lowercase()?.replace("-", "_") ?: return null
@@ -325,6 +362,7 @@ data class KuiklyMembersPayload(
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
     val timeFormat: String = SlockTimeFormat24Hour,
+    val agentPanelTabOrder: List<String> = emptyList(),
     /**
      * Whether the active session can create agents. Driven by the host from
      * server capabilities (mirrors React's `useServerPermissions().capabilities`).
@@ -341,7 +379,8 @@ data class KuiklyMemberDetailPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour
+    val timeFormat: String = SlockTimeFormat24Hour,
+    val agentPanelTabOrder: List<String> = emptyList()
 )
 
 @Serializable
@@ -518,6 +557,49 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
                         )
                     )
                 )
+            )
+        )
+    ),
+    appLogins = AgentAppLoginSnapshot(
+        agentId = membersAgentDetailVisualMember.id,
+        items = listOf(
+            AgentAppLoginItem(
+                id = "grant-raft-actions-product-ux",
+                type = AgentAppLoginType.Active,
+                clientId = "raft-actions",
+                clientKey = "raft-actions",
+                clientName = "Raft Actions",
+                clientDescription = "Executes approved action cards and task updates through Raft Agent Login.",
+                clientHomepageUrl = "https://raft.local/actions",
+                clientAgentManifestUrl = "https://raft.local/.well-known/agent.json",
+                scopes = listOf("messages:read", "tasks:write"),
+                remember = true,
+                createdAt = "2026-06-19T12:20:00Z",
+                resolvedAt = "2026-06-19T12:21:00Z",
+                resolvedByUserId = "artin"
+            ),
+            AgentAppLoginItem(
+                id = "grant-calendar-product-ux",
+                type = AgentAppLoginType.Active,
+                clientId = "calendar",
+                clientKey = "calendar",
+                clientName = "Calendar",
+                clientDescription = "Reads launch review reminders and scheduled UX follow-ups.",
+                clientHomepageUrl = "https://calendar.local",
+                scopes = listOf("calendar:read"),
+                remember = false,
+                createdAt = "2026-06-18T09:00:00Z",
+                resolvedAt = "2026-06-18T09:01:00Z",
+                resolvedByUserId = "artin"
+            ),
+            AgentAppLoginItem(
+                id = "request-drafts-product-ux",
+                type = AgentAppLoginType.Pending,
+                clientId = "drafts",
+                clientName = "Drafts",
+                clientDescription = "Pending request hidden to match React active-only Apps tab.",
+                scopes = listOf("documents:read"),
+                createdAt = "2026-06-20T09:00:00Z"
             )
         )
     )
@@ -1204,7 +1286,8 @@ private fun MemberDetailPageContent() {
                     onUnavailableAction = { bridge.toast(it) },
                     timeContext = timeContext,
                     sharedAgentDetailStore = provider.agentDetailStore,
-                    initialAgentTab = initialAgentTab
+                    initialAgentTab = initialAgentTab,
+                    agentPanelTabOrder = payload.agentPanelTabOrder
                 )
             }
         }
@@ -1231,7 +1314,8 @@ private fun MemberDetailPageContent() {
                 onReportAgentIssue = null,
                 onUnavailableAction = { bridge.toast(it) },
                 timeContext = timeContext,
-                initialAgentTab = initialAgentTab
+                initialAgentTab = initialAgentTab,
+                agentPanelTabOrder = payload.agentPanelTabOrder
             )
         }
     }
@@ -1321,6 +1405,7 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
         initialAgentTab = payload.optNullableString("initialAgentTab"),
+        agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
             agents = labelsJson?.optString("agents").orEmpty().ifBlank { "AGENTS" },
@@ -1348,6 +1433,11 @@ internal fun KuiklyMembersPayload.toMemberDetailPageData(memberId: String): JSON
         todayEpochDay?.let { put("todayEpochDay", it) }
         nowEpochMillis?.let { put("nowEpochMillis", it) }
         put("timeFormat", timeFormat)
+        if (agentPanelTabOrder.isNotEmpty()) {
+            put("agentPanelTabOrder", JSONArray().apply {
+                agentPanelTabOrder.forEach(::put)
+            })
+        }
     }
 }
 
@@ -1361,7 +1451,8 @@ internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload
         localOffsetMinutes = payload.optString("localOffsetMinutes").toIntOrNull() ?: 0,
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
-        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour }
+        timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
+        agentPanelTabOrder = payload.optStringArray("agentPanelTabOrder")
     )
 }
 
@@ -1408,6 +1499,14 @@ private fun String.toPresence(): Presence =
 
 private fun JSONObject.optNullableString(key: String): String? =
     optString(key).takeIf { it.isNotBlank() && it != "null" }
+
+private fun JSONObject.optStringArray(key: String): List<String> =
+    buildList {
+        val array = optJSONArray(key) ?: return@buildList
+        for (index in 0 until array.length()) {
+            array.optString(index)?.takeIf { it.isNotBlank() }?.let(::add)
+        }
+    }
 
 @Composable
 internal fun MembersRouteContent(
@@ -1737,7 +1836,8 @@ private fun MembersDetailContent(
     timeContext: SlockTimeContext,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
-    initialAgentTab: MembersAgentDetailTab? = null
+    initialAgentTab: MembersAgentDetailTab? = null,
+    agentPanelTabOrder: List<String> = emptyList()
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -1806,9 +1906,12 @@ private fun MembersDetailContent(
     var loadedWorkspaceDirs by remember(member.id.value) { mutableStateOf<Map<String, List<SlockWorkspaceNode>>>(emptyMap()) }
     var loadingWorkspaceDirs by remember(member.id.value) { mutableStateOf<Set<String>>(emptySet()) }
     var workspaceDirErrors by remember(member.id.value) { mutableStateOf<Map<String, String>>(emptyMap()) }
-    val visibleTabs = remember(canViewPrivate, deleted, member.kind) {
+    val visibleTabs = remember(canViewPrivate, deleted, member.kind, agentPanelTabOrder) {
         if (member.kind == MemberKind.Agent) {
-            membersVisibleAgentTabs(canViewPrivateSurfaces = canViewPrivate, deleted = deleted)
+            membersOrderedAgentTabs(
+                visibleTabs = membersVisibleAgentTabs(canViewPrivateSurfaces = canViewPrivate, deleted = deleted),
+                storedOrder = agentPanelTabOrder
+            )
         } else {
             listOf(MembersAgentDetailTab.Profile)
         }
@@ -2112,6 +2215,8 @@ private fun MembersDetailContent(
                         MembersAgentDetailTab.Apps ->
                             MembersAgentAppsTab(
                                 detail = detail,
+                                timeContext = timeContext,
+                                onOpenUrl = onOpenUrl,
                                 modifier = Modifier.padding(horizontal = MembersPageInset)
                             )
                         MembersAgentDetailTab.Activity ->
@@ -4180,17 +4285,151 @@ private fun MembersWorkspaceErrorState(message: String, onRefresh: () -> Unit) {
 }
 
 @Composable
-private fun MembersAgentAppsTab(detail: AgentDetailSnapshot?, modifier: Modifier = Modifier) {
-    MembersDetailSection(title = "APPS", modifier = modifier) {
-        val groups = detail?.skills?.groups.orEmpty()
-        if (groups.isEmpty()) {
-            MembersDetailField("Apps", "No connected apps exposed.")
-        } else {
-            groups.forEach { group ->
-                MembersDetailField(group.title, "${group.count} available")
+private fun MembersAgentAppsTab(
+    detail: AgentDetailSnapshot?,
+    timeContext: SlockTimeContext,
+    onOpenUrl: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    MembersDetailSection(title = "CONNECTED APPS", modifier = modifier) {
+        Text(
+            text = "Apps this agent has logged into with Raft Agent Login",
+            style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+            color = SlockColor.TextMutedGray
+        )
+        val appLogins = detail?.appLogins
+        when (appLogins?.loadState) {
+            AgentAppLoginLoadState.NoPermission ->
+                MembersDetailField(
+                    "Apps",
+                    appLogins.errorCode?.takeIf { it.isNotBlank() }
+                        ?: "Only server owners and admins can view agent integrations."
+                )
+            AgentAppLoginLoadState.Error ->
+                MembersDetailField(
+                    "Apps",
+                    "Failed to load connected apps: ${appLogins.errorCode ?: "unknown_error"}"
+                )
+            else -> {
+                val activeItems = appLogins?.items.orEmpty()
+                    .filter { it.type == AgentAppLoginType.Active && it.revokedAt.isNullOrBlank() }
+                if (activeItems.isEmpty()) {
+                    MembersDetailField("Apps", "No connected apps yet.")
+                } else {
+                    activeItems.forEach { item ->
+                        MembersAgentAppLoginCard(
+                            item = item,
+                            timeContext = timeContext,
+                            onOpenUrl = onOpenUrl
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+@Composable
+private fun MembersAgentAppLoginCard(
+    item: AgentAppLoginItem,
+    timeContext: SlockTimeContext,
+    onOpenUrl: (String) -> Unit
+) {
+    SlockBrutalCard(
+        shadowOffset = 3.dp,
+        contentPadding = SlockSpacing.Md,
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+            verticalAlignment = Alignment.Top
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = item.clientName,
+                    style = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                item.createdAt?.let {
+                    Text(
+                        text = "Connected ${it.membersActivityDisplayTime(timeContext)}",
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            MembersAgentAppLoginStatusBadge("Active")
+        }
+        item.clientDescription?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = SlockType.Body.copy(fontSize = 12.sp, lineHeight = 17.sp),
+                color = SlockColor.TextBlack
+            )
+        }
+        item.clientAgentManifestUrl?.takeIf { it.isNotBlank() }?.let {
+            MembersDetailField("Agent manifest", it)
+        }
+        if (item.scopes.isNotEmpty()) {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+            ) {
+                item.scopes.forEach { scope ->
+                    MembersAgentAppLoginScopeChip(scope)
+                }
+            }
+        }
+        item.clientHomepageUrl?.takeIf { it.isNotBlank() }?.let { homepageUrl ->
+            SlockBrutalActionButton(
+                label = "View service",
+                leadingIcon = SlockLucideIconName.ExternalLink,
+                enabled = true,
+                backgroundColor = SlockColor.SurfaceWhite,
+                modifier = Modifier.fillMaxWidth(),
+                onClick = { onOpenUrl(homepageUrl) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersAgentAppLoginStatusBadge(label: String) {
+    Text(
+        text = label,
+        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+        color = SlockColor.TextBlack,
+        modifier =
+            Modifier
+                .background(SlockColor.AccentLime.copy(alpha = 0.32f))
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+        maxLines = 1
+    )
+}
+
+@Composable
+private fun MembersAgentAppLoginScopeChip(scope: String) {
+    Text(
+        text = scope,
+        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+        color = SlockColor.TextBlack,
+        modifier =
+            Modifier
+                .background(SlockColor.EmptyStateGray)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack.copy(alpha = 0.36f))
+                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis
+    )
 }
 
 @Composable

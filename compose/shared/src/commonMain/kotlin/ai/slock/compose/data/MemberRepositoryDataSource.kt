@@ -164,6 +164,9 @@ class RealMemberRepository(
         transport = SlockAgentsNetworkApi(networkClient),
         diagnosticsLogger = { message -> logger("agents_api $message") }
     )
+    private val integrationsApiClient = SlockIntegrationsActionsPushApiClient(
+        transport = SlockIntegrationsActionsPushNetworkApi(networkClient)
+    )
     private val agentActivityCacheMutex = Mutex()
     private val agentActivityCache = mutableMapOf<MemberId, List<AgentActivityEntry>>()
     private val agentLifecycleActionMutex = Mutex()
@@ -284,6 +287,7 @@ class RealMemberRepository(
         val reminders = getAgentReminders(priority, agentId)
         val activity = getAgentActivity(priority, agentId)
         val skills = getAgentSkills(priority, agentId)
+        val appLogins = getAgentAppLogins(priority, agentId).toAgentDetailAppLogins(agentId)
         return when {
             summary is DataResult.Content &&
             directMessages is DataResult.Content &&
@@ -297,7 +301,8 @@ class RealMemberRepository(
                         directMessages = directMessages.data.directMessages,
                         reminders = reminders.data.reminders,
                         activity = activity.data.activity,
-                        skills = skills.data
+                        skills = skills.data,
+                        appLogins = appLogins
                     )
                 )
             summary is DataResult.NoPermission -> summary
@@ -508,6 +513,12 @@ class RealMemberRepository(
                     ?: throw IllegalStateException("Agent skills response missing skill groups")
             }
         )
+    }
+
+    override suspend fun getAgentAppLogins(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentAppLoginSnapshot> {
+        currentContext() ?: return authRequired()
+        if (agentId.value.isBlank()) return DataResult.Empty(EmptyReason.NoMembers)
+        return integrationsApiClient.agentIntegrations(agentId).map { it.toSnapshot() }
     }
 
     override suspend fun startAgent(
@@ -736,6 +747,28 @@ class RealMemberRepository(
         }
     }
 }
+
+private fun DataResult<AgentAppLoginSnapshot>.toAgentDetailAppLogins(agentId: MemberId): AgentAppLoginSnapshot =
+    when (this) {
+        is DataResult.Content -> data
+        is DataResult.Empty ->
+            AgentAppLoginSnapshot(
+                agentId = agentId,
+                loadState = AgentAppLoginLoadState.Empty
+            )
+        is DataResult.NoPermission ->
+            AgentAppLoginSnapshot(
+                agentId = agentId,
+                loadState = AgentAppLoginLoadState.NoPermission,
+                errorCode = blocker.code
+            )
+        is DataResult.Error ->
+            AgentAppLoginSnapshot(
+                agentId = agentId,
+                loadState = AgentAppLoginLoadState.Error,
+                errorCode = error.code
+            )
+    }
 
 fun buildSharedAgentProfileUpdateBody(request: AgentProfileUpdateRequest): String {
     val displayName = request.displayName.trim()

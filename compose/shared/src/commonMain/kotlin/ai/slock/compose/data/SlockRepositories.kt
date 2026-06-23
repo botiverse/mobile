@@ -256,6 +256,10 @@ interface MemberRepository {
         priority: DataRequestPriority,
         agentId: MemberId
     ): DataResult<AgentSkillsSnapshot>
+    suspend fun getAgentAppLogins(
+        priority: DataRequestPriority,
+        agentId: MemberId
+    ): DataResult<AgentAppLoginSnapshot>
     suspend fun startAgent(
         priority: DataRequestPriority,
         agentId: MemberId
