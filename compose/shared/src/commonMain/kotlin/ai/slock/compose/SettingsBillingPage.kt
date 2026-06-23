@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
+import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.serialization.Serializable
@@ -67,7 +68,7 @@ internal data class KuiklySettingsBillingLabels(
     val comingSoon: String = "Coming Soon",
     val loading: String = "Loading billing",
     val error: String = "Could not load plans",
-    val noPermission: String = "Billing requires owner permission."
+    val noPermission: String = "Only server owners and admins can manage billing."
 )
 
 @Serializable
@@ -244,7 +245,11 @@ internal fun SettingsBillingContent(
         when (payload.status) {
             "loading" -> item { SettingsBillingLoadingContent() }
             "error" -> item { SettingsBillingStatusPanel(payload.labels.error) }
-            "noPermission" -> item { SettingsBillingStatusPanel(payload.labels.noPermission) }
+            "noPermission" ->
+                item {
+                    SettingsBillingSectionHeader(SlockLucideIconName.CreditCard, "Billing")
+                    SettingsBillingStatusPanel(payload.labels.noPermission)
+                }
             else -> {
                 val notices =
                     payload.notices.ifEmpty {
@@ -596,16 +601,11 @@ private fun SettingsBillingSectionHeader(iconName: SlockLucideIconName, label: S
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Box(
-            modifier = Modifier.size(28.dp).background(SlockColor.EmptyStateGray).border(SlockStroke.Default, SlockColor.BorderBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(iconName, modifier = Modifier.size(16.dp))
-        }
+        SlockLucideIcon(iconName, modifier = Modifier.size(16.dp), color = "#FF000000")
         Text(
             label,
-            style = SlockType.SectionLabel.copy(color = SlockColor.TextBlack),
-            color = SlockColor.TextBlack,
+            style = SlockType.SectionLabel.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -630,12 +630,13 @@ private fun SettingsStatusBadge(text: String, color: Color) {
 
 @Composable
 private fun SettingsBillingStatusPanel(title: String) {
-    Text(
-        title,
-        style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
-        color = SlockColor.TextBlack,
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp)
-    )
+    HardShadowCard {
+        Text(
+            title,
+            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 20.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
+    }
 }
 
 @Composable
