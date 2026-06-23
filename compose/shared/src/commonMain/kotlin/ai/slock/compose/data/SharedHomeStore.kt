@@ -26,8 +26,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-private const val HOME_BACKGROUND_REFRESH_FRESHNESS_MILLIS = 30_000L
-
 class SharedHomeStore(
     private val authStore: SlockAuthSessionStore,
     private val dataSource: SharedHomeDataSource,
@@ -96,8 +94,6 @@ class SharedHomeStore(
     private val presenceFactsByServer = linkedMapOf<ServerId, LinkedHashMap<MemberId, MemberPresenceUpdated>>()
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
-    private var lastHomeNetworkRefreshServerId: ServerId? = null
-    private var lastHomeNetworkRefreshAtMillis: Long = 0L
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
 
     fun dispatch(intent: SharedHomeIntent) {
@@ -129,8 +125,6 @@ class SharedHomeStore(
         presenceFactsByServer.clear()
         sidebarOrderByServer.clear()
         hiddenHomeSnapshotDirty = false
-        lastHomeNetworkRefreshServerId = null
-        lastHomeNetworkRefreshAtMillis = 0L
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
@@ -139,7 +133,7 @@ class SharedHomeStore(
                 load(
                     _state.value.serverSwitchState,
                     showRefreshAffordance = _state.value.content !is SharedHomeContentState.Content,
-                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.SkipFreshSnapshot
+                    backgroundRefreshPolicy = HomeBackgroundRefreshPolicy.SkipInFlight
                 )
             SharedHomeIntent.Refresh -> {
                 val nextSwitch = _state.value.serverSwitchState.refresh()
@@ -547,16 +541,9 @@ class SharedHomeStore(
         activeServer: ServerId,
         policy: HomeBackgroundRefreshPolicy
     ) {
-        if (policy == HomeBackgroundRefreshPolicy.SkipFreshSnapshot) {
+        if (policy == HomeBackgroundRefreshPolicy.SkipInFlight) {
             if (refreshJob?.isActive == true) {
                 diagnosticsLogger("home_refresh_skip serverId=${activeServer.value} reason=in_flight")
-                return
-            }
-            val snapshotAgeMillis = currentHomeNetworkRefreshAgeMillis(activeServer)
-            if (snapshotAgeMillis != null && snapshotAgeMillis <= HOME_BACKGROUND_REFRESH_FRESHNESS_MILLIS) {
-                diagnosticsLogger(
-                    "home_refresh_skip serverId=${activeServer.value} reason=fresh_snapshot ageMs=$snapshotAgeMillis"
-                )
                 return
             }
         }
@@ -636,10 +623,6 @@ class SharedHomeStore(
             // `isStale = true`. The original `dataResult` is the source of
             // truth for whether the network actually succeeded.
             val freshSnapshot = (dataResult as? DataResult.Content)?.data
-            if (freshSnapshot != null) {
-                lastHomeNetworkRefreshServerId = freshSnapshot.server.id
-                lastHomeNetworkRefreshAtMillis = nowMillis()
-            }
             val nextBadge =
                 if (freshSnapshot != null) {
                     val next = snapshotToBadgeCount(freshSnapshot, selectedServerId = activeServer, isStale = false)
@@ -1099,15 +1082,10 @@ class SharedHomeStore(
         return true
     }
 
-    private fun currentHomeNetworkRefreshAgeMillis(serverId: ServerId): Long? {
-        if (lastHomeNetworkRefreshServerId != serverId) return null
-        if (lastHomeNetworkRefreshAtMillis <= 0L) return null
-        return (nowMillis() - lastHomeNetworkRefreshAtMillis).coerceAtLeast(0L)
-    }
 }
 
 private enum class HomeBackgroundRefreshPolicy {
-    SkipFreshSnapshot,
+    SkipInFlight,
     Force
 }
 
