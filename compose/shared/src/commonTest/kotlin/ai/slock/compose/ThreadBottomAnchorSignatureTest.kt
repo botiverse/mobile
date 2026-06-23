@@ -338,6 +338,76 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun initialBottomAnchor_revealsOnlyAfterLatestRenderedAtBottom() {
+        assertEquals(
+            false,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = true,
+                    isContentReady = true,
+                    isAtRenderedBottom = false,
+                    attempt = 12
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = true,
+                    isContentReady = true,
+                    isAtRenderedBottom = true,
+                    attempt = 1
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = false,
+                    isContentReady = true,
+                    isAtRenderedBottom = true,
+                    attempt = 12
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = true,
+                    isContentReady = false,
+                    isAtRenderedBottom = true,
+                    attempt = 2
+                )
+            )
+        )
+        assertEquals(
+            true,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = true,
+                    isContentReady = false,
+                    isAtRenderedBottom = true,
+                    attempt = 11
+                )
+            )
+        )
+        assertEquals(
+            true,
+            shouldRevealInitialThreadBottomAnchor(
+                ThreadInitialBottomAnchorState(
+                    canScrollToLatest = true,
+                    isContentReady = true,
+                    isAtRenderedBottom = true,
+                    attempt = 2
+                )
+            )
+        )
+    }
+
+    @Test
     fun latestLocalSendBottomAnchor_stopsWhenUserScrolls() {
         assertEquals(
             false,
