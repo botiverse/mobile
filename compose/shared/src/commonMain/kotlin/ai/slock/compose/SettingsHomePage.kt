@@ -391,6 +391,7 @@ private const val SettingsDestinationHome = "home"
 private const val SettingsDestinationAccount = "account"
 private const val SettingsDestinationComputers = "computers"
 private const val SettingsDestinationServer = "server"
+private const val SettingsDestinationAdministration = "administration"
 private const val SettingsDestinationConnectedApps = "connected-apps"
 private const val SettingsDestinationBilling = "billing"
 private const val SettingsDestinationLanguageRegion = "language-region"
@@ -2947,6 +2948,104 @@ private fun SettingsAppShellContent(
                         SERVER_ACTION_DELETE ->
                             itemId?.trim()?.takeIf { it == currentServerSlug && it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest(it)))
+                            }
+                        else -> onSettingsAction(action, itemId)
+                    }
+                }
+            SettingsDestinationAdministration ->
+                SharedSettingsServerContent(
+                    payload = settingsState.server.toAdministrationPayload(
+                        session = session,
+                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Administration),
+                        actionState = settingsState.actionState,
+                        timeContext = timeContext
+                    ),
+                    inviteEmail = serverInviteEmail,
+                    onInviteEmailChange = { serverInviteEmail = it },
+                    joinLinkMaxUses = serverJoinLinkMaxUses,
+                    onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
+                    joinLinkExpiresAt = serverJoinLinkExpiresAt,
+                    onJoinLinkExpiresAtChange = { serverJoinLinkExpiresAt = it },
+                    profileName = serverProfileName,
+                    onProfileNameChange = { serverProfileName = it },
+                    agreementEnabled = serverAgreementEnabled,
+                    onAgreementEnabledChange = { serverAgreementEnabled = it },
+                    agreementTitle = serverAgreementTitle,
+                    onAgreementTitleChange = { serverAgreementTitle = it },
+                    agreementBody = serverAgreementBody,
+                    onAgreementBodyChange = { serverAgreementBody = it },
+                    hideHumansFromMembers = serverHideHumansFromMembers,
+                    onHideHumansFromMembersChange = { serverHideHumansFromMembers = it },
+                    onboardingAgentId = serverOnboardingAgentId,
+                    onOnboardingAgentIdChange = { serverOnboardingAgentId = it },
+                    onboardingGreetingEnabled = serverOnboardingGreetingEnabled,
+                    onOnboardingGreetingEnabledChange = { serverOnboardingGreetingEnabled = it },
+                    serverSnapshot = currentServerSnapshot,
+                    timeContext = timeContext,
+                    serverRole = session?.currentServerSummary()?.role.orEmpty(),
+                    expectedServerSlug = currentServerSlug,
+                    deleteConfirmationName = serverDeleteConfirmation,
+                    onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    onCreateJoinLink = { request ->
+                        onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
+                    },
+                ) { action, itemId ->
+                    when (action) {
+                        SERVER_ACTION_AGREEMENT_SAVE ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateServerAgreement(
+                                    SettingsServerAgreementUpdateRequest(
+                                        enabled = serverAgreementEnabled,
+                                        title = serverAgreementTitle.trim(),
+                                        bodyMarkdown = serverAgreementBody
+                                    )
+                                )
+                            )
+                        SERVER_ACTION_ONBOARDING_SAVE ->
+                            onSettingsIntent(
+                                SharedSettingsIntent.UpdateServerOnboarding(
+                                    SettingsServerOnboardingUpdateRequest(
+                                        onboardingAgentId = serverOnboardingAgentId.trim().takeIf { it.isNotBlank() },
+                                        clearOnboardingAgent = serverOnboardingAgentId.trim().isBlank(),
+                                        agentAllChannelGreetingEnabled = serverOnboardingGreetingEnabled
+                                    )
+                                )
+                            )
+                        SERVER_ACTION_ONBOARDING_TOGGLE ->
+                            itemId?.toBooleanStrictOrNull()?.let {
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = it)))
+                            }
+                        SERVER_ACTION_TRANSLATION_TOGGLE ->
+                            itemId?.toBooleanStrictOrNull()?.let {
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(it)))
+                            }
+                        SERVER_ACTION_SIDEBAR_ORDER ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerSidebarOrder(SettingsServerSidebarOrderUpdateRequest(channelSortMode = it)))
+                            }
+                        SERVER_ACTION_MEMBER_ROLE ->
+                            itemId?.split(":", limit = 2)?.takeIf { it.size == 2 }?.let {
+                                onSettingsIntent(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest(it[0], it[1])))
+                            }
+                        SERVER_ACTION_MEMBER_REMOVE ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it)) {
+                                    onSettingsIntent(SharedSettingsIntent.RemoveServerMember(it))
+                                } else {
+                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it))
+                                }
+                            }
+                        SERVER_ACTION_JOIN_LINK_CREATE ->
+                            onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(SettingsServerJoinLinkCreateRequest()))
+                        SERVER_ACTION_JOIN_LINK_REVOKE ->
+                            itemId?.takeIf { it.isNotBlank() }?.let {
+                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it)) {
+                                    onSettingsIntent(SharedSettingsIntent.RevokeServerJoinLink(it))
+                                } else {
+                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it))
+                                }
                             }
                         else -> onSettingsAction(action, itemId)
                     }
@@ -5908,7 +6007,7 @@ private fun appShellSettingsHomePayload(
 ): KuiklySettingsHomePayload =
     KuiklySettingsHomePayload(
         title = "Settings",
-        subtitle = session?.currentServerSummary()?.name ?: "Shared settings",
+        subtitle = "",
         showSelection = true,
         items =
             listOf(
@@ -5922,18 +6021,45 @@ private fun appShellSettingsHomePayload(
                     section = "Personal"
                 ),
                 SlockTabItemPayload(
-                    key = SettingsDestinationAppearance,
-                    title = "Appearance",
-                    subtitle = "Message font size and reading density",
-                    iconName = SlockLucideIconName.Type,
-                    selected = selectedDestination == SettingsDestinationAppearance
-                ),
-                SlockTabItemPayload(
                     key = SettingsDestinationLanguageRegion,
                     title = "Language & Region",
                     subtitle = "Language, timezone, translation",
                     iconName = SlockLucideIconName.Languages,
-                    selected = selectedDestination == SettingsDestinationLanguageRegion
+                    selected = selectedDestination == SettingsDestinationLanguageRegion,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationAppearance,
+                    title = "Appearance",
+                    subtitle = "Message font size and reading density",
+                    iconName = SlockLucideIconName.Type,
+                    selected = selectedDestination == SettingsDestinationAppearance,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationNotifications,
+                    title = "Notifications",
+                    subtitle = "Push status and workspace mute",
+                    iconName = SlockLucideIconName.Bell,
+                    selected = selectedDestination == SettingsDestinationNotifications,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationMobile,
+                    title = "Mobile",
+                    subtitle = "My message alignment",
+                    iconName = SlockLucideIconName.Smartphone,
+                    selected = selectedDestination == SettingsDestinationMobile,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationServer,
+                    title = "Server Profile",
+                    subtitle = "Workspace name, slug, role",
+                    iconName = SlockLucideIconName.Users,
+                    value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
+                    selected = selectedDestination == SettingsDestinationServer,
+                    section = "Workspace"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationBilling,
@@ -5941,7 +6067,24 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Plan and usage",
                     iconName = SlockLucideIconName.ShieldCheck,
                     value = session?.currentServerSummary()?.plan?.replaceFirstChar { it.uppercase() },
-                    selected = selectedDestination == SettingsDestinationBilling
+                    selected = selectedDestination == SettingsDestinationBilling,
+                    section = "Workspace"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationAdministration,
+                    title = "Administration",
+                    subtitle = "Admins, invites, join links, agreements",
+                    iconName = SlockLucideIconName.Shield,
+                    selected = selectedDestination == SettingsDestinationAdministration,
+                    section = "Workspace"
+                ),
+                SlockTabItemPayload(
+                    key = SettingsDestinationConnectedApps,
+                    title = "Connected Apps",
+                    subtitle = "Marketplace, installed apps, OAuth clients",
+                    iconName = SlockLucideIconName.Blocks,
+                    selected = selectedDestination == SettingsDestinationConnectedApps,
+                    section = "Workspace"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationComputers,
@@ -5949,43 +6092,7 @@ private fun appShellSettingsHomePayload(
                     subtitle = "Connected machines and workspaces",
                     iconName = SlockLucideIconName.Monitor,
                     selected = selectedDestination == SettingsDestinationComputers,
-                    section = "Server"
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationServer,
-                    title = "Server",
-                    subtitle = "Workspace profile, admins, invites, onboarding",
-                    iconName = SlockLucideIconName.Users,
-                    value = session?.currentServerSummary()?.role?.replaceFirstChar { it.uppercase() },
-                    selected = selectedDestination == SettingsDestinationServer
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationConnectedApps,
-                    title = "Connected Apps",
-                    subtitle = "Marketplace, installed apps, OAuth clients",
-                    iconName = SlockLucideIconName.Blocks,
-                    selected = selectedDestination == SettingsDestinationConnectedApps
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationNotifications,
-                    title = "Notifications",
-                    subtitle = "Push status and workspace mute",
-                    iconName = SlockLucideIconName.Bell,
-                    selected = selectedDestination == SettingsDestinationNotifications
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationMobile,
-                    title = "Mobile",
-                    subtitle = "My message alignment",
-                    iconName = SlockLucideIconName.Smartphone,
-                    selected = selectedDestination == SettingsDestinationMobile
-                ),
-                SlockTabItemPayload(
-                    key = SettingsDestinationStorage,
-                    title = "Storage",
-                    subtitle = "Local cache and temporary files",
-                    iconName = SlockLucideIconName.Archive,
-                    selected = selectedDestination == SettingsDestinationStorage
+                    section = "Workspace"
                 ),
                 SlockTabItemPayload(
                     key = SettingsDestinationAbout,
@@ -6000,7 +6107,8 @@ private fun appShellSettingsHomePayload(
                     title = "Developer Router",
                     subtitle = "Open Kuikly route launcher and icon compare",
                     iconName = SlockLucideIconName.LayoutList,
-                    selected = selectedDestination == SettingsDestinationRouter
+                    selected = selectedDestination == SettingsDestinationRouter,
+                    section = "About"
                 )
             )
     )
@@ -6311,6 +6419,67 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                     title = "Plan",
                     rows =
                         snapshot.toPlanRows(sectionsByKey["billing"], plan)
+                )
+            )
+    )
+}
+
+private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
+    session: StoredAuthSession?,
+    refreshing: Boolean,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?,
+    timeContext: SlockTimeContext?
+): KuiklySharedSettingsPayload {
+    val server = session?.currentServerSummary()
+    val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
+    val detail =
+        when (this) {
+            ScreenLoadState.Loading -> if (refreshing) "Refreshing administration..." else "Loading administration..."
+            is ScreenLoadState.Error -> "Administration failed to load: ${error.code}"
+            is ScreenLoadState.NoPermission -> "Administration unavailable: ${blocker.code}"
+            is ScreenLoadState.Empty -> "Administration unavailable: ${reason.name}"
+            is ScreenLoadState.Content -> "Manage admins, invites, join links, and pre-join agreements."
+        }
+    val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
+    return KuiklySharedSettingsPayload(
+        instanceId = "shared-shell-settings-administration",
+        title = "Administration",
+        heroIconName = SlockLucideIconName.Shield,
+        heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
+        detail = detail,
+        sections =
+            listOf(
+                KuiklySharedSettingsSection(
+                    title = "Admins",
+                    rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Pending Invites",
+                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Join Links",
+                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Pre-join Agreement",
+                    rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Onboarding",
+                    rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Member Permissions",
+                    rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Translation",
+                    rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
+                ),
+                KuiklySharedSettingsSection(
+                    title = "Sidebar Order",
+                    rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
                 )
             )
     )
@@ -7303,7 +7472,8 @@ private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Account"
         SettingsDestinationComputers -> "Computers"
-        SettingsDestinationServer -> "Server"
+        SettingsDestinationServer -> "Server Profile"
+        SettingsDestinationAdministration -> "Administration"
         SettingsDestinationConnectedApps -> "Connected Apps"
         SettingsDestinationBilling -> "Billing"
         SettingsDestinationLanguageRegion -> "Language & Region"
@@ -7321,7 +7491,8 @@ private fun settingsDestinationSubtitle(destination: String): String =
     when (destination) {
         SettingsDestinationAccount -> "Profile and sign out"
         SettingsDestinationComputers -> "Connected machines"
-        SettingsDestinationServer -> "Workspace controls"
+        SettingsDestinationServer -> "Workspace profile"
+        SettingsDestinationAdministration -> "Admins, invites, join links, agreements"
         SettingsDestinationConnectedApps -> "Marketplace, installed apps, OAuth clients"
         SettingsDestinationBilling -> "Plan and usage"
         SettingsDestinationLanguageRegion -> "Language, timezone, translation"
@@ -7340,6 +7511,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationAccount -> SlockLucideIconName.User
         SettingsDestinationComputers -> SlockLucideIconName.Monitor
         SettingsDestinationServer -> SlockLucideIconName.Users
+        SettingsDestinationAdministration -> SlockLucideIconName.Shield
         SettingsDestinationConnectedApps -> SlockLucideIconName.Blocks
         SettingsDestinationBilling -> SlockLucideIconName.ShieldCheck
         SettingsDestinationLanguageRegion -> SlockLucideIconName.Languages
@@ -7358,6 +7530,7 @@ private fun String.toSharedSettingsDestination(): SharedSettingsDestination? =
         SettingsDestinationAccount -> SharedSettingsDestination.Account
         SettingsDestinationComputers -> SharedSettingsDestination.Computers
         SettingsDestinationServer -> SharedSettingsDestination.Server
+        SettingsDestinationAdministration -> SharedSettingsDestination.Administration
         SettingsDestinationConnectedApps -> SharedSettingsDestination.ConnectedApps
         SettingsDestinationBilling -> SharedSettingsDestination.Billing
         SettingsDestinationLanguageRegion -> SharedSettingsDestination.LanguageRegion

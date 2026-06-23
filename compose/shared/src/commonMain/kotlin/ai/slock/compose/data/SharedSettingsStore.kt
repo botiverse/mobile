@@ -22,6 +22,7 @@ enum class SharedSettingsDestination {
     Computers,
     ComputerDetail,
     Server,
+    Administration,
     ConnectedApps,
     Billing,
     LanguageRegion,
@@ -1230,6 +1231,8 @@ class SharedSettingsStore(
                 loadComputerDetail(_state.value.route.itemId.orEmpty())
             SharedSettingsDestination.Server ->
                 dataSource.loadServer().applyToState(destination) { copy(server = it) }
+            SharedSettingsDestination.Administration ->
+                dataSource.loadServer().applyToState(destination) { copy(server = it) }
             SharedSettingsDestination.ConnectedApps ->
                 dataSource.loadConnectedApps().applyToState(destination) { copy(connectedApps = it) }
             SharedSettingsDestination.Billing ->
@@ -1813,6 +1816,7 @@ private fun SharedSettingsState.hasContent(destination: SharedSettingsDestinatio
         SharedSettingsDestination.Computers -> computers is ScreenLoadState.Content
         SharedSettingsDestination.ComputerDetail -> computerDetail is ScreenLoadState.Content
         SharedSettingsDestination.Server -> server is ScreenLoadState.Content
+        SharedSettingsDestination.Administration -> server is ScreenLoadState.Content
         SharedSettingsDestination.ConnectedApps -> connectedApps is ScreenLoadState.Content
         SharedSettingsDestination.Billing -> billing is ScreenLoadState.Content
         SharedSettingsDestination.LanguageRegion -> languageRegion is ScreenLoadState.Content
@@ -1991,18 +1995,19 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
 ): SharedSettingsHomeSnapshot {
     val server = this?.currentServer()
     return SharedSettingsHomeSnapshot(
-        subtitle = server?.name ?: "Shared settings",
+        subtitle = "",
         items =
             listOf(
                 nav(SharedSettingsDestination.Account, "Account", "Profile, email, password, connected accounts", SlockLucideIconName.User, this?.user?.bestDisplayName, selectedDestination),
-                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
-                nav(SharedSettingsDestination.Server, "Server", "Workspace profile, admins, invites, onboarding", SlockLucideIconName.Users, server?.role?.titleLabel(), selectedDestination),
-                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Blocks, null, selectedDestination),
-                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.ShieldCheck, server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.LanguageRegion, "Language & Region", "Language, timezone, translation", SlockLucideIconName.Languages, null, selectedDestination),
                 nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
                 nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Users, server?.role?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.ShieldCheck, server?.plan?.titleLabel(), selectedDestination),
+                nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination),
+                nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Blocks, null, selectedDestination),
+                nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
                 nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination)
             )
