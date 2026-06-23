@@ -31,6 +31,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.focus.FocusRequester
 import com.tencent.kuikly.compose.ui.focus.focusProperties
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
+import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
@@ -68,9 +69,9 @@ private val AuthInputTextStyle =
     ).withSlockFontWeight(FontWeight.Normal)
 
 private val AuthInputPlaceholderColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val AuthTopBarBrandHeight = 44.dp
-private val AuthTopBarBrandIconSize = 38.dp
-private val AuthTopBarBrandIconGlyphSize = 24.dp
+private val AuthTopBarBrandWidth = 203.dp
+private val AuthTopBarBrandHeight = 50.dp
+private const val RaftLogoAssetSource = "assets://brand/raft-logo.svg"
 
 private fun Modifier.authStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -157,36 +158,12 @@ private fun AuthTopBar(
 
 @Composable
 private fun AuthSmallBrand(modifier: Modifier = Modifier) {
-    Row(
-        modifier = modifier.height(AuthTopBarBrandHeight),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier.size(AuthTopBarBrandIconSize).background(SlockColor.TextBlack),
-            contentAlignment = Alignment.Center
-        ) {
-            SlockLucideIcon(
-                SlockLucideIconName.Lock,
-                modifier = Modifier.size(AuthTopBarBrandIconGlyphSize),
-                color = SlockColor.BrandYellowArgb,
-                strokeWidth = 3f
-            )
-        }
-        Spacer(Modifier.width(8.dp))
-        Text(
-            text = "RAFT",
-            style =
-                SlockType.PageTitle.copy(
-                    fontSize = 34.sp,
-                    lineHeight = 38.sp,
-                    color = SlockColor.TextBlack
-                ),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-            modifier = Modifier.authStaticTextFocus()
-        )
-    }
+    SlockCachedImage(
+        source = RaftLogoAssetSource,
+        contentDescription = null,
+        modifier = modifier.width(AuthTopBarBrandWidth).height(AuthTopBarBrandHeight),
+        contentScale = ContentScale.FillBounds
+    )
 }
 
 @Composable
