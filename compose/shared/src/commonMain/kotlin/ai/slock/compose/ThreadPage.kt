@@ -483,7 +483,11 @@ internal data class WireThreadLaunchPayload(
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
     val nowEpochMillis: Long? = null,
-    val timeFormat: String = SlockTimeFormat24Hour
+    val timeFormat: String = SlockTimeFormat24Hour,
+    val composerSeedText: String = "",
+    val composerSyncNonce: Int = 0,
+    val composerFocusRequestNonce: Int = 0,
+    val composerPendingAttachments: List<KuiklyPendingAttachmentItem> = emptyList()
 ) {
     fun hasRouteIdentity(): Boolean =
         listOf(threadId, sourceThreadId, streamChannelId, parentChannelId, parentMessageId)
@@ -513,11 +517,15 @@ internal data class WireThreadLaunchPayload(
         val resolvedComposer =
             KuiklyThreadComposerPayload(
                 surfaceKind = surfaceKind,
+                seedText = composerSeedText,
+                syncNonce = composerSyncNonce,
+                focusRequestNonce = composerFocusRequestNonce,
                 enabled = true,
                 showAsTaskToggle = true,
                 mentionChannelId = parentChannelId.nonBlank(),
                 parentMessageId = parentMessageId.nonBlank(),
-                streamChannelId = resolvedStreamId
+                streamChannelId = resolvedStreamId,
+                pendingAttachments = composerPendingAttachments
             )
         return KuiklyThreadScreenPayload(
             instanceId = resolvedInstanceId,
@@ -594,7 +602,11 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         localOffsetMinutes = localOffsetMinutes,
         todayEpochDay = todayEpochDay,
         nowEpochMillis = nowEpochMillis,
-        timeFormat = timeFormat
+        timeFormat = timeFormat,
+        composerSeedText = composer.seedText,
+        composerSyncNonce = composer.syncNonce,
+        composerFocusRequestNonce = composer.focusRequestNonce,
+        composerPendingAttachments = composer.pendingAttachments
     )
 
 private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =

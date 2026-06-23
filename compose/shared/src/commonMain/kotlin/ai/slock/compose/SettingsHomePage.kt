@@ -183,6 +183,8 @@ import ai.slock.compose.data.AgentMachineAssignmentRequest
 import ai.slock.compose.data.AgentProfileUpdateRequest
 import ai.slock.compose.data.AgentResetMode
 import ai.slock.compose.data.AgentResetRequest
+import ai.slock.compose.data.AttachmentUploadFile
+import ai.slock.compose.data.AttachmentUploadRequest
 import ai.slock.compose.data.EmptyReason
 import ai.slock.compose.data.parseSharedThreadPickedAttachmentFiles
 import ai.slock.compose.data.ScreenError
@@ -1400,6 +1402,7 @@ private fun SlockAppShellContent() {
     var createChannelMembers by remember { mutableStateOf<List<MemberProfile>>(emptyList()) }
     var pendingDiagnosticsFeedback by remember { mutableStateOf<SettingsDiagnosticsFeedbackDraft?>(null) }
     var pendingDiagnosticsFeedbackReturnDestination by remember { mutableStateOf(SettingsDestinationDiagnostics) }
+    var diagnosticsFeedbackUploadChannelId by remember { mutableStateOf<String?>(null) }
     val authGateViewModel: SharedAuthGateViewModel =
         viewModel(key = "shared-auth-gate") {
             SharedAuthGateViewModel(authDataSource)
@@ -1658,22 +1661,72 @@ private fun SlockAppShellContent() {
             bridge.toast("You cannot attach diagnostics in this channel")
             return
         }
+        if (diagnosticsFeedbackUploadChannelId != null) {
+            bridge.toast("Preparing diagnostics attachment...")
+            return
+        }
         bridge.log(
             "diagnostics_feedback_channel_selected channelId=$channelId source=$source " +
                 "fileName=${draft.fileName} pushCurrent=$pushCurrent"
         )
-        homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
-        selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
-        pendingDiagnosticsFeedback = null
-        pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
-        val launchPayload =
-            buildStandaloneConversationThreadLaunchPayload(
-                conversation = conversation,
-                timeContext = threadTimeContext,
-                alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
-            )
-        pager.openStandaloneThreadLaunchPayload(launchPayload)
-        bridge.toast("Diagnostics channel opened")
+        diagnosticsFeedbackUploadChannelId = channelId
+        bridge.toast("Preparing diagnostics attachment...")
+        appShellCoroutineScope.launch {
+            val uploadResult =
+                conversationRepository.uploadAttachments(
+                    AttachmentUploadRequest(
+                        channelId = ChannelId(channelId),
+                        files = listOf(draft.toDiagnosticsAttachmentUploadFile())
+                    )
+                )
+            diagnosticsFeedbackUploadChannelId = null
+            when (uploadResult) {
+                is DataResult.Content -> {
+                    val uploadedAttachments =
+                        uploadResult.data.attachments.map { attachment ->
+                            KuiklyPendingAttachmentItem(
+                                id = attachment.id.value,
+                                fileName = attachment.name,
+                                sizeLabel = attachment.sizeLabel,
+                                mimeType = attachment.mimeType.takeIf { it.isNotBlank() },
+                                status = "ready"
+                            )
+                        }
+                    if (uploadedAttachments.isEmpty()) {
+                        bridge.toast("Diagnostics attachment upload returned empty")
+                        return@launch
+                    }
+                    homeShellStore.dispatch(SharedHomeShellIntent.SetSelectedConversation(conversation.threadId.value))
+                    selectedSettingsDestination = pendingDiagnosticsFeedbackReturnDestination
+                    pendingDiagnosticsFeedback = null
+                    pendingDiagnosticsFeedbackReturnDestination = SettingsDestinationDiagnostics
+                    val launchPayload =
+                        buildStandaloneConversationThreadLaunchPayload(
+                            conversation = conversation,
+                            timeContext = threadTimeContext,
+                            alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right
+                        ).withDiagnosticsFeedbackDraft(
+                            draft = draft,
+                            attachments = uploadedAttachments
+                        )
+                    pager.openStandaloneThreadLaunchPayload(launchPayload)
+                    bridge.toast("Diagnostics draft ready")
+                }
+                is DataResult.Error -> {
+                    val reason = threadFailureReasonLabel(uploadResult.error.code) ?: uploadResult.error.code
+                    bridge.toast("Diagnostics attachment upload failed: $reason")
+                    bridge.log("diagnostics_feedback_attachment_upload_failed code=${uploadResult.error.code}")
+                }
+                is DataResult.NoPermission -> {
+                    bridge.toast("You cannot attach diagnostics in this channel")
+                    bridge.log("diagnostics_feedback_attachment_upload_blocked code=${uploadResult.blocker.code}")
+                }
+                is DataResult.Empty -> {
+                    bridge.toast("Diagnostics attachment upload returned empty")
+                    bridge.log("diagnostics_feedback_attachment_upload_empty reason=${uploadResult.reason}")
+                }
+            }
+        }
     }
 
     fun openHomeConversation(conversation: ConversationSummary, source: String, anchorMessageId: String? = null, pushCurrent: Boolean = true) {
@@ -9122,6 +9175,33 @@ private fun ConversationSummary.diagnosticsFeedbackChannelMeta(): String {
         .joinToString(" · ")
         .ifBlank { "Channel" }
 }
+
+private fun SettingsDiagnosticsFeedbackDraft.toDiagnosticsAttachmentUploadFile(): AttachmentUploadFile =
+    AttachmentUploadFile(
+        id = "diagnostics-feedback-${fileName.hashCode().toString().replace("-", "n")}-${sizeBytes}",
+        fileName = fileName.ifBlank { "slock-feedback.txt" },
+        mimeType = mimeType.ifBlank { "text/plain" },
+        sizeBytes = sizeBytes.takeIf { it > 0L } ?: bytes.size.toLong(),
+        bytes = bytes
+    )
+
+private fun SettingsDiagnosticsFeedbackDraft.diagnosticsComposerMessage(): String =
+    message.ifBlank {
+        "## Raft feedback\n\n<!-- Describe what happened here. -->\n\n## Diagnostics\n\nSanitized diagnostics are attached."
+    }
+
+private fun WireThreadLaunchPayload.withDiagnosticsFeedbackDraft(
+    draft: SettingsDiagnosticsFeedbackDraft,
+    attachments: List<KuiklyPendingAttachmentItem>
+): WireThreadLaunchPayload =
+    copy(
+        composerSeedText = draft.diagnosticsComposerMessage(),
+        composerSyncNonce = composerSyncNonce + 1,
+        composerFocusRequestNonce = composerFocusRequestNonce + 1,
+        composerPendingAttachments =
+            (composerPendingAttachments + attachments)
+                .distinctBy { attachment -> attachment.id }
+    )
 
 @Composable
 private fun SharedCreateChannelDialog(
