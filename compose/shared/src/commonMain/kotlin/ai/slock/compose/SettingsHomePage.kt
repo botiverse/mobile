@@ -2255,6 +2255,7 @@ private fun SlockAppShellContent() {
                             active = active,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
+                            activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
                             savedCount = homeSearchSavedState.saved.totalCount,
                             onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
                             onNotificationDismiss = { id ->
@@ -8919,6 +8920,7 @@ private fun SharedHomeScreen(
     active: Boolean,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
+    activityUnreadLoaded: Boolean = false,
     savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
@@ -9017,7 +9019,8 @@ private fun SharedHomeScreen(
                 }
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
                 homeUnreadCount = snapshot.unreadTotal,
-                activityUnreadCount = activityUnreadCount
+                activityUnreadCount = activityUnreadCount,
+                activityUnreadLoaded = activityUnreadLoaded
             )
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,

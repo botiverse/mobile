@@ -61,6 +61,24 @@ class SlockHomeComponentsTest {
             0,
             homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 0, activityTotalCount = 0)
         )
+        assertEquals(
+            40,
+            homeActivitySidebarUnreadCount(
+                homeUnreadCount = 9,
+                activityUnreadCount = 0,
+                activityTotalCount = 40,
+                activityUnreadLoaded = true
+            )
+        )
+        assertEquals(
+            11,
+            homeActivitySidebarUnreadCount(
+                homeUnreadCount = 9,
+                activityUnreadCount = 11,
+                activityTotalCount = 40,
+                activityUnreadLoaded = true
+            )
+        )
     }
 
     @Test

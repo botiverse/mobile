@@ -1085,9 +1085,10 @@ private fun SlockPresence.toModelPresence(): Presence =
 internal fun homeActivitySidebarUnreadCount(
     homeUnreadCount: Int,
     activityUnreadCount: Int,
-    activityTotalCount: Int = 0
+    activityTotalCount: Int = 0,
+    activityUnreadLoaded: Boolean = false
 ): Int =
-    maxOf(homeUnreadCount, activityUnreadCount)
+    (if (activityUnreadLoaded) activityUnreadCount else maxOf(homeUnreadCount, activityUnreadCount))
         .takeIf { it > 0 }
         ?: activityTotalCount
 
