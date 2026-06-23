@@ -47,6 +47,7 @@ private val SlockBaseMenuShadowOffset = 4.dp
 private val SlockBaseMenuHorizontalOffset = (-8).dp
 private val SlockBaseMenuVerticalOffset = 8.dp
 private val SlockBaseMenuViewportGap = 8.dp
+private val SlockBaseMenuForegroundColor = Color(0xFF000000)
 private const val SlockBaseMenuChromeWidthValue = 84
 
 @Composable
@@ -56,8 +57,8 @@ internal fun SlockBaseMenuOverlay(
     selectedId: String,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit,
-    surfaceBorderColor: Color = SlockColor.BorderBlack,
-    surfaceShadowColor: Color = SlockColor.ShadowBlack,
+    surfaceBorderColor: Color = SlockBaseMenuForegroundColor,
+    surfaceShadowColor: Color = SlockBaseMenuForegroundColor,
     selectedRowColor: Color = SlockColor.BrandYellow,
     uppercaseLabels: Boolean = true,
     modifier: Modifier = Modifier,
@@ -115,7 +116,7 @@ internal fun SlockBaseMenuOverlay(
             ) {
                 items.forEach { item ->
                     if (item.dividerBefore) {
-                        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
+                        Box(Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockBaseMenuForegroundColor))
                     }
                     val selected = item.id == selectedId
                     SlockBaseMenuRow(
@@ -165,7 +166,7 @@ private fun SlockBaseMenuRow(
         ) {
             val leadingIcon = item.icon ?: SlockLucideIconName.Check.takeIf { selected }
             leadingIcon?.let { icon ->
-                SlockLucideIcon(icon, modifier = Modifier.size(SlockBaseMenuIconSize), color = "#FF000000")
+                SlockLucideIcon(icon, modifier = Modifier.size(SlockBaseMenuIconSize), color = SlockColor.TextBlackArgb)
             } ?: Spacer(modifier = Modifier.width(SlockBaseMenuIconSize))
             Text(
                 text = if (uppercaseLabel) item.label.uppercase() else item.label,
@@ -174,7 +175,7 @@ private fun SlockBaseMenuRow(
                     lineHeight = 14.sp,
                     letterSpacing = 0.8.sp
                 ).withSlockFontWeight(FontWeight.SemiBold),
-                color = SlockColor.TextBlack,
+                color = SlockBaseMenuForegroundColor,
                 maxLines = 1,
                 modifier = Modifier.weight(1f)
             )
