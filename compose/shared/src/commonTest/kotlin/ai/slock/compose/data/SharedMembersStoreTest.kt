@@ -236,7 +236,7 @@ class SharedMembersStoreTest {
                     inMentionChannel = true,
                     kind = MemberKind.Agent,
                     description = "Builds and validates Android changes",
-                    avatarWireValue = "pixel:tree",
+                    avatarWireValue = "pixel:robot",
                     gravatarHash = null,
                     avatarLabel = "BA"
                 )

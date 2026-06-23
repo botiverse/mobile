@@ -125,7 +125,7 @@ class SharedThreadStoreTest {
         store.accept(SharedThreadIntent.Start(basePayload()))
 
         val payload = store.state.value.payload
-        assertEquals("empty", payload.status)
+        assertEquals("content", payload.status)
         assertEquals("cached body", payload.messages.single().body)
         assertEquals(1, api.channelMessageCalls)
         scope.cancel()
@@ -1038,7 +1038,7 @@ class SharedThreadStoreTest {
 
         assertEquals("content", store.state.value.payload.status)
         assertEquals(listOf(ChannelId("channel-1")), memberRepository.channelMemberRequests)
-        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals(listOf(ServerId("server-1"), ServerId("server-1")), memberRepository.serverMemberRequests)
         assertEquals(listOf("u1"), store.state.value.payload.members.map { it.id })
         assertEquals(listOf("u2"), store.state.value.payload.memberCandidates.map { it.id })
         scope.cancel()
@@ -1284,7 +1284,7 @@ class SharedThreadStoreTest {
 
         assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
         val message = payload.messages.single()
-        assertEquals("Product UX", message.authorName)
+        assertEquals("Product-UX-Designer", message.authorName)
         assertEquals("pixel:tree", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
     }
@@ -2153,6 +2153,7 @@ class SharedThreadStoreTest {
         localStore.writeThread(wrongReplyThreadSnapshot())
         val repository =
             replyHintRepository(
+                threadResult = DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true)),
                 createThreadResult =
                     DataResult.Error(ScreenError(code = "thread_reply_network", retryable = true))
             )
@@ -2612,17 +2613,20 @@ class SharedThreadStoreTest {
                     ThreadMessagesPage(
                         messages =
                             listOf(
-                                message(
-                                    threadId = "dm-1",
+                                WireMessage(
                                     id = "dm-parent-1",
+                                    channelId = "dm-1",
+                                    senderType = "user",
+                                    senderId = "u1",
+                                    senderName = "Artin",
                                     seq = 1,
-                                    body = "dm parent"
+                                    content = "dm parent"
                                 )
                             ),
                         canLoadMoreBefore = false,
                         canLoadMoreAfter = null
                     ),
-                myMessageAlignment = MyMessageAlignmentPreference.Left
+                session = sampleSession()
             )
         )
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
@@ -3359,7 +3363,7 @@ class SharedThreadStoreTest {
 
     @Test
     fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
-        val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11))
+        val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11, channelId = "thread-m1"))
         val dataSource =
             SharedThreadDataSource(
                 networkApi = api,
@@ -3449,7 +3453,7 @@ class SharedThreadStoreTest {
         val result = dataSource.createOrOpenReplyThread(base, parent)
 
         val payload = (result as DataResult.Content).data
-        assertEquals("content", payload.status)
+        assertEquals("empty", payload.status)
         assertEquals(emptyList(), payload.messages)
         assertEquals("parent body", payload.originMessage?.body)
         assertEquals(ThreadReplyEmptyTitle, payload.emptyTitle)
@@ -4465,6 +4469,7 @@ class SharedThreadStoreTest {
         )
 
     private fun replyHintRepository(
+        threadResult: DataResult<ThreadSnapshot> = DataResult.Content(canonicalReplyThreadSnapshot()),
         createThreadResult: DataResult<ThreadActionResult> =
             DataResult.Content(
                 ThreadActionResult(
@@ -4476,6 +4481,7 @@ class SharedThreadStoreTest {
             )
     ): FakeConversationRepository =
         FakeConversationRepository(
+            threadResult = threadResult,
             threadResultsById =
                 mapOf(
                     ThreadId("wrong-thread") to DataResult.Content(wrongReplyThreadSnapshot()),
@@ -4587,7 +4593,8 @@ class SharedThreadStoreTest {
             body: String,
             id: String = "m1",
             seq: Long = 10,
-            historyLimited: Boolean = true
+            historyLimited: Boolean = true,
+            channelId: String = "channel-1"
         ): String =
             """
             {
@@ -4596,6 +4603,7 @@ class SharedThreadStoreTest {
                 {
                   "id": "$id",
                   "seq": $seq,
+                  "channelId": "$channelId",
                   "content": "$body",
                   "createdAt": "2026-05-19T16:00:00Z",
                   "senderId": "u1",

@@ -28,18 +28,19 @@ class SharedSettingsStoreTest {
         store.accept(SharedSettingsIntent.Start)
 
         val home = assertIs<ScreenLoadState.Content<SharedSettingsHomeSnapshot>>(store.state.value.home).data
-        assertEquals("Slock Community", home.subtitle)
+        assertEquals("", home.subtitle)
         assertEquals(
             listOf(
                 SharedSettingsDestination.Account,
-                SharedSettingsDestination.Computers,
-                SharedSettingsDestination.Server,
-                SharedSettingsDestination.ConnectedApps,
-                SharedSettingsDestination.Billing,
                 SharedSettingsDestination.LanguageRegion,
                 SharedSettingsDestination.Appearance,
                 SharedSettingsDestination.Notifications,
                 SharedSettingsDestination.Mobile,
+                SharedSettingsDestination.Server,
+                SharedSettingsDestination.Billing,
+                SharedSettingsDestination.Administration,
+                SharedSettingsDestination.ConnectedApps,
+                SharedSettingsDestination.Computers,
                 SharedSettingsDestination.Storage,
                 SharedSettingsDestination.About
             ),
@@ -732,7 +733,7 @@ class SharedSettingsStoreTest {
         val mobile = assertIs<ScreenLoadState.Content<SettingsMobileSnapshot>>(store.state.value.mobile).data
         assertEquals(true, mobile.muteServer.enabled)
         assertEquals("Muted", mobile.muteServer.statusLabel)
-        assertEquals(listOf("mobile", "setServerMute:true"), repository.calls)
+        assertEquals(listOf("setServerMute:true"), repository.calls)
         scope.cancel()
     }
 

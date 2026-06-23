@@ -67,6 +67,7 @@ class MemberRepositoryDataSourceTest {
                 "GET agents/agent-1/activity-log limit=50",
                 "GET agents",
                 "GET agents/agent-1/skills",
+                "GET integrations/agents/agent-1",
                 "POST agents/agent-1/start",
                 "POST agents/agent-1/stop",
                 """POST agents/agent-1/reset body={"mode":"restart"}""",
@@ -240,6 +241,10 @@ class MemberRepositoryDataSourceTest {
                         {"global":[{"name":"docs","displayName":"Docs","description":"Reads docs"}],"workspace":[]}
                         """.trimIndent()
                     )
+                }
+                normalized == "integrations/agents/agent-1" && method == "GET" -> {
+                    calls += "GET integrations/agents/agent-1"
+                    ok("""{"apps":[]}""")
                 }
                 normalized == "agents/agent-1/start" && method == "POST" -> {
                     calls += "POST agents/agent-1/start"

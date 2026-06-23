@@ -23,42 +23,34 @@ class ThreadAdvancedMessageParityTest {
     }
 
     @Test
-    fun permalinkExtractorLoadsOnlyCurrentServerPlainUrls() {
+    fun webLinkTargetParsesPlainSlockChannelUrls() {
         val permalink =
-            extractFirstQuotedMessagePermalink(
-                "see https://app.slock.ai/s/botiverse/channel/channel-1?msg=msg-1",
-                currentServerSlug = "botiverse"
-            )
+            "https://app.slock.ai/channel/channel-1?msg=msg-1"
+                .toSlockThreadWebLinkTarget()
 
         assertEquals("channel-1", permalink?.channelId)
         assertEquals("msg-1", permalink?.messageId)
     }
 
     @Test
-    fun permalinkExtractorRejectsMarkdownAndCodeUrls() {
+    fun webLinkTargetRejectsMarkdownAndCodeUrls() {
         assertNull(
-            extractFirstQuotedMessagePermalink(
-                "[quoted](https://app.slock.ai/s/botiverse/channel/channel-1?msg=msg-1)",
-                currentServerSlug = "botiverse"
-            )
+            "[quoted](https://app.slock.ai/channel/channel-1?msg=msg-1)"
+                .toSlockThreadWebLinkTarget()
         )
         assertNull(
-            extractFirstQuotedMessagePermalink(
-                "`https://app.slock.ai/s/botiverse/channel/channel-1?msg=msg-1`",
-                currentServerSlug = "botiverse"
-            )
+            "`https://app.slock.ai/channel/channel-1?msg=msg-1`"
+                .toSlockThreadWebLinkTarget()
         )
     }
 
     @Test
-    fun permalinkExtractorParsesThreadParentAsOpenTargetWhenMsgMissing() {
+    fun webLinkTargetParsesChannelWithoutMessageTarget() {
         val permalink =
-            extractFirstQuotedMessagePermalink(
-                "https://app.slock.ai/s/botiverse/channel/thread-1?thread=thread-1:parent-1",
-                currentServerSlug = "botiverse"
-            )
+            "https://app.slock.ai/channel/thread-1"
+                .toSlockThreadWebLinkTarget()
 
-        assertEquals("parent-1", permalink?.messageId)
-        assertEquals("parent-1", permalink?.threadParentMessageId)
+        assertEquals("thread-1", permalink?.channelId)
+        assertNull(permalink?.messageId)
     }
 }

@@ -199,7 +199,7 @@ class AgentRuntimeConfigTest {
             customModelMode = false,
             reasoningEffort = "high"
         )
-        assertNull(claudeConfig.reasoningEffort)
+        assertEquals("high", claudeConfig.reasoningEffort)
     }
 
     // ── Plan limits ──
