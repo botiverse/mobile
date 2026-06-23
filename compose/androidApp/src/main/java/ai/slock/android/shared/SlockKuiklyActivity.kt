@@ -962,6 +962,7 @@ private class SlockKuiklyImageAdapter(
             imageLoadOption.isSvgSource() -> loadSvg(imageLoadOption, callback)
             imageLoadOption.isBase64() -> loadFromBase64(imageLoadOption, callback)
             imageLoadOption.isAssets() -> loadFromAssets(imageLoadOption, callback)
+            imageLoadOption.isLocalUri() -> loadFromLocalUri(imageLoadOption, callback)
             imageLoadOption.isWebUrl() -> loadFromNetwork(imageLoadOption, callback)
             else -> callback(null)
         }
@@ -1004,6 +1005,44 @@ private class SlockKuiklyImageAdapter(
                         val assetPath = imageLoadOption.src.substring(HRImageLoadOption.SCHEME_ASSETS.length)
                         val bytes = context.assets.open(assetPath).use { input -> input.readBytes() }
                         drawableFromBytes(bytes, imageLoadOption, contentType = null)
+                    }
+                    .onSuccess { drawable ->
+                        callback(drawable)
+                    }
+                    .onFailure {
+                        callback(null)
+                    }
+        }
+    }
+
+    private fun loadFromLocalUri(
+            imageLoadOption: HRImageLoadOption,
+            callback: (drawable: Drawable?) -> Unit
+    ) {
+        SlockKuiklyThreadAdapter.executeOnSubThread {
+            runCatching {
+                        val src = imageLoadOption.src
+                        val uri = Uri.parse(src)
+                        val bytes =
+                                when {
+                                    imageLoadOption.isFile() -> {
+                                        val path = uri.path
+                                        if (!path.isNullOrBlank()) {
+                                            File(path).readBytes()
+                                        } else {
+                                            context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+                                        }
+                                    }
+                                    else ->
+                                            context.contentResolver.openInputStream(uri)?.use { input -> input.readBytes() }
+                                } ?: return@runCatching null
+                        val contentType =
+                                if (imageLoadOption.isContentUri()) {
+                                    context.contentResolver.getType(uri)
+                                } else {
+                                    null
+                                }
+                        drawableFromBytes(bytes, imageLoadOption, contentType)
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
@@ -1131,6 +1170,14 @@ private class SlockKuiklyImageAdapter(
         return raw.startsWith("<svg", ignoreCase = true) ||
                 normalized.startsWith("data:image/svg+xml") ||
                 path.endsWith(".svg")
+    }
+
+    private fun HRImageLoadOption.isContentUri(): Boolean {
+        return src.startsWith("content://", ignoreCase = true)
+    }
+
+    private fun HRImageLoadOption.isLocalUri(): Boolean {
+        return isFile() || isContentUri()
     }
 
     private fun ByteArray.looksLikeSvg(contentType: String?): Boolean {

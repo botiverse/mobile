@@ -164,6 +164,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -3347,6 +3348,7 @@ internal fun SharedThreadRouteContent(
                             composerDraftViewModel.dispatch(
                                 SharedThreadComposerDraftIntent.AddLocalAttachments(localAttachments)
                             )
+                            yield()
                         }
                         when (val uploadResult = dataSource.uploadAttachments(channelId, files)) {
                             is DataResult.Content -> {
