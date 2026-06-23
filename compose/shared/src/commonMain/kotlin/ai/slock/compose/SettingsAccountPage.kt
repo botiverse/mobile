@@ -2,6 +2,8 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalSectionLabel
+import ai.slock.compose.components.SlockBrutalTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
@@ -272,19 +274,23 @@ private fun SettingsAccountProfileCard(
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning("Avatar upload failed: $code")
         }
-        SettingsProfileTextField(
-            label = "Name",
-            value = profile.handle.removePrefix("@"),
-            placeholder = payload.handlePlaceholder.removePrefix("@"),
-            muted = true
-        )
-        SettingsProfileTextField(
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SlockBrutalSectionLabel(label = "Name")
+            Text(
+                profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
+                style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 10.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        SlockBrutalTextField(
             label = "Display Name",
             value = displayName,
             placeholder = payload.displayNamePlaceholder,
-            muted = !payload.canEditProfile || payload.saveInProgress,
-            editable = payload.canEditProfile && !payload.saveInProgress,
-            onValueChange = { displayNameState.value = it }
+            onValueChange = { displayNameState.value = it },
+            enabled = payload.canEditProfile && !payload.saveInProgress
         )
         SettingsEmailField(payload.emailLabel, profile.email, payload.emailPlaceholder, profile.verified, payload.verifiedLabel)
         SettingsProfileSaveButton(
@@ -342,54 +348,6 @@ private fun SettingsAccountProfileCard(
                     }
                 }
             )
-        }
-    }
-}
-
-@Composable
-private fun SettingsProfileTextField(
-    label: String,
-    value: String,
-    placeholder: String,
-    muted: Boolean,
-    editable: Boolean = false,
-    password: Boolean = false,
-    onValueChange: (String) -> Unit = {}
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-        Text(label, style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 14.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray)
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(40.dp)
-                    .background(if (muted) SlockColor.EmptyStateGray else SlockColor.SurfaceWhite)
-                    .border(if (muted) SlockStroke.Thin else SlockStroke.Default, if (muted) SlockColor.TextMutedGray else SlockColor.BorderBlack)
-                    .padding(horizontal = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (editable) {
-                TextField(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = value,
-                    placeholder = placeholder,
-                    autoFocus = false,
-                    onValueChange = onValueChange,
-                    textStyle = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                    placeholderColor = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
-                    keyboardOptions = if (password) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default
-                )
-            } else {
-                Text(
-                    value.ifBlank { placeholder },
-                    style = SlockType.Input.copy(fontSize = 15.sp, lineHeight = 18.sp, color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack),
-                    color = if (muted || value.isBlank()) SlockColor.TextMutedGray else SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
     }
 }
@@ -484,32 +442,29 @@ private fun SettingsPasswordForm(
     onSubmit: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        SettingsProfileTextField(
+        SlockBrutalTextField(
             label = payload.currentPasswordLabel,
             value = currentPassword,
             placeholder = "",
-            muted = payload.passwordInProgress,
-            editable = !payload.passwordInProgress,
-            password = true,
-            onValueChange = onCurrentPasswordChange
+            onValueChange = onCurrentPasswordChange,
+            enabled = !payload.passwordInProgress,
+            password = true
         )
-        SettingsProfileTextField(
+        SlockBrutalTextField(
             label = payload.newPasswordLabel,
             value = newPassword,
             placeholder = payload.newPasswordPlaceholder,
-            muted = payload.passwordInProgress,
-            editable = !payload.passwordInProgress,
-            password = true,
-            onValueChange = onNewPasswordChange
+            onValueChange = onNewPasswordChange,
+            enabled = !payload.passwordInProgress,
+            password = true
         )
-        SettingsProfileTextField(
+        SlockBrutalTextField(
             label = payload.confirmPasswordLabel,
             value = confirmPassword,
             placeholder = "",
-            muted = payload.passwordInProgress,
-            editable = !payload.passwordInProgress,
-            password = true,
-            onValueChange = onConfirmPasswordChange
+            onValueChange = onConfirmPasswordChange,
+            enabled = !payload.passwordInProgress,
+            password = true
         )
         draftError?.let { SettingsAccountWarning(it) }
         payload.passwordErrorCode?.takeIf { it.isNotBlank() }?.let { SettingsAccountWarning("Password update failed: $it") }
