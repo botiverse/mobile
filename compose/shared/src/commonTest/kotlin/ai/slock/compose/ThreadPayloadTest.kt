@@ -1482,6 +1482,37 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun parentMessageContextLoadingPayloadTargetsParentConversation() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-replies-1",
+                title = ThreadReplyPageTitle,
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "reply-stream-1",
+                streamChannelId = "reply-stream-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "parent-message-1",
+                originParentMessageId = "parent-message-1",
+                showOpenInChannelAction = true
+            ).parentMessageContextLoadingPayload("parent-message-1")
+
+        assertEquals("shared-shell-thread-channel-1", payload.instanceId)
+        assertEquals("loading", payload.status)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
+        assertEquals("channel-1", payload.sourceThreadId)
+        assertEquals("channel-1", payload.streamChannelId)
+        assertEquals(null, payload.parentChannelId)
+        assertEquals(null, payload.parentMessageId)
+        assertEquals(null, payload.originParentMessageId)
+        assertEquals("parent-message-1", payload.focusedMessageId)
+        assertEquals(false, payload.showOpenInChannelAction)
+        assertEquals(true, payload.showModeTabs)
+        assertEquals("Opening conversation", payload.emptyTitle)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.resolveThreadComposer().surfaceKind)
+    }
+
+    @Test
     fun buildsSharedThreadPayloadFromBridgeMessagesResponse() {
         val base =
             KuiklyThreadScreenPayload(
