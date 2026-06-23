@@ -154,6 +154,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -1086,7 +1087,6 @@ internal data class SharedThreadRealtimeEventSignal(
 
 internal data class ThreadRouteUiState(
     val thread: KuiklyThreadScreenPayload,
-    val composer: KuiklyThreadComposerPayload,
     val membersLoadStatus: LoadMembersStatus
 )
 
@@ -1780,7 +1780,6 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {
             SharedThreadComposerDraftViewModel()
         }
-    val composerDraftState by composerDraftViewModel.state.collectAsState()
     val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
     val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
         computersStore?.computerPickerSliceFlow(createAgentComputerServerId) ?: emptyComputerPickerSliceFlow
@@ -1923,7 +1922,7 @@ internal fun SharedThreadRouteContent(
     var imagePreviewState by remember(payload.instanceId) { mutableStateOf<ThreadImagePreviewState?>(null) }
     var imagePreviewUrlCache by remember(payload.instanceId) { mutableStateOf<Map<String, ThreadImagePreviewUrl>>(emptyMap()) }
     var attachmentNoPreviewState by remember(payload.instanceId) { mutableStateOf<ThreadAttachmentNoPreviewState?>(null) }
-    val renderedComposerState =
+    val baseComposerState =
         remember(
             renderedPayload.composer,
             renderedPayload.instanceId,
@@ -1938,77 +1937,37 @@ internal fun SharedThreadRouteContent(
         ) {
             renderedPayload.resolveThreadComposer()
         }
-    val composerState =
-        remember(
-            renderedComposerState,
-            composerDraftState,
-            renderedPayload.canSend,
-            resolvedAuxiliaryThreadId
-        ) {
-            val pendingAttachments =
-                (renderedComposerState.pendingAttachments.map { attachment ->
-                    SharedThreadComposerAttachment(
-                        id = attachment.id,
-                        fileName = attachment.fileName,
-                        sizeLabel = attachment.sizeLabel,
-                        mimeType = attachment.mimeType,
-                        status = attachment.status
-                    )
-                } + composerDraftState.uploadedAttachments)
-                    .distinctBy { attachment -> attachment.id }
-                    .filterNot { attachment -> attachment.id in composerDraftState.removedAttachmentIds }
-            renderedComposerState.copy(
-                instanceId = renderedComposerState.instanceId.ifBlank { renderedPayload.instanceId },
-                seedText = composerDraftState.seedText,
-                seedAsTask = composerDraftState.seedAsTask,
-                syncNonce = composerDraftState.syncNonce,
-                pendingAttachments =
-                    pendingAttachments.map { attachment ->
-                        KuiklyPendingAttachmentItem(
-                            id = attachment.id,
-                            fileName = attachment.fileName,
-                            sizeLabel = attachment.sizeLabel,
-                            mimeType = attachment.mimeType,
-                            status = attachment.status
-                        )
-                    },
-                composerMode =
-                    when {
-                        renderedComposerState.composerMode == "failed" -> "failed"
-                        else -> renderedComposerState.composerMode
-                    },
-                statusLabel =
-                    when {
-                        renderedComposerState.composerMode == "failed" -> renderedComposerState.statusLabel
-                        else -> renderedComposerState.statusLabel
-                    },
-                pendingMentionActions = composerDraftState.pendingMentionActions,
-                mentionActionNotice = composerDraftState.mentionActionNotice,
-                executingMentionActionIds = composerDraftState.executingMentionActionIds.toList(),
+    val scopedBaseComposerState =
+        remember(baseComposerState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
+            baseComposerState.copy(
                 streamChannelId = resolvedAuxiliaryThreadId,
                 enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
             )
         }
     val composerSurface =
-        remember(composerState, resolvedAuxiliaryThreadId, renderedPayload.parentChannelId) {
-            composerState.toThreadComposerSurface(
+        remember(scopedBaseComposerState, resolvedAuxiliaryThreadId, renderedPayload.parentChannelId) {
+            scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
                 parentChannelId = renderedPayload.parentChannelId
             )
         }
+    fun currentComposerPayload(): KuiklyThreadComposerPayload =
+        scopedBaseComposerState.withThreadComposerDraftState(
+            draftState = composerDraftViewModel.state.value,
+            renderedPayload = renderedPayload,
+            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
+        )
     var deferredAttachmentSend by remember(payload.instanceId) {
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
     val routeUiState =
-        remember(renderedPayload, composerState, threadState.membersLoadStatus) {
+        remember(renderedPayload, threadState.membersLoadStatus) {
             ThreadRouteUiState(
                 thread = renderedPayload,
-                composer = composerState,
                 membersLoadStatus = threadState.membersLoadStatus
             )
         }
     val renderedThread = routeUiState.thread
-    val renderedComposer = routeUiState.composer
     var firstContentExtrasVisible by remember(threadRouteKey, renderedThread.status) {
         mutableStateOf(!renderedThread.shouldStageThreadFirstContentExtras())
     }
@@ -2448,20 +2407,36 @@ internal fun SharedThreadRouteContent(
     }
     LaunchedEffect(
         deferredAttachmentSend?.localMessageId,
-        renderedComposer.pendingAttachments
+        scopedBaseComposerState,
+        renderedPayload,
+        resolvedAuxiliaryThreadId
     ) {
-        val pending = deferredAttachmentSend ?: return@LaunchedEffect
-        if (renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
-            return@LaunchedEffect
-        }
-        val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
-        if (pending.context.attachments.isNotEmpty() && attachmentIds.isEmpty()) {
-            return@LaunchedEffect
-        }
+        val pendingLocalMessageId = deferredAttachmentSend?.localMessageId ?: return@LaunchedEffect
+        val readyComposer =
+            composerDraftViewModel.state
+                .map { draftState ->
+                    scopedBaseComposerState.withThreadComposerDraftState(
+                        draftState = draftState,
+                        renderedPayload = renderedPayload,
+                        resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
+                    )
+                }
+                .first { composer ->
+                    val pending = deferredAttachmentSend?.takeIf { it.localMessageId == pendingLocalMessageId }
+                        ?: return@first false
+                    if (composer.pendingAttachments.hasBlockingThreadAttachmentUpload()) {
+                        return@first false
+                    }
+                    val attachmentIds = composer.pendingAttachments.readyThreadAttachmentIdsForSend()
+                    pending.context.attachments.isEmpty() || attachmentIds.isNotEmpty()
+                }
+        val pending = deferredAttachmentSend?.takeIf { it.localMessageId == pendingLocalMessageId }
+            ?: return@LaunchedEffect
+        val attachmentIds = readyComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
         val readyContext =
             pending.context.copy(
                 attachmentIds = attachmentIds,
-                attachments = renderedComposer.pendingAttachments
+                attachments = readyComposer.pendingAttachments
             )
         deferredAttachmentSend = null
         threadViewModel.dispatch(
@@ -2479,7 +2454,9 @@ internal fun SharedThreadRouteContent(
         ThreadPageContent(
             payload = renderedThread,
             composerSurface = composerSurface,
-            composerState = renderedComposer,
+            baseComposerState = scopedBaseComposerState,
+            composerDraftViewModel = composerDraftViewModel,
+            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             taskChannelId = taskChannelId,
             filesViewModel = filesViewModel,
@@ -3054,7 +3031,9 @@ internal fun SharedThreadRouteContent(
                 }
             },
             onComposerEvent = { action, value, asTask, attachmentId ->
-                val composerInstanceId = renderedComposer.instanceId.ifBlank { payload.instanceId }
+                val currentComposer = currentComposerPayload()
+                val currentDraftState = composerDraftViewModel.state.value
+                val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
                     composerDraftViewModel.dispatch(
@@ -3071,20 +3050,20 @@ internal fun SharedThreadRouteContent(
                 }
                 "send" -> {
                     val threadId = composerSurface.sendChannelId
-                    val draftText = composerDraftState.seedText.trim()
-                    val attachmentIds = renderedComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
-                    val hasBlockingAttachmentUpload = renderedComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
+                    val draftText = currentDraftState.seedText.trim()
+                    val attachmentIds = currentComposer.pendingAttachments.readyThreadAttachmentIdsForSend()
+                    val hasBlockingAttachmentUpload = currentComposer.pendingAttachments.hasBlockingThreadAttachmentUpload()
                     if (!payload.canSend || threadId == null ||
                         (draftText.isBlank() && attachmentIds.isEmpty() && !hasBlockingAttachmentUpload)
                     ) {
                         return@ThreadPageContent
                     }
-                    val draftAsTask = composerDraftState.seedAsTask
+                    val draftAsTask = currentDraftState.seedAsTask
                     val pendingAttachments =
                         if (hasBlockingAttachmentUpload) {
-                            renderedComposer.pendingAttachments.withThreadAttachmentUploadWaitingState()
+                            currentComposer.pendingAttachments.withThreadAttachmentUploadWaitingState()
                         } else {
-                            renderedComposer.pendingAttachments
+                            currentComposer.pendingAttachments
                         }
                     val pendingContext =
                         KuiklyThreadPendingSendContext(
@@ -3126,11 +3105,11 @@ internal fun SharedThreadRouteContent(
                 }
                 "inviteMention", "notifyMention" -> {
                     val resolutionId = value?.takeIf { it.isNotBlank() } ?: return@ThreadPageContent
-                    if (resolutionId in composerDraftState.executingMentionActionIds) {
+                    if (resolutionId in currentDraftState.executingMentionActionIds) {
                         return@ThreadPageContent
                     }
                     val pendingAction =
-                        composerDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
+                        currentDraftState.pendingMentionActions.firstOrNull { it.resolutionId == resolutionId }
                             ?: return@ThreadPageContent
                     val verb = if (action == "inviteMention") "invite" else "notify"
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginMentionAction(resolutionId))
@@ -4345,6 +4324,48 @@ internal fun formatMentionActionStatusNotice(result: PendingMentionActionExecute
         else -> "This mention action could not be applied."
     }
 
+private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
+    draftState: SharedThreadComposerDraftState,
+    renderedPayload: KuiklyThreadScreenPayload,
+    resolvedAuxiliaryThreadId: String?
+): KuiklyThreadComposerPayload {
+    val pendingAttachments =
+        (pendingAttachments.map { attachment ->
+            SharedThreadComposerAttachment(
+                id = attachment.id,
+                fileName = attachment.fileName,
+                sizeLabel = attachment.sizeLabel,
+                mimeType = attachment.mimeType,
+                status = attachment.status
+            )
+        } + draftState.uploadedAttachments)
+            .distinctBy { attachment -> attachment.id }
+            .filterNot { attachment -> attachment.id in draftState.removedAttachmentIds }
+    return copy(
+        instanceId = instanceId.ifBlank { renderedPayload.instanceId },
+        seedText = draftState.seedText,
+        seedAsTask = draftState.seedAsTask,
+        syncNonce = draftState.syncNonce,
+        pendingAttachments =
+            pendingAttachments.map { attachment ->
+                KuiklyPendingAttachmentItem(
+                    id = attachment.id,
+                    fileName = attachment.fileName,
+                    sizeLabel = attachment.sizeLabel,
+                    mimeType = attachment.mimeType,
+                    status = attachment.status
+                )
+            },
+        composerMode = if (composerMode == "failed") "failed" else composerMode,
+        statusLabel = statusLabel,
+        pendingMentionActions = draftState.pendingMentionActions,
+        mentionActionNotice = draftState.mentionActionNotice,
+        executingMentionActionIds = draftState.executingMentionActionIds.toList(),
+        streamChannelId = resolvedAuxiliaryThreadId,
+        enabled = renderedPayload.canSend && resolvedAuxiliaryThreadId != null
+    )
+}
+
 @Composable
 private fun ThreadTasksJoinResultLogger(
     tasksViewModel: SharedTasksViewModel?,
@@ -4387,7 +4408,9 @@ private fun ThreadTasksJoinResultLogger(
 private fun ThreadPageContent(
     payload: KuiklyThreadScreenPayload,
     composerSurface: ThreadComposerSurface,
-    composerState: KuiklyThreadComposerPayload,
+    baseComposerState: KuiklyThreadComposerPayload,
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
     taskChannelId: ChannelId?,
     filesViewModel: SharedThreadFilesViewModel,
@@ -4556,9 +4579,12 @@ private fun ThreadPageContent(
                                 bottom = threadComposerBottomPadding(composerKeyboardInsetDp, composerBottomSafeArea)
                             )
                     ) {
-                        ThreadComposerContentWithSuggestions(
+                        ThreadComposerRoute(
+                            baseComposerState = baseComposerState,
+                            composerDraftViewModel = composerDraftViewModel,
+                            renderedPayload = payload,
+                            resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
                             surface = composerSurface,
-                            state = composerState.toThreadComposerUiState(),
                             memberSuggestionsFlow = memberSuggestionsFlow,
                             channelSuggestionsFlow = channelSuggestionsFlow,
                             onEvent = onComposerEvent,
@@ -4566,9 +4592,7 @@ private fun ThreadPageContent(
                                 if (nextInset != composerKeyboardInsetDp) {
                                     composerKeyboardInsetDp = nextInset
                                 }
-                            },
-                            contentPaddingTop = 0.dp,
-                            contentPaddingBottom = 0.dp
+                            }
                         )
                     }
                 }
@@ -4722,6 +4746,39 @@ private fun ThreadDmPeerAvatarTile(
 @Composable
 private fun ThreadHeaderIconButton(icon: SlockLucideIconName, onClick: () -> Unit) {
     SlockHeaderIconAction(icon = icon, contentDescription = icon.wireName, onClick = onClick)
+}
+
+@Composable
+private fun ThreadComposerRoute(
+    baseComposerState: KuiklyThreadComposerPayload,
+    composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    renderedPayload: KuiklyThreadScreenPayload,
+    resolvedAuxiliaryThreadId: String?,
+    surface: ThreadComposerSurface,
+    memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
+    channelSuggestionsFlow: Flow<List<SharedMembersChannelSuggestion>>,
+    onEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit,
+    onKeyboardHeightChange: (Float) -> Unit
+) {
+    val composerDraftState by composerDraftViewModel.state.collectAsState()
+    val composerState =
+        remember(baseComposerState, composerDraftState, renderedPayload.canSend, resolvedAuxiliaryThreadId) {
+            baseComposerState.withThreadComposerDraftState(
+                draftState = composerDraftState,
+                renderedPayload = renderedPayload,
+                resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId
+            )
+        }
+    ThreadComposerContentWithSuggestions(
+        surface = surface,
+        state = composerState.toThreadComposerUiState(),
+        memberSuggestionsFlow = memberSuggestionsFlow,
+        channelSuggestionsFlow = channelSuggestionsFlow,
+        onEvent = onEvent,
+        onKeyboardHeightChange = onKeyboardHeightChange,
+        contentPaddingTop = 0.dp,
+        contentPaddingBottom = 0.dp
+    )
 }
 
 @Composable
