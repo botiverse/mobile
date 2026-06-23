@@ -152,4 +152,31 @@ class ThreadRenderSignatureTest {
         assertEquals(0, sig.firstReplyCount)
         assertEquals(0, sig.firstReplyUnreadCount)
     }
+
+    @Test
+    fun inactiveAuthorsExposeHistoryBadgesAndDisableProfileNavigation() {
+        val deletedAgent =
+            KuiklyThreadMessageItem(
+                id = "agent-message",
+                authorId = "agent-deleted",
+                authorName = "Deleted Agent",
+                authorKind = "agent",
+                avatarWireValue = "pixel:robot",
+                authorDeletedAt = "2026-06-06T00:00:00.000Z"
+            )
+        val removedHuman =
+            KuiklyThreadMessageItem(
+                id = "human-message",
+                authorId = "user-removed",
+                authorName = "Removed Human",
+                authorKind = "human",
+                senderMembershipStatus = "removed"
+            )
+
+        assertEquals("DELETED", deletedAgent.threadAuthorBadgeLabel())
+        assertEquals(false, deletedAgent.canOpenThreadAuthorProfile())
+        assertEquals(null, deletedAgent.resolvedThreadAvatarWireValue())
+        assertEquals("REMOVED", removedHuman.threadAuthorBadgeLabel())
+        assertEquals(false, removedHuman.canOpenThreadAuthorProfile())
+    }
 }
