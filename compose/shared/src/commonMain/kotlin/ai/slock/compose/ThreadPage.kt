@@ -1345,6 +1345,26 @@ private fun ThreadPageScreen() {
             bridge.logWarn("thread_open_skip reason=missing_route_identity instanceId=${nextPayload.instanceId}")
             return
         }
+        val openPage = {
+            routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
+        }
+        if (nextPayload.sourceThreadId?.isNotBlank() == true &&
+            (nextPayload.originMessage != null || nextPayload.messages.isNotEmpty() || nextPayload.tasks.isNotEmpty())
+        ) {
+            dataSource.cachePayload(nextPayload)
+            threadPageCoroutineScope.launch {
+                runCatchingPreservingCancellation {
+                    dataSource.writeCachedPayload(nextPayload)
+                }.onFailure { throwable ->
+                    bridge.logWarn(
+                        "thread_open_candidate_cache_failed threadId=${nextPayload.sourceThreadId.orEmpty()} " +
+                            "type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
+                    )
+                }
+                openPage()
+            }
+            return
+        }
         routerModule.openPage(THREAD_PAGE, launchPayload.toThreadPageData())
     }
     SharedThreadRouteContent(
@@ -4130,6 +4150,7 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
     parentMessage: KuiklyThreadMessageItem,
     focusedMessageId: String? = null
 ): KuiklyThreadScreenPayload {
+    val knownThreadChannelId = parentMessage.threadChannelId?.takeIf { it.isNotBlank() }
     val composer =
         buildThreadSurfaceComposerPayload(
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
@@ -4138,16 +4159,16 @@ internal fun KuiklyThreadScreenPayload.replyThreadLoadingPayload(
             enabled = canSend,
             mentionChannelId = sourceThreadId,
             parentMessageId = parentMessage.id,
-            streamChannelId = null
+            streamChannelId = knownThreadChannelId
         )
     return copy(
-        instanceId = "shared-shell-thread-pending-${parentMessage.id}",
+        instanceId = knownThreadChannelId?.let { "shared-shell-thread-$it" } ?: "shared-shell-thread-pending-${parentMessage.id}",
         title = ThreadReplyPageTitle,
         subtitle = replyThreadHeaderSubtitle(),
         status = "loading",
         surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-        sourceThreadId = null,
-        streamChannelId = null,
+        sourceThreadId = knownThreadChannelId,
+        streamChannelId = knownThreadChannelId,
         parentChannelId = sourceThreadId,
         parentMessageId = parentMessage.id,
         focusedMessageId = focusedMessageId?.takeIf { it.isNotBlank() },

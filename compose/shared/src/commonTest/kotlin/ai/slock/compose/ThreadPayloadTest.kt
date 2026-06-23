@@ -429,6 +429,9 @@ class ThreadPayloadTest {
             "showTaskStatusActions",
             "emptyTitle",
             "emptyDetail",
+            "originMessage",
+            "originPreview",
+            "originStatus",
             "joinLabel",
             "dmPeerName",
             "dmPeerAvatarUrl",
@@ -1612,6 +1615,40 @@ class ThreadPayloadTest {
         assertEquals(false, payload.showModeTabs)
         assertEquals(true, payload.showOpenInChannelAction)
         assertEquals("Opening replies", payload.emptyTitle)
+    }
+
+    @Test
+    fun replyThreadLoadingPayloadUsesKnownThreadChannelAsRouteIdentityOnly() {
+        val parent =
+            KuiklyThreadMessageItem(
+                id = "message-1",
+                authorId = "u1",
+                authorName = "Artin",
+                body = "Parent message",
+                threadChannelId = "thread-message-1"
+            )
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "general",
+                sourceThreadId = "channel-1",
+                status = "content",
+                messages = listOf(parent)
+            ).replyThreadLoadingPayload(parent)
+
+        assertEquals("shared-shell-thread-thread-message-1", payload.instanceId)
+        assertEquals("thread-message-1", payload.sourceThreadId)
+        assertEquals("thread-message-1", payload.streamChannelId)
+        assertEquals("thread-message-1", payload.resolveThreadComposer().streamChannelId)
+        assertEquals("Parent message", payload.originMessage?.body)
+
+        val launch = payload.toWireThreadLaunchPayload()
+        assertEquals("thread-message-1", launch.threadId)
+        assertEquals("thread-message-1", launch.sourceThreadId)
+        assertEquals("thread-message-1", launch.streamChannelId)
+        assertEquals("channel-1", launch.parentChannelId)
+        assertEquals("message-1", launch.parentMessageId)
+        assertEquals("message-1", launch.originParentMessageId)
     }
 
     @Test
