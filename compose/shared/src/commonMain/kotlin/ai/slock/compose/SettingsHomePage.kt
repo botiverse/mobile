@@ -2483,8 +2483,11 @@ private fun SettingsAppShellContent(
                     when (action) {
                         "retryWorkspaces", "retryAgents" ->
                             selectedComputerId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.OpenComputer(it)) }
-                        "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
-                            onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = "")))
+                        "renameComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { payload ->
+                            val parts = payload.split("|", limit = 2)
+                            val machineId = parts[0]
+                            val name = parts.getOrElse(1) { "" }
+                            onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = machineId, name = name)))
                         }
                         "deleteComputer" -> itemId?.takeIf { it.isNotBlank() }?.let { machineId ->
                             onSettingsIntent(SharedSettingsIntent.DeleteComputer(machineId))
@@ -2496,8 +2499,11 @@ private fun SettingsAppShellContent(
                             val lastAction = settingsState.actionState?.action
                             val lastItemId = settingsState.actionState?.itemId
                             when (lastAction) {
-                                "renameComputer" -> lastItemId?.let { id ->
-                                    onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = id, name = "")))
+                                "renameComputer" -> lastItemId?.let { payload ->
+                                    val parts = payload.split("|", limit = 2)
+                                    val id = parts[0]
+                                    val name = parts.getOrElse(1) { "" }
+                                    onSettingsIntent(SharedSettingsIntent.RenameComputer(SettingsComputerRenameRequest(machineId = id, name = name)))
                                 }
                                 "deleteComputer" -> lastItemId?.let { id ->
                                     onSettingsIntent(SharedSettingsIntent.DeleteComputer(id))
@@ -4995,11 +5001,16 @@ private fun SettingsFormSectionCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         SettingsServerSectionHeader(iconName = iconName, title = title)
-        content()
+        Column(
+            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            content()
+        }
     }
 }
 
