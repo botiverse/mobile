@@ -9,6 +9,7 @@ import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
 import ai.slock.compose.model.TaskUpdated
@@ -159,6 +160,7 @@ internal fun RealtimeEvent.updatesHomeSnapshot(): Boolean =
         is DirectMessageCreated,
         is MessageNew,
         is MessageUpdated,
+        is ReadStateUpdated,
         is SyncResumeResponse,
         is ThreadUpdated,
         is TaskCreated,

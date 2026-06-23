@@ -17,6 +17,7 @@ import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.MessageUpdated
+import ai.slock.android.core.model.ReadStateUpdated
 import ai.slock.android.core.model.DirectMessageCreated
 import ai.slock.android.core.model.ThreadUpdated
 import ai.slock.android.core.model.TaskCreated
@@ -363,6 +364,7 @@ private fun Any?.isAuthFailurePayload(): Boolean =
 private fun RealtimeEvent.realtimeDiagnosticName(): String = when (this) {
     is MessageNew -> "message_new"
     is MessageUpdated -> "message_updated"
+    is ReadStateUpdated -> "read_state_updated"
     is DirectMessageCreated -> "direct_message_created"
     is ThreadUpdated -> "thread_updated"
     is TaskCreated -> "task_created"
@@ -383,6 +385,8 @@ private fun RealtimeEvent.realtimeDiagnosticFields(): String = when (this) {
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
     is MessageUpdated ->
         "threadId=${message.threadId.value} channelId=${message.channelId?.value.orEmpty()} messageId=${message.id.value} seq=${message.seq ?: 0}"
+    is ReadStateUpdated ->
+        "serverId=${serverId.value} channelId=${channelId?.value.orEmpty()} seq=${seq ?: 0} unreadCount=${unreadCount ?: -1} scope=$scope"
     is DirectMessageCreated -> "channelId=${channelId.value}"
     is ThreadUpdated ->
         "threadId=${threadChannelId.value} messageId=${parentMessageId.value} replyCount=$replyCount"

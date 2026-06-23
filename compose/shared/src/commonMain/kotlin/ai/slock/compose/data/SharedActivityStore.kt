@@ -11,6 +11,7 @@ import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SyncResumeResponse
@@ -453,6 +454,7 @@ private fun RealtimeEvent.refreshesActivity(): Boolean =
     when (this) {
         is MessageNew,
         is MessageUpdated,
+        is ReadStateUpdated,
         is DirectMessageCreated,
         is ThreadUpdated,
         is TaskCreated,

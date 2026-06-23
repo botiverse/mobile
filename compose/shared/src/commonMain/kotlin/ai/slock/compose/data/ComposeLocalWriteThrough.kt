@@ -13,6 +13,7 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
+import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.SyncResumeResponse
 import ai.slock.compose.model.TaskCreated
@@ -167,6 +168,7 @@ class ComposeLocalWriteThrough(
                 is MessageNew -> newMessages += event.message
                 is MessageUpdated -> updatedMessages += event.message
                 is SyncResumeResponse -> newMessages += event.messages
+                is ReadStateUpdated -> wrote = writeReadState(serverId, event) || wrote
                 is ThreadUpdated -> threadUpdates += event
                 is TaskCreated -> taskPatches += event.tasks
                 is TaskUpdated -> taskPatches += event.task
@@ -194,6 +196,20 @@ class ComposeLocalWriteThrough(
             wrote = writeRealtimeTasks(latestTasks) || wrote
         }
         return wrote
+    }
+
+    private suspend fun writeReadState(serverId: ServerId, event: ReadStateUpdated): Boolean {
+        if (event.serverId != serverId) return false
+        val channelId = event.channelId ?: return false
+        val unreadCount = event.unreadCount ?: return false
+        val home = store.readHome(serverId) ?: return false
+        val updatedHome = home.withConversationUnread(channelId, unreadCount)
+        if (updatedHome == home) return false
+        store.writeHome(updatedHome)
+        logger(
+            "write_read_state serverId=${serverId.value} channelId=${channelId.value} unreadCount=$unreadCount scope=${event.scope}"
+        )
+        return true
     }
 
     private suspend fun writeThreadSnapshot(
@@ -785,6 +801,32 @@ private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnap
         channels = channels.map { it.clearIfMatches() },
         directMessages = directMessages.map { it.clearIfMatches() },
         unreadTotal = (unreadTotal - cleared).coerceAtLeast(0)
+    )
+}
+
+private fun HomeSnapshot.withConversationUnread(channelId: ChannelId, unreadCount: Int): HomeSnapshot {
+    var delta = 0
+    fun ConversationSummary.updateIfMatches(): ConversationSummary {
+        if (messageStreamChannelId() != channelId && this.channelId != channelId && threadId.value != channelId.value) {
+            return this
+        }
+        val nextUnread = unreadCount.coerceAtLeast(0)
+        if (nextUnread == this.unreadCount && unreadCountKnown) return this
+        delta += nextUnread - this.unreadCount
+        return copy(
+            unreadCount = nextUnread,
+            unreadCountKnown = true,
+            mentionCount = if (nextUnread > 0) mentionCount else 0,
+            mentionCountKnown = mentionCountKnown || nextUnread == 0,
+            firstUnreadMessageId = if (nextUnread > 0) firstUnreadMessageId else null
+        )
+    }
+    val nextServerUnreadCount = (server.unreadCount + delta).coerceAtLeast(0)
+    return copy(
+        server = server.copy(unreadCount = nextServerUnreadCount),
+        channels = channels.map { it.updateIfMatches() },
+        directMessages = directMessages.map { it.updateIfMatches() },
+        unreadTotal = (unreadTotal + delta).coerceAtLeast(0)
     )
 }
 

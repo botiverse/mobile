@@ -3,6 +3,7 @@ package ai.slock.compose.data.realtime
 import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
+import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.SyncResumeResponse
 
@@ -38,6 +39,8 @@ object RealtimeCursorPolicy {
                     state.updateAppliedSeq(event.message.seq)
                 is MessageUpdated ->
                     state.updateAppliedSeq(event.message.seq)
+                is ReadStateUpdated ->
+                    state.updateAppliedSeq(event.seq)
                 is SyncResumeResponse ->
                     state.updateAppliedSeq(event.currentSeq)
                 else -> state
