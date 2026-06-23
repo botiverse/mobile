@@ -64,6 +64,7 @@ import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageCommentHostSource
@@ -3049,8 +3050,38 @@ private fun KuiklyThreadScreenPayload.applyRealtimeEvent(
             mergeRealtimeTasks(listOf(event.task))
         is TaskDeleted ->
             removeRealtimeTask(event.taskId)
+        is MemberPresenceUpdated ->
+            withMemberPresenceUpdated(event)
         else -> this
     }
+
+internal fun KuiklyThreadScreenPayload.withMemberPresenceUpdated(
+    event: MemberPresenceUpdated
+): KuiklyThreadScreenPayload {
+    val status = event.agentStatus?.name ?: event.statusLabel?.takeIf { it.isNotBlank() }
+    val updatedAuthorId = event.memberId.value
+    val nextMessages =
+        messages.map { message ->
+            if (message.authorId == updatedAuthorId && message.authorKind.equals("agent", ignoreCase = true)) {
+                message.copy(authorAgentStatus = status)
+            } else {
+                message
+            }
+        }
+    val nextOriginMessage =
+        originMessage?.let { message ->
+            if (message.authorId == updatedAuthorId && message.authorKind.equals("agent", ignoreCase = true)) {
+                message.copy(authorAgentStatus = status)
+            } else {
+                message
+            }
+        }
+    if (nextMessages == messages && nextOriginMessage == originMessage) return this
+    return copy(
+        messages = nextMessages,
+        originMessage = nextOriginMessage
+    )
+}
 
 private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
     messages: List<Message>,
@@ -4183,6 +4214,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
         avatar = AvatarReference.fromWireValue(avatarWireValue),
         avatarLabel = avatarLabel.ifBlank { authorName.take(1).uppercase() },
         presence = Presence.Offline,
+        agentStatus = AgentStatus.fromWireValue(authorAgentStatus),
         membershipStatus = cleanMembershipStatus,
         agentDeletedAt = cleanAuthorDeletedAt
     )
@@ -4259,6 +4291,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
             senderMembershipStatus?.takeIf { it.isNotBlank() }
                 ?: author.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = author.agentDeletedAt?.takeIf { it.isNotBlank() },
+        authorAgentStatus = author.agentStatus?.name,
         seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",

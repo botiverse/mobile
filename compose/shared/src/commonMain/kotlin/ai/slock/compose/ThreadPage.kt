@@ -69,6 +69,7 @@ import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
@@ -721,7 +722,8 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
         kind = threadAuthorKind(),
         gravatarHash = gravatarHash,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
-        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() }
+        avatarLabel = avatarLabel.ifBlank { authorName.ifBlank { authorId }.take(1).uppercase() },
+        agentStatus = AgentStatus.fromWireValue(authorAgentStatus)
     )
 
 private fun KuiklyThreadMemberItem.threadMemberKind(): MemberKind =
@@ -768,6 +770,7 @@ internal data class KuiklyThreadMessageItem(
     val gravatarHash: String? = null,
     val senderMembershipStatus: String? = null,
     val authorDeletedAt: String? = null,
+    val authorAgentStatus: String? = null,
     val timestampLabel: String = "",
     val seq: Long? = null,
     val messageType: String = "Chat",
@@ -1858,7 +1861,7 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                    showStatus = message.showsAgentStatusIndicator()
+                    statusColor = message.threadAgentStatusColor()
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -7193,7 +7196,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        showStatus = message.showsAgentStatusIndicator(),
+                        statusColor = message.threadAgentStatusColor(),
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
@@ -7353,7 +7356,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        showStatus = message.showsAgentStatusIndicator(),
+                        statusColor = message.threadAgentStatusColor(),
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
@@ -8643,7 +8646,7 @@ private fun ThreadOriginCard(
 private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    showStatus: Boolean,
+    statusColor: Color?,
     onClick: () -> Unit
 ) {
     val avatarSource =
@@ -8655,7 +8658,7 @@ private fun ThreadMessageAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = if (showStatus) SlockColor.AccentLime else null,
+            statusColor = statusColor,
             avatarSize = 40.dp,
             statusSize = 10.dp
         ) {
@@ -8673,7 +8676,7 @@ private fun ThreadMessageAvatar(
 private fun ThreadMessageStaticAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
-    showStatus: Boolean
+    statusColor: Color?
 ) {
     val avatarSource =
         remember(avatarWireValue) {
@@ -8684,7 +8687,7 @@ private fun ThreadMessageStaticAvatar(
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
-            statusColor = if (showStatus) SlockColor.AccentLime else null,
+            statusColor = statusColor,
             avatarSize = 40.dp,
             statusSize = 10.dp
         ) {
@@ -8700,6 +8703,19 @@ private fun ThreadMessageStaticAvatar(
 
 private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
     isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
+
+private fun KuiklyThreadMessageItem.threadAgentStatusColor(): Color? {
+    if (!showsAgentStatusIndicator()) return null
+    return when (authorAgentStatus.orEmpty().trim().lowercase().replace("-", "_").replace(" ", "_")) {
+        "online", "active", "available", "connected", "working", "running", "busy", "thinking" ->
+            SlockColor.AccentLime
+        "idle", "away" -> SlockColor.BrandYellow
+        "error", "failed", "failure" -> SlockColor.AccentRed
+        "offline", "disconnected", "not_connected", "notconnected", "inactive" ->
+            SlockColor.EmptyStateGray
+        else -> SlockColor.AccentLime
+    }
+}
 
 @Composable
 private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {

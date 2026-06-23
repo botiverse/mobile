@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ConversationKind
@@ -9,6 +10,7 @@ import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
@@ -149,6 +151,44 @@ class ThreadPayloadTest {
         assertEquals("Keep this draft", consumed.composer.seedText)
         assertEquals(3, consumed.composer.syncNonce)
         assertEquals(emptyList(), consumed.composer.pendingAttachments)
+    }
+
+    @Test
+    fun memberPresenceRealtimeUpdatesVisibleAgentMessageStatus() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "m1",
+                            authorId = "agent-1",
+                            authorName = "Agent",
+                            authorKind = "agent",
+                            authorAgentStatus = AgentStatus.Idle.name,
+                            body = "hello"
+                        ),
+                        KuiklyThreadMessageItem(
+                            id = "m2",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            authorKind = "human",
+                            body = "human"
+                        )
+                    )
+            )
+
+        val updated =
+            payload.withMemberPresenceUpdated(
+                MemberPresenceUpdated(
+                    memberId = MemberId("agent-1"),
+                    presence = AgentStatus.Working.presence,
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working
+                )
+            )
+
+        assertEquals(AgentStatus.Working.name, updated.messages[0].authorAgentStatus)
+        assertEquals(null, updated.messages[1].authorAgentStatus)
     }
 
     @Test
