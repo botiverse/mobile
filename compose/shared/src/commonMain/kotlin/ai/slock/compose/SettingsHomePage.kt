@@ -2839,33 +2839,14 @@ private fun SettingsAppShellContent(
                     onRetry = { onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Notifications)) }
                 )
             SettingsDestinationMobile ->
-                SharedSettingsSectionContent(
-                    settingsState.mobile.toMobilePayload(
-                        actionState = settingsState.actionState,
-                        refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile)
-                    ),
+                SettingsMobileContent(
+                    state = settingsState.mobile,
+                    actionState = settingsState.actionState,
+                    refreshing = settingsState.isRefreshing(SharedSettingsDestination.Mobile),
                     bottomContentPadding = bottomContentPadding
-                ) { action, itemId ->
-                    when (action) {
-                        MOBILE_ACTION_NOTIFICATION_PREFERENCE ->
-                            onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(itemId == "true"))
-                        MOBILE_ACTION_SERVER_MUTE ->
-                            onSettingsIntent(SharedSettingsIntent.SetServerMute(itemId == "true"))
-                        MOBILE_ACTION_PERMISSION ->
-                            onSettingsIntent(SharedSettingsIntent.RequestNotificationPermission)
-                        MOBILE_ACTION_SETTINGS ->
-                            onSettingsIntent(SharedSettingsIntent.OpenNotificationSettings)
-                        MOBILE_ACTION_TEST_NOTIFICATION ->
-                            onSettingsIntent(SharedSettingsIntent.SendTestNotification)
-                        MOBILE_ACTION_LANGUAGE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let { onSettingsIntent(SharedSettingsIntent.SetLocale(it)) }
-                        MOBILE_ACTION_MESSAGE_ALIGNMENT ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(it))
-                                onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(it))
-                            }
-                        else -> onSettingsAction(action, itemId)
-                    }
+                ) { itemId ->
+                    onSettingsIntent(SharedSettingsIntent.SetMessageAlignment(itemId ?: "left"))
+                    onMessageAlignmentSelected(MyMessageAlignmentPreference.fromStorageKey(itemId))
                 }
             SettingsDestinationAbout ->
                 SharedSettingsAboutContent(
@@ -3662,6 +3643,62 @@ private fun SettingsAppearancePreview(fontSizeKey: String) {
                     color = SlockColor.TextBlack
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SettingsMobileContent(
+    state: ScreenLoadState<SettingsMobileSnapshot>,
+    actionState: SharedSettingsActionState?,
+    refreshing: Boolean,
+    bottomContentPadding: Dp,
+    onAlignmentChange: (String?) -> Unit
+) {
+    val snapshot =
+        when (state) {
+            is ScreenLoadState.Content -> state.data
+            else -> null
+        }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        if (snapshot != null) {
+            item {
+                SettingsMessageAlignmentCard(
+                    snapshot = snapshot,
+                    actionState = actionState,
+                    onAlignmentChange = onAlignmentChange
+                )
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsMessageAlignmentCard(
+    snapshot: SettingsMobileSnapshot,
+    actionState: SharedSettingsActionState?,
+    onAlignmentChange: (String?) -> Unit
+) {
+    val busy = actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.inProgress
+    val selectedKey = snapshot.messageAlignmentPreference.selectedKey
+    SettingsFormSectionCard(iconName = SlockLucideIconName.AlignHorizontalSpaceAround, title = "My message alignment") {
+        SettingsFormDetailText(snapshot.messageAlignmentPreference.detail)
+        SegmentedControl(
+            selectedValue = selectedKey.ifBlank { "left" },
+            options =
+                listOf(
+                    SegmentedControlOption("left", "Left"),
+                    SegmentedControlOption("right", "Right")
+                ),
+            onValueSelected = onAlignmentChange,
+            enabled = snapshot.messageAlignmentPreference.available && !busy
+        )
+        if (actionState?.action == MOBILE_ACTION_MESSAGE_ALIGNMENT && actionState.errorCode != null) {
+            SettingsFormErrorText(actionState.errorCode.orEmpty())
         }
     }
 }
