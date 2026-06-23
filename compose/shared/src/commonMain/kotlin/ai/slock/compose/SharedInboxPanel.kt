@@ -260,7 +260,7 @@ private fun SharedActivityPanelContent(
         when {
             snapshot == null && state.loading ->
                 SharedActivityStateBody(
-                    title = "Loading Inbox...",
+                    title = "Loading...",
                     detail = "",
                     loading = true,
                     bottomContentPadding = bottomContentPadding
