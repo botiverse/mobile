@@ -2774,7 +2774,9 @@ private fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.X,
                 enabled = !busy,
                 backgroundColor = SlockColor.SurfaceWhite,
-                modifier = Modifier.width(132.dp),
+                minWidth = 124.dp,
+                minHeight = 36.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onDismiss
             )
             SlockBrutalActionButton(
@@ -2782,7 +2784,9 @@ private fun MembersRestartResetDialog(
                 leadingIcon = SlockLucideIconName.RotateCcw,
                 enabled = !busy,
                 backgroundColor = selectedAction.restartResetAccentColor(),
-                modifier = Modifier.weight(1f),
+                minWidth = selectedAction.restartResetButtonMinWidth(),
+                minHeight = 36.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 13.sp, lineHeight = 16.sp),
                 onClick = onConfirm
             )
         }
@@ -2876,6 +2880,14 @@ private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
         else -> label
     }
 
+private fun MembersAgentLifecycleAction.restartResetButtonMinWidth(): Dp =
+    when (this) {
+        MembersAgentLifecycleAction.Restart -> 136.dp
+        MembersAgentLifecycleAction.ResetSession -> 220.dp
+        MembersAgentLifecycleAction.ResetFull -> 206.dp
+        else -> 136.dp
+    }
+
 private fun MembersAgentLifecycleAction.restartResetDescription(): String =
     when (this) {
         MembersAgentLifecycleAction.Restart ->
@@ -2895,11 +2907,7 @@ private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
     }
 
 private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
-    when (this) {
-        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed.copy(alpha = 0.2f)
-        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange.copy(alpha = 0.2f)
-        else -> SlockColor.AccentCyan.copy(alpha = 0.2f)
-    }
+    SlockColor.AppBgLightBlue
 
 @Composable
 private fun MembersAgentTabBar(
