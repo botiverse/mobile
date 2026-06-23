@@ -2422,16 +2422,7 @@ internal fun SharedThreadRouteContent(
         imagePreviewState = null
         attachmentNoPreviewState = null
         if (!attachment.isMarkdownAttachment()) {
-            coroutineScope.launch {
-                pager.openSlockFilePreviewPage(
-                    attachment.toThreadAttachmentPreviewPayload(
-                        kind = "unsupported",
-                        title = "File preview",
-                        message = "No preview is available for this file type.",
-                        externalUrl = resolveAttachmentExternalUrl(attachment)
-                    )
-                )
-            }
+            attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment = attachment)
             return
         }
         coroutineScope.launch {
