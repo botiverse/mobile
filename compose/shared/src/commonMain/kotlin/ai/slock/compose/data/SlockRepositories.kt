@@ -259,7 +259,8 @@ interface MemberRepository {
     suspend fun getAgentAppLogins(
         priority: DataRequestPriority,
         agentId: MemberId
-    ): DataResult<AgentAppLoginSnapshot>
+    ): DataResult<AgentAppLoginSnapshot> =
+        DataResult.Empty(EmptyReason.NoMembers)
     suspend fun startAgent(
         priority: DataRequestPriority,
         agentId: MemberId
