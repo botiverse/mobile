@@ -248,7 +248,7 @@ private fun SharedActivityPanelContent(
             totalUnreadCount = state.totalUnreadCount,
             onClose = onClose,
             topSafeAreaPadding = topSafeAreaPadding,
-            refreshing = state.refreshing
+            refreshing = state.refreshing && !state.pullRefreshing
         )
         SharedActivityFilterBar(
             selectedFilter = state.selectedFilter,

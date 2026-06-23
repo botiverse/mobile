@@ -9654,7 +9654,7 @@ private fun SharedHomeSavedPanel(
             SharedHomeSavedHeader(
                 count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
                 onClose = onClose,
-                refreshing = state.refreshing,
+                refreshing = state.refreshing && !state.pullRefreshing,
                 topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
             )
         }
