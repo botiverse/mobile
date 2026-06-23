@@ -1,9 +1,11 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.InboxItem
+import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.InboxItemKind
+import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
 import ai.slock.compose.model.ThreadId
@@ -66,6 +68,37 @@ class SharedInboxPanelTest {
         val raw = "2026-06-18T09:12:00Z"
 
         assertEquals(raw, activityItem(latestActivityAt = raw).activityTimeLabel(null))
+    }
+
+    @Test
+    fun activityPreviewSenderNameComesOnlyFromProfileMap() {
+        val item =
+            InboxItem(
+                key = "activity-1",
+                kind = InboxItemKind.Channel,
+                channelId = ChannelId("channel-1"),
+                channelName = "general",
+                lastMessagePreview = "Latest update",
+                lastMessageSenderId = "agent-1",
+                lastMessageSenderName = "@agent-one",
+                latestActivitySenderId = "agent-1",
+                latestActivitySenderName = "@agent-one"
+            )
+
+        assertEquals("Latest update", item.primaryPreviewText())
+        assertEquals(
+            "Agent One: Latest update",
+            item.primaryPreviewText(
+                mapOf(
+                    "agent-1" to
+                        SharedActivitySenderProfile(
+                            kind = MemberKind.Agent,
+                            displayName = "Agent One",
+                            avatarWireValue = null
+                        )
+                )
+            )
+        )
     }
 
     @Test

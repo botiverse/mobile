@@ -256,7 +256,6 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
-import ai.slock.compose.model.ReadStateUpdated
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.Heartbeat
@@ -11263,7 +11262,6 @@ private fun RealtimeEvent.performanceMarkerName(): String =
         is TaskUpdated -> "task_updated"
         is TaskDeleted -> "task_deleted"
         is MemberPresenceUpdated -> "presence_updated"
-        is ReadStateUpdated -> "read_state"
         is RealtimeRefreshRequired -> "refresh_${scope.name}"
         is ServerMembershipRemoved -> "server_membership_removed"
         is ServerDeleted -> "server_deleted"
@@ -11311,7 +11309,6 @@ internal fun resolveSharedShellRealtimeServerId(
 
 private fun RealtimeEvent.serverIdHint(): ServerId? =
     when (this) {
-        is ReadStateUpdated -> serverId
         is RealtimeRefreshRequired -> serverId
         is ServerMembershipRemoved -> serverId
         is ServerDeleted -> serverId

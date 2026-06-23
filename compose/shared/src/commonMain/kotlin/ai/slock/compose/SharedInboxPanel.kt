@@ -878,20 +878,16 @@ private fun InboxItem.senderDisplayName(
         latestActivitySenderId
             ?.let(senderProfiles::get)
             ?.displayName
-            ?: latestActivitySenderName.takeIf { latestActivitySenderId.isNullOrBlank() }
             ?: lastMessageSenderId
                 ?.let(senderProfiles::get)
                 ?.displayName
-            ?: lastMessageSenderName.takeIf { lastMessageSenderId.isNullOrBlank() }
     } else {
         lastMessageSenderId
             ?.let(senderProfiles::get)
             ?.displayName
-            ?: lastMessageSenderName
             ?: latestActivitySenderId
                 ?.let(senderProfiles::get)
                 ?.displayName
-            ?: latestActivitySenderName
     }
 
 private fun InboxItem.senderAvatarWireValue(): String? =
@@ -924,7 +920,7 @@ private fun InboxItem.previewText(): String =
         lastMessagePreview ?: latestActivityPreview ?: "Conversation update"
     }
 
-private fun InboxItem.primaryPreviewText(
+internal fun InboxItem.primaryPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): String =
     if (kind == InboxItemKind.Thread) {
@@ -933,7 +929,7 @@ private fun InboxItem.primaryPreviewText(
         senderDisplayName(senderProfiles)?.let { "$it: ${previewText()}" } ?: previewText()
     }
 
-private fun InboxItem.secondaryPreviewText(
+internal fun InboxItem.secondaryPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): String? =
     latestActivityPreview
