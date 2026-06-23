@@ -150,6 +150,7 @@ private val MemberAvatarSize = 34.dp
 private val MemberRowMinHeight = 48.dp
 private val MemberStatusDotSize = 10.dp
 private val MembersActionSize = 32.dp
+private val MembersHeaderMessageButtonWidth = 116.dp
 
 internal enum class MembersAgentDetailTab(
     val label: String,
@@ -2430,18 +2431,14 @@ private fun MembersDetailHeader(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = member.displayName,
-                        style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp)
-                            .withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    MemberKindBadge(member.kind)
-                }
+                Text(
+                    text = member.displayName,
+                    style = SlockType.Body.copy(fontSize = 16.sp, lineHeight = 20.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     text = member.description?.takeIf { it.isNotBlank() } ?: member.detailHandle,
                     style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
@@ -2466,7 +2463,7 @@ private fun MembersDetailHeader(
                 // SlockBrutalActionButton with minHeight=MembersActionSize gives 32 + 3dp
                 // shadow = 35dp outer, aligned.
                 minHeight = MembersActionSize,
-                modifier = Modifier.width(92.dp),
+                modifier = Modifier.width(MembersHeaderMessageButtonWidth),
                 onClick = onOpenDirectMessage
             )
             if (member.kind == MemberKind.Agent) {
@@ -3358,11 +3355,8 @@ private fun MembersAgentProfileTab(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Text(
-                text = "Info",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
-            )
+            MembersDetailSectionDivider()
+            MembersDetailSectionTitle("INFO")
             // Computer row
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -3464,11 +3458,8 @@ private fun MembersAgentProfileTab(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Text(
-                text = "Runtime Config",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
-            )
+            MembersDetailSectionDivider()
+            MembersDetailSectionTitle("RUNTIME CONFIG")
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -3514,11 +3505,8 @@ private fun MembersAgentProfileTab(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Text(
-                text = "Environment Variables",
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray
-            )
+            MembersDetailSectionDivider()
+            MembersDetailSectionTitle("ENVIRONMENT VARIABLES")
             val envVarNames = summary?.envVarNames.orEmpty()
             if (envVarNames.isEmpty()) {
                 Text(
@@ -4305,6 +4293,32 @@ private fun MembersDetailActionButton(
 }
 
 @Composable
+private fun MembersDetailSectionDivider(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(SlockStroke.Thin)
+            .background(SlockColor.BorderBlack.copy(alpha = 0.1f))
+    )
+}
+
+@Composable
+private fun MembersDetailSectionTitle(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = title.uppercase(),
+        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp)
+            .withSlockFontWeight(FontWeight.Bold),
+        color = SlockColor.TextMutedGray,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+    )
+}
+
+@Composable
 private fun MembersDetailSection(
     title: String,
     modifier: Modifier = Modifier,
@@ -4313,19 +4327,13 @@ private fun MembersDetailSection(
     content: @Composable () -> Unit
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+        MembersDetailSectionDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
-            Text(
-                text = title,
-                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                color = SlockColor.TextMutedGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            MembersDetailSectionTitle(title, modifier = Modifier.weight(1f))
             trailingContent?.invoke()
         }
         val contentModifier =
