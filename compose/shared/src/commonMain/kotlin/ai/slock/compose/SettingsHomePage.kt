@@ -4971,7 +4971,11 @@ private fun SettingsServerSlugInput(
                     .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text("/", style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp), color = SlockColor.TextBlack)
+                Text(
+                    "/",
+                    style = SlockType.Input.copy(fontSize = 16.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold),
+                    color = SlockColor.TextBlack
+                )
             }
             TextField(
                 value = value,
