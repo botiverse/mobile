@@ -129,6 +129,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import com.tencent.kuikly.core.module.RouterModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -283,8 +284,7 @@ internal class ComposeMembersSmokePage : ai.slock.compose.base.BasePager() {
             MembersRouteContent(
                 payload = membersSmokePayload,
                 onAddHuman = {},
-                onOpenDirectMessage = {},
-                onCopyMemberId = {}
+                onOpenMemberDetail = {}
             )
         }
     }
@@ -320,7 +320,6 @@ data class KuiklyMembersPayload(
     val title: String = "Members",
     val labels: KuiklyMembersLabels = KuiklyMembersLabels(),
     val members: List<MemberProfile> = emptyList(),
-    val selectedMemberId: String? = null,
     val initialAgentTab: String? = null,
     val localOffsetMinutes: Int = 0,
     val todayEpochDay: Long? = null,
@@ -781,39 +780,14 @@ internal fun MembersPageContent() {
     MembersRouteContent(
         payload = payload.copy(members = localMembers),
         onAddHuman = { /* humans "+" wired via addHumanSubmit below */ },
-        onOpenDirectMessage = { bridge.settingsEvent(payload.instanceId, "openMember", it.id.value) },
-        onCopyMemberId = {
-            bridge.copyToPasteboard(it.id.value)
-            bridge.toast("Copied member id")
-        },
-        onOpenUrl = { bridge.openUrl(it) },
-        agentDetailLoader = { agentId ->
-            if (payload.selectedMemberId == membersAgentDetailVisualMember.id.value &&
-                agentId == membersAgentDetailVisualMember.id
-            ) {
-                DataResult.Content(membersAgentDetailVisualSnapshot)
+        onOpenMemberDetail = { member ->
+            val pageData = payload.toMemberDetailPageData(member.id.value)
+            if (pageData == null) {
+                bridge.toast("Unable to open profile")
+                bridge.log("members_detail_open_skip reason=missing_member_id instanceId=${payload.instanceId}")
             } else {
-                DataResult.Empty(EmptyReason.NoMembers)
-            }
-        },
-        canViewPrivateAgentSurfaces = { member, _ ->
-            member.id == membersAgentDetailVisualMember.id
-        },
-        canManageAgent = { member, _ ->
-            member.id == membersAgentDetailVisualMember.id
-        },
-        agentWorkspaceTreeLoader = { agentId ->
-            if (agentId == membersAgentDetailVisualMember.id) {
-                DataResult.Content(membersAgentDetailVisualWorkspaceTreeSnapshot)
-            } else {
-                DataResult.Empty(EmptyReason.NoMembers)
-            }
-        },
-        agentWorkspaceChildrenLoader = { agentId, path ->
-            if (agentId == membersAgentDetailVisualMember.id && path == "notes") {
-                DataResult.Content(membersAgentDetailVisualWorkspaceNotesChildren)
-            } else {
-                DataResult.Empty(EmptyReason.NoMembers)
+                pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
+                    .openPage(MEMBER_DETAIL_PAGE, pageData)
             }
         },
         canCreateAgents = payload.canCreateAgents,
@@ -841,9 +815,12 @@ internal fun MembersPageContent() {
 private sealed interface MemberDetailRouteState {
     data object Loading : MemberDetailRouteState
     data class Error(val code: String) : MemberDetailRouteState
-    data class Ready(
+    data class Agent(
         val server: ServerSummary,
         val currentUserId: String?
+    ) : MemberDetailRouteState
+    data class Human(
+        val member: MemberProfile
     ) : MemberDetailRouteState
 }
 
@@ -854,7 +831,7 @@ private class MemberDetailRouteProvider(
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val agentDetailStore: SharedAgentDetailStore
 ) {
-    suspend fun cachedContext(memberId: String): MemberDetailRouteState.Ready? {
+    suspend fun cachedContext(memberId: String): MemberDetailRouteState.Agent? {
         val selectedMemberId = memberId.trim()
         if (selectedMemberId.isBlank()) return null
         val selectedId = MemberId(selectedMemberId)
@@ -866,7 +843,7 @@ private class MemberDetailRouteProvider(
         val session = authStore.readSession() ?: return null
         val serverId = session.currentServerId
         val server = session.servers.firstOrNull { it.id == serverId }?.toServerSummary() ?: return null
-        return MemberDetailRouteState.Ready(
+        return MemberDetailRouteState.Agent(
             server = server,
             currentUserId = session.user.id
         )
@@ -892,14 +869,34 @@ private class MemberDetailRouteProvider(
             is DataResult.Content -> {
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
                 agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
-                return MemberDetailRouteState.Ready(
+                return MemberDetailRouteState.Agent(
                     server = server,
                     currentUserId = session.user.id
                 )
             }
             is DataResult.Empty -> {
-                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
-                return MemberDetailRouteState.Error("member_not_found")
+                return when (val memberResult = memberRepository.getMemberProfile(DataRequestPriority.Visible, selectedId)) {
+                    is DataResult.Content -> {
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
+                        MemberDetailRouteState.Human(memberResult.data)
+                    }
+                    is DataResult.Empty -> {
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(selectedId))
+                        MemberDetailRouteState.Error("member_not_found")
+                    }
+                    is DataResult.Error -> {
+                        agentDetailStore.dispatch(
+                            SharedAgentDetailIntent.SetDetailError(selectedId, memberResult.error.code)
+                        )
+                        MemberDetailRouteState.Error(memberResult.error.code)
+                    }
+                    is DataResult.NoPermission -> {
+                        agentDetailStore.dispatch(
+                            SharedAgentDetailIntent.SetDetailNoPermission(selectedId, memberResult.blocker.code)
+                        )
+                        MemberDetailRouteState.Error(memberResult.blocker.code)
+                    }
+                }
             }
             is DataResult.Error -> {
                 agentDetailStore.dispatch(
@@ -1115,7 +1112,7 @@ private fun MemberDetailPageContent() {
                 detail = current.code,
                 onBack = { provider.bridge.closePage() }
             )
-        is MemberDetailRouteState.Ready -> {
+        is MemberDetailRouteState.Agent -> {
             val member = selectedAgentDetail?.toMemberProfile(current.server)
             if (member == null) {
                 Box(
@@ -1211,6 +1208,32 @@ private fun MemberDetailPageContent() {
                 )
             }
         }
+        is MemberDetailRouteState.Human -> {
+            MembersDetailContent(
+                member = current.member,
+                agentDetailState = MembersAgentDetailLoadState.Idle,
+                canViewPrivateAgentSurfaces = { _, _ -> false },
+                canManageAgent = { _, _ -> false },
+                onBack = { provider.bridge.closePage() },
+                onOpenDirectMessage = {
+                    provider.bridge.settingsEvent(payload.instanceId, "openMember", current.member.id.value)
+                },
+                onCopyMemberId = {
+                    provider.copyMemberId(current.member)
+                },
+                onOpenUrl = { provider.bridge.openUrl(it) },
+                onUpdateAgentProfile = null,
+                onUploadAgentAvatar = null,
+                onAgentLifecycleAction = null,
+                agentWorkspaceTreeLoader = null,
+                agentWorkspaceChildrenLoader = null,
+                onCopyAgentDiagnostics = {},
+                onReportAgentIssue = null,
+                onUnavailableAction = { bridge.toast(it) },
+                timeContext = timeContext,
+                initialAgentTab = initialAgentTab
+            )
+        }
     }
 }
 
@@ -1297,7 +1320,6 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
         todayEpochDay = payload.optString("todayEpochDay").toLongOrNull(),
         nowEpochMillis = payload.optString("nowEpochMillis").toLongOrNull(),
         timeFormat = payload.optString("timeFormat").ifBlank { SlockTimeFormat24Hour },
-        selectedMemberId = payload.optNullableString("selectedMemberId"),
         initialAgentTab = payload.optNullableString("initialAgentTab"),
         canCreateAgents = (payload.opt("canCreateAgents") as? Boolean) ?: true,
         labels = KuiklyMembersLabels(
@@ -1313,6 +1335,20 @@ internal fun String.toKuiklyMembersPayload(): KuiklyMembersPayload {
                 }
             }
     )
+}
+
+internal fun KuiklyMembersPayload.toMemberDetailPageData(memberId: String): JSONObject? {
+    val selected = memberId.trim().takeIf { it.isNotBlank() } ?: return null
+    return JSONObject().apply {
+        put("pageName", MEMBER_DETAIL_PAGE)
+        put("instanceId", "members-detail-${instanceId.ifBlank { "members" }}-$selected")
+        put("memberId", selected)
+        initialAgentTab?.let { put("initialAgentTab", it) }
+        put("localOffsetMinutes", localOffsetMinutes)
+        todayEpochDay?.let { put("todayEpochDay", it) }
+        nowEpochMillis?.let { put("nowEpochMillis", it) }
+        put("timeFormat", timeFormat)
+    }
 }
 
 internal fun JSONObject.toKuiklyMemberDetailPayload(): KuiklyMemberDetailPayload {
@@ -1377,30 +1413,13 @@ private fun JSONObject.optNullableString(key: String): String? =
 internal fun MembersRouteContent(
     payload: KuiklyMembersPayload,
     refreshing: Boolean = false,
-    sharedAgentDetailStore: SharedAgentDetailStore? = null,
     onAddHuman: () -> Unit,
-    onOpenDirectMessage: (MemberProfile) -> Unit,
-    onCopyMemberId: (MemberProfile) -> Unit,
-    onOpenUrl: (String) -> Unit = {},
-    agentDetailActions: SharedAgentDetailActions? = null,
-    agentDetailLoader: (suspend (MemberId) -> DataResult<AgentDetailSnapshot>)? = null,
-    agentDetailRefreshKey: Any? = Unit,
-    onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)? = null,
-    onUploadAgentAvatar: (suspend (MemberId, AttachmentUploadFile) -> DataResult<MemberProfile>)? = null,
-    onPickAgentAvatarFile: suspend () -> DataResult<AttachmentUploadFile> = { DataResult.Empty(EmptyReason.NoMembers) },
-    onAgentLifecycleAction: (suspend (MemberId, MembersAgentLifecycleAction) -> DataResult<AgentLifecycleActionResult>)? = null,
-    agentWorkspaceTreeLoader: (suspend (MemberId) -> DataResult<AgentWorkspaceTreeSnapshot>)? = null,
-    agentWorkspaceChildrenLoader: (suspend (MemberId, String) -> DataResult<AgentWorkspaceChildrenSnapshot>)? = null,
-    onCopyAgentDiagnostics: (String) -> Unit = {},
-    onReportAgentIssue: (suspend (String) -> Boolean)? = null,
-    canViewPrivateAgentSurfaces: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
-    canManageAgent: (MemberProfile, AgentDetailSnapshot?) -> Boolean = { _, _ -> false },
-    onUnavailableAction: (String) -> Unit = {},
+    onOpenMemberDetail: (MemberProfile) -> Unit,
     /**
      * Optional create-agent flow. When non-null, the agents section "+" opens a
      * SharedCreateAgentDialog and submit is forwarded to this host callback.
-     * The host is responsible for the actual API call and refreshing the
-     * members payload. Mirrors the existing onAgentLifecycleAction pattern.
+     * The host is responsible for the actual API call and refreshing the members
+     * payload.
      */
     createAgentSubmit: (suspend (SharedCreateAgentDialogSubmit) -> DataResult<Unit>)? = null,
     createAgentMachines: List<SharedCreateAgentMachineOption> = emptyList(),
@@ -1426,131 +1445,26 @@ internal fun MembersRouteContent(
     inviteHumanLoadJoinLink: () -> Unit = {},
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    var selectedMemberId by remember(payload.instanceId, payload.selectedMemberId) {
-        mutableStateOf(payload.selectedMemberId)
-    }
-    val selectedMember = payload.members.firstOrNull { it.id.value == selectedMemberId }
-    val initialAgentTab = remember(payload.initialAgentTab) { payload.initialAgentTab.toMembersAgentDetailTabOrNull() }
-    val timeContext = payload.toSlockTimeContext()
-    val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
-    val effectiveAgentDetailStore = sharedAgentDetailStore ?: fallbackAgentDetailStore
-    val agentDetailStoreState by effectiveAgentDetailStore.state.collectAsState()
-    var localAgentDetailState by remember(selectedMember?.id?.value) {
-        mutableStateOf<MembersAgentDetailLoadState>(MembersAgentDetailLoadState.Idle)
-    }
-    val storeBackedAgentDetail = sharedAgentDetailStore != null
-    val agentDetailState =
-        if (storeBackedAgentDetail) {
-            agentDetailStoreState.toMembersAgentDetailLoadState()
-        } else {
-            localAgentDetailState
-        }
-    LaunchedEffect(selectedMemberId, selectedMember?.id?.value) {
-        if (selectedMemberId != null && selectedMember == null) {
-            selectedMemberId = null
-        }
-    }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, agentDetailRefreshKey, storeBackedAgentDetail) {
-        val member = selectedMember
-        if (member == null || member.kind != MemberKind.Agent || agentDetailLoader == null) {
-            if (storeBackedAgentDetail) {
-                effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-            } else {
-                localAgentDetailState = MembersAgentDetailLoadState.Idle
-            }
-            return@LaunchedEffect
-        }
-        if (storeBackedAgentDetail) {
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(member.id))
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailLoading(member.id))
-        } else if (localAgentDetailState !is MembersAgentDetailLoadState.Content) {
-            localAgentDetailState = MembersAgentDetailLoadState.Loading
-        }
-        when (val result = agentDetailLoader(member.id)) {
-            is DataResult.Content ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(member.id, result.data))
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Content(result.data)
-                }
-            is DataResult.Empty ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.SetDetailEmpty(member.id))
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Empty
-                }
-            is DataResult.NoPermission ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(
-                        SharedAgentDetailIntent.SetDetailNoPermission(member.id, result.blocker.code)
-                    )
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.NoPermission(result.blocker.code)
-                }
-            is DataResult.Error ->
-                if (storeBackedAgentDetail) {
-                    effectiveAgentDetailStore.dispatch(
-                        SharedAgentDetailIntent.SetDetailError(member.id, result.error.code)
-                    )
-                } else {
-                    localAgentDetailState = MembersAgentDetailLoadState.Error(result.error.code)
-                }
-        }
-    }
-    LaunchedEffect(selectedMember?.id?.value, selectedMember?.kind, storeBackedAgentDetail) {
-        if (storeBackedAgentDetail && (selectedMember == null || selectedMember.kind != MemberKind.Agent)) {
-            effectiveAgentDetailStore.dispatch(SharedAgentDetailIntent.DeselectMember)
-        }
-    }
-    SlockBackHandler(enabled = selectedMember != null) {
-        selectedMemberId = null
-    }
-    if (selectedMember != null) {
-        MembersDetailContent(
-            member = selectedMember,
-            agentDetailState = agentDetailState,
-            canViewPrivateAgentSurfaces = canViewPrivateAgentSurfaces,
-            canManageAgent = canManageAgent,
-            onBack = { selectedMemberId = null },
-            onOpenDirectMessage = { onOpenDirectMessage(selectedMember) },
-            onCopyMemberId = { onCopyMemberId(selectedMember) },
-            onOpenUrl = onOpenUrl,
-            agentDetailActions = agentDetailActions,
-            onUpdateAgentProfile = onUpdateAgentProfile,
-            onUploadAgentAvatar = onUploadAgentAvatar,
-            onPickAgentAvatarFile = onPickAgentAvatarFile,
-            onAgentLifecycleAction = onAgentLifecycleAction,
-            agentWorkspaceTreeLoader = agentWorkspaceTreeLoader,
-            agentWorkspaceChildrenLoader = agentWorkspaceChildrenLoader,
-            onCopyAgentDiagnostics = onCopyAgentDiagnostics,
-            onReportAgentIssue = onReportAgentIssue,
-            onUnavailableAction = onUnavailableAction,
-            timeContext = timeContext,
-            sharedAgentDetailStore = sharedAgentDetailStore,
-            initialAgentTab = initialAgentTab
-        )
-    } else {
-        MembersListContent(
-            payload = payload,
-            refreshing = refreshing,
-            onAddHuman = onAddHuman,
-            onOpenMember = { selectedMemberId = it.id.value },
-            canCreateAgents = canCreateAgents,
-            createAgentSubmit = createAgentSubmit,
-            createAgentMachines = createAgentMachines,
-            createAgentMachinesLoading = createAgentMachinesLoading,
-            createAgentCurrentAgentCount = createAgentCurrentAgentCount,
-            createAgentMaxAgents = createAgentMaxAgents,
-            createAgentLoadMachines = createAgentLoadMachines,
-            inviteHumanSubmit = inviteHumanSubmit,
-            inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
-            inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
-            inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
-            inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
-            inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
-            bottomContentPadding = bottomContentPadding
-        )
-    }
+    MembersListContent(
+        payload = payload,
+        refreshing = refreshing,
+        onAddHuman = onAddHuman,
+        onOpenMember = onOpenMemberDetail,
+        canCreateAgents = canCreateAgents,
+        createAgentSubmit = createAgentSubmit,
+        createAgentMachines = createAgentMachines,
+        createAgentMachinesLoading = createAgentMachinesLoading,
+        createAgentCurrentAgentCount = createAgentCurrentAgentCount,
+        createAgentMaxAgents = createAgentMaxAgents,
+        createAgentLoadMachines = createAgentLoadMachines,
+        inviteHumanSubmit = inviteHumanSubmit,
+        inviteHumanJoinLinkLoading = inviteHumanJoinLinkLoading,
+        inviteHumanJoinLinkUrl = inviteHumanJoinLinkUrl,
+        inviteHumanJoinLinkCopied = inviteHumanJoinLinkCopied,
+        inviteHumanJoinLinkCopy = inviteHumanJoinLinkCopy,
+        inviteHumanLoadJoinLink = { inviteHumanLoadJoinLink() },
+        bottomContentPadding = bottomContentPadding
+    )
 }
 
 @Composable
@@ -1834,23 +1748,17 @@ private fun MembersDetailContent(
     val fallbackAgentDetailStore = remember { SharedAgentDetailStore() }
     val storeState by (sharedAgentDetailStore ?: fallbackAgentDetailStore).state.collectAsState()
     var actionState by remember(member.id.value, initialVisualMode) {
-        mutableStateOf<MembersAgentActionState?>(
-            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
-                MembersAgentActionState(MembersAgentLifecycleAction.Restart, inProgress = true)
-            } else {
-                null
-            }
-        )
+        mutableStateOf<MembersAgentActionState?>(null)
     }
     var diagnosticActionState by remember(member.id.value) { mutableStateOf<MembersAgentDiagnosticActionState?>(null) }
-    var pendingConfirmation by remember(member.id.value, initialVisualMode) {
-        mutableStateOf<MembersAgentLifecycleAction?>(
-            if (initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions) {
-                MembersAgentLifecycleAction.Restart
-            } else {
-                null
-            }
-        )
+    var pendingConfirmation by remember(member.id.value) {
+        mutableStateOf<MembersAgentLifecycleAction?>(null)
+    }
+    var restartResetDialogOpen by remember(member.id.value, initialVisualMode) {
+        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
+    }
+    var restartResetSelection by remember(member.id.value) {
+        mutableStateOf(MembersAgentLifecycleAction.Restart)
     }
     var selectedTab by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab ?: MembersAgentDetailTab.Profile)
@@ -2016,6 +1924,10 @@ private fun MembersDetailContent(
                     }
                 }
             val errorCode = result.membersLifecycleErrorCode(action)
+            if (errorCode == null && action.isRestartResetDialogAction()) {
+                restartResetDialogOpen = false
+                restartResetSelection = MembersAgentLifecycleAction.Restart
+            }
             actionState =
                 MembersAgentActionState(
                     action = action,
@@ -2272,11 +2184,48 @@ private fun MembersDetailContent(
                     handleMembersManagementMenuSelection(
                         id = id,
                         primaryAction = menuPrimary,
+                        openRestartResetDialog = {
+                            restartResetSelection = MembersAgentLifecycleAction.Restart
+                            actionState = null
+                            restartResetDialogOpen = true
+                        },
                         runLifecycleAction = { runLifecycleAction(it) }
                     )
                 },
                 onDismiss = {
                     managementMenuOpen = false
+                }
+            )
+        }
+        if (restartResetDialogOpen && member.kind == MemberKind.Agent) {
+            val selectedActionResult =
+                if (sharedAgentDetailStore != null) {
+                    storeState.lastActionResult
+                        ?.takeIf { it.actionKey == restartResetSelection.actionKey }
+                        ?.let {
+                            MembersAgentActionState(
+                                action = restartResetSelection,
+                                inProgress = false,
+                                errorCode = it.errorCode,
+                                successLabel = it.successLabel
+                            )
+                        }
+                } else {
+                    actionState?.takeIf { it.action == restartResetSelection }
+                }
+            MembersRestartResetDialog(
+                agentName = member.displayName,
+                selectedAction = restartResetSelection,
+                busy = lifecycleInFlight != null,
+                errorCode = selectedActionResult?.errorCode,
+                onSelectedActionChange = { restartResetSelection = it },
+                onConfirm = { runLifecycleAction(restartResetSelection, confirmed = true) },
+                onDismiss = {
+                    if (lifecycleInFlight == null) {
+                        restartResetDialogOpen = false
+                        restartResetSelection = MembersAgentLifecycleAction.Restart
+                        actionState = null
+                    }
                 }
             )
         }
@@ -2356,8 +2305,13 @@ internal fun buildMembersManagementMenuItems(
 private fun handleMembersManagementMenuSelection(
     id: String,
     primaryAction: MembersAgentLifecycleAction?,
+    openRestartResetDialog: () -> Unit,
     runLifecycleAction: (MembersAgentLifecycleAction) -> Unit
 ) {
+    if (id == MembersAgentLifecycleAction.Restart.actionKey) {
+        openRestartResetDialog()
+        return
+    }
     val action = MembersAgentLifecycleAction.values().firstOrNull { it.actionKey == id }
         ?: primaryAction?.takeIf { it.actionKey == id }
     if (action != null) {
@@ -2652,6 +2606,195 @@ private fun MembersLifecycleConfirmation(
         }
     }
 }
+
+@Composable
+private fun MembersRestartResetDialog(
+    agentName: String,
+    selectedAction: MembersAgentLifecycleAction,
+    busy: Boolean,
+    errorCode: String?,
+    onSelectedActionChange: (MembersAgentLifecycleAction) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    SlockUnifiedDialog(
+        title = "Restart ${agentName.uppercase()}",
+        onDismiss = onDismiss,
+        dismissEnabled = !busy,
+        maxWidth = 520.dp,
+        titleFontSize = 24,
+        titleLineHeight = 30,
+        titleMaxLines = 2,
+        contentSpacing = SlockSpacing.Md
+    ) {
+        errorCode?.takeIf { it.isNotBlank() }?.let {
+            MembersRestartResetNotice(
+                text = "Failed to reset agent: $it",
+                color = SlockColor.AccentOrange
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)) {
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.Restart,
+                selected = selectedAction == MembersAgentLifecycleAction.Restart,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.Restart) }
+            )
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.ResetSession,
+                selected = selectedAction == MembersAgentLifecycleAction.ResetSession,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetSession) }
+            )
+            MembersRestartResetActionCard(
+                action = MembersAgentLifecycleAction.ResetFull,
+                selected = selectedAction == MembersAgentLifecycleAction.ResetFull,
+                enabled = !busy,
+                onClick = { onSelectedActionChange(MembersAgentLifecycleAction.ResetFull) }
+            )
+        }
+        if (selectedAction == MembersAgentLifecycleAction.ResetFull) {
+            MembersRestartResetNotice(
+                text = "This will permanently delete all workspace files including MEMORY.md and notes/. This cannot be undone.",
+                color = SlockColor.AccentOrange
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockBrutalActionButton(
+                label = "Cancel",
+                leadingIcon = SlockLucideIconName.X,
+                enabled = !busy,
+                backgroundColor = SlockColor.SurfaceWhite,
+                modifier = Modifier.width(132.dp),
+                onClick = onDismiss
+            )
+            SlockBrutalActionButton(
+                label = if (busy) "Restarting..." else selectedAction.restartResetButtonLabel(),
+                leadingIcon = SlockLucideIconName.RotateCcw,
+                enabled = !busy,
+                backgroundColor = selectedAction.restartResetAccentColor(),
+                modifier = Modifier.weight(1f),
+                onClick = onConfirm
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersRestartResetActionCard(
+    action: MembersAgentLifecycleAction,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val shadowOffset = if (selected) 4.dp else 0.dp
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(end = shadowOffset, bottom = shadowOffset)
+                .background(if (selected) SlockColor.ShadowBlack else SlockColor.SurfaceWhite)
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(end = shadowOffset, bottom = shadowOffset)
+                    .background(if (selected) action.restartResetTintColor() else SlockColor.SurfaceWhite)
+                    .border(
+                        if (selected) SlockStroke.Default else SlockStroke.Thin,
+                        if (selected) SlockColor.BorderBlack else SlockColor.BorderBlack.copy(alpha = 0.32f)
+                    )
+                    .clickable(enabled = enabled, onClick = onClick)
+                    .padding(horizontal = SlockSpacing.Md, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+        ) {
+            Text(
+                text = action.restartResetTitle(),
+                style = SlockType.ButtonBold.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = action.restartResetDescription(),
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                color = SlockColor.TextMutedGray
+            )
+        }
+    }
+}
+
+@Composable
+private fun MembersRestartResetNotice(text: String, color: Color) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(color)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Sm),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+        verticalAlignment = Alignment.Top
+    ) {
+        SlockLucideIcon(SlockLucideIconName.TriangleAlert, modifier = Modifier.size(16.dp), color = SlockColor.TextBlackArgb)
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack
+        )
+    }
+}
+
+private fun MembersAgentLifecycleAction.isRestartResetDialogAction(): Boolean =
+    this == MembersAgentLifecycleAction.Restart ||
+        this == MembersAgentLifecycleAction.ResetSession ||
+        this == MembersAgentLifecycleAction.ResetFull
+
+private fun MembersAgentLifecycleAction.restartResetTitle(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart -> "RESTART"
+        MembersAgentLifecycleAction.ResetSession -> "RESET SESSION & RESTART"
+        MembersAgentLifecycleAction.ResetFull -> "FULL RESET & RESTART"
+        else -> label.uppercase()
+    }
+
+private fun MembersAgentLifecycleAction.restartResetButtonLabel(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart -> "Restart"
+        MembersAgentLifecycleAction.ResetSession -> "Reset Session & Restart"
+        MembersAgentLifecycleAction.ResetFull -> "Full Reset & Restart"
+        else -> label
+    }
+
+private fun MembersAgentLifecycleAction.restartResetDescription(): String =
+    when (this) {
+        MembersAgentLifecycleAction.Restart ->
+            "Stop and restart the agent process. Keeps the runtime session and workspace files."
+        MembersAgentLifecycleAction.ResetSession ->
+            "Clear the runtime session and restart. Workspace files (MEMORY.md, notes/) are preserved."
+        MembersAgentLifecycleAction.ResetFull ->
+            "Clear the runtime session, delete all workspace files, and restart from scratch."
+        else -> ""
+    }
+
+private fun MembersAgentLifecycleAction.restartResetAccentColor(): Color =
+    when (this) {
+        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed
+        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange
+        else -> SlockColor.AccentCyan
+    }
+
+private fun MembersAgentLifecycleAction.restartResetTintColor(): Color =
+    when (this) {
+        MembersAgentLifecycleAction.ResetFull -> SlockColor.AccentRed.copy(alpha = 0.2f)
+        MembersAgentLifecycleAction.ResetSession -> SlockColor.AccentOrange.copy(alpha = 0.2f)
+        else -> SlockColor.AccentCyan.copy(alpha = 0.2f)
+    }
 
 @Composable
 private fun MembersAgentTabBar(

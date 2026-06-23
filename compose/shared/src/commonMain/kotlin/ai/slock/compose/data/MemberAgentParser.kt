@@ -670,8 +670,10 @@ private fun WireAgent.toMemberProfile(): MemberProfile {
         avatarUrl = avatarUrl,
         avatar = AvatarReference.fromWireValue(avatarUrl),
         avatarLabel = label.take(1).uppercase(),
-        presence = agentStatus.presence,
+        presence = if (deletedAt.isNullOrBlank()) agentStatus.presence else Presence.Offline,
         agentStatus = agentStatus,
+        membershipStatus = if (deletedAt.isNullOrBlank()) null else "deleted",
+        agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
         permissionBadges = listOfNotNull(
             runtime?.takeIf { it.isNotBlank() },
             firstNonBlank(computerName, computerHostname, runtimeProfile?.current?.machineName)

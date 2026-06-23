@@ -255,6 +255,7 @@ private fun WireMessage.toMessageItem(currentUserId: String?): KuiklyThreadMessa
         avatarLabel = resolvedName.take(1).uppercase(),
         avatarWireValue = null,
         gravatarHash = null,
+        senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         timestampLabel = createdAt.orEmpty(),
         seq = seq,
         messageType = if (isSystem) "System" else "Chat",

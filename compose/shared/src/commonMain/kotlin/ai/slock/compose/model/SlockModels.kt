@@ -209,6 +209,7 @@ data class MemberProfile(
     val agentStatus: AgentStatus? = null,
     val joinedAt: String? = null,
     val membershipStatus: String? = null,
+    val agentDeletedAt: String? = null,
     val createdAgents: List<AgentProfile> = emptyList(),
     val permissionBadges: List<String> = emptyList(),
     val serverId: ServerId? = null,

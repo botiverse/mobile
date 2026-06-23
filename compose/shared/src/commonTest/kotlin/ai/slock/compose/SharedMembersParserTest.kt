@@ -8,6 +8,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerPermissions
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.SlockTimeFormat12Hour
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -139,6 +140,33 @@ class SharedMembersParserTest {
 
         assertEquals(false, falsePayload.canCreateAgents)
         assertEquals(true, truePayload.canCreateAgents)
+    }
+
+    @Test
+    fun membersDetailPageDataCarriesIdentityAndTimeContextOnly() {
+        val payload =
+            KuiklyMembersPayload(
+                instanceId = "members-server-1",
+                title = "Members",
+                initialAgentTab = "activity",
+                localOffsetMinutes = 480,
+                todayEpochDay = 20624,
+                nowEpochMillis = 1782240000000,
+                timeFormat = SlockTimeFormat12Hour
+            )
+
+        val pageData = payload.toMemberDetailPageData("agent-product-ux")!!
+
+        assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
+        assertEquals("members-detail-members-server-1-agent-product-ux", pageData.optString("instanceId"))
+        assertEquals("agent-product-ux", pageData.optString("memberId"))
+        assertEquals("activity", pageData.optString("initialAgentTab"))
+        assertEquals("480", pageData.optString("localOffsetMinutes"))
+        assertEquals("20624", pageData.optString("todayEpochDay"))
+        assertEquals("1782240000000", pageData.optString("nowEpochMillis"))
+        assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
+        assertEquals("", pageData.optString("members"))
+        assertEquals("", pageData.optString("selectedMemberId"))
     }
 
     @Test

@@ -15,6 +15,7 @@ import ai.slock.compose.data.buildCreateAgentBody
 import ai.slock.compose.data.buildMarkAgentActionExecutedBody
 import ai.slock.compose.data.buildMarkChannelActionExecutedBody
 import ai.slock.compose.data.buildMarkChannelMembersActionExecutedBody
+import ai.slock.compose.data.AgentSummary
 import ai.slock.compose.data.ChannelFilesSnapshot
 import ai.slock.compose.data.ChannelMemberActionResult
 import ai.slock.compose.data.ComposeLocalWriteThrough
@@ -53,6 +54,7 @@ import ai.slock.compose.data.toThreadRouteId
 import ai.slock.compose.data.withExecutedAgent
 import ai.slock.compose.data.withExecutedChannel
 import ai.slock.compose.data.withExecutedChannelMembers
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
@@ -1569,7 +1571,6 @@ internal class SharedThreadDataSource(
     private suspend fun KuiklyThreadScreenPayload.withSenderProfiles(
         session: StoredAuthSession
     ): KuiklyThreadScreenPayload {
-        val repository = memberRepository ?: return this
         val serverId = session.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId) ?: return this
         val homeAvatarByMemberId =
             localWriteThrough
@@ -1579,16 +1580,22 @@ internal class SharedThreadDataSource(
         senderProfilesCache[serverId.value]?.let { profilesById ->
             return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
         }
-        val result =
-            try {
-                repository.getMembers(DataRequestPriority.Visible, serverId)
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                return this
+        val memberProfilesById =
+            when (val repository = memberRepository) {
+                null -> emptyMap()
+                else ->
+                    try {
+                        when (val result = repository.getMembers(DataRequestPriority.Visible, serverId)) {
+                            is DataResult.Content -> result.data.members.associateBy { it.id.value }
+                            else -> emptyMap()
+                        }
+                    } catch (cancellation: CancellationException) {
+                        throw cancellation
+                    } catch (_: Throwable) {
+                        emptyMap()
+                    }
             }
-        if (result !is DataResult.Content) return this
-        val profilesById = result.data.members.associateBy { it.id.value }
+        val profilesById = memberProfilesById + loadThreadSenderAgentProfiles(serverId)
         senderProfilesCache[serverId.value] = profilesById
         return withSenderProfiles(profilesById).withHomeDirectMessageAvatars(homeAvatarByMemberId)
     }
@@ -1622,6 +1629,23 @@ internal class SharedThreadDataSource(
                 .orEmpty()
         val cachedProfiles = senderProfilesCache[serverId].orEmpty()
         return withSenderProfiles(cachedProfiles).withHomeDirectMessageAvatars(homeAvatarByMemberId)
+    }
+
+    private suspend fun loadThreadSenderAgentProfiles(serverId: ServerId): Map<String, MemberProfile> {
+        val client = agentsApiClient ?: return emptyMap()
+        return try {
+            when (val result = client.agents()) {
+                is DataResult.Content ->
+                    result.data.agents
+                        .mapNotNull { it.toThreadSenderProfile(serverId) }
+                        .associateBy { it.id.value }
+                else -> emptyMap()
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            emptyMap()
+        }
     }
 
     private suspend fun KuiklyThreadScreenPayload.withSavedStatus(
@@ -3635,7 +3659,34 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
         },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
         avatarWireValue = resolvedAvatarWireValue,
-        gravatarHash = if (isAgent) null else currentAvatar.gravatarHash ?: profileAvatar.gravatarHash
+        gravatarHash = if (isAgent) null else currentAvatar.gravatarHash ?: profileAvatar.gravatarHash,
+        senderMembershipStatus = senderMembershipStatus ?: profile.membershipStatus?.takeIf { it.isNotBlank() },
+        authorDeletedAt = authorDeletedAt ?: profile.agentDeletedAt?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun AgentSummary.toThreadSenderProfile(serverId: ServerId): MemberProfile? {
+    val cleanId = id.takeIf { it.isNotBlank() } ?: return null
+    val handle = name.takeIf { it.isNotBlank() } ?: cleanId
+    val label = displayName?.takeIf { it.isNotBlank() } ?: handle
+    val statusValue = activity ?: status
+    val agentStatus = AgentStatus.fromWireValue(statusValue) ?: AgentStatus.Offline
+    val deleted = !deletedAt.isNullOrBlank()
+    return MemberProfile(
+        id = MemberId(cleanId),
+        displayName = label,
+        handle = handle,
+        kind = MemberKind.Agent,
+        serverId = serverId,
+        roleDescription = runtime,
+        avatarUrl = avatarUrl,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.take(1).uppercase(),
+        presence = if (deleted) Presence.Offline else agentStatus.presence,
+        agentStatus = agentStatus,
+        membershipStatus = if (deleted) "deleted" else null,
+        agentDeletedAt = deletedAt?.takeIf { it.isNotBlank() },
+        permissionBadges = listOfNotNull(runtime?.takeIf { it.isNotBlank() })
     )
 }
 
@@ -4109,6 +4160,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         avatarLabel = author.avatarLabel,
         avatarWireValue = resolvedAvatar.effectiveAvatarWireValue,
         gravatarHash = resolvedAvatar.gravatarHash,
+        senderMembershipStatus = senderMembershipStatus?.takeIf { it.isNotBlank() },
         seq = seq,
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",

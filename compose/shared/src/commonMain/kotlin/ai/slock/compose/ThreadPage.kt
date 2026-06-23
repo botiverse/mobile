@@ -615,28 +615,6 @@ private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
         put("instanceId", instanceId)
     }
 
-internal fun KuiklyThreadScreenPayload.toThreadMembersProfilePageData(selectedMemberId: String): JSONObject? {
-    val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
-    val memberProfiles = threadMemberProfilesForProfilePage(selected)
-    if (memberProfiles.none { it.id.value == selected }) return null
-    val membersPayload =
-        KuiklyMembersPayload(
-            instanceId = "thread-members-${instanceId.ifBlank { sourceThreadId.orEmpty() }}-$selected",
-            title = "Members",
-            members = memberProfiles,
-            selectedMemberId = selected,
-            localOffsetMinutes = localOffsetMinutes,
-            todayEpochDay = todayEpochDay,
-            nowEpochMillis = nowEpochMillis,
-            timeFormat = timeFormat,
-            canCreateAgents = false
-        )
-    return JSONObject().apply {
-        put("payload", threadPageJson.encodeToString(membersPayload))
-        put("instanceId", membersPayload.instanceId)
-    }
-}
-
 internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemberId: String): JSONObject? {
     val selected = selectedMemberId.takeIf { it.isNotBlank() } ?: return null
     return JSONObject().apply {
@@ -649,10 +627,6 @@ internal fun KuiklyThreadScreenPayload.toThreadMemberDetailPageData(selectedMemb
         put("timeFormat", timeFormat)
     }
 }
-
-private fun KuiklyThreadScreenPayload.threadMemberProfilesForProfilePage(selectedMemberId: String): List<MemberProfile> =
-    (members.map { it.toMemberProfile() } + listOfNotNull(findThreadAuthorProfile(selectedMemberId)))
-        .distinctBy { it.id.value }
 
 private fun KuiklyThreadScreenPayload.findThreadAuthorProfile(memberId: String): MemberProfile? =
     (listOfNotNull(originMessage) + messages)
@@ -725,6 +699,8 @@ internal data class KuiklyThreadMessageItem(
     val avatarLabel: String = "",
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
+    val senderMembershipStatus: String? = null,
+    val authorDeletedAt: String? = null,
     val timestampLabel: String = "",
     val seq: Long? = null,
     val messageType: String = "Chat",
@@ -1794,6 +1770,9 @@ private fun ThreadMessageVisualCard(
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.widthIn(max = 220.dp)
                         )
+                        message.threadAuthorBadgeLabel()?.let { label ->
+                            ThreadMessageAuthorBadge(label)
+                        }
                         Text(
                             text = timestampLabel,
                             style =
@@ -6930,7 +6909,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         showStatus = message.showsAgentStatusIndicator(),
-                        onClick = { onOpenMember(message.authorId) }
+                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -6966,8 +6945,16 @@ private fun ThreadMessageCard(
                                     color = SlockColor.TextBlack,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 220.dp).clickable { onOpenMember(message.authorId) }
+                                    modifier =
+                                        Modifier
+                                            .widthIn(max = 220.dp)
+                                            .clickable {
+                                                if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId)
+                                            }
                                 )
+                                message.threadAuthorBadgeLabel()?.let { label ->
+                                    ThreadMessageAuthorBadge(label)
+                                }
                                 Text(
                                     text = timestampLabel,
                                     style =
@@ -7082,7 +7069,7 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         showStatus = message.showsAgentStatusIndicator(),
-                        onClick = { onOpenMember(message.authorId) }
+                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
                     )
                 }
             }
@@ -7479,7 +7466,8 @@ private fun Modifier.threadMessageLongPressActions(
 }
 
 internal fun KuiklyThreadMessageItem.resolvedThreadAvatarWireValue(): String? {
-    val isAgent = authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
+    if (threadAuthorBadgeLabel() != null) return null
+    val isAgent = isThreadAgentAuthor()
     val resolution = resolveAvatarSlot(
         kind = if (isAgent) MemberKind.Agent else MemberKind.Human,
         id = authorId.ifBlank { authorName },
@@ -7507,6 +7495,53 @@ private fun String.isLikelyThreadAgentId(): Boolean =
         startsWith("ai-", ignoreCase = true) ||
         contains("_agent", ignoreCase = true) ||
         contains("-agent", ignoreCase = true)
+
+@Composable
+private fun ThreadMessageAuthorBadge(label: String) {
+    Box(
+        modifier =
+            Modifier
+                .heightIn(min = 18.dp)
+                .background(SlockColor.EmptyStateGray)
+                .border(SlockStroke.Default, SlockColor.TextBlack)
+                .padding(horizontal = SlockSpacing.Xs, vertical = 2.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style =
+                SlockType.Caption
+                    .withSlockFontWeight(FontWeight.Bold)
+                    .copy(fontSize = 10.sp, color = SlockColor.TextBlack.copy(alpha = 0.6f)),
+            color = SlockColor.TextBlack.copy(alpha = 0.6f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
+    when {
+        isDeletedThreadAgent() -> "DELETED"
+        isRemovedThreadHuman() -> "REMOVED"
+        else -> null
+    }
+
+internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
+    threadAuthorBadgeLabel() == null
+
+private fun KuiklyThreadMessageItem.isDeletedThreadAgent(): Boolean =
+    isThreadAgentAuthor() &&
+        (
+            !authorDeletedAt.isNullOrBlank() ||
+                senderMembershipStatus.equals("deleted", ignoreCase = true)
+        )
+
+private fun KuiklyThreadMessageItem.isRemovedThreadHuman(): Boolean =
+    !isThreadAgentAuthor() && senderMembershipStatus.equals("removed", ignoreCase = true)
+
+private fun KuiklyThreadMessageItem.isThreadAgentAuthor(): Boolean =
+    authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
 
 @Composable
 private fun ThreadMessageFooterMeta(
@@ -8379,7 +8414,7 @@ private fun ThreadMessageStaticAvatar(
 }
 
 private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
-    authorKind.equals("agent", ignoreCase = true) || authorId.isLikelyThreadAgentId()
+    isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
 
 @Composable
 private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {

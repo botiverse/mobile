@@ -115,6 +115,25 @@ class MemberAgentParserTest {
     }
 
     @Test
+    fun agentProfilePreservesDeletedStateForHistorySenders() {
+        val profile = parseSharedAgentProfile(
+            """
+            {
+              "id": "agent-deleted",
+              "name": "deleted",
+              "displayName": "Deleted Agent",
+              "status": "offline",
+              "deletedAt": "2026-06-06T00:00:00.000Z"
+            }
+            """.trimIndent()
+        )
+
+        assertNotNull(profile)
+        assertEquals("deleted", profile.membershipStatus)
+        assertEquals("2026-06-06T00:00:00.000Z", profile.agentDeletedAt)
+    }
+
+    @Test
     fun serverMembersAcceptsWrappedMembersPayload() {
         val snapshot = parseSharedServerMemberSnapshot(
             bodyText =
