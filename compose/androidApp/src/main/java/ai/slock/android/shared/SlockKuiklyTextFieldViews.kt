@@ -41,7 +41,7 @@ internal class SlockKuiklyTextFieldView(
                 true
             }
             KRTextProps.PROP_KEY_NUMBER_OF_LINES -> {
-                allowsMultipleLines = (propValue as? Int ?: 1) != 1
+                allowsMultipleLines = propValue.toSlockLineCount() != 1
                 super.setProp(propKey, propValue).also {
                     applySlockInputMetrics()
                     applySystemNewlineActionMode()
@@ -137,4 +137,14 @@ private fun Any?.toSlockBoolean(): Boolean =
         is Number -> toInt() != 0
         is String -> this == "1" || equals("true", ignoreCase = true)
         else -> false
+    }
+
+internal fun Any?.toSlockLineCount(defaultValue: Int = 1): Int =
+    when (this) {
+        is Number -> toInt()
+        is String -> {
+            val value = trim()
+            value.toIntOrNull() ?: value.toDoubleOrNull()?.toInt() ?: defaultValue
+        }
+        else -> defaultValue
     }

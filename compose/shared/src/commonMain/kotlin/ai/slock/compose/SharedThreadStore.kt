@@ -3684,7 +3684,7 @@ private fun ThreadSnapshot.matchesFocusedThreadRoute(
         messages.firstOrNull { message -> message.id.value == focusedMessageId }
             ?: parentMessage?.takeIf { message -> message.id.value == focusedMessageId }
             ?: return false
-    return focusedMessage.channelId.value == routeId || focusedMessage.threadId.value == routeId
+    return focusedMessage.channelId?.value == routeId || focusedMessage.threadId.value == routeId
 }
 
 private fun ThreadSnapshot.withConversationHeaderFallback(
