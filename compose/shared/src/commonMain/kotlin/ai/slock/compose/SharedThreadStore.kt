@@ -1702,6 +1702,7 @@ internal sealed interface SharedThreadIntent {
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
     data class ApplyLocalSendFailure(val messageId: String, val errorCode: String? = null) : SharedThreadIntent
+    data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyMessageReactionSelection(
         val messageId: String,
@@ -1776,6 +1777,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.AppendSentPage,
             is SharedThreadIntent.ApplyLocalSendStarted,
             is SharedThreadIntent.ApplyLocalSendFailure,
+            is SharedThreadIntent.DismissLocalFailedSend,
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
@@ -1819,6 +1821,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
             is SharedThreadIntent.ApplyLocalSendFailure -> applyLocalSendFailure(intent.messageId, intent.errorCode)
+            is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
             is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
             is SharedThreadIntent.ApplyMessageReactionSelection ->
                 applyMessageReactionSelection(intent.messageId, intent.emoji, intent.selected)
@@ -2304,6 +2307,15 @@ internal class SharedThreadStore(
             writeCachedPayload = true
         ) { payload ->
             payload.withLocalSendFailure(messageId, errorCode)
+        }
+    }
+
+    private suspend fun dismissLocalFailedSend(messageId: String) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload ->
+            payload.withoutLocalFailedSendMessage(messageId)
         }
     }
 
@@ -3067,6 +3079,9 @@ private fun KuiklyThreadScreenPayload.withLocalSendFailure(
 
 private fun KuiklyThreadScreenPayload.withoutLocalSendMessage(messageId: String): KuiklyThreadScreenPayload =
     copy(messages = messages.filterNot { it.id == messageId && it.pendingSendContext != null })
+
+private fun KuiklyThreadScreenPayload.withoutLocalFailedSendMessage(messageId: String): KuiklyThreadScreenPayload =
+    copy(messages = messages.filterNot { it.id == messageId && it.isPersistentLocalFailedMessage() })
 
 private const val ThreadTransientLocalSendIdPrefix = "local-send-"
 

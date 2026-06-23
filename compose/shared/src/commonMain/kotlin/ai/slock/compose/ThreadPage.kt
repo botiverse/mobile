@@ -715,6 +715,9 @@ internal fun KuiklyThreadMessageItem.hasLocalSendState(): Boolean =
         pendingSendContext != null
 
 private fun KuiklyThreadMessageItem.canRetryLocalSend(): Boolean =
+    isFailedLocalSend()
+
+private fun KuiklyThreadMessageItem.isFailedLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
 
 private fun buildThreadPendingSendMessage(
@@ -3188,6 +3191,12 @@ internal fun SharedThreadRouteContent(
                 }
                 action == "loadNewer" || action == "retryLoadNewer" -> {
                     threadViewModel.dispatch(SharedThreadIntent.LoadNewer)
+                }
+                action == "deleteLocalFailedSend" && !itemId.isNullOrBlank() -> {
+                    val message = renderedThread.messages.firstOrNull { it.id == itemId } ?: return@ThreadPageContent
+                    if (message.isFailedLocalSend()) {
+                        threadViewModel.dispatch(SharedThreadIntent.DismissLocalFailedSend(message.id))
+                    }
                 }
                 action == "retryLocalSend" && !itemId.isNullOrBlank() -> {
                     val message = renderedThread.messages.firstOrNull { it.id == itemId } ?: return@ThreadPageContent
@@ -5797,7 +5806,7 @@ private fun ThreadMessagesList(
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
                             onShowActions = { anchor ->
-                                if (!message.hasLocalSendState()) {
+                                if (!message.hasLocalSendState() || message.isFailedLocalSend()) {
                                     actionMenuAnchor = anchor
                                     actionMessageId = message.id
                                     diagnosticsLogger(
@@ -5879,12 +5888,15 @@ private fun ThreadMessagesList(
         }
         actionMessageId?.let { messageId ->
             payload.threadActionMessage(messageId)?.let { message ->
+                val isFailedLocalSend = message.isFailedLocalSend()
                 ThreadMessageActionMenu(
                     message = message,
                     anchor = actionMenuAnchor,
-                    showReplyAction = payload.showReplyActions,
+                    showReplyAction = payload.showReplyActions && !message.hasLocalSendState(),
                     showSaveAction = payload.showMessageSaveAction && !message.hasLocalSendState(),
-                    showTaskStatusAction = payload.showTaskStatusActions,
+                    showTaskStatusAction = payload.showTaskStatusActions && !message.hasLocalSendState(),
+                    showReactionActions = !message.hasLocalSendState(),
+                    showDeleteAction = isFailedLocalSend,
                     onDismiss = { actionMessageId = null },
                     onReply = {
                         actionMessageId = null
@@ -5905,6 +5917,10 @@ private fun ThreadMessagesList(
                     onTaskStatusChange = { action ->
                         actionMessageId = null
                         onThreadEvent(action, message.taskId, null, null)
+                    },
+                    onDelete = {
+                        actionMessageId = null
+                        onThreadEvent("deleteLocalFailedSend", message.id, null, null)
                     },
                     diagnosticsLogger = diagnosticsLogger
                 )
@@ -7485,12 +7501,15 @@ private fun ThreadMessageActionMenu(
     showReplyAction: Boolean,
     showSaveAction: Boolean,
     showTaskStatusAction: Boolean,
+    showReactionActions: Boolean,
+    showDeleteAction: Boolean,
     onDismiss: () -> Unit,
     onReply: () -> Unit,
     onCopy: () -> Unit,
     onSave: () -> Unit,
     onReact: (String) -> Unit,
     onTaskStatusChange: (String) -> Unit,
+    onDelete: () -> Unit,
     diagnosticsLogger: (String) -> Unit = {}
 ) {
     val actions =
@@ -7506,6 +7525,16 @@ private fun ThreadMessageActionMenu(
                         icon = SlockLucideIconName.Bookmark,
                         group = "message",
                         onClick = onSave
+                    )
+                )
+            }
+            if (showDeleteAction) {
+                add(
+                    ThreadMessageMenuAction(
+                        label = "Delete",
+                        icon = SlockLucideIconName.Trash,
+                        group = "destructive",
+                        onClick = onDelete
                     )
                 )
             }
@@ -7569,8 +7598,10 @@ private fun ThreadMessageActionMenu(
                     .border(SlockStroke.Default, SlockColor.BorderBlack)
                     .slockFloatingContentClickTarget()
             ) {
-                ThreadMessageReactionRow(onReact = onReact)
-                ThreadMessageMenuDivider()
+                if (showReactionActions) {
+                    ThreadMessageReactionRow(onReact = onReact)
+                    ThreadMessageMenuDivider()
+                }
                 actions.forEachIndexed { index, action ->
                     val previousGroup = actions.getOrNull(index - 1)?.group
                     if (index > 0 && previousGroup != action.group) {
