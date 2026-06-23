@@ -2242,7 +2242,7 @@ private fun MembersDetailContent(
             ?: Offset(100f, 100f)
         if (managementMenuOpen && member.kind == MemberKind.Agent) {
             val menuSummary = detail?.summary
-            val menuStatus = member.membersResolvedAgentStatus(menuSummary?.status, menuSummary?.activity)
+            val menuStatus = member.membersAgentStatusDisplayState(menuSummary?.status, menuSummary?.activity).status
             val menuPrimary = membersPrimaryLifecycleAction(menuStatus, deleted)
             val menuMachineAssigned = menuSummary?.machineId?.isNotBlank() == true
             val menuItems = buildMembersManagementMenuItems(
@@ -2433,6 +2433,7 @@ private fun MembersDetailHeader(
                 ?: member.detailStatusLabel
         }
     val avatarClick = onAvatarClick
+    val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2456,7 +2457,7 @@ private fun MembersDetailHeader(
                 member = member,
                 avatarSize = 42.dp,
                 statusSize = 10.dp,
-                statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing(),
+                statusDisplayState = agentStatusDisplayState,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
                 } else {
@@ -2575,7 +2576,7 @@ private fun MembersDetailSummary(
             member = member,
             avatarSize = 58.dp,
             statusSize = 12.dp,
-            statusPulsing = member.membersResolvedAgentStatus(summary?.status, summary?.activity).membersStatusPulsing()
+            statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
         )
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)) {
             Row(horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs), verticalAlignment = Alignment.CenterVertically) {
@@ -4419,10 +4420,11 @@ private fun MembersListRow(
             )
         }
         if (member.kind == MemberKind.Agent) {
+            val statusDisplayState = member.membersAgentStatusDisplayState()
             SlockStatusIndicator(
-                color = member.agentStatus.membersStatusColor(member.presence),
+                color = statusDisplayState.color,
                 size = MemberStatusDotSize,
-                pulsing = member.agentStatus.membersStatusPulsing()
+                pulsing = statusDisplayState.pulsing
             )
         }
     }
@@ -4433,7 +4435,7 @@ private fun MembersAvatar(
     member: MemberProfile,
     avatarSize: Dp = MemberAvatarSize,
     statusSize: Dp = MemberStatusDotSize,
-    statusPulsing: Boolean = member.agentStatus.membersStatusPulsing(),
+    statusDisplayState: MembersAgentStatusDisplayState = member.membersAgentStatusDisplayState(),
     showStatusOverlay: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -4444,13 +4446,13 @@ private fun MembersAvatar(
         modifier = modifier,
         statusColor =
             if (showStatusOverlay && member.kind == MemberKind.Agent) {
-                member.agentStatus.membersStatusColor(member.presence)
+                statusDisplayState.color
             } else {
                 null
             },
         avatarSize = avatarSize,
         statusSize = statusSize,
-        statusPulsing = statusPulsing
+        statusPulsing = statusDisplayState.pulsing
     ) {
         SlockAvatar(
             avatarWireValue = avatarWireValue,
@@ -4481,6 +4483,24 @@ private fun AgentStatus?.membersStatusColor(presence: Presence): Color =
 
 private fun AgentStatus?.membersStatusPulsing(): Boolean =
     this == AgentStatus.Working || this == AgentStatus.Thinking
+
+internal data class MembersAgentStatusDisplayState(
+    val status: AgentStatus?,
+    val color: Color,
+    val pulsing: Boolean
+)
+
+internal fun MemberProfile.membersAgentStatusDisplayState(
+    summaryStatus: String? = null,
+    summaryActivity: String? = null
+): MembersAgentStatusDisplayState {
+    val resolvedStatus = membersResolvedAgentStatus(summaryStatus, summaryActivity)
+    return MembersAgentStatusDisplayState(
+        status = resolvedStatus,
+        color = resolvedStatus.membersStatusColor(presence),
+        pulsing = resolvedStatus.membersStatusPulsing()
+    )
+}
 
 private val Presence.membersPresenceColor: Color
     get() = when (this) {

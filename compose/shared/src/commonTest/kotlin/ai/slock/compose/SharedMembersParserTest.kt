@@ -211,6 +211,58 @@ class SharedMembersParserTest {
     }
 
     @Test
+    fun agentStatusDisplayStateUsesActivityForColorAndPulse() {
+        val member =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Cindy",
+                handle = "@Cindy",
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Offline
+            )
+
+        val displayState =
+            member.membersAgentStatusDisplayState(
+                summaryStatus = "offline",
+                summaryActivity = "working"
+            )
+
+        assertEquals(AgentStatus.Working, displayState.status)
+        assertEquals(SlockColor.BrandYellow, displayState.color)
+        assertEquals(true, displayState.pulsing)
+    }
+
+    @Test
+    fun agentStatusDisplayStateFallsBackToMemberStatusAndPresence() {
+        val agent =
+            MemberProfile(
+                id = MemberId("agent-1"),
+                displayName = "Cindy",
+                handle = "@Cindy",
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Online
+            )
+        val human =
+            MemberProfile(
+                id = MemberId("human-1"),
+                displayName = "Artin",
+                handle = "@artin",
+                kind = MemberKind.Human,
+                presence = ai.slock.compose.model.Presence.Away
+            )
+
+        val agentDisplayState = agent.membersAgentStatusDisplayState()
+        val humanDisplayState = human.membersAgentStatusDisplayState()
+
+        assertEquals(AgentStatus.Online, agentDisplayState.status)
+        assertEquals(SlockColor.AccentLime, agentDisplayState.color)
+        assertEquals(false, agentDisplayState.pulsing)
+        assertEquals(null, humanDisplayState.status)
+        assertEquals(SlockColor.BrandYellow, humanDisplayState.color)
+        assertEquals(false, humanDisplayState.pulsing)
+    }
+
+    @Test
     fun agentDiagnosticsExportUsesSafeSummaryOnly() {
         val diagnostics =
             buildMembersAgentDiagnostics(
