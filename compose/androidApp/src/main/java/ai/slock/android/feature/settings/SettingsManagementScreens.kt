@@ -643,11 +643,13 @@ private fun SettingsAccountProfile.toKuiklyJson(): JSONObject =
                 .put("handle", handle)
                 .put("email", email)
                 .put("avatarLabel", avatarLabel)
+                .putNullable("avatarUrl", avatarUrl)
                 .put("verified", verified)
                 .put("roleLabel", roleLabel)
 
 private fun SettingsConnectedAccount.toKuiklyJson(): JSONObject =
         JSONObject()
+                .put("providerId", provider.lowercase().replace(" ", "_"))
                 .put("provider", provider)
                 .put("identifier", identifier)
                 .put(

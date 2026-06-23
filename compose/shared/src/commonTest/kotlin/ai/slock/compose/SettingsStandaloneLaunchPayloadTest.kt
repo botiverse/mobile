@@ -139,6 +139,21 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     @Test
+    fun accountConnectedAccountsHidePasswordCredentialProvider() {
+        val accounts =
+            listOf(
+                KuiklySettingsConnectedAccount(providerId = "password", provider = "Email password", identifier = "artin@example.com", status = "connected"),
+                KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected"),
+                KuiklySettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected")
+            )
+
+        assertEquals(
+            listOf("google", "github"),
+            accounts.visibleSettingsConnectedAccounts().map { it.providerId }
+        )
+    }
+
+    @Test
     fun explicitBillingContentPayloadIsTreatedAsLaunchOnly() {
         val payload =
             parseSettingsBillingPayload(

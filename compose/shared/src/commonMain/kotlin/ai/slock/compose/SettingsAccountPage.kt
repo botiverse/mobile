@@ -116,6 +116,7 @@ internal data class KuiklySettingsAccountProfile(
     val handle: String = "",
     val email: String = "",
     val avatarLabel: String = "",
+    val avatarUrl: String? = null,
     val verified: Boolean = false,
     val roleLabel: String = ""
 )
@@ -136,6 +137,7 @@ internal val settingsAccountSmokePayload = KuiklySettingsAccountPayload(
         handle = "@artin",
         email = "artin@raft.build",
         avatarLabel = "AR",
+        avatarUrl = "pixel:diamond",
         verified = true,
         roleLabel = "Workspace owner"
     ),
@@ -182,6 +184,7 @@ internal fun SettingsAccountContent(
     onEvent: (String, String?) -> Unit
 ) {
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
+    val visibleConnectedAccounts = payload.connectedAccounts.visibleSettingsConnectedAccounts()
     LazyColumn(
         modifier =
             Modifier
@@ -193,8 +196,8 @@ internal fun SettingsAccountContent(
     ) {
         item { SettingsAccountSectionHeader(payload.profileSectionTitle) }
         item { SettingsAccountProfileCard(payload, onEvent, onPasswordChange) }
-        if (payload.connectedAccounts.isNotEmpty()) {
-            item { SettingsConnectedAccounts(payload, onEvent) }
+        if (visibleConnectedAccounts.isNotEmpty()) {
+            item { SettingsConnectedAccounts(payload, visibleConnectedAccounts, onEvent) }
         }
         item { SettingsLogoutAction(payload) { onEvent("logout", null) } }
         item { Spacer(Modifier.height(bottomContentPadding)) }
@@ -235,20 +238,7 @@ private fun SettingsAccountProfileCard(
     val displayName = displayNameState.value
     SettingsAccountHardShadowCard {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            Box(
-                modifier =
-                    Modifier
-                        .size(56.dp)
-                        .background(if (payload.avatarInProgress) SlockColor.EmptyStateGray else SlockColor.SurfaceWhite)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
-                contentAlignment = Alignment.Center
-            ) {
-                SlockLucideIcon(
-                    if (payload.avatarInProgress) SlockLucideIconName.LoaderCircle else SlockLucideIconName.Upload,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
+            SettingsProfileAvatar(profile, payload, onEvent)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     profile.displayName.ifBlank { "Account" },
@@ -280,13 +270,8 @@ private fun SettingsAccountProfileCard(
         }
         Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SlockBrutalSectionLabel(label = "Name")
-            Text(
-                profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") },
-                style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray,
-                modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 10.dp),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            SettingsReadOnlyInputText(
+                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") }
             )
         }
         SlockBrutalTextField(
@@ -353,6 +338,82 @@ private fun SettingsAccountProfileCard(
                 }
             )
         }
+    }
+}
+
+@Composable
+private fun SettingsProfileAvatar(
+    profile: KuiklySettingsAccountProfile,
+    payload: KuiklySettingsAccountPayload,
+    onEvent: (String, String?) -> Unit
+) {
+    Box(
+        modifier =
+            Modifier
+                .size(56.dp)
+                .clickable(enabled = payload.canUploadAvatar && !payload.avatarInProgress) { onEvent("uploadAvatar", null) },
+        contentAlignment = Alignment.Center
+    ) {
+        val avatarWireValue = profile.avatarUrl?.takeIf { it.isNotBlank() }
+        if (avatarWireValue != null) {
+            SlockAvatar(
+                avatarWireValue = avatarWireValue,
+                label = profile.avatarLabel,
+                avatarSize = 56.dp,
+                borderWidth = SlockStroke.Default
+            )
+        } else {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(SlockColor.AccentPink)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    profile.avatarLabel.ifBlank { profile.displayName }.take(2).uppercase().ifBlank { "?" },
+                    style = SlockType.PageTitle.copy(color = SlockColor.TextBlack),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (payload.avatarInProgress) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(30.dp)
+                        .background(SlockColor.SurfaceWhite)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsReadOnlyInputText(text: String) {
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(42.dp)
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text,
+            style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -475,9 +536,9 @@ private fun SettingsPasswordForm(
 @Composable
 private fun SettingsConnectedAccounts(
     payload: KuiklySettingsAccountPayload,
+    accounts: List<KuiklySettingsConnectedAccount>,
     onEvent: (String, String?) -> Unit
 ) {
-    val accounts = payload.connectedAccounts
     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SettingsAccountSectionTitle(payload.connectedAccountsTitle.uppercase(), SlockLucideIconName.Link)
         if (accounts.isEmpty()) {
@@ -705,6 +766,18 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
         Text(title, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(detail, style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray), color = SlockColor.TextMutedGray, maxLines = 2, overflow = TextOverflow.Ellipsis)
     }
+}
+
+internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(): List<KuiklySettingsConnectedAccount> =
+    filterNot { it.isPasswordCredentialProvider() }
+
+private fun KuiklySettingsConnectedAccount.isPasswordCredentialProvider(): Boolean {
+    val providerIdValue = providerId.trim().lowercase()
+    val providerValue = provider.trim().lowercase()
+    return providerIdValue == "password" ||
+        providerIdValue == "email_password" ||
+        providerValue == "email password" ||
+        providerValue.contains("password")
 }
 
 private fun connectedStatus(status: String, payload: KuiklySettingsAccountPayload): Triple<String, Color, SlockLucideIconName?> =

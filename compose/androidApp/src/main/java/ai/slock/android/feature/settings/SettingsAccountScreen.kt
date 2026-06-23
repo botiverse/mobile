@@ -50,7 +50,8 @@ data class SettingsAccountProfile(
         val email: String,
         val avatarLabel: String,
         val verified: Boolean,
-        val roleLabel: String
+        val roleLabel: String,
+        val avatarUrl: String? = null
 )
 
 data class SettingsConnectedAccount(
