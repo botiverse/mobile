@@ -51,30 +51,17 @@
         {
           "id": "default",
           "name": "Default",
-          "props": {}
+          "props": {
+            "registerName": "Product UX Designer",
+            "registerEmail": "new@slock.ai",
+            "registerPassword": "correct horse battery staple"
+          }
         }
       ],
       "capture": {
         "selector": "[data-visual-case='components.auth.register.inputs']",
         "crop": "element",
-        "contract": "component-bounds",
-        "interactions": [
-          {
-            "type": "fill",
-            "target": "input[type='text']",
-            "value": "Product UX Designer"
-          },
-          {
-            "type": "fill",
-            "target": "input[type='email']",
-            "value": "new@slock.ai"
-          },
-          {
-            "type": "fill",
-            "target": "input[type='password']",
-            "value": "correct horse battery staple"
-          }
-        ]
+        "contract": "component-bounds"
       },
       "reactPathHint": "packages/web/src/components/auth/RegisterPage.tsx",
       "androidCaseHint": "compose_auth_register_inputs",

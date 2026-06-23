@@ -68,6 +68,12 @@ private const val AUTH_LOGIN_INPUTS_VISUAL_PAGE = "compose_auth_login_inputs"
 private const val AUTH_REGISTER_INPUTS_VISUAL_PAGE = "compose_auth_register_inputs"
 private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_SOCIAL_PROVIDERS_KEY = "slockSocialAuthProviders"
+private const val AUTH_REGISTER_VISUAL_NAME_KEY = "registerName"
+private const val AUTH_REGISTER_VISUAL_EMAIL_KEY = "registerEmail"
+private const val AUTH_REGISTER_VISUAL_PASSWORD_KEY = "registerPassword"
+private const val AUTH_REGISTER_VISUAL_DEFAULT_NAME = "Product UX Designer"
+private const val AUTH_REGISTER_VISUAL_DEFAULT_EMAIL = "new@slock.ai"
+private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery staple"
 
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
@@ -653,10 +659,12 @@ private fun AuthLoginInputsVisualScreen() {
 
 @Composable
 private fun AuthRegisterInputsVisualScreen() {
+    val pager = LocalActivity.current.getPager() as Pager
+    val params = pager.pageData.params
     RegisterContent(
-        name = "Artin",
-        email = "artin@slock.test",
-        password = "password",
+        name = params.optString(AUTH_REGISTER_VISUAL_NAME_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_NAME },
+        email = params.optString(AUTH_REGISTER_VISUAL_EMAIL_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_EMAIL },
+        password = params.optString(AUTH_REGISTER_VISUAL_PASSWORD_KEY).ifBlank { AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD },
         submitting = false,
         errorMessage = null,
         onNameChange = {},

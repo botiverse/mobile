@@ -508,6 +508,11 @@ class KmpVisualScreenshotCaptureTest {
         captureKmpComponentCase(
             caseId = "components.auth.register.inputs",
             pageName = "compose_auth_register_inputs",
+            pageData =
+                JSONObject()
+                    .put("registerName", "Product UX Designer")
+                    .put("registerEmail", "new@slock.ai")
+                    .put("registerPassword", "correct horse battery staple"),
             crop = FULL_VIEWPORT_CROP,
             settleMs = 4_500
         )
