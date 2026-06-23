@@ -461,7 +461,7 @@ private fun SlockVerticalTabItem(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             SlockLucideIcon(
-                name = item.iconName.toVerticalTabIconName(),
+                name = item.iconName,
                 color = if (item.enabled) "#FF000000" else "#FF737373",
                 modifier = Modifier.size(14.dp)
             )
@@ -476,12 +476,3 @@ private fun SlockVerticalTabItem(
         }
     }
 }
-
-private fun SlockLucideIconName.toVerticalTabIconName(): SlockLucideIconName =
-    when (this) {
-        SlockLucideIconName.Building2 -> SlockLucideIconName.Users
-        SlockLucideIconName.AppWindow -> SlockLucideIconName.Square
-        SlockLucideIconName.Languages -> SlockLucideIconName.Globe
-        SlockLucideIconName.Type -> SlockLucideIconName.FileText
-        else -> this
-    }
