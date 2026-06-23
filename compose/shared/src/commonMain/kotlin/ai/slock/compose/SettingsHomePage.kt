@@ -7,6 +7,7 @@ import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalListRow
 import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalPanelShell
+import ai.slock.compose.components.SlockBrutalReadOnlyField
 import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import ai.slock.compose.components.SlockBrutalSelectField
@@ -3888,21 +3889,14 @@ private fun SettingsConnectedAppSecretCard(
 ) {
     SettingsFormSectionCard(iconName = SlockLucideIconName.KeyRound, title = "Client Secret") {
         SettingsFormDetailText("Copy this secret now. It is shown once and is not persisted in diagnostics.")
-        SettingsReadonlyField(label = "Client ID", value = secret.clientId)
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-            SlockBrutalSectionLabel(label = "Client Secret")
-            Text(
-                secret.clientSecret,
-                style = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack,
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .background(SlockColor.SurfaceCream)
-                        .border(SlockStroke.Default, SlockColor.BorderBlack)
-                        .padding(horizontal = 10.dp, vertical = 10.dp)
-            )
-        }
+        SlockBrutalReadOnlyField(label = "Client ID", value = secret.clientId)
+        SlockBrutalReadOnlyField(
+            label = "Client Secret",
+            value = secret.clientSecret,
+            maxLines = 2,
+            textStyle = SlockType.Input.copy(fontSize = 13.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+            textColor = SlockColor.TextBlack
+        )
         SlockBrutalActionButton(
             label = "Copy Secret",
             onClick = { onCopySecret(secret.clientSecret) },
@@ -4078,7 +4072,7 @@ private fun SettingsConnectedAppsConfirmDialog(
 @Composable
 private fun SettingsConnectedAppDetailField(label: String, value: String?) {
     value?.takeIf { it.isNotBlank() }?.let {
-        SettingsReadonlyField(label = label, value = it)
+        SlockBrutalReadOnlyField(label = label, value = it)
     }
 }
 
@@ -4655,7 +4649,7 @@ private fun SettingsServerProfileFormCard(
             required = true,
             enabled = canSave && !busy
         )
-        SettingsReadonlyField(
+        SlockBrutalReadOnlyField(
             label = "Slug",
             value = currentSlug.ifBlank { "Not provided" }
         )
@@ -4675,24 +4669,6 @@ private fun SettingsServerProfileFormCard(
                 backgroundColor = SlockColor.AccentPink
             )
         }
-    }
-}
-
-@Composable
-private fun SettingsReadonlyField(
-    label: String,
-    value: String
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-        SlockBrutalSectionLabel(label = label)
-        Text(
-            value,
-            style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).border(SlockStroke.Default, SlockColor.BorderBlack).padding(horizontal = 10.dp, vertical = 10.dp),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 

@@ -417,6 +417,41 @@ internal fun SlockBrutalInputField(
 }
 
 @Composable
+internal fun SlockBrutalReadOnlyField(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+    fieldMinHeight: Dp = 42.dp,
+    horizontalPadding: Dp = 12.dp,
+    verticalPadding: Dp = 8.dp,
+    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+    textColor: Color = SlockColor.TextMutedGray
+) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        SlockBrutalSectionLabel(label = label)
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = fieldMinHeight)
+                    .background(SlockColor.SurfaceCream)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Text(
+                value,
+                style = textStyle,
+                color = textColor,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
 internal fun SlockBrutalSearchField(
     value: String,
     placeholder: String,

@@ -5,7 +5,7 @@ import ai.slock.compose.GitHubIconDataUri
 import ai.slock.compose.GoogleIconDataUri
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalCard
-import ai.slock.compose.components.SlockBrutalSectionLabel
+import ai.slock.compose.components.SlockBrutalReadOnlyField
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.SlockCachedImage
 import androidx.compose.runtime.Composable
@@ -268,12 +268,10 @@ private fun SettingsAccountProfileCard(
         payload.avatarErrorCode?.takeIf { it.isNotBlank() }?.let { code ->
             SettingsAccountWarning("Avatar upload failed: $code")
         }
-        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SlockBrutalSectionLabel(label = "Name")
-            SettingsReadOnlyInputText(
-                text = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") }
-            )
-        }
+        SlockBrutalReadOnlyField(
+            label = "Name",
+            value = profile.handle.removePrefix("@").ifBlank { payload.handlePlaceholder.removePrefix("@") }
+        )
         SlockBrutalTextField(
             label = "Display Name",
             value = displayName,
@@ -392,28 +390,6 @@ private fun SettingsProfileAvatar(
                 SlockLucideIcon(SlockLucideIconName.LoaderCircle, modifier = Modifier.size(16.dp))
             }
         }
-    }
-}
-
-@Composable
-private fun SettingsReadOnlyInputText(text: String) {
-    Box(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(42.dp)
-                .background(SlockColor.SurfaceCream)
-                .border(SlockStroke.Default, SlockColor.BorderBlack)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text,
-            style = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
     }
 }
 
