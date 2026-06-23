@@ -2,11 +2,20 @@ package ai.slock.android.shared
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SlockKuiklyNotificationLaunchTest {
+
+    @Test
+    fun androidHostNavigationExclusionFollowsNavigationMode() {
+        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(2))
+        assertTrue(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(1))
+        assertTrue(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(0))
+        assertFalse(SlockKuiklyActivity.androidHostExcludesNavigationBarForMode(null))
+    }
 
     @Test
     fun unreadNotificationLaunchesChannelThreadFocusedOnMessage() {

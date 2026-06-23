@@ -531,10 +531,37 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun createPageSpec(): SlockKuiklyPageSpec {
+        val pageData =
+                SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
+                        .withAndroidRuntimeWindowInsets()
         return SlockKuiklyPageSpec(
                 pageName = pageName,
-                pageData = SlockKuiklyPageData.fromText(intent.getStringExtra(KEY_PAGE_DATA))
+                pageData = pageData
         )
+    }
+
+    private fun SlockKuiklyPageData.withAndroidRuntimeWindowInsets(): SlockKuiklyPageData =
+            SlockKuiklyPageData.fromJson(
+                    JSONObject(text).apply {
+                        if (!has(KEY_HOST_EXCLUDES_NAVIGATION_BAR) && androidHostExcludesNavigationBar()) {
+                            put(KEY_HOST_EXCLUDES_NAVIGATION_BAR, true)
+                        }
+                    }
+            )
+
+    private fun androidHostExcludesNavigationBar(): Boolean =
+            androidHostExcludesNavigationBarForMode(androidNavigationMode())
+
+    private fun androidNavigationMode(): Int? {
+        val fromSettings =
+                runCatching {
+                            Settings.Secure.getInt(contentResolver, NAVIGATION_MODE_SETTING)
+                        }
+                        .getOrNull()
+        if (fromSettings != null) return fromSettings
+        val resourceId = resources.getIdentifier(NAVIGATION_MODE_RESOURCE, "integer", "android")
+        if (resourceId == 0) return null
+        return runCatching { resources.getInteger(resourceId) }.getOrNull()
     }
 
     private fun setupImmersiveMode() {
@@ -725,6 +752,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         private const val KEY_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
         private const val KEY_VERIFY_KUIKLY_THREAD = "slockKuiklyVerifyThread"
         private const val KEY_VERIFY_KUIKLY_REACTIVE_OBSERVER = "slockKuiklyVerifyReactiveObserver"
+        private const val KEY_HOST_EXCLUDES_NAVIGATION_BAR = "slockHostExcludesNavigationBar"
+        private const val NAVIGATION_MODE_SETTING = "navigation_mode"
+        private const val NAVIGATION_MODE_RESOURCE = "config_navBarInteractionMode"
+        private const val NAVIGATION_MODE_GESTURAL = 2
         private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
         private const val THREAD_SURFACE_CHANNEL = "channel"
         private const val THREAD_SURFACE_DIRECT_MESSAGE = "dm"
@@ -835,6 +866,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
         private fun JSONObject.optTrimmedString(key: String): String? =
                 optString(key).trim().takeIf { it.isNotBlank() }
+
+        internal fun androidHostExcludesNavigationBarForMode(navigationMode: Int?): Boolean =
+                navigationMode != null && navigationMode != NAVIGATION_MODE_GESTURAL
     }
 }
 
