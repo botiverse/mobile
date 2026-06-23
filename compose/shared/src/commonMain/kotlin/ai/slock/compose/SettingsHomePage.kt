@@ -810,7 +810,7 @@ private fun isRetainedAppShellTab(tab: String): Boolean =
     tab in retainedAppShellTabKeys
 
 internal fun retainedAppShellInactivePaneKeepsLayout(tab: String): Boolean =
-    retainedAppShellSelectedTab(tab) in setOf("home", "tasks")
+    retainedAppShellSelectedTab(tab) == "home"
 
 internal fun retainedHomeSecondaryDestination(destination: String?): String? =
     destination?.takeIf { it in homeSecondaryDestinationKeys }
