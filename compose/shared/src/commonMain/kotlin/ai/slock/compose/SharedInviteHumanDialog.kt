@@ -1,8 +1,9 @@
 package ai.slock.compose
 
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalSectionLabel
-import ai.slock.compose.components.SlockBrutalTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -16,7 +17,9 @@ import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
+import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -92,57 +95,64 @@ internal fun SharedInviteHumanDialog(
                     val linkText = when {
                         joinLinkLoading -> "Preparing join link…"
                         joinLinkUrl.isNullOrBlank() -> "Join link unavailable"
-                        else -> joinLinkUrl
+                        else -> normalizeInviteHumanJoinUrl(joinLinkUrl).orEmpty()
                     }
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+                            .height(42.dp)
+                            .border(SlockStroke.Default, SlockColor.BorderBlack)
                             .background(SlockColor.SurfaceWhite)
                             .padding(horizontal = 8.dp, vertical = 8.dp)
                     ) {
                         Text(
                             text = linkText,
-                            style = SlockType.Caption,
+                            style = SlockType.Caption.copy(fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
                             color = SlockColor.TextBlack,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    SlockBrutalActionButton(
-                        label = if (copied) "Copied" else "Copy",
+                    SlockBrutalIconButton(
+                        iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
                         enabled = !joinLinkLoading && !joinLinkUrl.isNullOrBlank(),
                         backgroundColor = SlockColor.SurfaceWhite,
+                        size = 42.dp,
+                        iconSize = 16.dp,
                         onClick = onCopyJoinLink
                     )
                 }
-                Text(
-                    text = "Anyone with this link can join this server.",
-                    style = SlockType.Caption,
-                    color = SlockColor.TextMutedGray
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    SlockLucideIcon(
+                        SlockLucideIconName.Link2,
+                        modifier = Modifier.size(12.dp),
+                        color = SlockColor.TextMutedGrayArgb
+                    )
+                    Text(
+                        text = "Anyone with this link can join this server.",
+                        style = SlockType.Caption,
+                        color = SlockColor.TextMutedGray
+                    )
+                }
             }
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 SlockBrutalSectionLabel(label = "Emails", required = false)
-                SlockBrutalTextField(
-                    label = "Email 1",
-                    required = false,
+                SlockBrutalInputField(
                     value = email1,
                     onValueChange = { email1 = it },
                     placeholder = "teammate@example.com",
                     enabled = !submitting
                 )
-                SlockBrutalTextField(
-                    label = "Email 2",
-                    required = false,
+                SlockBrutalInputField(
                     value = email2,
                     onValueChange = { email2 = it },
                     placeholder = "optional",
                     enabled = !submitting
                 )
-                SlockBrutalTextField(
-                    label = "Email 3",
-                    required = false,
+                SlockBrutalInputField(
                     value = email3,
                     onValueChange = { email3 = it },
                     placeholder = "optional",
@@ -159,18 +169,31 @@ internal fun SharedInviteHumanDialog(
                     label = "Cancel",
                     enabled = !submitting,
                     backgroundColor = SlockColor.SurfaceWhite,
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
                     onClick = onDismiss
                 )
                 SlockBrutalActionButton(
                     label = if (submitting) "Sending..." else "Send invites",
                     enabled = canSubmit,
                     minWidth = 126.dp,
-                    backgroundColor = SlockColor.AccentPink,
+                    backgroundColor = SlockColor.AccentRed,
+                    leadingIcon = SlockLucideIconName.Mail,
+                    textStyle = SlockType.ButtonBold.copy(fontSize = 14.sp, lineHeight = 18.sp),
                     onClick = {
                         onSubmit(emails.map { it.trim() }.filter { it.isNotBlank() })
                     }
                 )
             }
         }
+    }
+}
+
+internal fun normalizeInviteHumanJoinUrl(rawUrl: String?): String? {
+    val trimmed = rawUrl?.trim().orEmpty()
+    if (trimmed.isBlank()) return null
+    return when {
+        trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
+        trimmed.startsWith("/") -> "https://app.raft.build$trimmed"
+        else -> "https://app.raft.build/$trimmed"
     }
 }

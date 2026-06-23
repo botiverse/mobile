@@ -820,7 +820,7 @@ internal fun MembersPageContent() {
             }
             inviteJoinLinkLoading = false
             when (result) {
-                is DataResult.Content -> inviteJoinLinkUrl = result.data.url
+                is DataResult.Content -> inviteJoinLinkUrl = normalizeInviteHumanJoinUrl(result.data.url)
                 is DataResult.NoPermission ->
                     bridge.toast("You do not have permission to manage invites.")
                 is DataResult.Error ->
