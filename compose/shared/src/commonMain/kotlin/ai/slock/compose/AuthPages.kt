@@ -6,6 +6,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
@@ -78,6 +79,18 @@ private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
 
+private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
+    val sharedStores = SlockSharedStoreRegistry.get(bridge)
+    return SharedAuthDataSource(
+        transport =
+            KuiklySlockAuthTransport(
+                networkModule = acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
+            ),
+        sessionStore = sharedStores.authStore,
+        diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
+    )
+}
+
 @Page(LOGIN_PAGE, supportInLocal = true)
 internal class ComposeLoginPage : ai.slock.compose.base.BasePager() {
     override fun willInit() {
@@ -130,18 +143,7 @@ internal class ComposeAuthRegisterInputsVisualPage : ai.slock.compose.base.BaseP
 private fun LoginScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val authDataSource =
-        remember {
-            SharedAuthDataSource(
-                transport =
-                    KuiklySlockAuthTransport(
-                        networkModule = pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME)
-                    ),
-                sessionStore = sharedStores.authStore,
-                diagnosticsLogger = { message -> bridge.log("shared_auth $message") }
-            )
-        }
+    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { LoginFormReducer() }
     var state by remember { mutableStateOf(LoginFormState()) }
     var pendingLogin by remember { mutableStateOf<PendingLogin?>(null) }
@@ -260,11 +262,54 @@ private data class PendingSocialAuth(
     val provider: AuthProvider
 )
 
+private data class PendingRegister(
+    val nonce: Int,
+    val name: String,
+    val email: String,
+    val password: String
+)
+
+private data class PendingForgotPassword(
+    val nonce: Int,
+    val email: String
+)
+
 @Composable
 private fun RegisterScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { CreateAccountFormReducer() }
     var state by remember { mutableStateOf(CreateAccountFormState()) }
+    var pendingRegister by remember { mutableStateOf<PendingRegister?>(null) }
+
+    LaunchedEffect(pendingRegister) {
+        val effect = pendingRegister ?: return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation {
+                authDataSource.register(
+                    name = effect.name,
+                    email = effect.email,
+                    password = effect.password
+                )
+            }.getOrElse {
+                SharedAuthResult.Failure(
+                    ai.slock.compose.data.SharedAuthErrorCode.Unknown,
+                    "Create account could not finish setup. Try again."
+                )
+            }
+        pendingRegister = null
+        when (result) {
+            is SharedAuthResult.Success -> {
+                state = state.copy(submitting = false, errorMessage = null)
+                pager.openAuthPage(SLOCK_APP_SHELL_PAGE)
+            }
+            is SharedAuthResult.Failure ->
+                state = state.copy(submitting = false, errorMessage = result.message)
+            SharedAuthResult.Unauthenticated ->
+                state = state.copy(submitting = false, errorMessage = "Create account failed. Try again.")
+        }
+    }
 
     RegisterContent(
         name = state.name,
@@ -283,8 +328,12 @@ private fun RegisterScreen() {
             state = update.state
             when (val effect = update.effect) {
                 is CreateAccountFormEffect.SubmitCreateAccount -> {
-                    Utils.bridgeModule(pager.pagerId).toast("Create account: ${effect.email}")
-                    state = state.copy(submitting = false)
+                    pendingRegister = PendingRegister(
+                        nonce = (pendingRegister?.nonce ?: 0) + 1,
+                        name = effect.name,
+                        email = effect.email,
+                        password = effect.password
+                    )
                 }
                 CreateAccountFormEffect.FocusName -> Unit
                 CreateAccountFormEffect.FocusEmail -> Unit
@@ -300,8 +349,33 @@ private fun RegisterScreen() {
 @Composable
 private fun ForgotPasswordScreen() {
     val pager = LocalActivity.current.getPager() as Pager
+    val bridge = remember { Utils.bridgeModule(pager.pagerId) }
+    val authDataSource = remember { pager.sharedAuthDataSource(bridge) }
     val reducer = remember { ForgotPasswordFormReducer() }
     var state by remember { mutableStateOf(ForgotPasswordFormState()) }
+    var pendingForgotPassword by remember { mutableStateOf<PendingForgotPassword?>(null) }
+
+    LaunchedEffect(pendingForgotPassword) {
+        val effect = pendingForgotPassword ?: return@LaunchedEffect
+        val result =
+            runCatchingPreservingCancellation { authDataSource.forgotPassword(effect.email) }
+                .getOrElse {
+                    SharedAuthResult.Failure(
+                        ai.slock.compose.data.SharedAuthErrorCode.Unknown,
+                        "Reset password could not finish setup. Try again."
+                    )
+                }
+        pendingForgotPassword = null
+        state =
+            when (result) {
+                is SharedAuthResult.Success ->
+                    state.copy(submitting = false, sent = true, errorMessage = null)
+                is SharedAuthResult.Failure ->
+                    state.copy(submitting = false, sent = false, errorMessage = result.message)
+                SharedAuthResult.Unauthenticated ->
+                    state.copy(submitting = false, sent = false, errorMessage = "Reset password failed. Try again.")
+            }
+    }
 
     ForgotPasswordContent(
         email = state.email,
@@ -315,8 +389,11 @@ private fun ForgotPasswordScreen() {
             state = update.state
             when (val effect = update.effect) {
                 is ForgotPasswordFormEffect.SubmitForgotPassword -> {
-                    Utils.bridgeModule(pager.pagerId).toast("Reset password: ${effect.email}")
-                    state = state.copy(submitting = false, sent = true)
+                    pendingForgotPassword =
+                        PendingForgotPassword(
+                            nonce = (pendingForgotPassword?.nonce ?: 0) + 1,
+                            email = effect.email
+                        )
                 }
                 ForgotPasswordFormEffect.FocusEmail -> Unit
                 null -> Unit
@@ -789,8 +866,8 @@ internal fun LoginContent(
                     )
                 }
             }
-            AuthTextLink("Forgot password?") { onForgotPassword() }
-            AuthInlineAction("No account?", "Create one") { onCreateAccount() }
+            AuthTextLink("Forgot Password?") { onForgotPassword() }
+            AuthInlineAction("No account?", "Create One") { onCreateAccount() }
         }
     }
 }

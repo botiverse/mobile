@@ -45,6 +45,8 @@ data class CreateAccountFormState(
             !submitting
 }
 
+private const val AUTH_NAME_MIN_LENGTH = 5
+
 data class ForgotPasswordFormState(
     val email: String = "",
     val submitting: Boolean = false,
@@ -217,7 +219,17 @@ class CreateAccountFormReducer {
                         CreateAccountFormUpdate(
                             state.copy(
                                 errorMessage = null,
-                                nameError = "Name is required.",
+                                nameError = "Name is required",
+                                emailFormatError = null,
+                                passwordError = null
+                            ),
+                            CreateAccountFormEffect.FocusName
+                        )
+                    state.normalizedName.length < AUTH_NAME_MIN_LENGTH ->
+                        CreateAccountFormUpdate(
+                            state.copy(
+                                errorMessage = null,
+                                nameError = "Name must be at least $AUTH_NAME_MIN_LENGTH characters",
                                 emailFormatError = null,
                                 passwordError = null
                             ),

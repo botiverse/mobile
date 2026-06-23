@@ -115,7 +115,7 @@ class LoginContractTest {
     fun createAccountInvalidEmailShowsInlineEmailError() {
         val update =
             CreateAccountFormReducer().reduce(
-                CreateAccountFormState(name = "Artin", email = "artin", password = "password123"),
+                CreateAccountFormState(name = "Artin User", email = "artin", password = "password123"),
                 CreateAccountFormEvent.Submit
             )
 
@@ -125,10 +125,23 @@ class LoginContractTest {
     }
 
     @Test
+    fun createAccountShortNameShowsInlineNameError() {
+        val update =
+            CreateAccountFormReducer().reduce(
+                CreateAccountFormState(name = "Art", email = "artin@example.com", password = "password123"),
+                CreateAccountFormEvent.Submit
+            )
+
+        assertEquals(null, update.state.errorMessage)
+        assertEquals("Name must be at least 5 characters", update.state.nameError)
+        assertEquals(CreateAccountFormEffect.FocusName, update.effect)
+    }
+
+    @Test
     fun createAccountShortPasswordShowsInlinePasswordError() {
         val update =
             CreateAccountFormReducer().reduce(
-                CreateAccountFormState(name = "Artin", email = "artin@example.com", password = "short"),
+                CreateAccountFormState(name = "Artin User", email = "artin@example.com", password = "short"),
                 CreateAccountFormEvent.Submit
             )
 

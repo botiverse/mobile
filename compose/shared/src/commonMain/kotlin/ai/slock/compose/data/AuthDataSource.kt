@@ -677,7 +677,11 @@ data class AuthSocialCompleteRequestBody(
 data class AuthRegisterRequestBody(
     val email: String,
     val password: String,
-    val name: String
+    val name: String,
+    val acceptTerms: Boolean = true,
+    val termsVersion: String = CURRENT_TERMS_VERSION,
+    val privacyVersion: String = CURRENT_PRIVACY_VERSION,
+    val legalAcceptanceSource: String = "signup"
 )
 
 @kotlinx.serialization.Serializable
@@ -696,6 +700,9 @@ data class AuthCreateServerRequestBody(
 data class AuthRefreshRequestBody(
     val refreshToken: String
 )
+
+private const val CURRENT_TERMS_VERSION = "2026-05-12"
+private const val CURRENT_PRIVACY_VERSION = "2026-05-12"
 
 @kotlinx.serialization.Serializable
 data class AuthLogoutRequestBody(

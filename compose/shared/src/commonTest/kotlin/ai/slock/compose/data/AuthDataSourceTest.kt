@@ -282,7 +282,10 @@ class AuthDataSourceTest {
 
         assertTrue(registered is SharedAuthResult.Success)
         assertTrue(forgot is SharedAuthResult.Success)
-        assertEquals("""{"email":"user@slock.ai","password":"password123","name":"Artin"}""", api.registerBody)
+        assertEquals(
+            """{"email":"user@slock.ai","password":"password123","name":"Artin","acceptTerms":true,"termsVersion":"2026-05-12","privacyVersion":"2026-05-12","legalAcceptanceSource":"signup"}""",
+            api.registerBody
+        )
         assertEquals("""{"email":"user@slock.ai"}""", api.forgotPasswordBody)
         assertEquals("user-1", store.readSession()?.user?.id)
         assertEquals(null, store.readSession()?.selectedServerId)
