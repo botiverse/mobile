@@ -7501,6 +7501,7 @@ private fun ThreadMessageActionMenu(
         viewportGap = ThreadMessageMenuAnchorGap,
         horizontalOffset = -ThreadMessageMenuHorizontalNudge,
         verticalOffset = ThreadMessageMenuAnchorGap,
+        horizontalAutoFlip = true,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
     ) { popoverModifier, position ->
         LaunchedEffect(message.id, anchor, position, menuSize) {
