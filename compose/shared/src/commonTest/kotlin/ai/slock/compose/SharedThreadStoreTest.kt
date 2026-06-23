@@ -1506,12 +1506,18 @@ class SharedThreadStoreTest {
 
     @Test
     fun openMessageContextKeepsExplicitDirectMessageParentSurfaceWhenSnapshotLooksThread() = runBlocking {
-        val parentMessage =
+        val timelineMessage =
             message(
                 threadId = "dm-1",
                 id = "parent-1",
                 seq = 12,
                 body = "Parent DM message"
+            )
+        val parentMessage =
+            timelineMessage.copy(
+                threadChannelId = ChannelId("reply-thread-1"),
+                replyCount = 3,
+                unreadReplyCount = 1
             )
         val repository =
             FakeConversationRepository(
@@ -1519,7 +1525,7 @@ class SharedThreadStoreTest {
                     DataResult.Content(
                         threadSnapshot(
                             threadId = "reply-thread-1",
-                            messages = listOf(parentMessage),
+                            messages = listOf(timelineMessage),
                             parentMessage = parentMessage,
                             conversation =
                                 ConversationSummary(
@@ -1567,6 +1573,9 @@ class SharedThreadStoreTest {
         assertEquals("Cindy", payload.dmPeerName)
         assertEquals("pixel:cindy", payload.dmPeerAvatarUrl)
         assertEquals("CI", payload.dmPeerAvatarLabel)
+        assertEquals("reply-thread-1", payload.messages.single().threadChannelId)
+        assertEquals(3, payload.messages.single().replyCount)
+        assertEquals(1, payload.messages.single().unreadReplyCount)
         assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.resolveThreadComposer().surfaceKind)
     }
 

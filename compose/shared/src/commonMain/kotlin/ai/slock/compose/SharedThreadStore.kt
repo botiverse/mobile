@@ -3890,13 +3890,36 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
             sourceThreadId = sourceThreadId,
             streamChannelId = streamChannelId
         ).replyThreadContentChannelId()
+    val parentConversationMessagePatch =
+        if (baseTargetsParentConversation) {
+            parentMessage?.toKuiklyThreadMessageItem(currentUserId)
+        } else {
+            null
+        }
+    val timelineMessages =
+        if (
+            parentConversationMessagePatch != null &&
+            messages.none { message -> message.id.value == parentConversationMessagePatch.id }
+        ) {
+            messages + listOfNotNull(parentMessage)
+        } else {
+            messages
+        }
     val cachedMessages =
-        messages
+        timelineMessages
             .filterNot { message -> parentId != null && message.id.value == parentId }
             .filter { message ->
                 replyThreadContentChannelId == null || message.belongsToReplyThreadContent(replyThreadContentChannelId)
             }
-            .map { message -> message.toKuiklyThreadMessageItem(currentUserId) }
+            .map { message ->
+                val item = message.toKuiklyThreadMessageItem(currentUserId)
+                if (parentConversationMessagePatch?.id == item.id) {
+                    item.mergeRealtimeUpdate(parentConversationMessagePatch)
+                } else {
+                    item
+                }
+            }
+            .sortedByThreadTimeline()
     val headerContext =
         SharedThreadHeaderContextStore.conversationContext(
             surfaceKind = surfaceKind,
