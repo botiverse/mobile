@@ -143,6 +143,7 @@ class SharedTasksViewModel(
     authStore: SlockAuthSessionStore,
     dataSource: SharedTasksDataSource,
     private val scope: SharedTasksScope = SharedTasksScope.Server,
+    private val sharedTasksDataStore: SharedTasksDataStore? = null,
     private val diagnosticsLogger: (String) -> Unit = {},
     private val staleWindowMs: Long = 15_000L,
     private val useCase: SharedTasksUseCase =
@@ -199,7 +200,7 @@ class SharedTasksViewModel(
             is SharedTasksRouteIntent.SeedContent -> {
                 store.dispatch(SharedTasksIntent.SetContent(action.snapshot, state.value.selectedFilter))
                 viewModelScope.launch {
-                    useCase.seedTasks(action.snapshot)
+                    publishSharedTasksSnapshot(TaskFilter(), action.snapshot, "seed")
                 }
             }
         }
@@ -278,6 +279,7 @@ class SharedTasksViewModel(
                 lastRefreshCompletedAt = TimeSource.Monotonic.markNow()
             }
             if (result is DataResult.Content) {
+                publishSharedTasksSnapshot(request.filter, result.data, "refresh_result")
                 if (store.accept(SharedTasksIntent.SetResult(result, selectedFilter))) {
                     diagnosticsLogger("tasks_snapshot_commit source=refresh_result ${result.tasksDiagnosticsSummary()}")
                 }
@@ -298,6 +300,21 @@ class SharedTasksViewModel(
             events.emit(SharedTasksEvent.OperationFailed("tasks_network"))
             store.accept(SharedTasksIntent.RefreshFailed("tasks_network"))
         }
+    }
+
+    private suspend fun publishSharedTasksSnapshot(
+        filter: TaskFilter,
+        snapshot: TaskSnapshot,
+        source: String
+    ) {
+        val sharedStore = sharedTasksDataStore ?: return
+        if (filter.statuses.isNotEmpty()) {
+            diagnosticsLogger("tasks_projection_publish_skip source=$source reason=filtered")
+            return
+        }
+        val serverId = useCase.currentServerId() ?: return
+        sharedStore.publishSnapshot(serverId.value, scope, snapshot)
+        diagnosticsLogger("tasks_projection_publish source=$source scope=${scope.tasksScopeDiagnostics()} tasks=${snapshot.tasks.size}")
     }
 
     private fun logTasksRefreshSkip(
@@ -400,6 +417,12 @@ internal enum class TasksRefreshSkipReason {
     InFlight,
     FreshSnapshot
 }
+
+private fun SharedTasksScope.tasksScopeDiagnostics(): String =
+    when (this) {
+        SharedTasksScope.Server -> "server"
+        is SharedTasksScope.Channel -> "channel:${channelId.value}"
+    }
 
 internal fun tasksRefreshSkipReason(
     inFlight: Boolean,

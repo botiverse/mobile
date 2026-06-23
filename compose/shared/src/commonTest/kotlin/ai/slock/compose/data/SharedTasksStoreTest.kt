@@ -111,33 +111,6 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksUseCaseSeedsChannelScopeThroughRepository() = runBlocking {
-        val repository = FakeTasksRepository()
-        val channelId = ChannelId("thread-channel-seed")
-        val useCase =
-            SharedTasksUseCase(
-                authStore =
-                    InMemorySlockAuthSessionStore(
-                        StoredAuthSession(
-                            user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
-                            accessToken = "token",
-                            refreshToken = "refresh",
-                            selectedServerId = "server-seed"
-                        )
-                    ),
-                repository = repository,
-                scope = SharedTasksScope.Channel(channelId)
-            )
-        val snapshot = TaskSnapshot(tasks = listOf(task("task-seed", TaskStatus.Todo)), summaryCounts = emptyMap())
-
-        useCase.seedTasks(snapshot)
-
-        assertEquals(ServerId("server-seed"), repository.lastSeedServerId)
-        assertEquals(SharedTasksScope.Channel(channelId), repository.lastSeedScope)
-        assertEquals(listOf("task-seed"), repository.lastSeedSnapshot?.tasks?.map { it.id.value })
-    }
-
-    @Test
     fun sharedTasksRepositoryRefreshWritesRemoteResultIntoLocalSource() = runBlocking {
         val serverId = ServerId("server-1")
         val local = InMemorySharedTasksLocalDataSource()
@@ -182,39 +155,56 @@ class SharedTasksStoreTest {
     }
 
     @Test
-    fun sharedTasksRepositoryDefaultLocalSourceIsSharedAcrossInstances() = runBlocking {
-        val serverId = ServerId("server-default-shared")
-        val channelId = ChannelId("thread-channel-default-shared")
-        val firstRepository =
-            SharedTasksDataRepository(
-                remoteDataSource =
-                    FakeTasksRemoteDataSource(
-                        channelLoadResult =
-                            DataResult.Content(
-                                TaskSnapshot(
-                                    tasks = listOf(task("task-default-shared", TaskStatus.InProgress, channelName = "thread")),
-                                    summaryCounts = emptyMap()
-                                )
-                            )
-                    )
-            )
-        val secondRepository =
-            SharedTasksDataRepository(
-                remoteDataSource = FakeTasksRemoteDataSource()
-            )
+    fun sharedTasksDataStoreProjectsChannelTasksFromServerSnapshot() = runBlocking {
+        val store = SharedTasksDataStore()
 
-        firstRepository.refreshTasks(serverId, SharedTasksScope.Channel(channelId), TaskFilter())
-        val observed =
-            secondRepository.observeTasks(
-                serverId,
-                SharedTasksScope.Channel(channelId),
-                TaskFilter()
-            ).first()
-
-        assertEquals(
-            listOf("task-default-shared"),
-            assertIs<DataResult.Content<TaskSnapshot>>(observed).data.tasks.map { it.id.value }
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks =
+                        listOf(
+                            task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"), channelName = "general"),
+                            task("task-2", TaskStatus.Done, channelId = ChannelId("channel-2"), channelName = "random")
+                        ),
+                    summaryCounts = emptyMap()
+                )
         )
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-1"), slice.tasks.map { it.id.value })
+    }
+
+    @Test
+    fun sharedTasksDataStorePrefersChannelSnapshotOverServerProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Server,
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-server", TaskStatus.Todo, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(task("task-channel", TaskStatus.InProgress, channelId = ChannelId("channel-1"))),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(listOf("task-channel"), slice.tasks.map { it.id.value })
     }
 
     @Test
@@ -745,6 +735,7 @@ class SharedTasksStoreTest {
     private fun task(
         id: String,
         status: TaskStatus,
+        channelId: ChannelId = ChannelId("channel-1"),
         channelName: String? = null,
         title: String = "Task $id",
         assignee: MemberProfile? = null,
@@ -756,7 +747,7 @@ class SharedTasksStoreTest {
             status = status,
             taskNumber = id.substringAfter("task-").toIntOrNull(),
             messageId = MessageId("message-$id"),
-            channelId = ChannelId("channel-1"),
+            channelId = channelId,
             channelName = channelName,
             assignee = assignee,
             creator = creator,
@@ -788,12 +779,6 @@ class SharedTasksStoreTest {
             private set
         var lastFilter: TaskFilter? = null
             private set
-        var lastSeedServerId: ServerId? = null
-            private set
-        var lastSeedScope: SharedTasksScope? = null
-            private set
-        var lastSeedSnapshot: TaskSnapshot? = null
-            private set
 
         override fun observeTasks(
             serverId: ServerId,
@@ -812,16 +797,6 @@ class SharedTasksStoreTest {
             lastScope = scope
             lastFilter = filter
             return loadResult
-        }
-
-        override suspend fun seedTasks(
-            serverId: ServerId,
-            scope: SharedTasksScope,
-            snapshot: TaskSnapshot
-        ) {
-            lastSeedServerId = serverId
-            lastSeedScope = scope
-            lastSeedSnapshot = snapshot
         }
 
         override suspend fun updateTaskStatus(

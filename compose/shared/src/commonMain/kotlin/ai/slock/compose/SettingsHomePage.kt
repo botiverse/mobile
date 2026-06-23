@@ -1221,6 +1221,7 @@ private fun SlockAppShellContent() {
             SharedTasksViewModel(
                 authStore = authStore,
                 dataSource = tasksDataSource,
+                sharedTasksDataStore = sharedStores.tasksDataStore,
                 diagnosticsLogger = { message -> bridge.log("shared_tasks $message") }
             )
         }

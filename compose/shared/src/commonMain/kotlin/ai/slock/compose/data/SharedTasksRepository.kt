@@ -25,15 +25,13 @@ interface SharedTasksRepository {
 
     suspend fun refreshTasks(serverId: ServerId, scope: SharedTasksScope, filter: TaskFilter): DataResult<TaskSnapshot>
 
-    suspend fun seedTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot)
-
     suspend fun updateTaskStatus(serverId: ServerId, taskId: TaskId, status: TaskStatus): DataResult<TaskActionResult>
 
     suspend fun createTasks(serverId: ServerId, channelId: ChannelId, titles: List<String>): DataResult<TaskSnapshot>
 }
 
 class SharedTasksDataRepository(
-    private val localDataSource: SharedTasksLocalDataSource = ProcessSharedTasksLocalDataSource,
+    private val localDataSource: SharedTasksLocalDataSource = InMemorySharedTasksLocalDataSource(),
     private val remoteDataSource: SharedTasksRemoteDataSource
 ) : SharedTasksRepository {
     override fun observeTasks(
@@ -61,10 +59,6 @@ class SharedTasksDataRepository(
                 ?: DataResult.Empty(EmptyReason.NoTasks)
         }
         return remoteResult
-    }
-
-    override suspend fun seedTasks(serverId: ServerId, scope: SharedTasksScope, snapshot: TaskSnapshot) {
-        localDataSource.mergeTasks(serverId, scope, snapshot)
     }
 
     override suspend fun updateTaskStatus(
@@ -184,8 +178,6 @@ class InMemorySharedTasksLocalDataSource(
         snapshots.value = nextSnapshots
     }
 }
-
-internal object ProcessSharedTasksLocalDataSource : SharedTasksLocalDataSource by InMemorySharedTasksLocalDataSource()
 
 private fun TaskSnapshot?.upsert(task: TaskSummary): TaskSnapshot =
     this?.merge(listOf(task))

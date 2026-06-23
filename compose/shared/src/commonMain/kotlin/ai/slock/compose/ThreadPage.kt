@@ -48,7 +48,10 @@ import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedTasksDataSource
+import ai.slock.compose.data.SharedTasksDataStore
+import ai.slock.compose.data.SharedTasksDataStoreStatus
 import ai.slock.compose.data.SharedTasksRouteIntent
+import ai.slock.compose.data.SharedTasksProjectionSlice
 import ai.slock.compose.data.SharedTasksScope
 import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SlockAuthSessionStore
@@ -1070,6 +1073,19 @@ internal fun TasksUiState.threadLinkedTasksProjection(
             ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
     }
 
+internal fun SharedTasksProjectionSlice.threadLinkedTasksProjection(
+    references: ThreadLinkedTaskReferences
+): ThreadLinkedTasksProjection =
+    when (status) {
+        SharedTasksDataStoreStatus.Loaded ->
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = tasks.threadLinkedTasksByMessageLookup(references)
+            )
+        SharedTasksDataStoreStatus.Idle ->
+            ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
+    }
+
 internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
     val content = (loadState as? ScreenLoadState.Content)?.data ?: return emptyMap()
     return content.tasks.threadLinkedTasksByMessageId()
@@ -1976,6 +1992,7 @@ internal fun SharedThreadRouteContent(
                 SharedTasksViewModel(
                     authStore = authStore,
                     dataSource = tasksDataSource,
+                    sharedTasksDataStore = sharedStores.tasksDataStore,
                     scope = SharedTasksScope.Channel(resolvedTaskChannelId)
                 )
             }
@@ -2763,6 +2780,8 @@ internal fun SharedThreadRouteContent(
             composerDraftViewModel = composerDraftViewModel,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
+            tasksDataStore = sharedStores.tasksDataStore,
+            currentServerId = currentSession?.currentServerId,
             taskChannelId = taskChannelId,
             filesViewModel = filesViewModel,
             memberSuggestionsFlow = memberSuggestionsFlow,
@@ -4835,6 +4854,8 @@ private fun ThreadPageContent(
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
+    tasksDataStore: SharedTasksDataStore?,
+    currentServerId: String?,
     taskChannelId: ChannelId?,
     filesViewModel: SharedThreadFilesViewModel,
     memberSuggestionsFlow: Flow<List<SharedMembersMemberSuggestion>>,
@@ -4951,6 +4972,9 @@ private fun ThreadPageContent(
                         ThreadChatTabWithLinkedTasksProjection(
                             payload = payload,
                             tasksViewModel = tasksViewModel,
+                            tasksDataStore = tasksDataStore,
+                            currentServerId = currentServerId,
+                            taskChannelId = taskChannelId,
                             composerKeyboardInsetDp = composerKeyboardInsetDp,
                             highlightedMentions = highlightedMentions,
                             pendingActionCardIds = pendingActionCardIds,
@@ -5350,6 +5374,9 @@ private fun ThreadPageTabs(
 private fun ThreadChatTabWithLinkedTasksProjection(
     payload: KuiklyThreadScreenPayload,
     tasksViewModel: SharedTasksViewModel?,
+    tasksDataStore: SharedTasksDataStore?,
+    currentServerId: String?,
+    taskChannelId: ChannelId?,
     composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
     pendingActionCardIds: Set<String> = emptySet(),
@@ -5378,8 +5405,23 @@ private fun ThreadChatTabWithLinkedTasksProjection(
             ?.distinctUntilChanged()
             ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    val sharedStoreLinkedTasks by remember(tasksDataStore, currentServerId, taskChannelId?.value, payload.title, linkedTaskReferences) {
+        tasksDataStore
+            ?.channelProjectionFlow(
+                serverId = currentServerId,
+                channelId = taskChannelId?.value,
+                channelName = payload.title
+            )
+            ?.map { slice -> slice.threadLinkedTasksProjection(linkedTaskReferences) }
+            ?.distinctUntilChanged()
+            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
     val linkedTasksByMessageLookup =
-        if (projectedLinkedTasks.authoritative) projectedLinkedTasks.lookup else fallbackLinkedTasksByMessageLookup
+        when {
+            projectedLinkedTasks.authoritative -> projectedLinkedTasks.lookup
+            sharedStoreLinkedTasks.authoritative -> sharedStoreLinkedTasks.lookup
+            else -> fallbackLinkedTasksByMessageLookup
+        }
 
     ThreadChatTab(
         payload = payload,
