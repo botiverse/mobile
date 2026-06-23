@@ -100,6 +100,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import kotlin.time.TimeSource
 
 internal class SharedThreadDataSource(
@@ -2295,8 +2298,11 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun applyLocalSendFailure(messageId: String, errorCode: String?) {
-        reducePayloadPatch { payload ->
+    private suspend fun applyLocalSendFailure(messageId: String, errorCode: String?) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload ->
             payload.withLocalSendFailure(messageId, errorCode)
         }
     }
@@ -2622,7 +2628,10 @@ private fun KuiklyThreadScreenPayload.withResolvedReplyThreadAction(
 internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
     previous: KuiklyThreadScreenPayload
 ): KuiklyThreadScreenPayload {
-    val stableMessages = messages.preserveStableItemsFrom(previous.messages) { item -> item.id }
+    val stableMessages =
+        messages
+            .withRetainedLocalFailedMessagesFrom(previous.messages)
+            .preserveStableItemsFrom(previous.messages) { item -> item.id }
     val stableTasks = tasks.preserveStableItemsFrom(previous.tasks) { item -> item.id }
     val preservePreviousOrigin = shouldPreserveLoadedOriginFrom(previous)
     val stableOrigin =
@@ -3025,6 +3034,22 @@ private fun KuiklyThreadScreenPayload.withoutTransientLocalSendingMessages(): Ku
 private fun KuiklyThreadMessageItem.isTransientLocalSendingMessage(): Boolean =
     id.startsWith(ThreadTransientLocalSendIdPrefix) &&
         deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true)
+
+private fun List<KuiklyThreadMessageItem>.withRetainedLocalFailedMessagesFrom(
+    previousMessages: List<KuiklyThreadMessageItem>
+): List<KuiklyThreadMessageItem> {
+    val existingIds = map { it.id }.toSet()
+    val retainedFailedMessages =
+        previousMessages.filter { message ->
+            message.id !in existingIds && message.isPersistentLocalFailedMessage()
+        }
+    return if (retainedFailedMessages.isEmpty()) this else (this + retainedFailedMessages).sortedByThreadTimeline()
+}
+
+private fun KuiklyThreadMessageItem.isPersistentLocalFailedMessage(): Boolean =
+    id.startsWith(ThreadTransientLocalSendIdPrefix) &&
+        deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) &&
+        pendingSendContext != null
 
 private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
     if (limit <= 0 || messages.isEmpty()) return this
@@ -3886,7 +3911,7 @@ private fun KuiklyThreadMessageItem.toMessage(
         body = body,
         messageType = if (messageType.equals("System", ignoreCase = true)) MessageType.System else MessageType.Chat,
         systemEventType = systemEventType,
-        metadata = metadata,
+        metadata = metadata.withLocalSendMetadata(pendingSendContext, pendingSendErrorCode),
         attachments = attachments.map { attachment -> attachment.toAttachment() },
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
@@ -3955,6 +3980,7 @@ private fun KuiklyThreadMessageCommentHostSource.toMessageCommentHostSource(): M
 }
 
 private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThreadMessageItem {
+    val pendingSendContext = metadata.localSendContextFromMetadata()
     val resolvedAvatar =
         resolveAvatarSlot(
             kind = author.kind,
@@ -3981,7 +4007,7 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
         timestampLabel = timestampLabel,
         messageType = if (messageType == MessageType.System) "System" else "Chat",
         systemEventType = systemEventType,
-        metadata = metadata,
+        metadata = metadata.withoutLocalSendMetadata(),
         body = body,
         threadChannelId = threadChannelId?.value,
         replyCount = replyCount,
@@ -4005,9 +4031,48 @@ private fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyThr
             )
         },
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
-        commentRef = commentRef?.toKuiklyThreadCommentRef()
+        commentRef = commentRef?.toKuiklyThreadCommentRef(),
+        pendingSendContext = pendingSendContext,
+        pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() }
     )
 }
+
+private const val ThreadLocalSendContextMetadataKey = "localSend.context"
+private const val ThreadLocalSendErrorMetadataKey = "localSend.errorCode"
+
+private val ThreadLocalSendMetadataJson =
+    Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+    }
+
+private fun Map<String, String>.withLocalSendMetadata(
+    context: KuiklyThreadPendingSendContext?,
+    errorCode: String?
+): Map<String, String> {
+    val metadata = withoutLocalSendMetadata().toMutableMap()
+    if (context != null) {
+        metadata[ThreadLocalSendContextMetadataKey] = ThreadLocalSendMetadataJson.encodeToString(context)
+    }
+    if (!errorCode.isNullOrBlank()) {
+        metadata[ThreadLocalSendErrorMetadataKey] = errorCode
+    }
+    return metadata
+}
+
+private fun Map<String, String>.withoutLocalSendMetadata(): Map<String, String> =
+    filterKeys { key ->
+        key != ThreadLocalSendContextMetadataKey &&
+            key != ThreadLocalSendErrorMetadataKey
+    }
+
+private fun Map<String, String>.localSendContextFromMetadata(): KuiklyThreadPendingSendContext? =
+    get(ThreadLocalSendContextMetadataKey)
+        ?.let { value ->
+            runCatching {
+                ThreadLocalSendMetadataJson.decodeFromString<KuiklyThreadPendingSendContext>(value)
+            }.getOrNull()
+        }
 
 private fun String.toMessageDeliveryState(): MessageDeliveryState =
     when (trim().lowercase()) {

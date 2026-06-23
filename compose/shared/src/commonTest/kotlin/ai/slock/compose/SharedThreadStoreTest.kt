@@ -407,6 +407,71 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun localSendFailurePersistsFailedBubbleWithRetryContext() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val localMessageId = "local-send-channel-1-1"
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendStarted(
+                localPendingMessage(
+                    id = localMessageId,
+                    body = "retry body",
+                    asTask = true,
+                    attachmentIds = listOf("att-1")
+                )
+            )
+        )
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+
+        val persistedMessage = localStore.readThread(ThreadId("channel-1"))?.messages?.first { it.id.value == localMessageId }
+        assertNotNull(persistedMessage)
+        assertEquals(MessageDeliveryState.Failed, persistedMessage.deliveryState)
+        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        assertNotNull(cachedPayload)
+        val cachedFailed = cachedPayload.messages.first { it.id == localMessageId }
+        assertEquals(ThreadMessageDeliveryFailed, cachedFailed.deliveryState)
+        assertEquals("network_error", cachedFailed.pendingSendErrorCode)
+        assertEquals(true, cachedFailed.pendingSendContext?.asTask)
+        assertEquals(listOf("att-1"), cachedFailed.pendingSendContext?.attachmentIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun refreshRetainsLocalFailedBubbleMissingFromServerPage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val localMessageId = "local-send-channel-1-1"
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "retry body")))
+        store.accept(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, "network_error"))
+
+        store.accept(SharedThreadIntent.Refresh)
+
+        val messages = store.state.value.payload.messages
+        assertEquals(ThreadMessageDeliveryFailed, messages.first { it.id == localMessageId }.deliveryState)
+        assertEquals("retry body", messages.first { it.id == localMessageId }.body)
+        assertEquals("network body", messages.first { it.id == "m1" }.body)
+        assertEquals(1, messages.count { it.id == localMessageId })
+        scope.cancel()
+    }
+
+    @Test
     fun localSendFailureKeepsFailedBubbleWithRetryContext() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val store =
