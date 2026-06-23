@@ -3263,7 +3263,7 @@ internal fun SharedThreadRouteContent(
                         }
                     val pendingContext =
                         KuiklyThreadPendingSendContext(
-                            channelId = threadId,
+                            channelId = threadId ?: return@ThreadPageContent,
                             body = draftText,
                             asTask = draftAsTask,
                             attachmentIds = attachmentIds,
