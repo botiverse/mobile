@@ -91,6 +91,32 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadComposerMemberSuggestions() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.member-suggestions",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-member-suggestions")
+                    .put("visualFixture", "member_suggestions"),
+            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+        )
+    }
+
+    @Test
+    fun captureThreadComposerChannelSuggestions() {
+        captureKmpComponentCase(
+            caseId = "components.thread.composer.channel-suggestions",
+            pageName = "compose_thread_composer_visual",
+            pageData =
+                JSONObject()
+                    .put("instanceId", "visual-thread-composer-channel-suggestions")
+                    .put("visualFixture", "channel_suggestions"),
+            crop = THREAD_COMPOSER_SUGGESTIONS_CROP
+        )
+    }
+
+    @Test
     fun captureThreadMessageRow() {
         captureKmpComponentCase(
             caseId = "components.thread.message.row",
@@ -1116,6 +1142,13 @@ class KmpVisualScreenshotCaptureTest {
                 topDp = 0,
                 widthDp = 342,
                 heightDp = 100
+            )
+        private val THREAD_COMPOSER_SUGGESTIONS_CROP =
+            VisualCrop(
+                leftDp = 24,
+                topDp = 0,
+                widthDp = 342,
+                heightDp = 320
             )
         private val THREAD_MESSAGE_ROW_RICH_CONTENT_CROP =
             VisualCrop(

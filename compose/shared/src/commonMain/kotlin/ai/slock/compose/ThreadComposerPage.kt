@@ -122,6 +122,7 @@ internal data class KuiklyThreadComposerPayload(
     val executingMentionActionIds: List<String> = emptyList(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val suggestionsOpen: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val mentionChannelId: String? = null,
     val parentMessageId: String? = null,
@@ -179,6 +180,7 @@ internal data class ThreadComposerUiState(
     val executingMentionActionIds: List<String> = emptyList(),
     val memberSuggestions: List<KuiklyComposerMemberItem> = emptyList(),
     val channelSuggestions: List<KuiklyComposerChannelItem> = emptyList(),
+    val suggestionsOpen: Boolean = false,
     val hookLabels: List<String> = emptyList()
 )
 
@@ -446,22 +448,46 @@ private fun threadComposerVisualFixture(
             placeholder = "Message design",
             memberSuggestions =
                 listOf(
-                    KuiklyComposerMemberItem(displayName = "Artin", handle = "artin", inMentionChannel = true),
+                    KuiklyComposerMemberItem(
+                        displayName = "Cindy",
+                        handle = "Cindy",
+                        inMentionChannel = true,
+                        kind = MemberKind.Agent,
+                        description = "Keeps visual testing release notes aligned.",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "C"
+                    ),
+                    KuiklyComposerMemberItem(
+                        displayName = "Product UX Designer",
+                        handle = "Product-UX-Designer",
+                        inMentionChannel = true,
+                        kind = MemberKind.Agent,
+                        description = "Turns screenshots into actionable UI specs.",
+                        avatarWireValue = "pixel:paint",
+                        avatarLabel = "P"
+                    ),
                     KuiklyComposerMemberItem(
                         displayName = "Android Developer",
-                        handle = "Android-Developer",
-                        inMentionChannel = false
+                        handle = "Android-Developer-4",
+                        inMentionChannel = false,
+                        kind = MemberKind.Agent,
+                        description = "Implements shared Android/KMP UI fixes.",
+                        avatarWireValue = "pixel:robot",
+                        avatarLabel = "A"
                     )
                 ),
             channelSuggestions =
                 listOf(
                     KuiklyComposerChannelItem(name = "design", subtitle = "Product and UI decisions"),
+                    KuiklyComposerChannelItem(name = "product", subtitle = "Release tracking and acceptance"),
                     KuiklyComposerChannelItem(name = "android-artifacts", subtitle = "Builds and screenshots")
                 )
         )
     return when (fixture) {
         "empty" -> base.copy(seedText = "")
         "as_task_selected" -> base.copy(seedAsTask = true, seedText = "Review the Android composer crop")
+        "member_suggestions" -> base.copy(seedText = "@", suggestionsOpen = true)
+        "channel_suggestions" -> base.copy(seedText = "#", suggestionsOpen = true)
         else -> base
     }
 }
@@ -516,6 +542,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerUiState(): ThreadCompos
         executingMentionActionIds = executingMentionActionIds,
         memberSuggestions = memberSuggestions,
         channelSuggestions = channelSuggestions,
+        suggestionsOpen = suggestionsOpen,
         hookLabels = hookLabels
     )
 
@@ -651,13 +678,13 @@ internal fun ThreadComposerContent(
     }
     val text = fieldValue.text
     var asTask by remember(state.instanceId) { mutableStateOf(state.seedAsTask) }
-    var focused by remember(state.instanceId) { mutableStateOf(false) }
+    var focused by remember(state.instanceId) { mutableStateOf(state.suggestionsOpen) }
     var handledFocusRequestNonce by remember(state.instanceId) { mutableStateOf(state.focusRequestNonce) }
     val shouldAutoFocus = state.focusRequestNonce > handledFocusRequestNonce
     LaunchedEffect(state.instanceId, state.syncNonce) {
         fieldValue = TextFieldValue(state.seedText, selection = TextRange(state.seedText.length))
         asTask = state.seedAsTask
-        focused = false
+        focused = state.suggestionsOpen
     }
     val selectionStart = minOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)
     val selectionEnd = maxOf(fieldValue.selection.start, fieldValue.selection.end).coerceIn(0, text.length)

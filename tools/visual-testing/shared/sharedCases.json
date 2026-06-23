@@ -225,6 +225,108 @@
       }
     },
     {
+      "id": "components.thread.composer.member-suggestions",
+      "title": "Thread Composer Member Suggestions",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.composer.member-suggestions.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "member-trigger-open",
+          "name": "Member Trigger Open",
+          "props": {
+            "draft": "@",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.composer.member-suggestions']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "textarea"
+          },
+          {
+            "type": "fill",
+            "target": "textarea",
+            "value": "@"
+          },
+          {
+            "type": "wait",
+            "ms": 160
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_member_suggestions",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
+      "id": "components.thread.composer.channel-suggestions",
+      "title": "Thread Composer Channel Suggestions",
+      "surface": "thread",
+      "fixture": "fixtures/components.thread.composer.channel-suggestions.json",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "density": 3
+      },
+      "theme": "light",
+      "locale": "zh-CN",
+      "variants": [
+        {
+          "id": "channel-trigger-open",
+          "name": "Channel Trigger Open",
+          "props": {
+            "draft": "#",
+            "showAsTaskToggle": true,
+            "enabled": true
+          }
+        }
+      ],
+      "capture": {
+        "selector": "[data-visual-case='components.thread.composer.channel-suggestions']",
+        "crop": "element",
+        "contract": "component-bounds",
+        "interactions": [
+          {
+            "type": "click",
+            "target": "textarea"
+          },
+          {
+            "type": "fill",
+            "target": "textarea",
+            "value": "#"
+          },
+          {
+            "type": "wait",
+            "ms": 160
+          }
+        ]
+      },
+      "reactPathHint": "packages/web/src/components/message/MessageInput.tsx",
+      "androidCaseHint": "compose_thread_composer_visual_channel_suggestions",
+      "tolerance": {
+        "pixelRatio": 0.02,
+        "layoutDp": 1,
+        "ignoreAntialiasing": true
+      }
+    },
+    {
       "id": "components.thread.header.states",
       "title": "Thread Header States",
       "surface": "thread",
@@ -3013,6 +3115,88 @@
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerAsTaskSelected",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.composer.member-suggestions",
+      "title": "Thread Composer Member Suggestions",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput @mention autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the member suggestion panel open. Covers avatar, agent description, channel-membership grouping, and trailing @handle treatment.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput",
+            "MentionCandidateBody",
+            "MentionCandidateAvatar"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "fixtures/components.thread.composer.member-suggestions.json plus @ trigger interaction"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page",
+            "ComposerMemberSuggestionPanel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerMemberSuggestions",
+          "source": "kmp-shared"
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "components": [
+            "ThreadComposerPage composer"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "reason": "Depends on shared composer fixture route and OHOS capture.",
+          "source": "kmp-shared"
+        }
+      ]
+    },
+    {
+      "id": "components.thread.composer.channel-suggestions",
+      "title": "Thread Composer Channel Suggestions",
+      "surface": "thread",
+      "group": "product",
+      "status": "baseline",
+      "notes": "Real React MessageInput #channel autocomplete popover vs Android connected visual-only rendering of ThreadComposerContent with the channel suggestion panel open. Covers the # icon, channel name, and description row layout.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "ready",
+          "components": [
+            "MessageInput"
+          ],
+          "path": "packages/web/src/components/message/MessageInput.tsx",
+          "fixture": "fixtures/components.thread.composer.channel-suggestions.json plus # trigger interaction"
+        },
+        {
+          "id": "android",
+          "status": "ready",
+          "components": [
+            "ThreadComposerContent visual-only page",
+            "ComposerSuggestionPanel"
+          ],
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/ThreadComposerPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureThreadComposerChannelSuggestions",
           "source": "kmp-shared"
         },
         {
