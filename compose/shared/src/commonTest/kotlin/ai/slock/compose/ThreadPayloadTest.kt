@@ -1234,6 +1234,130 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun refreshPatchPreservesResolvedLinkedTaskForVisibleTaskMessage() {
+        val previous =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                status = "content",
+                sourceThreadId = "thread-channel-1",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "message-240",
+                            authorId = "user-artin",
+                            authorName = "Artin",
+                            body = "ship task",
+                            taskId = "task-240",
+                            taskNumber = 240,
+                            taskStatus = "InReview",
+                            taskAssigneeId = "agent-android",
+                            taskAssigneeName = "Android Developer"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task-240",
+                            title = "ship task",
+                            status = "InReview",
+                            taskNumber = 240,
+                            messageId = "message-240",
+                            assigneeId = "agent-android",
+                            assigneeName = "Android Developer"
+                        )
+                    )
+            )
+        val refreshPatch =
+            previous.copy(
+                messages =
+                    listOf(
+                        previous.messages.first().copy(
+                            taskStatus = null,
+                            taskAssigneeName = "agent-android"
+                        )
+                    ),
+                tasks = emptyList()
+            )
+
+        val payload = refreshPatch.preserveStableTimelineFrom(previous)
+
+        assertEquals(listOf("task-240"), payload.tasks.map { it.id })
+        val retainedTask = payload.tasks.single()
+        val linkedTasks =
+            listOf(
+                TaskSummary(
+                    id = TaskId(retainedTask.id),
+                    title = retainedTask.title,
+                    status = TaskStatus.InReview,
+                    taskNumber = retainedTask.taskNumber,
+                    messageId = MessageId(retainedTask.messageId ?: ""),
+                    assignee =
+                        MemberProfile(
+                            id = MemberId(retainedTask.assigneeId ?: ""),
+                            displayName = retainedTask.assigneeName ?: "",
+                            handle = retainedTask.assigneeName ?: "",
+                            kind = MemberKind.Agent
+                        ),
+                    updatedAtLabel = retainedTask.updatedAtLabel
+                )
+            ).threadLinkedTasksByMessageId()
+        val linkedMessage = payload.messages.first().withLinkedTask(linkedTasks["message-240"])
+        assertEquals("InReview", linkedMessage.taskStatus)
+        assertEquals("Android Developer", linkedMessage.taskAssigneeName)
+        assertEquals("#240 @Android Developer", threadMessageTaskMetaLabel(linkedMessage, linkedMessage.taskAssigneeName))
+    }
+
+    @Test
+    fun refreshPatchDropsResolvedLinkedTaskWhenVisibleMessagesNoLongerReferenceIt() {
+        val previous =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                status = "content",
+                sourceThreadId = "thread-channel-1",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "message-240",
+                            authorId = "user-artin",
+                            authorName = "Artin",
+                            body = "ship task",
+                            taskId = "task-240",
+                            taskNumber = 240
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "task-240",
+                            title = "ship task",
+                            status = "InReview",
+                            taskNumber = 240,
+                            messageId = "message-240",
+                            assigneeId = "agent-android",
+                            assigneeName = "Android Developer"
+                        )
+                    )
+            )
+        val refreshPatch =
+            previous.copy(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "message-241",
+                            authorId = "user-artin",
+                            authorName = "Artin",
+                            body = "plain message"
+                        )
+                    ),
+                tasks = emptyList()
+            )
+
+        val payload = refreshPatch.preserveStableTimelineFrom(previous)
+
+        assertEquals(emptyList(), payload.tasks)
+    }
+
+    @Test
     fun appShellActivityThreadItemShowsMissingOriginFallbackWhenPreviewIsUnavailable() {
         val request =
             InboxItem(

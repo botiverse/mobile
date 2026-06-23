@@ -2632,7 +2632,6 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
         messages
             .withRetainedLocalFailedMessagesFrom(previous.messages)
             .preserveStableItemsFrom(previous.messages) { item -> item.id }
-    val stableTasks = tasks.preserveStableItemsFrom(previous.tasks) { item -> item.id }
     val preservePreviousOrigin = shouldPreserveLoadedOriginFrom(previous)
     val stableOrigin =
         when {
@@ -2640,6 +2639,14 @@ internal fun KuiklyThreadScreenPayload.preserveStableTimelineFrom(
             originMessage != null && originMessage == previous.originMessage -> previous.originMessage
             else -> originMessage
         }
+    val stableTasks =
+        tasks
+            .preserveStableItemsFrom(previous.tasks) { item -> item.id }
+            .withReferencedThreadTasksFrom(
+                previous = previous.tasks,
+                messages = stableMessages,
+                originMessage = stableOrigin
+            )
     val stableOriginParentMessageId =
         if (preservePreviousOrigin) {
             previous.originParentMessageId ?: previous.originMessage?.id ?: originParentMessageId
@@ -2720,6 +2727,43 @@ private inline fun <T, K> List<T>.preserveStableItemsFrom(
         else -> this
     }
 }
+
+private fun List<KuiklyThreadTaskItem>.withReferencedThreadTasksFrom(
+    previous: List<KuiklyThreadTaskItem>,
+    messages: List<KuiklyThreadMessageItem>,
+    originMessage: KuiklyThreadMessageItem?
+): List<KuiklyThreadTaskItem> {
+    if (previous.isEmpty()) return this
+    val referencedMessages = messages + listOfNotNull(originMessage)
+    if (referencedMessages.none { it.hasThreadTaskReference() }) return this
+    val existingIds = mapNotNull { item -> item.id.takeIf { it.isNotBlank() } }.toSet()
+    val existingNumbers = mapNotNull { item -> item.taskNumber }.toSet()
+    val retained =
+        previous.filter { item ->
+            val taskNumberIsSuperseded = item.taskNumber?.let { it in existingNumbers } == true
+            item.matchesAnyThreadTaskReference(referencedMessages) &&
+                item.id.takeIf { it.isNotBlank() } !in existingIds &&
+                !taskNumberIsSuperseded
+        }
+    if (retained.isEmpty()) return this
+    return this + retained
+}
+
+private fun KuiklyThreadMessageItem.hasThreadTaskReference(): Boolean =
+    taskId?.isNotBlank() == true || taskNumber != null
+
+private fun KuiklyThreadTaskItem.matchesAnyThreadTaskReference(
+    messages: List<KuiklyThreadMessageItem>
+): Boolean =
+    messages.any { message ->
+        val taskIdMatches =
+            id.isNotBlank() &&
+                message.taskId?.takeIf { it.isNotBlank() } == id
+        val taskNumberMatches =
+            taskNumber != null &&
+                message.taskNumber == taskNumber
+        taskIdMatches || taskNumberMatches
+    }
 
 private val MemberProfile.memberKey: String
     get() = "${kind.name}:${id.value}"
