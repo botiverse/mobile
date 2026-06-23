@@ -404,8 +404,6 @@ private fun ForgotPasswordScreen() {
             }
         },
         onBackToSignIn = { pager.openAuthPage(LOGIN_PAGE) },
-        onOpenTerms = { bridge.openUrl(AUTH_TERMS_URL) },
-        onOpenPrivacy = { bridge.openUrl(AUTH_PRIVACY_URL) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) }
     )
 }
@@ -979,8 +977,6 @@ internal fun ForgotPasswordContent(
     onEmailChange: (String) -> Unit,
     onSubmit: () -> Unit,
     onBackToSignIn: () -> Unit,
-    onOpenTerms: () -> Unit = {},
-    onOpenPrivacy: () -> Unit = {},
     onOpenDiagnostics: () -> Unit = {}
 ) {
     AuthScaffold(onDiagnosticsShortcut = onOpenDiagnostics) {
@@ -1024,10 +1020,6 @@ internal fun ForgotPasswordContent(
                 enabled = email.isNotBlank() && emailError == null && !sent,
                 loading = sending,
                 preserveDisabledVisual = true
-            )
-            AuthLegalNotice(
-                onOpenTerms = onOpenTerms,
-                onOpenPrivacy = onOpenPrivacy
             )
             AuthTextLink("Back to sign in") { onBackToSignIn() }
         }
