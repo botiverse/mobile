@@ -74,7 +74,7 @@ internal fun SlockBrutalSelectField(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(triggerHeight)
+                    .height(triggerHeight + shadowOffset)
                     .onGloballyPositioned { coords ->
                         triggerRootOffset = coords.positionInRoot()
                         triggerRootWidth = coords.size.width.toFloat()

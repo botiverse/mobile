@@ -149,11 +149,11 @@ private fun RealtimeEvent.realtimeStoreKey(serverId: ServerId): String =
                 is TaskDeleted -> "task:deleted:${taskId.value}"
                 is MemberPresenceUpdated -> "member:presence:${memberId.value}:${presence}:${serverSeq ?: "na"}"
                 is RealtimeRefreshRequired ->
-                    "refresh:$scope:$reason:${this.serverId?.value ?: "na"}:${channelId?.value ?: "na"}:" +
+                    "refresh:$scope:$reason:${serverId.value}:${channelId?.value ?: "na"}:" +
                         "${memberId?.value ?: "na"}:${subjectId ?: "na"}"
-                is ServerMembershipRemoved -> "server:membership_removed:${this.serverId.value}"
-                is ServerDeleted -> "server:deleted:${this.serverId.value}"
-                is ServerPlanUpdated -> "server:plan:${this.serverId.value}:$plan"
+                is ServerMembershipRemoved -> "server:membership_removed:${serverId.value}"
+                is ServerDeleted -> "server:deleted:${serverId.value}"
+                is ServerPlanUpdated -> "server:plan:${serverId.value}:$plan"
                 is AgentCreated -> "agent:created:${agent.id.value}"
                 is SyncResumeResponse ->
                     "sync:resume:$currentSeq:$hasMore:${messages.joinToString("|") { "${it.id.value}:${it.seq ?: "na"}" }}"

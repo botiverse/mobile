@@ -159,6 +159,64 @@ internal fun SharedCreateAgentDialogSubmit.toCreateAgentRequest(): ai.slock.comp
         avatarUrl = randomCreateAgentAvatarWireValue()
     )
 
+internal fun buildSharedCreateAgentDialogSubmit(
+    name: String,
+    description: String,
+    selectedMachineId: String?,
+    requiredComputer: String?,
+    external: Boolean,
+    runtime: String,
+    model: String,
+    customModelMode: Boolean,
+    customModelName: String,
+    providerMode: RuntimeProviderMode,
+    providerApiUrl: String,
+    providerApiKey: String,
+    fastMode: Boolean,
+    reasoningEffort: String?,
+    envVarEntries: List<Pair<String, String>>,
+    command: String
+): SharedCreateAgentDialogSubmit {
+    val finalMachineId =
+        if (external) null
+        else (requiredComputer?.takeIf { it.isNotBlank() } ?: selectedMachineId)
+    val runtimeConfig =
+        if (external) {
+            null
+        } else {
+            buildRuntimeConfig(
+                runtime = runtime,
+                model = model,
+                customModelMode = customModelMode,
+                customModelName = customModelName.takeIf { customModelMode },
+                providerMode = providerMode,
+                providerApiUrl = providerApiUrl,
+                providerApiKey = providerApiKey,
+                fastMode = fastMode,
+                reasoningEffort = reasoningEffort,
+                envVars = createAgentRuntimeEnvVars(envVarEntries),
+                command = command.takeIf { supportsRuntimeCommand(runtime) }
+            )
+        }
+    return SharedCreateAgentDialogSubmit(
+        name = name.trim().removePrefix("@"),
+        description = description.trim().takeIf { it.isNotBlank() },
+        machineId = finalMachineId,
+        runtimeConfig = runtimeConfig,
+        external = external
+    )
+}
+
+private fun createAgentRuntimeEnvVars(entries: List<Pair<String, String>>): Map<String, String>? {
+    val values =
+        entries
+            .mapNotNull { (key, value) ->
+                key.trim().takeIf { it.isNotBlank() }?.let { it to value }
+            }
+            .toMap()
+    return values.takeIf { it.isNotEmpty() }
+}
+
 private fun randomCreateAgentAvatarWireValue(): String {
     val keys = PixelAvatarPickerKeys
     val key = if (keys.isEmpty()) PixelAvatarDefaultKey else keys.random()
@@ -586,38 +644,24 @@ internal fun SharedCreateAgentDialog(
                     minWidth = 126.dp,
                     backgroundColor = SlockColor.AccentPink,
                     onClick = {
-                        val finalMachineId =
-                            if (external) null
-                            else (requiredComputer?.takeIf { it.isNotBlank() }
-                                ?: selectedMachineId)
-                        val finalRuntimeConfig =
-                            if (external) {
-                                null
-                            } else {
-                                buildRuntimeConfig(
-                                    runtime = runtime,
-                                    model = model,
-                                    customModelMode = customModelMode,
-                                    customModelName = customModelName.takeIf { customModelMode },
-                                    providerMode = providerMode,
-                                    providerApiUrl = providerApiUrl,
-                                    providerApiKey = providerApiKey,
-                                    fastMode = fastMode,
-                                    reasoningEffort = reasoningEffort,
-                                    envVars = envVarEntries
-                                        .filter { it.first.isNotBlank() }
-                                        .toMap()
-                                        .takeIf { it.isNotEmpty() },
-                                    command = command.takeIf { supportsRuntimeCommand(runtime) }
-                                )
-                            }
                         onSubmit(
-                            SharedCreateAgentDialogSubmit(
-                                name = trimmedName.removePrefix("@"),
-                                description = description.trim().takeIf { it.isNotBlank() },
-                                machineId = finalMachineId,
-                                runtimeConfig = finalRuntimeConfig,
-                                external = external
+                            buildSharedCreateAgentDialogSubmit(
+                                name = trimmedName,
+                                description = description,
+                                selectedMachineId = selectedMachineId,
+                                requiredComputer = requiredComputer,
+                                external = external,
+                                runtime = runtime,
+                                model = model,
+                                customModelMode = customModelMode,
+                                customModelName = customModelName,
+                                providerMode = providerMode,
+                                providerApiUrl = providerApiUrl,
+                                providerApiKey = providerApiKey,
+                                fastMode = fastMode,
+                                reasoningEffort = reasoningEffort,
+                                envVarEntries = envVarEntries,
+                                command = command
                             )
                         )
                     }

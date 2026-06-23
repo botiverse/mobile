@@ -1,5 +1,9 @@
 package ai.slock.compose
 
+import ai.slock.compose.model.RUNTIME_PROVIDER_MODE_CUSTOM
+import ai.slock.compose.model.RuntimeModeConfig
+import ai.slock.compose.model.RuntimeModelConfig
+import ai.slock.compose.model.RuntimeProviderConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -160,5 +164,89 @@ class SharedCreateAgentDialogTest {
         val avatarUrl = assertNotNull(request.avatarUrl)
         assertTrue(avatarUrl.startsWith("pixel:"))
         assertTrue(avatarUrl.removePrefix("pixel:") in PixelAvatarPickerKeys)
+    }
+
+    @Test
+    fun createAgentDialogSubmitExtractsAllRuntimeFormFields() {
+        val request =
+            buildSharedCreateAgentDialogSubmit(
+                name = " @Build_Agent ",
+                description = "  Runs build checks  ",
+                selectedMachineId = "machine-selected",
+                requiredComputer = "machine-required",
+                external = false,
+                runtime = "claude",
+                model = "sonnet",
+                customModelMode = true,
+                customModelName = " vendor/private-model ",
+                providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
+                providerApiUrl = " https://gateway.example.com ",
+                providerApiKey = " sk-test ",
+                fastMode = true,
+                reasoningEffort = "high",
+                envVarEntries =
+                    listOf(
+                        " ANTHROPIC_API_KEY " to "secret",
+                        "  " to "ignored",
+                        "SLOCK_MODE" to "test"
+                    ),
+                command = " /usr/local/bin/claude "
+            ).toCreateAgentRequest()
+
+        assertEquals("Build_Agent", request.name)
+        assertEquals("Runs build checks", request.description)
+        assertEquals("machine-required", request.machineId)
+        assertFalse(request.external)
+
+        val runtimeConfig = assertNotNull(request.runtimeConfig)
+        assertEquals("claude", runtimeConfig.runtime)
+        assertEquals(RuntimeModelConfig.Custom("vendor/private-model"), runtimeConfig.model)
+        assertEquals(
+            RuntimeProviderConfig.Custom(
+                apiUrl = "https://gateway.example.com",
+                apiKey = "sk-test"
+            ),
+            runtimeConfig.provider
+        )
+        assertEquals(RuntimeModeConfig.Fast, runtimeConfig.mode)
+        assertEquals("high", runtimeConfig.reasoningEffort)
+        assertEquals(
+            mapOf(
+                "ANTHROPIC_API_KEY" to "secret",
+                "SLOCK_MODE" to "test"
+            ),
+            runtimeConfig.envVars
+        )
+        assertEquals("/usr/local/bin/claude", runtimeConfig.command)
+        assertNotNull(request.avatarUrl)
+    }
+
+    @Test
+    fun externalCreateAgentSubmitDoesNotLeakRuntimeFields() {
+        val submit =
+            buildSharedCreateAgentDialogSubmit(
+                name = "External",
+                description = "",
+                selectedMachineId = "machine-1",
+                requiredComputer = "machine-required",
+                external = true,
+                runtime = "claude",
+                model = "sonnet",
+                customModelMode = false,
+                customModelName = "",
+                providerMode = RUNTIME_PROVIDER_MODE_CUSTOM,
+                providerApiUrl = "https://gateway.example.com",
+                providerApiKey = "sk-test",
+                fastMode = true,
+                reasoningEffort = "high",
+                envVarEntries = listOf("ANTHROPIC_API_KEY" to "secret"),
+                command = "/usr/local/bin/claude"
+            )
+
+        assertEquals("External", submit.name)
+        assertEquals(null, submit.description)
+        assertEquals(null, submit.machineId)
+        assertEquals(null, submit.runtimeConfig)
+        assertTrue(submit.external)
     }
 }
