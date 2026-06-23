@@ -179,7 +179,6 @@ internal fun SlockFilterPopover(
                             placeholder = searchPlaceholder,
                             autoFocus = false,
                             maxLines = 1,
-                            showShadow = false,
                             showClearWhenNotEmpty = true,
                             onClear = { onSearchChange("") },
                             modifier = Modifier
