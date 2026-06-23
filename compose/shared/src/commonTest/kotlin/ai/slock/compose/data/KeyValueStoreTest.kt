@@ -43,39 +43,39 @@ class KeyValueStoreTest {
     }
 
     @Test
-    fun mmkvStoreMigratesLegacyValueOnRead() {
-        val backend = FakeMMKVBackend()
-        val legacy = InMemorySlockKeyValueStore(mapOf("locale" to "zh-Hans"))
-        val store =
-            KuiklyMMKVKeyValueStoreDelegate(
-                backend = backend,
-                namespace = "slockLocal",
-                legacyStore = legacy
-            )
-
-        assertEquals("zh-Hans", store.getString("locale"))
-        assertEquals("zh-Hans", backend.values["slockLocal" to "slockLocal:locale"])
-    }
-
-    @Test
-    fun mmkvStoreDeletesLegacyFallbackToo() {
+    fun mmkvStoreReadsNamespacedValue() {
         val backend =
             FakeMMKVBackend(
                 initialValues = mapOf(("slockLocal" to "slockLocal:locale") to "zh-Hans")
             )
-        val legacy = InMemorySlockKeyValueStore(mapOf("locale" to "zh-Hans"))
         val store =
             KuiklyMMKVKeyValueStoreDelegate(
                 backend = backend,
-                namespace = "slockLocal",
-                legacyStore = legacy
+                namespace = "slockLocal"
             )
+
+        assertEquals("zh-Hans", store.getString("locale"))
+    }
+
+    @Test
+    fun mmkvStoreWritesAndDeletesNamespacedValue() {
+        val backend =
+            FakeMMKVBackend(
+                initialValues = mapOf(("slockLocal" to "slockLocal:locale") to "zh-Hans")
+            )
+        val store =
+            KuiklyMMKVKeyValueStoreDelegate(
+                backend = backend,
+                namespace = "slockLocal"
+            )
+
+        store.putString("locale", "en")
+        assertEquals("en", backend.values["slockLocal" to "slockLocal:locale"])
 
         store.putString("locale", null)
 
         assertNull(store.getString("locale"))
         assertFalse(("slockLocal" to "slockLocal:locale") in backend.values)
-        assertNull(legacy.getString("locale"))
     }
 
     private class FakeMMKVBackend(

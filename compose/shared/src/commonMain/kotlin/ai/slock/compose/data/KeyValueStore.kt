@@ -1,7 +1,6 @@
 package ai.slock.compose.data
 
 import com.tencent.kuikly.core.module.Module
-import com.tencent.kuikly.core.module.SharedPreferencesModule
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.Pager
 
@@ -42,24 +41,6 @@ class InMemorySlockKeyValueStore(
             values[key] = value
         }
     }
-}
-
-class KuiklySharedPreferencesKeyValueStore(
-    private val pager: Pager,
-    /** Key prefix only. Do not treat this as a platform Preference fileName. */
-    private val namespace: String
-) : SlockKeyValueStore {
-    private val module: SharedPreferencesModule
-        get() = pager.acquireModule(SharedPreferencesModule.MODULE_NAME)
-
-    override fun getString(key: String): String? =
-        module.getString(namespaced(key)).takeIf { it.isNotEmpty() }
-
-    override fun putString(key: String, value: String?) {
-        module.setString(namespaced(key), value.orEmpty())
-    }
-
-    private fun namespaced(key: String): String = "$namespace:$key"
 }
 
 internal interface SlockMMKVKeyValueBackend {
@@ -161,49 +142,34 @@ internal class KuiklyMMKVKeyValueBackend(
 
 class KuiklyMMKVKeyValueStore(
     pager: Pager,
-    namespace: String,
-    legacyStore: SharedPreferenceStore = KuiklySharedPreferencesKeyValueStore(pager, namespace)
+    namespace: String
 ) : SlockKeyValueStore by KuiklyMMKVKeyValueStoreDelegate(
     backend = KuiklyMMKVKeyValueBackend(pager),
-    namespace = namespace,
-    legacyStore = legacyStore
+    namespace = namespace
 )
 
 internal class KuiklyMMKVKeyValueStoreDelegate(
     private val backend: SlockMMKVKeyValueBackend,
-    private val namespace: String,
-    private val legacyStore: SharedPreferenceStore
+    private val namespace: String
 ) : SlockKeyValueStore {
     private val mmapID = namespace
 
     override fun getString(key: String): String? {
         val namespacedKey = namespaced(key)
-        val mmkvValue =
-            runCatching {
-                if (backend.containsKey(namespacedKey, mmapID)) {
-                    backend.getString(namespacedKey, mmapID)
-                } else {
-                    null
-                }
-            }.getOrNull()
-        if (mmkvValue != null) return mmkvValue
-        val legacyValue = legacyStore.getString(key)
-        if (legacyValue != null) {
-            runCatching { backend.putString(namespacedKey, legacyValue, mmapID) }
+        return if (backend.containsKey(namespacedKey, mmapID)) {
+            backend.getString(namespacedKey, mmapID)
+        } else {
+            null
         }
-        return legacyValue
     }
 
     override fun putString(key: String, value: String?) {
         val namespacedKey = namespaced(key)
-        runCatching {
-            if (value == null) {
-                backend.removeString(namespacedKey, mmapID)
-            } else {
-                backend.putString(namespacedKey, value, mmapID)
-            }
+        if (value == null) {
+            backend.removeString(namespacedKey, mmapID)
+        } else {
+            backend.putString(namespacedKey, value, mmapID)
         }
-        legacyStore.putString(key, value)
     }
 
     private fun namespaced(key: String): String = "$namespace:$key"
