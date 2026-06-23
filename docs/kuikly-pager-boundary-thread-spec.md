@@ -2,7 +2,15 @@
 
 ## Status
 
-Draft for review after task #202 Thread first-open profiling.
+Post-cleaned after task #203.
+
+The mobile Thread launch-boundary work described here is implemented on local
+`main`: app-shell openers route to standalone `compose_thread`,
+`compose_thread` accepts only `WireThreadLaunchPayload` in production, the
+app shell owns realtime/session lifecycle, and the former embedded Thread hot
+path has been deleted. This document now records the contract, implementation
+evidence, and the follow-ups that are deliberately outside the boundary
+migration.
 
 ## Problem
 
@@ -52,7 +60,7 @@ heavy detail surface. Tabs inside a Pager are appropriate for tightly related
 views in one page. App-wide navigation and heavy detail pages should be treated
 as page-boundary candidates.
 
-## Current Slock Shape
+## Post-Clean Slock Shape
 
 Current Android host:
 
@@ -66,13 +74,17 @@ Current shared shell:
 
 - `SlockHomeComponents.kt` contains `ComposeSlockHomePage` and the structural
   home shell with bottom-tab state.
-- The shell has carried retained Home/Tasks/Members/Settings UI and embedded
-  Thread route state.
-- Thread construction still has to coordinate route state, member suggestions,
-  composer draft, files/tasks side stores, rich message rendering, and modals.
+- The shell carries retained Home/Tasks/Members/Settings UI and owns the
+  session-level realtime connection.
+- Thread is no longer a retained embedded shell route on the mobile hot path.
+  Shell openers call `RouterModule.openPage(THREAD_PAGE, pageData)` with
+  `WireThreadLaunchPayload`.
+- Standalone Thread construction still coordinates route state, member
+  suggestions, composer draft, files/tasks side stores, rich message rendering,
+  and modals, but those concerns are inside the Thread Pager boundary.
 
-This makes Thread look like an internal tab/detail state inside a large app
-surface rather than a Kuikly page with its own lifecycle.
+Thread now behaves like a Kuikly page with its own lifecycle rather than an
+internal tab/detail state inside a large app surface.
 
 ## Architecture Hypothesis
 
@@ -213,82 +225,107 @@ called out. Phase 1 measures the Pager boundary with Thread internals kept as
 close as practical to the embedded path. Composer/action-card/files/task lazy
 mounting is a later phase so performance attribution stays clean.
 
+## Post-Clean Implementation Status
+
+| Area | Status | Evidence |
+| --- | --- | --- |
+| Standalone route boundary | Done | `ef7f8a5d` routes Thread openers through standalone Pager; Home/Activity/Search/Saved/Tasks build `WireThreadLaunchPayload` and call `openPage(THREAD_PAGE, ...)`. |
+| PagerData whitelist | Done | `3a5d728a` hardens launch payload boundary. `parseThreadScreenPayload()` now accepts only `WireThreadLaunchPayload` and returns `payload_parse_failed` for full content payloads. `ThreadPayloadTest` descriptor guards exclude `messages`, `tasks`, `members`, `filesPayload`, `composer`, display, and capability fields. |
+| Realtime ownership | Done | `dd462520` relays shell realtime events into the standalone Pager; `05721047` keeps auth/session ownership in the shell/auth gate; Thread applies forwarded events through `SharedThreadIntent.ApplyRealtimeEvent` and does not create a second connection. |
+| First-frame title/loading shell | Done | `87fae368` restores canonical standalone channel titles; `bc5fa8a6` keeps the standalone shell stable while canonical content loads. Header first-frame data comes from guarded store/candidate context, not full route payload. |
+| Embedded Thread hot path | Done | `68764ac9` deletes the app-shell embedded Thread route; `977760e1` removes embedded Thread realtime residue. Mobile Thread navigation now uses the standalone Pager path. |
+| Thread tab state isolation | Done for launch-boundary scope | `d6e74e4d`, `05afc7b7`, and `69a1dd5e` move Tasks, Files, and Composer store collection into their tab/subroute surfaces. The remaining route-level Tasks join logger is diagnostics-only. |
+| Numeric performance proof | Follow-up | Field smoke after the boundary work accepted the direction, but formal trace artifacts remain tracked separately by task #207. This is not a blocker for the launch-boundary contract. |
+| Future two-pane/tablet mode | Not implemented | The mobile hot path intentionally has no embedded Thread. Any two-pane mode needs a separate explicit lifecycle contract before reintroducing a visible second surface. |
+
 ## Migration Plan
 
-### Phase 0: Document and Freeze the Contract
+### Phase 0: Document and Freeze the Contract - Done
 
-- Keep `40802fe8` as the short-term mitigation.
-- Add this spec and link future Thread launch changes to it.
-- Do not add more heavy state to the embedded Thread path.
+- `40802fe8` remained a short-term mitigation while the boundary proof landed.
+- This spec is now the canonical launch-boundary contract for Thread.
+- The embedded Thread path was removed rather than extended.
 
-### Phase 1: Standalone Thread Pager Proof
+### Phase 1: Standalone Thread Pager Proof - Done
 
-Create a proof path where Home/Tasks opens Thread as a standalone Pager instead
-of embedded shell content.
+Home/Tasks/Activity/Search/Saved open Thread as a standalone Pager instead of
+embedded shell content.
 
 Requirements:
 
-- Use the existing `ComposeThreadPage` / `THREAD_PAGE` entry.
-- Pass only route identity in PagerData.
-- Keep `WireThreadLaunchPayload` as a hard whitelist. Descriptor tests must
+- Use the existing `ComposeThreadPage` / `THREAD_PAGE` entry. Done.
+- Pass only route identity in PagerData. Done.
+- Keep `WireThreadLaunchPayload` as a hard whitelist. Done; descriptor tests
   reject display/capability fields such as `title`, `dmPeerName`,
   `membersCount`, `joined`, `canSend`, `settingsActions`, `emptyTitle`,
   `messages`, `tasks`, `members`, `filesPayload`, and `composer`.
 - Keep Thread internals materially unchanged from the embedded path for this
-  proof. Do not bundle composer/action-card/files/task lazy mounting into the
-  boundary experiment.
+  proof. Done for the boundary commits; tab cleanup landed afterward as scoped
+  internal isolation.
 - Preserve auth/session/realtime behavior through the existing shared stores.
+  Done.
 - Use the realtime ownership contract above: shell/session owns the connection,
   standalone Thread receives routed events and does not create a duplicate
-  connection.
-- Close with `RouterModule.closePage()`.
-- No new Android multi-container architecture.
+  connection. Done.
+- Close with `RouterModule.closePage()`. Done.
+- No new Android multi-container architecture. Done.
 - Task Thread launch must pass task/thread identity and focused intent only.
   The opener must not prefetch a display payload or pre-create UI state just to
   fill the Thread Pager header. Thread Pager/store resolves create-or-open,
-  auth-required, and canonical content after launch.
+  auth-required, and canonical content after launch. Done.
 
 Measurements:
 
-- Home -> `#all`.
-- Tasks -> Thread with only task/thread identity launch params.
-- Reply Thread from long-press/Open Thread.
-- Back/close correctness.
-- Composer send path.
-- Attachment picker path.
-- realtime event delivery and duplicate-connection check.
+- Home -> `#all`: field smoke accepted the boundary direction after the title
+  and loading-shell fixes.
+- Tasks -> Thread with only task/thread identity launch params: implemented.
+- Reply Thread from long-press/Open Thread: implemented, with later reply-route
+  fixes handled as focused follow-ups.
+- Back/close correctness: implemented through `RouterModule.closePage()`.
+- Composer send path: preserved inside the standalone route.
+- Attachment picker path: preserved inside the standalone route.
+- realtime event delivery and duplicate-connection check: implemented in the
+  relay/auth-gate work; formal trace proof remains task #207 follow-up.
 
 Acceptance:
 
-- `thread_first_render`, `thread_payload_ready`, and `thread_first_frame` must
-  improve or stay no worse than the embedded path.
+- `thread_first_render`, `thread_payload_ready`, and `thread_first_frame`
+  improve or stay no worse than the embedded path: accepted by field smoke;
+  formal trace capture remains task #207.
 - Android host `layout`/`dispatchDraw` for Thread first content should drop
-  meaningfully from current traces.
-- No duplicate realtime subscriptions/connections and no duplicate event apply.
-- No lost Home/Tasks state on return.
-- No stale badge/presence regression.
-- No product display/capability state appears in `compose_thread` PagerData.
+  meaningfully from current traces: task #207 follow-up.
+- No duplicate realtime subscriptions/connections and no duplicate event apply:
+  done by shell-owned realtime plus standalone relay.
+- No lost Home/Tasks state on return: done by retaining Home/Tasks in the shell
+  while Thread uses standalone router back/close.
+- No stale badge/presence regression: done by shell-owned realtime projection.
+- No product display/capability state appears in `compose_thread` PagerData:
+  done and guarded by tests.
 - No preloaded Thread messages/tasks/files/composer/settings/member payload
-  appears in `compose_thread` PagerData.
+  appears in `compose_thread` PagerData: done and guarded by tests.
 
-### Phase 2: Remove Embedded Thread Hot Path
+### Phase 2: Remove Embedded Thread Hot Path - Done
 
-If Phase 1 passes:
+- Thread openings route through the Thread Pager by default.
+- The mobile embedded Thread path has been deleted.
+- Two-pane/tablet mode is not implemented. If needed later, it must be designed
+  as an explicit second visible surface with its own lifecycle contract, not by
+  restoring an accidental retained hidden route.
 
-- Route Thread openings through the Thread Pager by default.
-- Keep embedded Thread only for explicitly supported two-pane/tablet mode.
-- In two-pane mode, keep Home visible and model Thread as a second visible
-  page-like surface with an explicit lifecycle contract, not as an accidental
-  hidden retained route.
-
-### Phase 3: In-Page Thread Tab Cleanup
+### Phase 3: In-Page Thread Tab Cleanup - Done for State Isolation
 
 Inside the Thread Pager:
 
-- Keep Chat as the default mounted tab.
-- Mount Tasks/Files only when selected or after first content is stable.
+- Keep Chat as the default mounted tab. Done.
+- Collect Tasks/Files only inside their selected tab surfaces. Done.
+- Collect Composer draft state inside `ThreadComposerRoute`. Done.
 - Use Kuikly `Tabs` semantics only for the Thread page's local Chat/Tasks/Files
-  switch, not for app-wide navigation.
+  switch, not for app-wide navigation. Done.
+
+The broader "first screen stays small" work continues as normal Thread
+performance work: markdown rich-body upgrades, action-card staging, attachment
+comment surfaces, and additional lazy/render pruning should remain separate
+follow-up tasks so they do not reopen the launch-boundary decision.
 
 ## Risks
 
@@ -311,12 +348,13 @@ Inside the Thread Pager:
 
 ## Decision Gate
 
-We should proceed with a standalone Thread Pager proof before any multi-container
-or native-host isolation experiment.
+Decision recorded: mobile Thread belongs behind a standalone Kuikly Pager
+boundary, and app-shell embedded Thread should stay deleted.
 
-If the standalone Pager proof reduces host traversal, then the current embedded
-Thread route is the wrong Kuikly boundary.
+Do not start a multi-container or native-host isolation experiment for this
+problem unless a fresh trace shows the standalone Pager still bottlenecks in
+host container traversal after Thread-internal render work.
 
-If it does not reduce traversal, then the next bottleneck is likely Thread's
-internal layout/list/render structure, and we should optimize that inside the
-Thread Pager rather than changing the host architecture.
+Future performance work should optimize inside the Thread Pager first. Future
+two-pane work should get its own explicit lifecycle and realtime contract before
+any embedded/second-surface route is restored.

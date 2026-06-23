@@ -34,6 +34,7 @@ import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
 import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
+import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.material3.LinearProgressIndicator
@@ -146,6 +147,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
+    var downloadProgressPercent by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<Int?>(null) }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
         val nextPayload =
             when (payload.source) {
@@ -173,7 +175,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                         .ifBlank { currentPayload.name }
                         .ifBlank { currentPayload.path }
                         .ifBlank { "attachment" },
-                mimeType = currentPayload.externalMimeType
+                mimeType = currentPayload.externalMimeType,
+                onProgress = { progress ->
+                    downloadProgressPercent = progress.percent
+                }
             )
         return when (result?.optString("status").orEmpty()) {
             "opened", "" -> null
@@ -189,14 +194,17 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (!canOpenWith || downloadStatus == "downloading") return
         downloadStatus = "downloading"
         downloadMessage = ""
+        downloadProgressPercent = null
         coroutineScope.launch {
             val error = openPayloadExternally(payload)
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
+                downloadProgressPercent = null
             } else {
                 downloadStatus = "failed"
                 downloadMessage = error
+                downloadProgressPercent = null
                 bridge.toast(error)
             }
         }
@@ -229,11 +237,12 @@ private fun SlockFilePreviewStandalonePageContent() {
             onOpenUrl = {},
             downloadStatusLabel =
                 when (downloadStatus) {
-                    "downloading" -> "Downloading..."
+                    "downloading" -> downloadProgressPercent?.let { "Downloading $it%" } ?: "Downloading..."
                     "failed" -> downloadMessage.ifBlank { "Download failed" }
                     else -> null
                 },
             downloadInProgress = downloadStatus == "downloading",
+            downloadProgressPercent = downloadProgressPercent,
             onDownload = if (canOpenWith) ::requestExternalOpen else null,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
@@ -493,6 +502,7 @@ internal fun SlockFilePreviewPayloadContent(
     onOpenUrl: (String) -> Unit,
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
+    downloadProgressPercent: Int? = null,
     onDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -536,6 +546,7 @@ internal fun SlockFilePreviewPayloadContent(
                     message = payload.message.ifBlank { "Image preview is unavailable." },
                     statusLabel = downloadStatusLabel,
                     showProgress = downloadInProgress,
+                    progressPercent = downloadProgressPercent,
                     actionLabel = if (onDownload != null) {
                         if (downloadInProgress) "Downloading..." else "Download"
                     } else {
@@ -569,6 +580,7 @@ internal fun SlockFilePreviewPayloadContent(
                 message = payload.message.ifBlank { "No preview is available for this file type." },
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
                 actionLabel = if (onDownload != null) {
                     if (downloadInProgress) "Downloading..." else "Download"
                 } else {
@@ -744,6 +756,7 @@ internal fun SlockFilePreviewGenericCard(
     message: String,
     statusLabel: String? = null,
     showProgress: Boolean = false,
+    progressPercent: Int? = null,
     actionLabel: String? = null,
     actionIcon: SlockLucideIconName? = null,
     actionEnabled: Boolean = true,
@@ -800,11 +813,7 @@ internal fun SlockFilePreviewGenericCard(
         }
         if (showProgress) {
             Box(modifier = Modifier.height(SlockSpacing.Md))
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth().height(4.dp),
-                color = SlockColor.AccentCyan,
-                trackColor = SlockColor.SurfaceCream
-            )
+            SlockFilePreviewProgressBar(progressPercent = progressPercent)
         }
         if (actionLabel != null && onAction != null) {
             Box(modifier = Modifier.height(SlockSpacing.Lg))
@@ -815,6 +824,45 @@ internal fun SlockFilePreviewGenericCard(
                 leadingIcon = actionIcon,
                 minWidth = 132.dp,
                 minHeight = 40.dp
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewProgressBar(progressPercent: Int?) {
+    val percent = progressPercent?.coerceIn(0, 100)
+    if (percent == null) {
+        LinearProgressIndicator(
+            modifier = Modifier.fillMaxWidth().height(4.dp),
+            color = SlockColor.AccentCyan,
+            trackColor = SlockColor.SurfaceCream
+        )
+        return
+    }
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .background(SlockColor.SurfaceCream)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
+    ) {
+        if (percent > 0) {
+            Box(
+                modifier =
+                    Modifier
+                        .weight(percent.toFloat())
+                        .fillMaxSize()
+                        .background(SlockColor.AccentCyan)
+            )
+        }
+        if (percent < 100) {
+            Box(
+                modifier =
+                    Modifier
+                        .weight((100 - percent).toFloat())
+                        .fillMaxSize()
             )
         }
     }

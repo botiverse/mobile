@@ -196,6 +196,7 @@ internal data class KuiklyPendingAttachmentItem(
     val fileName: String,
     val sizeLabel: String = "",
     val mimeType: String? = null,
+    val previewUri: String? = null,
     val status: String = "ready"
 )
 
@@ -279,6 +280,7 @@ data class SharedThreadComposerAttachment(
     val fileName: String,
     val sizeLabel: String = "",
     val mimeType: String? = null,
+    val previewUri: String? = null,
     val status: String = "ready"
 )
 
@@ -1334,6 +1336,8 @@ private fun ComposerAttachmentTile(
 ) {
     val isFailed = attachment.status == "failed"
     val isUploading = attachment.status != "ready" && !isFailed
+    val isImage = attachment.mimeType?.startsWith("image/") == true
+    val imagePreviewUri = attachment.previewUri?.takeIf { it.isNotBlank() }
     Box(modifier = Modifier.size(ThreadComposerAttachmentTileSize)) {
         Column(
             modifier =
@@ -1346,27 +1350,51 @@ private fun ComposerAttachmentTile(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            val icon =
-                when {
-                    isFailed -> SlockLucideIconName.TriangleAlert
-                    isUploading -> SlockLucideIconName.Loader
-                    attachment.mimeType?.startsWith("image/") == true -> SlockLucideIconName.Image
-                    else -> SlockLucideIconName.File
+            if (isImage) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (imagePreviewUri != null) {
+                        SlockAspectFitImagePreviewSurface(
+                            source = imagePreviewUri,
+                            contentDescription = attachment.fileName,
+                            modifier = Modifier.fillMaxSize(),
+                            borderWidth = 0.dp
+                        )
+                    } else {
+                        SlockLucideIcon(SlockLucideIconName.Image, modifier = Modifier.size(20.dp), color = "#FF000000")
+                    }
+                    if (isUploading || isFailed) {
+                        SlockLucideIcon(
+                            if (isFailed) SlockLucideIconName.TriangleAlert else SlockLucideIconName.Loader,
+                            modifier = Modifier.align(Alignment.TopStart).size(14.dp),
+                            color = if (isFailed) "#FFF97264" else "#FF000000"
+                        )
+                    }
                 }
-            SlockLucideIcon(
-                icon,
-                modifier = Modifier.size(18.dp),
-                color = if (isFailed) "#FFF97264" else "#FF000000"
-            )
+            } else {
+                val icon =
+                    when {
+                        isFailed -> SlockLucideIconName.TriangleAlert
+                        isUploading -> SlockLucideIconName.Loader
+                        else -> SlockLucideIconName.File
+                    }
+                SlockLucideIcon(
+                    icon,
+                    modifier = Modifier.size(18.dp),
+                    color = if (isFailed) "#FFF97264" else "#FF000000"
+                )
+                Text(
+                    text = attachment.fileName,
+                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 11.sp),
+                    color = SlockColor.TextBlack,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             Text(
-                text = attachment.fileName,
-                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 11.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = attachment.statusLabel(),
+                text = if (isImage && attachment.status == "ready") attachment.sizeLabel.ifBlank { "Image" } else attachment.statusLabel(),
                 style = SlockType.Caption.copy(fontSize = 8.sp, lineHeight = 10.sp),
                 color = if (isFailed) SlockColor.AccentRed else SlockColor.TextMutedGray,
                 maxLines = 1,

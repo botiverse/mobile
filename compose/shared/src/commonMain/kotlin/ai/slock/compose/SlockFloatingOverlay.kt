@@ -145,42 +145,113 @@ internal fun SlockFloatingOverlayLayout.positionContent(
     // is treated as the content's right edge) when there is no room on
     // the right. Mirrors React placeSidebarContextMenu.ts placeMenuAxis
     // behavior so the menu does not run off the right edge.
+    // #327: improved to pick the side that shows more visible content
+    // when both left and right placements would overflow.
     horizontalAutoFlip: Boolean = false
 ): Offset? {
     if (!isReady || !anchor.isSlockUsableAnchor() || contentSize.width <= 0f || contentSize.height <= 0f) {
         return null
     }
     val localAnchor = Offset(anchor.x - origin.x, anchor.y - origin.y)
-    val maxX = (size.width - contentSize.width - viewportGap).coerceAtLeast(viewportGap)
-    val x = if (horizontalAutoFlip) {
-        val preferredRightX = localAnchor.x + horizontalOffset
-        val preferredLeftX = localAnchor.x - contentSize.width + horizontalOffset
-        if (preferredRightX + contentSize.width > size.width - viewportGap) {
-            if (preferredLeftX >= viewportGap) {
-                preferredLeftX.coerceAtMost(maxX)
-            } else {
-                preferredRightX.coerceIn(viewportGap, maxX)
-            }
-        } else {
-            preferredRightX.coerceIn(viewportGap, maxX)
-        }
-    } else {
-        (localAnchor.x + horizontalOffset).coerceIn(viewportGap, maxX)
-    }
-    val preferredBelowY = localAnchor.y + verticalOffset
-    val maxY = (size.height - contentSize.height - viewportGap).coerceAtLeast(viewportGap)
-    val y = when (verticalPlacement) {
-        SlockFloatingVerticalPlacement.Below -> preferredBelowY.coerceIn(viewportGap, maxY)
-        SlockFloatingVerticalPlacement.Auto -> {
-            val preferredAboveY = localAnchor.y - contentSize.height - verticalOffset
-            if (preferredBelowY + contentSize.height > size.height - viewportGap) {
-                if (preferredAboveY >= viewportGap) preferredAboveY.coerceAtMost(maxY) else maxY
-            } else {
-                preferredBelowY.coerceIn(viewportGap, maxY)
-            }
-        }
-    }
+    val x = slockHorizontalPosition(
+        localAnchorX = localAnchor.x,
+        contentWidth = contentSize.width,
+        viewportWidth = size.width,
+        horizontalOffset = horizontalOffset,
+        viewportGap = viewportGap,
+        autoFlip = horizontalAutoFlip
+    )
+    val y = slockVerticalPosition(
+        localAnchorY = localAnchor.y,
+        contentHeight = contentSize.height,
+        viewportHeight = size.height,
+        verticalOffset = verticalOffset,
+        viewportGap = viewportGap,
+        verticalPlacement = verticalPlacement
+    )
     return Offset(x, y)
+}
+
+/**
+ * Compute the horizontal pixel offset for a floating overlay relative to
+ * [SlockFloatingOverlayLayout.origin].  When [autoFlip] is true and the
+ * preferred right-of-anchor placement overflows the viewport, the overlay
+ * is placed to the left of the anchor.  When both sides overflow the
+ * viewport the side that shows more of the content is chosen (#327).
+ */
+internal fun slockHorizontalPosition(
+    localAnchorX: Float,
+    contentWidth: Float,
+    viewportWidth: Float,
+    horizontalOffset: Float = 0f,
+    viewportGap: Float = SlockFloatingDefaultViewportGap,
+    autoFlip: Boolean = false
+): Float {
+    val maxX = (viewportWidth - contentWidth - viewportGap).coerceAtLeast(viewportGap)
+    if (!autoFlip) {
+        return (localAnchorX + horizontalOffset).coerceIn(viewportGap, maxX)
+    }
+    val rightX = localAnchorX + horizontalOffset
+    val leftX = localAnchorX - contentWidth + horizontalOffset
+    val rightFits = rightX + contentWidth <= viewportWidth - viewportGap
+    val leftFits = leftX >= viewportGap
+    return when {
+        rightFits -> rightX.coerceIn(viewportGap, maxX)
+        leftFits -> leftX.coerceAtMost(maxX)
+        else -> {
+            // Both sides overflow — pick the side that shows more content.
+            val rightEdge = (rightX + contentWidth).coerceAtMost(viewportWidth - viewportGap)
+            val rightVisible = (rightEdge - rightX.coerceAtLeast(viewportGap)).coerceAtLeast(0f)
+            val leftEdge = (leftX + contentWidth).coerceAtMost(viewportWidth - viewportGap)
+            val leftVisible = (leftEdge - leftX.coerceAtLeast(viewportGap)).coerceAtLeast(0f)
+            if (rightVisible >= leftVisible) {
+                rightX.coerceIn(viewportGap, maxX)
+            } else {
+                leftX.coerceIn(viewportGap, maxX)
+            }
+        }
+    }
+}
+
+/**
+ * Compute the vertical pixel offset for a floating overlay relative to
+ * [SlockFloatingOverlayLayout.origin].  When [verticalPlacement] is [Auto]
+ * and the preferred below-anchor placement overflows the viewport, the
+ * overlay is placed above the anchor.  When both above and below overflow
+ * the side that shows more of the content is chosen (#327).
+ */
+internal fun slockVerticalPosition(
+    localAnchorY: Float,
+    contentHeight: Float,
+    viewportHeight: Float,
+    verticalOffset: Float = SlockFloatingDefaultVerticalOffset,
+    viewportGap: Float = SlockFloatingDefaultViewportGap,
+    verticalPlacement: SlockFloatingVerticalPlacement = SlockFloatingVerticalPlacement.Below
+): Float {
+    val maxY = (viewportHeight - contentHeight - viewportGap).coerceAtLeast(viewportGap)
+    val belowY = localAnchorY + verticalOffset
+    if (verticalPlacement == SlockFloatingVerticalPlacement.Below) {
+        return belowY.coerceIn(viewportGap, maxY)
+    }
+    val aboveY = localAnchorY - contentHeight - verticalOffset
+    val belowFits = belowY + contentHeight <= viewportHeight - viewportGap
+    val aboveFits = aboveY >= viewportGap
+    return when {
+        belowFits -> belowY.coerceIn(viewportGap, maxY)
+        aboveFits -> aboveY.coerceAtMost(maxY)
+        else -> {
+            // Both sides overflow — pick the side that shows more content.
+            val belowEdge = (belowY + contentHeight).coerceAtMost(viewportHeight - viewportGap)
+            val belowVisible = (belowEdge - belowY.coerceAtLeast(viewportGap)).coerceAtLeast(0f)
+            val aboveEdge = (aboveY + contentHeight).coerceAtMost(viewportHeight - viewportGap)
+            val aboveVisible = (aboveEdge - aboveY.coerceAtLeast(viewportGap)).coerceAtLeast(0f)
+            if (belowVisible >= aboveVisible) {
+                belowY.coerceIn(viewportGap, maxY)
+            } else {
+                aboveY.coerceIn(viewportGap, maxY)
+            }
+        }
+    }
 }
 
 internal fun Offset.isSlockUsableAnchor(): Boolean =

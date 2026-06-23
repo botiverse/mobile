@@ -101,7 +101,11 @@ internal fun SlockFilterPopover(
         contentSize = popoverSize,
         onDismiss = onDismiss,
         horizontalOffset = horizontalOffsetDp,
-        verticalOffset = verticalOffsetDp
+        verticalOffset = verticalOffsetDp,
+        // #327: auto-avoid screen edges so filter popovers don't overflow
+        // the viewport on narrow screens or near the right/bottom edge.
+        horizontalAutoFlip = true,
+        verticalPlacement = SlockFloatingVerticalPlacement.Auto
     ) { popoverModifier, _ ->
         Box(
             modifier = popoverModifier

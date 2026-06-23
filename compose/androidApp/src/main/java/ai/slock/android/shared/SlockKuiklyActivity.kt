@@ -2067,9 +2067,18 @@ internal class SlockKuiklyBridgeModule(
         SlockKuiklyThreadAdapter.execute("attachment-open") {
             val request = JSONObject(params ?: "{}")
             val startedAt = System.currentTimeMillis()
+            val trackProgress = request.optBoolean("trackProgress", false)
             val result =
                     runCatching {
-                        downloadAndOpenAttachment(request)
+                        downloadAndOpenAttachment(
+                                request = request,
+                                progressCallback =
+                                        if (trackProgress) {
+                                            { progress -> callback?.invoke(progress) }
+                                        } else {
+                                            null
+                                        }
+                        )
                     }.getOrElse { throwable ->
                         SlockDiagnosticsLogger.record(
                                 "SlockAttachmentOpen",
@@ -2084,7 +2093,10 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun downloadAndOpenAttachment(request: JSONObject): Map<String, Any> {
+    private fun downloadAndOpenAttachment(
+            request: JSONObject,
+            progressCallback: ((Map<String, Any>) -> Unit)? = null
+    ): Map<String, Any> {
         val urlText = request.optString("url").takeIf { it.isNotBlank() }
                 ?: return mapOf("status" to "failed", "message" to "Unable to download attachment")
         val attachmentId = request.optString("attachmentId").takeIf { it.isNotBlank() } ?: "attachment"
@@ -2103,7 +2115,7 @@ internal class SlockKuiklyBridgeModule(
                         System.currentTimeMillis() - targetFile.lastModified() > ATTACHMENT_CACHE_MAX_AGE_MS
         val responseMimeType =
                 if (needsDownload) {
-                    downloadAttachmentToFile(urlText, targetFile)
+                    downloadAttachmentToFile(urlText, targetFile, progressCallback)
                 } else {
                     null
                 }
@@ -2179,7 +2191,11 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun downloadAttachmentToFile(urlText: String, targetFile: File): String? {
+    private fun downloadAttachmentToFile(
+            urlText: String,
+            targetFile: File,
+            progressCallback: ((Map<String, Any>) -> Unit)? = null
+    ): String? {
         val tempFile = File(targetFile.parentFile, "${targetFile.name}.part")
         runCatching { tempFile.delete() }
         val connection = (URL(urlText).openConnection() as HttpURLConnection).apply {
@@ -2193,9 +2209,52 @@ internal class SlockKuiklyBridgeModule(
             if (code !in 200..299) {
                 throw IllegalStateException("Attachment download failed: HTTP $code")
             }
+            val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
+            progressCallback?.invoke(attachmentDownloadProgress(0L, totalBytes, percent = totalBytes?.let { 0 }))
             connection.inputStream.use { input ->
                 tempFile.outputStream().use { output ->
-                    input.copyTo(output)
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    var downloadedBytes = 0L
+                    var lastPercent = if (totalBytes == null) -1 else 0
+                    var lastProgressAt = System.currentTimeMillis()
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read.toLong()
+                        val percent =
+                                totalBytes?.let { total ->
+                                    ((downloadedBytes * 100L) / total).toInt().coerceIn(0, 100)
+                                }
+                        val now = System.currentTimeMillis()
+                        val shouldEmit =
+                                when {
+                                    progressCallback == null -> false
+                                    percent != null && percent >= 100 -> true
+                                    percent != null && percent != lastPercent && percent - lastPercent >= 2 -> true
+                                    percent == null && now - lastProgressAt >= 500L -> true
+                                    now - lastProgressAt >= 750L -> true
+                                    else -> false
+                                }
+                        if (shouldEmit) {
+                            progressCallback?.invoke(
+                                    attachmentDownloadProgress(
+                                            downloadedBytes = downloadedBytes,
+                                            totalBytes = totalBytes,
+                                            percent = percent
+                                    )
+                            )
+                            lastPercent = percent ?: lastPercent
+                            lastProgressAt = now
+                        }
+                    }
+                    progressCallback?.invoke(
+                            attachmentDownloadProgress(
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                    percent = totalBytes?.let { 100 }
+                            )
+                    )
                 }
             }
             if (targetFile.exists()) {
@@ -2211,6 +2270,18 @@ internal class SlockKuiklyBridgeModule(
             runCatching { if (tempFile.exists()) tempFile.delete() }
         }
     }
+
+    private fun attachmentDownloadProgress(
+            downloadedBytes: Long,
+            totalBytes: Long?,
+            percent: Int?
+    ): Map<String, Any> =
+            buildMap {
+                put("status", "progress")
+                put("downloadedBytes", downloadedBytes)
+                totalBytes?.let { put("totalBytes", it) }
+                percent?.let { put("percent", it.coerceIn(0, 100)) }
+            }
 
     private fun cleanupAttachmentCache(cacheDir: File) {
         cacheDir.listFiles()
