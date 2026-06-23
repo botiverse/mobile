@@ -196,8 +196,12 @@ class SharedTasksViewModel(
             }
             SharedTasksRouteIntent.ClearNavigationError ->
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
-            is SharedTasksRouteIntent.SeedContent ->
+            is SharedTasksRouteIntent.SeedContent -> {
                 store.dispatch(SharedTasksIntent.SetContent(action.snapshot, state.value.selectedFilter))
+                viewModelScope.launch {
+                    useCase.seedTasks(action.snapshot)
+                }
+            }
         }
     }
 
