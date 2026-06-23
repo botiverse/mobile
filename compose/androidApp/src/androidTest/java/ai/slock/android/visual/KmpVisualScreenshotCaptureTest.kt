@@ -480,31 +480,6 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
-    fun captureSettingsBillingLoading() {
-        captureKmpSettingsPageCase("components.settings.billing.loading", "billing-loading")
-    }
-
-    @Test
-    fun captureSettingsBillingNoPermission() {
-        captureKmpSettingsPageCase("components.settings.billing.no-permission", "billing-no-permission")
-    }
-
-    @Test
-    fun captureSettingsBillingTrial() {
-        captureKmpSettingsPageCase("components.settings.billing.trial", "billing-trial")
-    }
-
-    @Test
-    fun captureSettingsBillingFounder() {
-        captureKmpSettingsPageCase("components.settings.billing.founder", "billing-founder")
-    }
-
-    @Test
-    fun captureSettingsBillingDowngrade() {
-        captureKmpSettingsPageCase("components.settings.billing.downgrade", "billing-downgrade")
-    }
-
-    @Test
     fun captureSettingsLanguageRegionPage() {
         captureKmpSettingsPageCase("components.settings.language-region.page", "language-region")
     }

@@ -5,6 +5,7 @@ import ai.slock.compose.components.SlockAttachmentPreviewCard
 import ai.slock.compose.components.SlockAttachmentPreviewCardWidth
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockToolbarChip
 import ai.slock.compose.base.Utils
@@ -9040,8 +9041,7 @@ private fun ThreadAddMemberModal(
                     color = SlockColor.AccentRed
                 )
             }
-            SlockModalTextField(
-                label = "SEARCH",
+            SlockBrutalSearchField(
                 value = query,
                 placeholder = "NAME",
                 leadingIcon = SlockLucideIconName.Search,

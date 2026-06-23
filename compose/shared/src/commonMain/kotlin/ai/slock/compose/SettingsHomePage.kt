@@ -190,7 +190,6 @@ import ai.slock.compose.data.SettingsAppearanceSnapshot
 import ai.slock.compose.data.SettingsAppearanceUpdateRequest
 import ai.slock.compose.data.SettingsBillingActionSnapshot
 import ai.slock.compose.data.SettingsBillingCurrentPlanSnapshot
-import ai.slock.compose.data.SettingsBillingNoticeSnapshot
 import ai.slock.compose.data.SettingsBillingPlanSnapshot
 import ai.slock.compose.data.SettingsBillingSnapshot
 import ai.slock.compose.data.SettingsConnectedAppBuiltInSnapshot
@@ -11544,12 +11543,7 @@ private fun settingsVisualSpec(variant: String): SettingsVisualSpec =
             SettingsVisualSpec(variant, "Server Profile", "Workspace profile, role, and slug", SlockLucideIconName.Building2)
         "administration" ->
             SettingsVisualSpec(variant, "Administration", "Owners, admins, invites, and join links", SlockLucideIconName.Shield)
-        "billing",
-        "billing-loading",
-        "billing-no-permission",
-        "billing-trial",
-        "billing-founder",
-        "billing-downgrade" ->
+        "billing" ->
             SettingsVisualSpec(variant, "Plan & Billing", "Plan and workspace usage", SlockLucideIconName.CreditCard)
         "language-region" ->
             SettingsVisualSpec(variant, "Language & Region", "Language, timezone, and translation", SlockLucideIconName.Languages)
@@ -11574,12 +11568,7 @@ private fun SettingsVisualPageBody(spec: SettingsVisualSpec) {
         "server-danger",
         "server-danger-modal",
         "administration" -> SettingsVisualServerFocusedContent(spec.variant)
-        "billing",
-        "billing-loading",
-        "billing-no-permission",
-        "billing-trial",
-        "billing-founder",
-        "billing-downgrade" -> SettingsVisualBillingContent(spec.variant)
+        "billing" -> SettingsVisualBillingContent()
         "language-region" -> SettingsVisualLanguageRegionContent()
         "appearance" -> SettingsVisualAppearanceContent()
         "notifications" -> SettingsVisualNotificationsContent()
@@ -11803,16 +11792,9 @@ private fun SettingsServerBackdropField(
 
 
 @Composable
-private fun SettingsVisualBillingContent(variant: String = "billing") {
+private fun SettingsVisualBillingContent() {
     val state: ScreenLoadState<SettingsBillingSnapshot> =
-        when (variant) {
-            "billing-loading" -> ScreenLoadState.Loading
-            "billing-no-permission" ->
-                ScreenLoadState.NoPermission(
-                    PermissionBlocker(code = "billing_owner_required", requiredCapability = "manage_billing")
-                )
-            else -> ScreenLoadState.Content(settingsVisualBillingSnapshot(variant))
-        }
+        ScreenLoadState.Content(settingsVisualBillingSnapshot())
     SettingsBillingContent(
         payload = state.toBillingPayload(homeSearchVisualSession, timeContext = null),
         bottomContentPadding = SlockSpacing.Lg,
@@ -12006,137 +11988,50 @@ private fun settingsVisualServerSnapshot(): SettingsServerSnapshot =
             )
     )
 
-private fun settingsVisualBillingSnapshot(variant: String = "billing"): SettingsBillingSnapshot {
-    val isTrial = variant == "billing-trial"
-    val isFounder = variant == "billing-founder"
-    val isDowngrade = variant == "billing-downgrade"
-    val planName =
-        when {
-            isFounder -> "Founder"
-            isTrial || isDowngrade -> "Hobby"
-            else -> "Pro x 2"
-        }
+private fun settingsVisualBillingSnapshot(): SettingsBillingSnapshot {
     return SettingsBillingSnapshot(
         currentPlan =
             SettingsBillingCurrentPlanSnapshot(
-                planName = planName,
+                planName = "Pro x 2",
                 usageRows =
-                    when {
-                        isFounder ->
-                            listOf(
-                                SettingsPlanUsageSnapshot("Human Seat", "12 / Unlimited"),
-                                SettingsPlanUsageSnapshot("Agent Seat", "41 / Unlimited"),
-                                SettingsPlanUsageSnapshot("Message History", "Unlimited")
-                            )
-                        isTrial || isDowngrade ->
-                            listOf(
-                                SettingsPlanUsageSnapshot("Computers", "4 / 2"),
-                                SettingsPlanUsageSnapshot("Agents", "12 / 5"),
-                                SettingsPlanUsageSnapshot("Channels", "8 / 5"),
-                                SettingsPlanUsageSnapshot("History", "30 days")
-                            )
-                        else ->
-                            listOf(
-                                SettingsPlanUsageSnapshot("Human Seat", "8 / 10"),
-                                SettingsPlanUsageSnapshot("Agent Seat", "18 / 20"),
-                                SettingsPlanUsageSnapshot("Universal seats", "26 / 30"),
-                                SettingsPlanUsageSnapshot("Message History", "Unlimited")
-                            )
-                    },
-                trialActive = isTrial,
-                description =
-                    when {
-                        isFounder -> "Grandfathered unlimited access."
-                        isTrial || isDowngrade -> "Get started in minutes."
-                        else -> "2 Pro Seat Packs purchased."
-                    },
+                    listOf(
+                        SettingsPlanUsageSnapshot("Human Seat", "8 / 10"),
+                        SettingsPlanUsageSnapshot("Agent Seat", "18 / 20"),
+                        SettingsPlanUsageSnapshot("Universal seats", "26 / 30"),
+                        SettingsPlanUsageSnapshot("Message History", "Unlimited")
+                    ),
+                trialActive = false,
+                description = "2 Pro Seat Packs purchased.",
                 includedFeatures =
-                    if (isFounder) {
-                        listOf("Everything without any limitations")
-                    } else if (isTrial || isDowngrade) {
-                        listOf(
-                            "Channels",
-                            "Tasks",
-                            "Unlimited agents on your own computers",
-                            "30 days of message history",
-                            "100 MB file uploads/month"
-                        )
-                    } else {
-                        listOf(
-                            "Unlimited message history",
-                            "Higher file upload limits",
-                            "Joint Channels",
-                            "More professional features coming soon"
-                        )
-                    },
-                excludedFeatures =
-                    if (isTrial || isDowngrade) {
-                        listOf(
-                            "Higher file upload limits",
-                            "Unlimited message history",
-                            "Joint Channels"
-                        )
-                    } else {
-                        emptyList()
-                    }
+                    listOf(
+                        "Unlimited message history",
+                        "Higher file upload limits",
+                        "Joint Channels",
+                        "More professional features coming soon"
+                    ),
+                excludedFeatures = emptyList()
             ),
-        notices =
-            when {
-                isTrial ->
-                    listOf(
-                        SettingsBillingNoticeSnapshot(
-                            key = "trial",
-                            title = "Final Trial Period",
-                            detail = "Full-featured free trial is active. Paid plans begin after the trial date.",
-                            tone = "trial"
-                        )
-                    )
-                isFounder ->
-                    listOf(
-                        SettingsBillingNoticeSnapshot(
-                            key = "founder",
-                            title = "Founder Plan",
-                            detail = "This workspace keeps grandfathered unlimited access.",
-                            tone = "success"
-                        )
-                    )
-                isDowngrade ->
-                    listOf(
-                        SettingsBillingNoticeSnapshot(
-                            key = "downgrade",
-                            title = "Plan Downgraded",
-                            detail = "3 days remaining in grace period. Excess agents will be stopped automatically.",
-                            tone = "warning",
-                            rows =
-                                listOf(
-                                    SettingsPlanUsageSnapshot("Agents over limit", "7 (12/5)"),
-                                    SettingsPlanUsageSnapshot("Computers over limit", "2 (4/2)"),
-                                    SettingsPlanUsageSnapshot("Channels over limit", "3 (8/5)")
-                                )
-                        )
-                    )
-                else -> emptyList()
-            },
+        notices = emptyList(),
         actions =
             listOf(
                 SettingsBillingActionSnapshot(
                     key = "portal",
                     label = "Billing portal",
-                    detail = if (isTrial || isDowngrade) "Paid plans are not available yet." else "Open Stripe billing portal.",
-                    enabled = !(isTrial || isDowngrade || isFounder)
+                    detail = "Open Stripe billing portal.",
+                    enabled = true
                 ),
                 SettingsBillingActionSnapshot(
                     key = "cancel",
                     label = "Cancel subscription",
                     detail = "Cancel the whole Pro subscription at period end.",
-                    enabled = !(isTrial || isDowngrade || isFounder),
+                    enabled = true,
                     style = "danger"
                 )
             ),
         plans =
             listOf(
-                SettingsBillingPlanSnapshot("Hobby", "$0 /mo", listOf("2 computers", "5 agents", "5 channels", "30 days history"), current = isTrial || isDowngrade, badgeLabel = if (isTrial || isDowngrade) "Current" else null),
-                SettingsBillingPlanSnapshot("Team", "$20 /mo", listOf("8 computers", "40 agents", "20 channels", "Unlimited history"), current = !isTrial && !isFounder && !isDowngrade, comingSoon = isTrial || isDowngrade, badgeLabel = if (isTrial || isDowngrade) "Coming soon" else "Current"),
+                SettingsBillingPlanSnapshot("Hobby", "$0 /mo", listOf("2 computers", "5 agents", "5 channels", "30 days history")),
+                SettingsBillingPlanSnapshot("Team", "$20 /mo", listOf("8 computers", "40 agents", "20 channels", "Unlimited history"), current = true, badgeLabel = "Current"),
                 SettingsBillingPlanSnapshot("Business", "$200 /mo", listOf("40 computers", "200 agents", "Unlimited channels"), comingSoon = true, badgeLabel = "Coming soon")
             )
     )

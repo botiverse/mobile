@@ -7,11 +7,8 @@ import ai.slock.compose.components.SlockBrutalListSectionHeader
 import ai.slock.compose.components.SlockBrutalListShell
 import ai.slock.compose.components.SlockBrutalModalHeader
 import ai.slock.compose.components.SlockBrutalModalLayer
-import ai.slock.compose.components.SlockBrutalSearchField
 import ai.slock.compose.components.SlockActionSheetRowModel
-import ai.slock.compose.components.SlockModalFieldLabelComponent
 import ai.slock.compose.components.SlockModalShellModel
-import ai.slock.compose.components.SlockModalTextFieldComponent
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -182,62 +179,6 @@ internal fun SlockActionSheetRow(
             ),
         onClick = onClick
     )
-}
-
-@Composable
-internal fun SlockModalFieldLabel(label: String, required: Boolean = false) {
-    SlockModalFieldLabelComponent(label = label, required = required)
-}
-
-@Composable
-internal fun SlockModalTextField(
-    label: String,
-    value: String,
-    placeholder: String,
-    onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier,
-    required: Boolean = false,
-    isError: Boolean = required && value.isBlank(),
-    leadingIcon: SlockLucideIconName? = null,
-    enabled: Boolean = true,
-    fieldHeight: Dp = 42.dp,
-    maxLines: Int = 1,
-    errorText: String? = null
-) {
-    if (
-        leadingIcon != null &&
-            maxLines == 1 &&
-            fieldHeight == 42.dp &&
-            !required &&
-            !isError &&
-            errorText == null
-    ) {
-        Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            SlockModalFieldLabelComponent(label = label)
-            SlockBrutalSearchField(
-                value = value,
-                placeholder = placeholder,
-                onValueChange = onValueChange,
-                enabled = enabled,
-                leadingIcon = leadingIcon
-            )
-        }
-    } else {
-        SlockModalTextFieldComponent(
-            label = label,
-            value = value,
-            placeholder = placeholder,
-            onValueChange = onValueChange,
-            modifier = modifier,
-            required = required,
-            isError = isError,
-            leadingIcon = leadingIcon,
-            enabled = enabled,
-            fieldHeight = fieldHeight,
-            maxLines = maxLines,
-            errorText = errorText
-        )
-    }
 }
 
 @Composable

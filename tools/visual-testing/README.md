@@ -216,11 +216,6 @@ Use the built-in KMP visual-page path first for these surfaces:
 | `components.settings.administration.member-permissions` | `captureSettingsAdministrationMemberPermissions` | `compose_settings_page_visual` |
 | `components.settings.administration.translation` | `captureSettingsAdministrationTranslation` | `compose_settings_page_visual` |
 | `components.settings.billing.page` | `captureSettingsBillingPage` | `compose_settings_page_visual` |
-| `components.settings.billing.loading` | `captureSettingsBillingLoading` | `compose_settings_page_visual` |
-| `components.settings.billing.no-permission` | `captureSettingsBillingNoPermission` | `compose_settings_page_visual` |
-| `components.settings.billing.trial` | `captureSettingsBillingTrial` | `compose_settings_page_visual` |
-| `components.settings.billing.founder` | `captureSettingsBillingFounder` | `compose_settings_page_visual` |
-| `components.settings.billing.downgrade` | `captureSettingsBillingDowngrade` | `compose_settings_page_visual` |
 | `components.settings.language-region.page` | `captureSettingsLanguageRegionPage` | `compose_settings_page_visual` |
 | `components.settings.appearance.page` | `captureSettingsAppearancePage` | `compose_settings_page_visual` |
 | `components.settings.notifications.page` | `captureSettingsNotificationsPage` | `compose_settings_page_visual` |
