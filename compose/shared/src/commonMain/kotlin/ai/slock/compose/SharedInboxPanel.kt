@@ -55,6 +55,7 @@ import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxSize
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
 import com.tencent.kuikly.compose.foundation.layout.height
+import com.tencent.kuikly.compose.foundation.layout.offset
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
@@ -79,6 +80,8 @@ import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
+
+private val ActivitySelectedRowShadowOffset = 2.dp
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -427,7 +430,14 @@ private fun SharedActivityList(
 ) {
     var activeMenuItem by remember { mutableStateOf<InboxItem?>(null) }
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
+    var selectedItemKey by remember { mutableStateOf<String?>(null) }
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
+    LaunchedEffect(snapshot.items) {
+        val selected = selectedItemKey
+        if (selected != null && snapshot.items.none { it.key == selected }) {
+            selectedItemKey = null
+        }
+    }
     LaunchedEffect(snapshot.items.size, snapshot.hasMore, loadingMore) {
         snapshotFlow { listState.isActivityLoadMoreThreshold(snapshot.items.size) }
             .distinctUntilChanged()
@@ -459,9 +469,11 @@ private fun SharedActivityList(
                 SharedActivityRow(
                     item = item,
                     senderProfiles = senderProfiles,
+                    selected = selectedItemKey == item.key,
                     modifier = Modifier.padding(horizontal = 16.dp),
                     timeContext = timeContext,
                     onOpen = {
+                        selectedItemKey = item.key
                         if (item.unreadCount > 0) {
                             onIntent(SharedActivityIntent.MarkRead(item))
                         }
@@ -521,81 +533,111 @@ private fun SharedActivityList(
 }
 
 @Composable
+private fun SharedActivitySelectedRowSurface(
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    content: @Composable (Modifier) -> Unit
+) {
+    Box(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(end = ActivitySelectedRowShadowOffset, bottom = ActivitySelectedRowShadowOffset)
+    ) {
+        if (selected) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .offset(x = ActivitySelectedRowShadowOffset, y = ActivitySelectedRowShadowOffset)
+                    .background(SlockColor.ShadowBlack)
+            )
+        }
+        content(
+            Modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(
+                    SlockStroke.Default,
+                    if (selected) SlockColor.BorderBlack else SlockColor.TextBlack.copy(alpha = 0.3f)
+                )
+        )
+    }
+}
+
+@Composable
 private fun SharedActivityRow(
     item: InboxItem,
     senderProfiles: Map<String, SharedActivitySenderProfile>,
+    selected: Boolean,
     modifier: Modifier = Modifier,
     timeContext: SlockTimeContext?,
     onOpen: () -> Unit,
     onDone: () -> Unit,
     onOpenMenu: (Offset) -> Unit
 ) {
-    Row(
-        modifier =
-            modifier
-                .fillMaxWidth()
-                .background(SlockColor.SurfaceWhite)
-                .border(SlockStroke.Default, SlockColor.TextBlack.copy(alpha = 0.3f))
-                .padding(12.dp),
-        verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, onOpen, onOpenMenu)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    text = item.channelLabel(),
-                    style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.52f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = item.activityTimeLabel(timeContext),
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
-                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            Spacer(Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                if (item.kind == InboxItemKind.Thread) {
-                    SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+    SharedActivitySelectedRowSurface(selected = selected, modifier = modifier) { surfaceModifier ->
+        Row(
+            modifier = surfaceModifier.padding(12.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f).activityRowGestures(item.key, onOpen, onOpenMenu)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = item.channelLabel(),
+                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.52f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = item.activityTimeLabel(timeContext),
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp, fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
+                        color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                Text(
-                    text = item.primaryPreviewText(senderProfiles),
-                    style =
-                        if (item.unreadCount > 0) {
-                            SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
-                        } else {
-                            SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
-                        },
-                    color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
-                    maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            item.secondaryPreviewText(senderProfiles)?.let { secondary ->
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = secondary,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (item.kind == InboxItemKind.Thread) {
+                        SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
+                    }
+                    Text(
+                        text = item.primaryPreviewText(senderProfiles),
+                        style =
+                            if (item.unreadCount > 0) {
+                                SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
+                            } else {
+                                SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp)
+                            },
+                        color = if (item.kind == InboxItemKind.Thread && item.unreadCount == 0) SlockColor.TextBlack.copy(alpha = 0.5f) else SlockColor.TextBlack,
+                        maxLines = if (item.kind == InboxItemKind.Thread) 2 else 3,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                item.secondaryPreviewText(senderProfiles)?.let { secondary ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = secondary,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                SharedActivityFooter(item)
             }
-            SharedActivityFooter(item)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SharedActivitySmallIconButton(iconName = SlockLucideIconName.Check, onClick = onDone)
+            }
         }
     }
 }

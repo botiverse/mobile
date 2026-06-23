@@ -1601,7 +1601,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
@@ -1679,7 +1679,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     // #211 review (Cindy / @Android-Developer-2 01:27): hover is
     // detected locally so the visual layer can react without the shell
     // having to track per-row hover. Selected still wins: a currently
-    // selected row keeps its pink highlight on hover.
+    // selected row keeps its white brutal-shadow treatment on hover.
     val hoverInteractionSource = remember { MutableInteractionSource() }
     val isHovered by hoverInteractionSource.collectIsHoveredAsState()
     val selected = interactionState == ChannelRowInteractionState.Selected
@@ -1696,7 +1696,7 @@ private fun ChannelRow(name: String, modifier: Modifier = Modifier, symbol: Stri
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
@@ -1843,7 +1843,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
     }
     val rowBackground = when (effectiveInteractionState) {
         ChannelRowInteractionState.Default -> Color.Transparent
-        ChannelRowInteractionState.Selected -> SlockColor.AccentPink
+        ChannelRowInteractionState.Selected -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Hovered -> SlockColor.EmptyStateGray
         ChannelRowInteractionState.Focused -> SlockColor.SurfaceWhite
         ChannelRowInteractionState.Pressed -> SlockColor.EmptyStateGray
