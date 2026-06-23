@@ -2534,6 +2534,92 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun linkedTaskProjectionIsOnlyAuthoritativeAfterTasksLoadSettles() {
+        val references =
+            KuiklyThreadScreenPayload(
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "message-240",
+                            authorId = "user_artin",
+                            authorName = "Artin",
+                            body = "ship task",
+                            taskId = "task-240",
+                            taskNumber = 240
+                        )
+                    )
+            ).threadLinkedTaskReferences()
+        val loadingProjection =
+            TasksUiState(
+                loadState = ai.slock.compose.data.ScreenLoadState.Loading
+            ).threadLinkedTasksProjection(references)
+        val emptyProjection =
+            TasksUiState(
+                loadState = ai.slock.compose.data.ScreenLoadState.Empty(ai.slock.compose.data.EmptyReason.NoTasks)
+            ).threadLinkedTasksProjection(references)
+
+        assertEquals(false, loadingProjection.authoritative)
+        assertEquals(emptyMap(), loadingProjection.lookup)
+        assertEquals(true, emptyProjection.authoritative)
+        assertEquals(emptyMap(), emptyProjection.lookup)
+    }
+
+    @Test
+    fun linkedTaskProjectionMatchesMessagesByTaskIdentity() {
+        val task =
+            TaskSummary(
+                id = TaskId("task-240"),
+                title = "ship task",
+                status = TaskStatus.Done,
+                taskNumber = 240,
+                messageId = null,
+                assignee =
+                    MemberProfile(
+                        id = MemberId("agent-android"),
+                        displayName = "Android Developer",
+                        handle = "Android-Developer",
+                        kind = MemberKind.Agent
+                    ),
+                updatedAtLabel = ""
+            )
+        val unrelatedSameNumberTask =
+            task.copy(
+                id = TaskId("other-task"),
+                status = TaskStatus.Todo,
+                taskNumber = 241,
+                assignee = null
+            )
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "ship task",
+                taskId = "task-240",
+                taskNumber = 240,
+                taskStatus = "Todo"
+            )
+        val references =
+            KuiklyThreadScreenPayload(messages = listOf(message)).threadLinkedTaskReferences()
+        val projection =
+            TasksUiState(
+                loadState =
+                    ai.slock.compose.data.ScreenLoadState.Content(
+                        ai.slock.compose.data.TasksContent(
+                            summaryCounts = emptyMap(),
+                            tasks = listOf(task, unrelatedSameNumberTask)
+                        )
+                    )
+            ).threadLinkedTasksProjection(references)
+        val linkedMessage = message.withLinkedTask(projection.lookup.threadLinkedTaskForMessage(message))
+
+        assertEquals(true, projection.authoritative)
+        assertEquals(null, projection.lookup.threadLinkedTaskForMessage(message.copy(taskId = null, taskNumber = 241)))
+        assertEquals("Done", linkedMessage.taskStatus)
+        assertEquals("Android Developer", linkedMessage.taskAssigneeName)
+    }
+
+    @Test
     fun threadTasksJoinStartsOnlyAfterContentGate() {
         val taskChannelId = ChannelId("channel-1")
         val loadingPayload =

@@ -999,6 +999,50 @@ internal fun KuiklyThreadMessageItem.withLinkedTask(linkedTask: TaskSummary?): K
     )
 }
 
+internal data class ThreadLinkedTasksProjection(
+    val authoritative: Boolean,
+    val lookup: Map<String, TaskSummary>
+)
+
+internal data class ThreadLinkedTaskReferences(
+    val messageIds: Set<String>,
+    val taskIds: Set<String>,
+    val taskNumbers: Set<Int>
+) {
+    val isEmpty: Boolean
+        get() = messageIds.isEmpty() && taskIds.isEmpty() && taskNumbers.isEmpty()
+}
+
+internal fun KuiklyThreadScreenPayload.threadLinkedTaskReferences(): ThreadLinkedTaskReferences {
+    val messages = buildList {
+        originMessage?.let(::add)
+        addAll(this@threadLinkedTaskReferences.messages)
+    }
+    return ThreadLinkedTaskReferences(
+        messageIds = messages.mapTo(mutableSetOf()) { it.id },
+        taskIds =
+            messages.mapNotNullTo(mutableSetOf()) { message ->
+                message.taskId?.trim()?.takeIf { it.isNotBlank() }
+            },
+        taskNumbers = messages.mapNotNullTo(mutableSetOf()) { it.taskNumber }
+    )
+}
+
+internal fun TasksUiState.threadLinkedTasksProjection(
+    references: ThreadLinkedTaskReferences
+): ThreadLinkedTasksProjection =
+    when (val state = loadState) {
+        is ScreenLoadState.Content ->
+            ThreadLinkedTasksProjection(
+                authoritative = true,
+                lookup = state.data.tasks.threadLinkedTasksByMessageLookup(references)
+            )
+        is ScreenLoadState.Empty ->
+            ThreadLinkedTasksProjection(authoritative = true, lookup = emptyMap())
+        else ->
+            ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap())
+    }
+
 internal fun TasksUiState.threadLinkedTasksByMessageId(): Map<String, TaskSummary> {
     val content = (loadState as? ScreenLoadState.Content)?.data ?: return emptyMap()
     return content.tasks.threadLinkedTasksByMessageId()
@@ -1027,6 +1071,19 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(): Map<String, T
             }
         }
     }
+
+internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(
+    references: ThreadLinkedTaskReferences
+): Map<String, TaskSummary> {
+    if (references.isEmpty) return emptyMap()
+    return filter { task -> task.matchesThreadLinkedTaskReferences(references) }
+        .threadLinkedTasksByMessageLookup()
+}
+
+private fun TaskSummary.matchesThreadLinkedTaskReferences(references: ThreadLinkedTaskReferences): Boolean =
+    messageId?.value?.trim()?.takeIf { it.isNotBlank() }?.let { it in references.messageIds } == true ||
+        id.value.trim().takeIf { it.isNotBlank() }?.let { it in references.taskIds } == true ||
+        taskNumber?.let { it in references.taskNumbers } == true
 
 internal fun Map<String, TaskSummary>.threadLinkedTaskForMessage(message: KuiklyThreadMessageItem): TaskSummary? =
     get(message.id) ?: message.taskId?.trim()?.takeIf { it.isNotBlank() }?.let { taskId ->
@@ -4852,9 +4909,6 @@ private fun ThreadPageContent(
                     }
                 )
             }
-            val linkedTasksByMessageLookup = remember(payload.tasks) {
-                payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageLookup()
-            }
             Box(
                 modifier = Modifier.weight(1f).fillMaxWidth().background(SlockColor.SurfaceWhite)
             ) {
@@ -4862,10 +4916,10 @@ private fun ThreadPageContent(
                     ThreadStateMessage("Loading...", null)
                 } else when (selectedTab) {
                     KuiklyThreadTab.Chat ->
-                        ThreadChatTab(
+                        ThreadChatTabWithLinkedTasksProjection(
                             payload = payload,
+                            tasksViewModel = tasksViewModel,
                             composerKeyboardInsetDp = composerKeyboardInsetDp,
-                            linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                             highlightedMentions = highlightedMentions,
                             pendingActionCardIds = pendingActionCardIds,
                             attachmentOpenStates = attachmentOpenStates,
@@ -5257,6 +5311,59 @@ private fun ThreadPageTabs(
             tabs.firstOrNull { it.wireValue == key }?.let(onSelect)
         },
         itemKeyPrefix = "thread-tab"
+    )
+}
+
+@Composable
+private fun ThreadChatTabWithLinkedTasksProjection(
+    payload: KuiklyThreadScreenPayload,
+    tasksViewModel: SharedTasksViewModel?,
+    composerKeyboardInsetDp: Float,
+    highlightedMentions: Set<String>,
+    pendingActionCardIds: Set<String> = emptySet(),
+    attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
+    attachmentCommentsEnabled: Boolean = false,
+    currentServerSlug: String? = null,
+    contentExtrasVisible: Boolean = true,
+    onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
+    onOpenMember: (String) -> Unit,
+    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
+    onOpenMarkdownUrl: (String) -> Unit,
+    diagnosticsLogger: (String) -> Unit = {}
+) {
+    val linkedTaskReferences =
+        remember(payload.originMessage, payload.messages) {
+            payload.threadLinkedTaskReferences()
+        }
+    val fallbackLinkedTasksByMessageLookup =
+        remember(payload.tasks, linkedTaskReferences) {
+            payload.tasks.map { task -> task.toTaskSummary() }.threadLinkedTasksByMessageLookup(linkedTaskReferences)
+        }
+    val projectedLinkedTasks by remember(tasksViewModel, linkedTaskReferences) {
+        tasksViewModel
+            ?.state
+            ?.map { state -> state.threadLinkedTasksProjection(linkedTaskReferences) }
+            ?.distinctUntilChanged()
+            ?: MutableStateFlow(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    }.collectAsState(ThreadLinkedTasksProjection(authoritative = false, lookup = emptyMap()))
+    val linkedTasksByMessageLookup =
+        if (projectedLinkedTasks.authoritative) projectedLinkedTasks.lookup else fallbackLinkedTasksByMessageLookup
+
+    ThreadChatTab(
+        payload = payload,
+        composerKeyboardInsetDp = composerKeyboardInsetDp,
+        linkedTasksByMessageLookup = linkedTasksByMessageLookup,
+        highlightedMentions = highlightedMentions,
+        pendingActionCardIds = pendingActionCardIds,
+        attachmentOpenStates = attachmentOpenStates,
+        attachmentCommentsEnabled = attachmentCommentsEnabled,
+        currentServerSlug = currentServerSlug,
+        contentExtrasVisible = contentExtrasVisible,
+        onThreadEvent = onThreadEvent,
+        onOpenMember = onOpenMember,
+        onOpenMarkdownTag = onOpenMarkdownTag,
+        onOpenMarkdownUrl = onOpenMarkdownUrl,
+        diagnosticsLogger = diagnosticsLogger
     )
 }
 
