@@ -830,7 +830,8 @@ private sealed interface MemberDetailRouteState {
     data class Content(
         val server: ServerSummary,
         val member: MemberProfile,
-        val currentUserId: String?
+        val currentUserId: String?,
+        val agentDetailSeeded: Boolean = false
     ) : MemberDetailRouteState
 }
 
@@ -849,6 +850,22 @@ private class MemberDetailRouteProvider(
         val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
         if (session == null || serverId.isNullOrBlank() || server == null) {
             return MemberDetailRouteState.Error("server_required")
+        }
+        val selectedId = MemberId(selectedMemberId)
+        when (val detailResult = memberRepository.getAgentDetail(DataRequestPriority.Visible, selectedId)) {
+            is DataResult.Content -> {
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(selectedId))
+                agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(selectedId, detailResult.data))
+                return MemberDetailRouteState.Content(
+                    server = server,
+                    member = detailResult.data.toMemberProfile(server),
+                    currentUserId = session.user.id,
+                    agentDetailSeeded = true
+                )
+            }
+            is DataResult.Empty,
+            is DataResult.Error,
+            is DataResult.NoPermission -> Unit
         }
         return when (val result = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))) {
             is DataResult.Content -> {
@@ -1042,18 +1059,19 @@ private fun MemberDetailPageContent() {
 
     val content = routeState as? MemberDetailRouteState.Content
     val member = content?.member
-    LaunchedEffect(member?.id?.value, member?.kind, localAgentDetailRefreshKey) {
+    LaunchedEffect(member?.id?.value, member?.kind, content?.agentDetailSeeded, localAgentDetailRefreshKey) {
+        if (content?.agentDetailSeeded == true && localAgentDetailRefreshKey == 0) {
+            return@LaunchedEffect
+        }
         provider.loadAgentDetail(member)
     }
 
     when (val current = routeState) {
         MemberDetailRouteState.Loading ->
-            Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
-                SlockTopPageHeader(
-                    title = "Member",
-                    subtitle = "Loading profile",
-                    iconName = SlockLucideIconName.Users
-                )
+            Box(
+                modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite),
+                contentAlignment = Alignment.Center
+            ) {
                 SlockCenteredLoading()
             }
         is MemberDetailRouteState.Error ->
@@ -4566,6 +4584,37 @@ private fun KuiklyMemberDetailPayload.toSlockTimeContext(): SlockTimeContext =
         nowEpochMillis = nowEpochMillis,
         timeFormat = timeFormat
     )
+
+private fun AgentDetailSnapshot.toMemberProfile(server: ServerSummary): MemberProfile {
+    val summary = summary
+    val handle = summary?.name?.takeIf { it.isNotBlank() } ?: agentId.value
+    val label = summary?.displayName?.takeIf { it.isNotBlank() } ?: handle
+    val status = AgentStatus.fromWireValue(summary?.activity ?: summary?.status) ?: AgentStatus.Offline
+    val avatarUrl = summary?.avatarUrl?.takeIf { it.isNotBlank() }
+    return MemberProfile(
+        id = agentId,
+        displayName = label,
+        handle = handle,
+        kind = MemberKind.Agent,
+        description =
+            summary?.activityDetail?.takeIf { it.isNotBlank() }
+                ?: summary?.activity?.takeIf { it.isNotBlank() },
+        roleDescription = summary?.runtime?.takeIf { it.isNotBlank() },
+        avatarUrl = avatarUrl,
+        avatar = AvatarReference.fromWireValue(avatarUrl),
+        avatarLabel = label.take(1).uppercase(),
+        presence = status.presence,
+        agentStatus = status,
+        permissionBadges = listOfNotNull(
+            summary?.runtime?.takeIf { it.isNotBlank() },
+            summary?.machineName?.takeIf { it.isNotBlank() }?.let { "computer:$it" },
+            summary?.machineId?.takeIf { it.isNotBlank() }?.let { "computer-id:$it" }
+        ),
+        serverId = server.id,
+        serverName = server.name.takeIf { it.isNotBlank() },
+        serverSlug = server.slug?.takeIf { it.isNotBlank() }
+    )
+}
 
 private fun MemberDetailRouteState.withMemberDetailProfile(member: MemberProfile): MemberDetailRouteState {
     val content = this as? MemberDetailRouteState.Content ?: return this
