@@ -104,7 +104,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.tencent.kuikly.compose.animation.core.RepeatMode
+import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
+import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
+import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.background
@@ -145,6 +149,7 @@ import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.Path
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Fill
 import com.tencent.kuikly.compose.ui.graphics.drawscope.Stroke
+import com.tencent.kuikly.compose.ui.graphics.graphicsLayer
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
@@ -822,6 +827,9 @@ private fun KuiklyThreadMessageItem.canRetryLocalSend(): Boolean =
 
 private fun KuiklyThreadMessageItem.isFailedLocalSend(): Boolean =
     deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true) && pendingSendContext != null
+
+private fun KuiklyThreadMessageItem.isSendingLocalSend(): Boolean =
+    deliveryState.equals(ThreadMessageDeliverySending, ignoreCase = true) && pendingSendContext != null
 
 private fun buildThreadPendingSendMessage(
     localMessageId: String,
@@ -7315,7 +7323,7 @@ private fun ThreadMessageCard(
                                 )
                             }
                         }
-                        if (message.hasLocalSendState()) {
+                        if (message.isFailedLocalSend()) {
                             Box(modifier = Modifier.threadMessageContentWidth(messageMaxWidthFraction)) {
                                 ThreadMessageLocalSendStatus(
                                     message = message,
@@ -7344,12 +7352,19 @@ private fun ThreadMessageCard(
                             }
                         }
                     }
-                    if (showSaveAction && richContentEnabled && !message.hasLocalSendState()) {
-                        ThreadMessageBookmarkButton(
-                            saved = message.isSaved,
-                            onClick = onToggleSaved,
-                            modifier = Modifier.align(Alignment.TopEnd)
-                        )
+                    if (showSaveAction && richContentEnabled) {
+                        when {
+                            message.isSendingLocalSend() -> {
+                                ThreadMessageSendingIndicator(modifier = Modifier.align(Alignment.TopEnd))
+                            }
+                            !message.hasLocalSendState() -> {
+                                ThreadMessageBookmarkButton(
+                                    saved = message.isSaved,
+                                    onClick = onToggleSaved,
+                                    modifier = Modifier.align(Alignment.TopEnd)
+                                )
+                            }
+                        }
                     }
                 }
                 if (alignOwnMessageRight) {
@@ -7412,6 +7427,37 @@ private fun ThreadMessageLocalSendStatus(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ThreadMessageSendingIndicator(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "thread-message-sending-spinner")
+    val rotation by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 900),
+                repeatMode = RepeatMode.Restart
+            ),
+        label = "thread-message-sending-spinner-rotation"
+    )
+    Box(
+        modifier =
+            modifier
+                .size(24.dp)
+                .background(Color.Transparent),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.Loader,
+            modifier =
+                Modifier
+                    .size(14.dp)
+                    .graphicsLayer { rotationZ = rotation },
+            color = SlockColor.TextMutedGrayArgb
+        )
     }
 }
 
