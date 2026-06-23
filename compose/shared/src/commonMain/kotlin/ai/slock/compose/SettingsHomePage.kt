@@ -2278,6 +2278,7 @@ private fun SlockAppShellContent() {
                             settingsRepository = settingsRepository,
                             createAgentCoordinator = createAgentCoordinator,
                             computersStore = appShellComputersStore,
+                            agentDetailStore = sharedStores.agentDetailStore,
                             membersRefreshKey = membersListRefreshKey,
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset
@@ -8269,6 +8270,7 @@ private fun SharedMembersScreen(
     settingsRepository: SettingsRepository,
     createAgentCoordinator: SharedCreateAgentCoordinator,
     computersStore: SharedComputersStore,
+    agentDetailStore: SharedAgentDetailStore,
     membersRefreshKey: Int,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg
@@ -8450,6 +8452,7 @@ private fun SharedMembersScreen(
                         bridge.toast("Unable to open profile")
                         bridge.log("members_detail_open_skip reason=missing_member_id source=app_shell")
                     } else {
+                        agentDetailStore.dispatch(SharedAgentDetailIntent.SeedDetailFromMember(member))
                         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
                             .openPage(MEMBER_DETAIL_PAGE, pageData)
                     }
