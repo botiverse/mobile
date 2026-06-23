@@ -2182,6 +2182,41 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun resolvedAuxiliaryThreadIdAllowsEmptyReplyThreadAfterLoad() {
+        val launchPayload =
+            KuiklyThreadScreenPayload(
+                instanceId = "task-thread-task-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                status = "loading"
+            )
+
+        val loadedEmptyPayload =
+            launchPayload.copy(
+                status = "empty",
+                messages = emptyList()
+            )
+        val resolvedThreadId = loadedEmptyPayload.resolvedAuxiliaryThreadId(launchPayload)
+        val composer =
+            loadedEmptyPayload
+                .resolveThreadComposer()
+                .copy(streamChannelId = resolvedThreadId, enabled = resolvedThreadId != null)
+        val surface =
+            composer.toThreadComposerSurface(
+                channelId = resolvedThreadId.orEmpty(),
+                parentChannelId = loadedEmptyPayload.parentChannelId
+            )
+
+        assertEquals(null, launchPayload.resolvedAuxiliaryThreadId(launchPayload))
+        assertEquals("thread-m1", resolvedThreadId)
+        assertEquals("thread-m1", surface.sendChannelId)
+    }
+
+    @Test
     fun threadTasksJoinUsesResolvedAuxiliaryThreadId() {
         val launchPayload =
             KuiklyThreadScreenPayload(

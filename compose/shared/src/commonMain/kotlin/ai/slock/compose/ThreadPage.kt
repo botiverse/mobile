@@ -944,7 +944,7 @@ internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(
     if (
         initialPayload.hasUntrustedReplyThreadAuxiliaryHint() &&
         candidate == initialPayload.auxiliaryStreamCandidate() &&
-        status != "content"
+        status == "loading"
     ) {
         return null
     }
