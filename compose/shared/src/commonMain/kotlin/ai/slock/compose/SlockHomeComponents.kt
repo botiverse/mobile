@@ -1060,9 +1060,12 @@ internal fun homeDmStatusPresence(presence: SlockPresence?): SlockPresence =
 
 internal fun homeActivitySidebarUnreadCount(
     homeUnreadCount: Int,
-    activityUnreadCount: Int
+    activityUnreadCount: Int,
+    activityTotalCount: Int = 0
 ): Int =
     maxOf(homeUnreadCount, activityUnreadCount)
+        .takeIf { it > 0 }
+        ?: activityTotalCount
 
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,

@@ -23,10 +23,27 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeActivitySidebarUnreadCountUsesActivityCountWhenItIsHigher() {
-        assertEquals(14, homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 14))
-        assertEquals(9, homeActivitySidebarUnreadCount(homeUnreadCount = 9, activityUnreadCount = 0))
-        assertEquals(12, homeActivitySidebarUnreadCount(homeUnreadCount = 8, activityUnreadCount = 12))
+    fun homeActivitySidebarUnreadCountUsesUnreadThenActivityTotalFallback() {
+        assertEquals(
+            14,
+            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 14, activityTotalCount = 40)
+        )
+        assertEquals(
+            9,
+            homeActivitySidebarUnreadCount(homeUnreadCount = 9, activityUnreadCount = 0, activityTotalCount = 40)
+        )
+        assertEquals(
+            12,
+            homeActivitySidebarUnreadCount(homeUnreadCount = 8, activityUnreadCount = 12, activityTotalCount = 40)
+        )
+        assertEquals(
+            40,
+            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 0, activityTotalCount = 40)
+        )
+        assertEquals(
+            0,
+            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 0, activityTotalCount = 0)
+        )
     }
 
     @Test
