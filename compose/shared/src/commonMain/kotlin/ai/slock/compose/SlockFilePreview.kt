@@ -560,11 +560,8 @@ internal fun SlockFilePreviewPayloadContent(
                 )
             }
         "loading" -> {
-            SlockFilePreviewMessage(
-                iconName = SlockLucideIconName.Loader,
-                title = SlockFilePreviewLoadingLabel,
-                detail = "",
-                modifier = modifier.fillMaxWidth().padding(SlockSpacing.Md)
+            SlockFilePreviewLoadingIndicator(
+                modifier = modifier.fillMaxSize()
             )
         }
         "error" ->
@@ -940,10 +937,7 @@ internal fun SlockFilePreviewMarkdownPanel(
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
             else ->
-                SlockFilePreviewMessage(
-                    iconName = SlockLucideIconName.Loader,
-                    title = SlockFilePreviewLoadingLabel,
-                    detail = "",
+                SlockFilePreviewLoadingIndicator(
                     modifier = Modifier.fillMaxWidth().weight(1f)
                 )
         }
@@ -1051,6 +1045,18 @@ internal fun SlockFilePreviewMessage(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewLoadingIndicator(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.padding(SlockSpacing.Lg),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockHeaderRefreshIndicator()
     }
 }
 
