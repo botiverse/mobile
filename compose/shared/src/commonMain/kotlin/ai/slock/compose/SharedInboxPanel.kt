@@ -495,7 +495,7 @@ private fun SharedActivityList(
                     listOf(
                         SlockBaseMenuItem(
                             id = "toggle-read",
-                            label = if (item.unreadCount > 0) "Mark as read" else "Mark as unread",
+                            label = if (item.unreadCount > 0) "Mark as Read" else "Mark as Unread",
                             icon = SlockLucideIconName.Mail
                         ),
                         SlockBaseMenuItem(id = "done", label = "Done", icon = SlockLucideIconName.Check)
