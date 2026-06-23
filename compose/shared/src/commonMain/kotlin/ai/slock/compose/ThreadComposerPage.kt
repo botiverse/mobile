@@ -30,6 +30,7 @@ import com.tencent.kuikly.compose.foundation.layout.heightIn
 import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
+import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
@@ -40,6 +41,7 @@ import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.graphics.Color
 import com.tencent.kuikly.compose.ui.graphics.SolidColor
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.input.ImeAction
 import com.tencent.kuikly.compose.ui.text.input.TextFieldValue
@@ -74,7 +76,11 @@ private val ThreadComposerDisabledSendBorder = Color(0xFFB3B3B3)
 private val ThreadComposerDisabledSendShadow = Color(0xFFB8B8B8)
 private const val ThreadComposerDisabledSendIconArgb = "#FFB3B3B3"
 private val ComposerSuggestionPanelMaxHeight = 240.dp
-private val ComposerSuggestionRowMinHeight = 46.dp
+private val ComposerMemberSuggestionRowMinHeight = 38.dp
+private val ComposerChannelSuggestionRowMinHeight = 34.dp
+private val ComposerMemberSuggestionAvatarSize = 24.dp
+private val ComposerAgentActivityDotSize = 8.dp
+private val ComposerChannelSuggestionIconSize = 22.dp
 private val ThreadComposerVisualComponentWidth = 342.dp
 private val ThreadComposerVisualComponentMinHeight = 100.dp
 private val threadComposerJson = Json { ignoreUnknownKeys = true }
@@ -833,17 +839,9 @@ internal fun ThreadComposerContent(
                     itemKey = { index -> "channel-$index-${filteredChannelSuggestions[index].name}" }
                 ) { index ->
                     val channel = filteredChannelSuggestions[index]
-                    ComposerSuggestionRow(
-                        leading = {
-                            Box(
-                                modifier = Modifier.size(28.dp).background(SlockColor.BrandYellow).border(SlockStroke.Default, SlockColor.BorderBlack),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("#", style = SlockType.Button.copy(fontSize = 14.sp), color = SlockColor.TextBlack)
-                            }
-                        },
-                        title = channel.name,
-                        subtitle = channel.subtitle.orEmpty(),
+                    ComposerChannelSuggestionRow(
+                        channel = channel,
+                        selected = index == 0,
                         onClick = { applyChannelSuggestion(channel) }
                     )
                 }
@@ -1057,76 +1055,156 @@ private fun ComposerMemberSuggestionPanel(
         when {
             index < inChannel.size -> {
                 val member = inChannel[index]
-                ComposerMemberSuggestionRow(member = member, inChannel = true, onClick = { onClick(member) })
+                ComposerMemberSuggestionRow(
+                    member = member,
+                    inChannel = true,
+                    selected = index == 0,
+                    onClick = { onClick(member) }
+                )
             }
             notInChannel.isNotEmpty() && index == headerIndex -> {
-                ComposerSuggestionSectionHeader("NOT IN THIS CHANNEL")
+                ComposerSuggestionSectionHeader(
+                    text = "NOT IN THIS CHANNEL",
+                    topDivider = inChannel.isNotEmpty()
+                )
             }
             else -> {
                 val member = notInChannel[index - headerIndex - 1]
-                ComposerMemberSuggestionRow(member = member, inChannel = false, onClick = { onClick(member) })
+                ComposerMemberSuggestionRow(
+                    member = member,
+                    inChannel = false,
+                    selected = false,
+                    onClick = { onClick(member) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ComposerSuggestionSectionHeader(text: String) {
-    Text(
-        text = text,
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
-        color = SlockColor.TextMutedGray,
-        modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceCream).padding(horizontal = 12.dp, vertical = 6.dp)
-    )
+private fun ComposerSuggestionSectionHeader(text: String, topDivider: Boolean = false) {
+    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+        if (topDivider) {
+            ComposerSuggestionDivider()
+        }
+        Text(
+            text = text,
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+    }
 }
 
 @Composable
 private fun ComposerMemberSuggestionRow(
     member: KuiklyComposerMemberItem,
     inChannel: Boolean,
+    selected: Boolean,
     onClick: () -> Unit
 ) {
     val description =
         member.description
             ?.takeIf { member.kind == MemberKind.Agent }
             ?.takeIf { it.isNotBlank() }
-    val subtitle =
-        listOfNotNull(
-            description,
-            member.sourceServerLabel?.takeIf { it.isNotBlank() }
-        ).joinToString(" · ")
-    val handleColor = SlockColor.TextMutedGray
-    ComposerSuggestionRow(
-        leading = {
+    val secondary = description ?: member.sourceServerLabel?.takeIf { it.isNotBlank() }
+    val muted = !inChannel
+    val contentColor =
+        when {
+            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.7f)
+            muted -> SlockColor.TextBlack.copy(alpha = 0.5f)
+            else -> SlockColor.TextBlack
+        }
+    val handleColor =
+        when {
+            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.4f)
+            muted -> SlockColor.TextBlack.copy(alpha = 0.3f)
+            else -> SlockColor.TextBlack.copy(alpha = 0.4f)
+        }
+    val secondaryColor =
+        when {
+            muted && selected -> SlockColor.TextBlack.copy(alpha = 0.5f)
+            muted -> SlockColor.TextBlack.copy(alpha = 0.4f)
+            selected -> SlockColor.TextBlack.copy(alpha = 0.7f)
+            else -> SlockColor.TextBlack.copy(alpha = 0.5f)
+        }
+    ComposerSuggestionInteractiveRow(
+        selected = selected,
+        muted = muted,
+        selectedColor = SlockColor.BrandYellow,
+        minHeight = ComposerMemberSuggestionRowMinHeight,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Box(
                 modifier =
                     Modifier
-                        .size(28.dp)
-                        .background(if (inChannel) SlockColor.SurfaceWhite else SlockColor.SurfaceCream),
+                        .size(ComposerMemberSuggestionAvatarSize)
+                        .background(if (muted) SlockColor.SurfaceCream else SlockColor.SurfaceWhite),
                 contentAlignment = Alignment.Center
             ) {
                 SlockAvatar(
                     avatarWireValue = member.avatarWireValue,
                     label = member.avatarLabel.ifBlank { member.displayName },
-                    avatarSize = 28.dp,
+                    avatarSize = ComposerMemberSuggestionAvatarSize,
                     borderWidth = SlockStroke.Default,
                     gravatarUrl = member.gravatarHash?.toGravatarAvatarUrl()
                 )
             }
-        },
-        title = member.displayName,
-        subtitle = subtitle,
-        trailing = {
+            if (muted) {
+                SlockLucideIcon(
+                    SlockLucideIconName.UserMinus,
+                    modifier = Modifier.size(12.dp),
+                    color = "#66000000"
+                )
+            }
             Text(
-                text = "@${member.handle}",
-                style = SlockType.Caption.copy(color = handleColor),
-                color = handleColor,
-                modifier = Modifier.width(72.dp),
+                text = member.displayName,
+                style = SlockType.Button.copy(color = contentColor),
+                color = contentColor,
+                modifier = Modifier.widthIn(max = if (secondary != null) 96.dp else 170.dp),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-        },
-        onClick = onClick
+            if (inChannel && member.kind == MemberKind.Agent) {
+                ComposerAgentActivityDot()
+            }
+            if (secondary != null) {
+                Text(
+                    text = secondary,
+                    style = SlockType.Caption.copy(color = secondaryColor),
+                    color = secondaryColor,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } else {
+                Box(modifier = Modifier.weight(1f))
+            }
+            Text(
+                text = "@${member.handle}",
+                style = SlockType.Caption.copy(color = handleColor, fontFamily = FontFamily.Monospace),
+                color = handleColor,
+                modifier = Modifier.width(74.dp),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComposerAgentActivityDot() {
+    Box(
+        modifier =
+            Modifier
+                .size(ComposerAgentActivityDotSize)
+                .background(SlockColor.BrandYellow)
+                .border(SlockStroke.Thin, SlockColor.BorderBlack)
     )
 }
 
@@ -1351,6 +1429,7 @@ private fun ComposerSuggestionPanel(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
+        ComposerSuggestionDivider()
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight)
         ) {
@@ -1359,6 +1438,91 @@ private fun ComposerSuggestionPanel(
             }
         }
     }
+}
+
+@Composable
+private fun ComposerChannelSuggestionRow(
+    channel: KuiklyComposerChannelItem,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    ComposerSuggestionInteractiveRow(
+        selected = selected,
+        muted = false,
+        selectedColor = SlockColor.AccentPink,
+        minHeight = ComposerChannelSuggestionRowMinHeight,
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(ComposerChannelSuggestionIconSize)
+                        .background(SlockColor.BrandYellow)
+                        .border(SlockStroke.Default, SlockColor.BorderBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("#", style = SlockType.Button.copy(fontSize = 13.sp), color = SlockColor.TextBlack)
+            }
+            Text(
+                text = channel.name,
+                style = SlockType.Button.copy(color = SlockColor.TextBlack, fontSize = 13.sp),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            channel.subtitle?.takeIf { it.isNotBlank() }?.let { subtitle ->
+                Text(
+                    text = subtitle,
+                    style = SlockType.Caption.copy(color = SlockColor.TextBlack.copy(alpha = 0.4f)),
+                    color = SlockColor.TextBlack.copy(alpha = 0.4f),
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            } ?: Box(modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun ComposerSuggestionInteractiveRow(
+    selected: Boolean,
+    muted: Boolean,
+    selectedColor: Color,
+    minHeight: Dp,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val background =
+        when {
+            selected -> selectedColor
+            muted -> SlockColor.SurfaceWhite
+            else -> SlockColor.SurfaceWhite
+        }
+    Column(modifier = Modifier.fillMaxWidth().background(background)) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = minHeight)
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            content()
+        }
+        ComposerSuggestionDivider()
+    }
+}
+
+@Composable
+private fun ComposerSuggestionDivider() {
+    Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Default).background(SlockColor.BorderBlack))
 }
 
 @Composable
@@ -1373,7 +1537,7 @@ private fun ComposerSuggestionRow(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = ComposerSuggestionRowMinHeight)
+                .heightIn(min = ComposerMemberSuggestionRowMinHeight)
                 .clickable(onClick = onClick)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
                 .padding(horizontal = 10.dp, vertical = 8.dp),
