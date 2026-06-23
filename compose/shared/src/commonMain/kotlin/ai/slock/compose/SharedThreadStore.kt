@@ -1742,6 +1742,10 @@ internal sealed interface SharedThreadIntent {
     data class ApplyLocalSendFailure(val messageId: String, val errorCode: String? = null) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
+    data class ConsumeComposerSeedForSend(
+        val sentBody: String,
+        val sentAttachmentIds: Set<String>
+    ) : SharedThreadIntent
     data class ApplyMessageReactionSelection(
         val messageId: String,
         val emoji: String,
@@ -1817,6 +1821,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyLocalSendFailure,
             is SharedThreadIntent.DismissLocalFailedSend,
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
+            is SharedThreadIntent.ConsumeComposerSeedForSend,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
             is SharedThreadIntent.ApplyReplyThreadRead,
@@ -1861,6 +1866,8 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyLocalSendFailure -> applyLocalSendFailure(intent.messageId, intent.errorCode)
             is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
             is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
+            is SharedThreadIntent.ConsumeComposerSeedForSend ->
+                consumeComposerSeedForSend(intent.sentBody, intent.sentAttachmentIds)
             is SharedThreadIntent.ApplyMessageReactionSelection ->
                 applyMessageReactionSelection(intent.messageId, intent.emoji, intent.selected)
             is SharedThreadIntent.ApplyMessageReactions ->
@@ -2467,6 +2474,15 @@ internal class SharedThreadStore(
             it.copy(
                 canLoadMoreBefore = canLoadMoreBefore,
                 canLoadMoreAfter = canLoadMoreAfter
+            )
+        }
+    }
+
+    private fun consumeComposerSeedForSend(sentBody: String, sentAttachmentIds: Set<String>) {
+        reducePayloadPatch {
+            it.consumeComposerSeedForSend(
+                sentBody = sentBody,
+                sentAttachmentIds = sentAttachmentIds
             )
         }
     }

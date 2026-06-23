@@ -469,6 +469,37 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerGravatarUrl: String? = null
 )
 
+internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
+    sentBody: String,
+    sentAttachmentIds: Set<String>
+): KuiklyThreadScreenPayload {
+    val sentBodyTrimmed = sentBody.trim()
+    val nextSeedText =
+        if (composer.seedText.trim() == sentBodyTrimmed) {
+            ""
+        } else {
+            composer.seedText
+        }
+    val nextPendingAttachments =
+        if (sentAttachmentIds.isEmpty()) {
+            composer.pendingAttachments
+        } else {
+            composer.pendingAttachments.filterNot { attachment -> attachment.id in sentAttachmentIds }
+        }
+    if (nextSeedText == composer.seedText && nextPendingAttachments == composer.pendingAttachments) {
+        return this
+    }
+    return copy(
+        composer =
+            composer.copy(
+                seedText = nextSeedText,
+                seedAsTask = if (nextSeedText.isBlank()) false else composer.seedAsTask,
+                syncNonce = composer.syncNonce + 1,
+                pendingAttachments = nextPendingAttachments
+            )
+    )
+}
+
 @Serializable
 internal data class WireThreadLaunchPayload(
     val instanceId: String = "",
@@ -3514,6 +3545,12 @@ internal fun SharedThreadRouteContent(
                         )
                     )
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+                    threadViewModel.dispatch(
+                        SharedThreadIntent.ConsumeComposerSeedForSend(
+                            sentBody = pendingContext.body,
+                            sentAttachmentIds = pendingContext.attachmentIds.toSet()
+                        )
+                    )
                     if (hasBlockingAttachmentUpload) {
                         deferredAttachmentSend =
                             ThreadDeferredAttachmentSend(

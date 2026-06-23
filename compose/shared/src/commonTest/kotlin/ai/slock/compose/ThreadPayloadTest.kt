@@ -66,6 +66,61 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun consumeComposerSeedForSendRemovesOnlySentAttachments() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        seedText = "Diagnostics attached",
+                        seedAsTask = true,
+                        syncNonce = 7,
+                        pendingAttachments =
+                            listOf(
+                                KuiklyPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt"),
+                                KuiklyPendingAttachmentItem(id = "manual-att-2", fileName = "manual.txt")
+                            )
+                    )
+            )
+
+        val consumed =
+            payload.consumeComposerSeedForSend(
+                sentBody = "  Diagnostics attached  ",
+                sentAttachmentIds = setOf("diagnostics-att-1")
+            )
+
+        assertEquals("", consumed.composer.seedText)
+        assertEquals(false, consumed.composer.seedAsTask)
+        assertEquals(8, consumed.composer.syncNonce)
+        assertEquals(listOf("manual-att-2"), consumed.composer.pendingAttachments.map { it.id })
+    }
+
+    @Test
+    fun consumeComposerSeedForSendPreservesUnmatchedSeedText() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                composer =
+                    KuiklyThreadComposerPayload(
+                        seedText = "Keep this draft",
+                        syncNonce = 2,
+                        pendingAttachments =
+                            listOf(
+                                KuiklyPendingAttachmentItem(id = "diagnostics-att-1", fileName = "slock-feedback.txt")
+                            )
+                    )
+            )
+
+        val consumed =
+            payload.consumeComposerSeedForSend(
+                sentBody = "Different body",
+                sentAttachmentIds = setOf("diagnostics-att-1")
+            )
+
+        assertEquals("Keep this draft", consumed.composer.seedText)
+        assertEquals(3, consumed.composer.syncNonce)
+        assertEquals(emptyList(), consumed.composer.pendingAttachments)
+    }
+
+    @Test
     fun threadQuickReactionsIncludeServerCheckMarkEmoji() {
         assertTrue("✅" in ThreadQuickReactionEmojis)
     }
