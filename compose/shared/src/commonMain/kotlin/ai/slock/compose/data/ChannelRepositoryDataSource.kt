@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.ChannelId
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
@@ -44,6 +45,18 @@ private suspend fun SlockNetworkClient.archiveChannel(priority: DataRequestPrior
 
 private suspend fun SlockNetworkClient.deleteChannel(priority: DataRequestPriority, channelId: ChannelId): HomeNetworkResponse =
     request(priority, "channels/${channelId.value}", method = "DELETE")
+
+internal suspend fun SlockNetworkClient.updateChannel(
+    priority: DataRequestPriority,
+    channelId: ChannelId,
+    visibility: ChannelVisibility
+): HomeNetworkResponse =
+    request(
+        priority,
+        "channels/${channelId.value}",
+        method = "PATCH",
+        bodyText = JSONObject().put("visibility", visibility.wireValue).toString()
+    )
 
 private suspend fun SlockNetworkClient.openDirectMessage(priority: DataRequestPriority, bodyText: String): HomeNetworkResponse =
     request(priority, "channels/dm", method = "POST", bodyText = bodyText)
@@ -205,6 +218,16 @@ class RealChannelRepository(
                 removeConversationSummary(context.server.id, channelId)
             }
         }
+    }
+
+    override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> {
+        if (channelId.value.isBlank()) return DataResult.Empty(EmptyReason.NoChannels)
+        return executeChannel(
+            emptyReason = EmptyReason.NoChannels,
+            block = { networkClient.updateChannel(DataRequestPriority.Foreground, channelId, visibility) },
+            source = "channel_update_visibility",
+            mapper = { ChannelUpdateResult(channelId) }
+        )
     }
 
     private suspend fun fetchChannels(context: SharedChannelServerContext): DataResult<ChannelSnapshot> =

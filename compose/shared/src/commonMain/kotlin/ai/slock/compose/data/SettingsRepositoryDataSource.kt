@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.network.MultipartFile
 import kotlinx.coroutines.CancellationException
@@ -192,6 +193,9 @@ private suspend fun SlockNetworkClient.updateSettingsServerMemberRole(
 ): HomeNetworkResponse =
     request(priority, "servers/$serverId/members/$memberId", method = "PATCH", serverIdOverride = ServerId(serverId), bodyText = bodyText)
 
+internal suspend fun SlockNetworkClient.settingsServerChannels(priority: DataRequestPriority): HomeNetworkResponse =
+    request(priority, "channels")
+
 private suspend fun SlockNetworkClient.deleteSettingsServerMember(
     priority: DataRequestPriority,
     serverId: String,
@@ -275,7 +279,8 @@ class RealSettingsRepository(
     private val sessionStore: SlockAuthSessionStore,
     private val networkClient: SlockNetworkClient,
     private val logger: (String) -> Unit = {},
-    private val warningLogger: (String) -> Unit = {}
+    private val warningLogger: (String) -> Unit = {},
+    private val channelRepository: ChannelRepository? = null
 ) : SettingsRepository, SettingsServerActionRepository, SettingsServerManagementRepository {
     private val computersApiClient = SlockComputersApiClient(SlockComputersNetworkApi(networkClient))
 
@@ -906,7 +911,8 @@ class RealSettingsRepository(
                 agreement = agreementSnapshot,
                 onboarding = onboardingSnapshot,
                 translation = translationSnapshot,
-                sidebarOrder = sidebarOrderSnapshot
+                sidebarOrder = sidebarOrderSnapshot,
+                systemChannels = fetchSystemChannel(canManageServer)
             )
         )
     }
@@ -1091,6 +1097,41 @@ class RealSettingsRepository(
         val serverId = selectedServerId() ?: return serverRequired()
         if (!request.hasAtLeastOneField()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
         return settingsUpdateServerSidebarOrder(serverId, request)
+    }
+
+    override suspend fun updateSystemChannelVisibility(
+        allChannelId: String,
+        hide: Boolean
+    ): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_channels")
+            )
+        }
+        if (allChannelId.isBlank()) return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        val channelId = ChannelId(allChannelId)
+        val repo = channelRepository
+            ?: return DataResult.Empty(EmptyReason.NoSettingsAvailable)
+        return when (
+            val result = repo.updateChannel(channelId, if (hide) ChannelVisibility.Private else ChannelVisibility.Public)
+        ) {
+            is DataResult.Content -> DataResult.Content(SettingsServerActionResult(success = true))
+            is DataResult.Empty -> DataResult.Empty(result.reason)
+            is DataResult.Error -> DataResult.Error(result.error)
+            is DataResult.NoPermission -> DataResult.NoPermission(result.blocker)
+        }
+    }
+
+    override suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult> {
+        val server = selectedServer() ?: return serverRequired()
+        if (!server.canManageServer) {
+            return DataResult.NoPermission(
+                PermissionBlocker(code = "server_admin_required", requiredCapability = "manage_channels")
+            )
+        }
+        // Caller is expected to look up #all channel id from systemChannels snapshot, then re-call updateSystemChannelVisibility(hide=false).
+        return DataResult.Empty(EmptyReason.NoSettingsAvailable)
     }
 
     override suspend fun updateServerMemberRole(
@@ -1734,6 +1775,23 @@ class RealSettingsRepository(
                     ?: settingsContractMismatch("settings_server_join_links_contract_mismatch")
             }
         )
+
+    private suspend fun fetchSystemChannel(canManage: Boolean): SettingsServerSystemChannelSnapshot? {
+        if (!canManage) return null
+        return runCatching {
+            executeTypedSettings(
+                source = "settings_system_channel",
+                contractCode = "settings_system_channel_contract_mismatch",
+                block = { networkClient.settingsServerChannels(DataRequestPriority.Visible) },
+                mapper = { bodyText -> parseSharedSystemChannelSnapshot(bodyText) }
+            )
+        }.getOrNull()?.let { result ->
+            when (result) {
+                is DataResult.Content -> result.data
+                else -> null
+            }
+        }
+    }
 
     private suspend fun fetchServerMute(serverId: String): DataResult<Boolean> =
         executeTypedSettings(

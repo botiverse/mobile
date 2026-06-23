@@ -233,6 +233,8 @@ sealed interface SharedSettingsIntent {
     data class UpdateServerOnboarding(val request: SettingsServerOnboardingUpdateRequest) : SharedSettingsIntent
     data class UpdateServerTranslation(val request: SettingsServerTranslationUpdateRequest) : SharedSettingsIntent
     data class UpdateServerSidebarOrder(val request: SettingsServerSidebarOrderUpdateRequest) : SharedSettingsIntent
+    data class UpdateSystemChannelVisibility(val allChannelId: String, val hide: Boolean) : SharedSettingsIntent
+    data object RestoreSystemChannel : SharedSettingsIntent
     data class UpdateServerMemberRole(val request: SettingsServerMemberRoleUpdateRequest) : SharedSettingsIntent
     data class RemoveServerMember(val memberId: String) : SharedSettingsIntent
     data object LeaveServer : SharedSettingsIntent
@@ -496,6 +498,17 @@ class SharedSettingsDataSource(
 
     suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult> =
         (settingsRepository as? SettingsServerManagementRepository)?.removeServerMember(memberId)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun updateSystemChannelVisibility(
+        allChannelId: String,
+        hide: Boolean
+    ): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerManagementRepository)?.updateSystemChannelVisibility(allChannelId, hide)
+            ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult> =
+        (settingsRepository as? SettingsServerManagementRepository)?.restoreSystemChannel()
             ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun leaveServer(): DataResult<SettingsServerActionResult> =
@@ -1071,6 +1084,16 @@ class SharedSettingsStore(
             is SharedSettingsIntent.UpdateServerMemberRole -> {
                 runAction(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId) {
                     dataSource.updateServerMemberRole(intent.request).applyServerActionResult(SERVER_ACTION_MEMBER_ROLE, intent.request.memberId)
+                }
+            }
+            is SharedSettingsIntent.UpdateSystemChannelVisibility -> {
+                runAction(SERVER_ACTION_SYSTEM_CHANNEL_HIDE) {
+                    dataSource.updateSystemChannelVisibility(intent.allChannelId, intent.hide).applyServerSnapshotReloadResult(SERVER_ACTION_SYSTEM_CHANNEL_HIDE)
+                }
+            }
+            is SharedSettingsIntent.RestoreSystemChannel -> {
+                runAction(SERVER_ACTION_SYSTEM_CHANNEL_RESTORE) {
+                    dataSource.restoreSystemChannel().applyServerSnapshotReloadResult(SERVER_ACTION_SYSTEM_CHANNEL_RESTORE)
                 }
             }
             is SharedSettingsIntent.RemoveServerMember -> {
@@ -1745,6 +1768,8 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.UpdateServerTranslation,
             is SharedSettingsIntent.UpdateServerSidebarOrder,
             is SharedSettingsIntent.UpdateServerMemberRole,
+            is SharedSettingsIntent.UpdateSystemChannelVisibility,
+            SharedSettingsIntent.RestoreSystemChannel,
             is SharedSettingsIntent.RemoveServerMember,
             SharedSettingsIntent.LeaveServer,
             is SharedSettingsIntent.DeleteServer,
@@ -1874,6 +1899,8 @@ internal const val SERVER_ACTION_MEMBER_REMOVE = "serverMemberRemove"
 internal const val SERVER_ACTION_LEAVE = "serverLeave"
 internal const val SERVER_ACTION_DELETE = "serverDelete"
 internal const val SERVER_ACTION_CONFIRM = "serverConfirm"
+internal const val SERVER_ACTION_SYSTEM_CHANNEL_HIDE = "serverSystemChannelHide"
+internal const val SERVER_ACTION_SYSTEM_CHANNEL_RESTORE = "serverSystemChannelRestore"
 internal const val DIAGNOSTICS_ACTION_PROFILER_START = "diagnosticsProfilerStart"
 internal const val DIAGNOSTICS_ACTION_PROFILER_STOP = "diagnosticsProfilerStop"
 internal const val DIAGNOSTICS_ACTION_PROFILER_ENABLED = "diagnosticsProfilerEnabled"

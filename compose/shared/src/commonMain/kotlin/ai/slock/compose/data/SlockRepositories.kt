@@ -129,6 +129,13 @@ interface SettingsServerManagementRepository {
         request: SettingsServerMemberRoleUpdateRequest
     ): DataResult<SettingsServerActionResult>
 
+    suspend fun updateSystemChannelVisibility(
+        allChannelId: String,
+        hide: Boolean
+    ): DataResult<SettingsServerActionResult>
+
+    suspend fun restoreSystemChannel(): DataResult<SettingsServerActionResult>
+
     suspend fun removeServerMember(memberId: String): DataResult<SettingsServerActionResult>
     suspend fun leaveServer(): DataResult<SettingsServerActionResult>
 }
@@ -310,7 +317,15 @@ interface ChannelRepository {
     suspend fun leaveChannel(channelId: ChannelId): DataResult<ChannelLeaveResult>
     suspend fun archiveChannel(channelId: ChannelId): DataResult<ChannelArchiveResult>
     suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult>
+    suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult>
 }
+
+enum class ChannelVisibility(val wireValue: String) {
+    Public("public"),
+    Private("private")
+}
+
+data class ChannelUpdateResult(val channelId: ChannelId)
 
 interface ReadReceiptRepository {
     suspend fun getUnreadCounts(serverId: ServerId): DataResult<ChannelUnreadSnapshot>

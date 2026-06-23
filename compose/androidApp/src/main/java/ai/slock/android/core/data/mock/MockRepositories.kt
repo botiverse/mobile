@@ -43,6 +43,8 @@ import ai.slock.compose.data.ChannelJoinResult
 import ai.slock.compose.data.ChannelLeaveResult
 import ai.slock.compose.data.ChannelRepository
 import ai.slock.compose.data.ChannelSnapshot
+import ai.slock.compose.data.ChannelUpdateResult
+import ai.slock.compose.data.ChannelVisibility
 import ai.slock.compose.data.ChannelUnreadSnapshot
 import ai.slock.compose.data.ConversationRepository
 import ai.slock.compose.data.CreateChannelRequest
@@ -1188,6 +1190,11 @@ class MockChannelRepository(
     override suspend fun deleteChannel(channelId: ChannelId): DataResult<ChannelDeleteResult> =
         resultFor(scenario, EmptyReason.NoChannels) {
             ChannelDeleteResult(channelId = channelId, deleted = true)
+        }
+
+    override suspend fun updateChannel(channelId: ChannelId, visibility: ChannelVisibility): DataResult<ChannelUpdateResult> =
+        resultFor(scenario, EmptyReason.NoChannels) {
+            ChannelUpdateResult(channelId = channelId)
         }
 
     private fun openMockDirectMessage(): DataResult<OpenDirectMessageResult> =

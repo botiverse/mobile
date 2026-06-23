@@ -66,6 +66,7 @@ import ai.slock.compose.data.SERVER_ACTION_MEMBER_ROLE
 import ai.slock.compose.data.SERVER_ACTION_ONBOARDING_SAVE
 import ai.slock.compose.data.SERVER_ACTION_ONBOARDING_TOGGLE
 import ai.slock.compose.data.SERVER_ACTION_PROFILE_SAVE
+import ai.slock.compose.data.SERVER_ACTION_SYSTEM_CHANNEL_HIDE
 import ai.slock.compose.data.SERVER_ACTION_SIDEBAR_ORDER
 import ai.slock.compose.data.SERVER_ACTION_TRANSLATION_TOGGLE
 import ai.slock.compose.data.NotificationPreferenceSnapshot
@@ -236,6 +237,7 @@ import ai.slock.compose.data.SettingsServerSidebarOrderSnapshot
 import ai.slock.compose.data.SettingsServerSidebarOrderUpdateRequest
 import ai.slock.compose.data.SettingsServerSnapshot
 import ai.slock.compose.data.SettingsServerTranslationSnapshot
+import ai.slock.compose.data.SettingsServerSystemChannelSnapshot
 import ai.slock.compose.data.SettingsServerTranslationUpdateRequest
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.network.SlockNetworkModule
@@ -1400,7 +1402,8 @@ private fun SlockAppShellContent() {
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
                 logger = { message -> bridge.log("shared_settings_repository $message") },
-                warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") }
+                warningLogger = { message -> bridge.log("shared_settings_repository_warning $message") },
+                channelRepository = channelRepository
             )
         }
     val settingsDataSource =
@@ -3029,6 +3032,13 @@ private fun SettingsAppShellContent(
                             itemId?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerSidebarOrder(SettingsServerSidebarOrderUpdateRequest(channelSortMode = it)))
                             }
+                        SERVER_ACTION_SYSTEM_CHANNEL_HIDE -> {
+                            val allChannelId = settingsState.server.currentContent()?.systemChannels?.allChannelId
+                            if (!allChannelId.isNullOrBlank()) {
+                                val currentHidden = settingsState.server.currentContent()?.systemChannels?.allChannelHidden == true
+                                onSettingsIntent(SharedSettingsIntent.UpdateSystemChannelVisibility(allChannelId, hide = !currentHidden))
+                            }
+                        }
                         SERVER_ACTION_MEMBER_ROLE ->
                             itemId?.split(":", limit = 2)?.takeIf { it.size == 2 }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest(it[0], it[1])))
@@ -6470,6 +6480,10 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toAdministrationPayload(
                     rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
                 ),
                 KuiklySharedSettingsSection(
+                    title = "System Channels",
+                    rows = snapshot?.systemChannels.toSystemChannelRows(sectionsByKey["system_channels"], actionState)
+                ),
+                KuiklySharedSettingsSection(
                     title = "Onboarding",
                     rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
                 ),
@@ -6688,6 +6702,30 @@ private fun SettingsServerTranslationSnapshot?.toTranslationRows(
             )
         } ?: section.toPlaceholderRow("translation", SlockLucideIconName.Languages, "Translation", "No translation settings are available.")
     )
+
+private fun SettingsServerSystemChannelSnapshot?.toSystemChannelRows(
+    section: SettingsServerSectionSnapshot?,
+    actionState: ai.slock.compose.data.SharedSettingsActionState?
+): List<KuiklySharedSettingsRow> {
+    val system = this
+    if (system == null) {
+        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, "System Channels", "System channel controls are unavailable."))
+    }
+    if (system.allChannelId.isBlank()) {
+        return listOf(section.toPlaceholderRow("system_channels", SlockLucideIconName.Eye, "System Channels", "No #all channel was found for this workspace."))
+    }
+    return listOf(
+        KuiklySharedSettingsRow(
+            key = SERVER_ACTION_SYSTEM_CHANNEL_HIDE,
+            iconName = SlockLucideIconName.Eye,
+            title = "Hide #all channel",
+            detail = "When enabled, #all disappears from channel lists, search, posting, members, and agent channel surfaces. Existing history is preserved.",
+            value = system.allChannelId,
+            status = actionState.serverStatusFor(SERVER_ACTION_SYSTEM_CHANNEL_HIDE, if (system.allChannelHidden) "Hidden" else "Visible"),
+            enabled = system.canManage && actionState?.inProgress != true
+        )
+    )
+}
 
 private fun SettingsServerSidebarOrderSnapshot?.toSidebarOrderRows(
     section: SettingsServerSectionSnapshot?,

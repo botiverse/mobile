@@ -704,7 +704,14 @@ data class SettingsServerSnapshot(
     val agreement: SettingsServerAgreementSnapshot? = null,
     val onboarding: SettingsServerOnboardingSnapshot? = null,
     val translation: SettingsServerTranslationSnapshot? = null,
-    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null
+    val sidebarOrder: SettingsServerSidebarOrderSnapshot? = null,
+    val systemChannels: SettingsServerSystemChannelSnapshot? = null
+)
+
+data class SettingsServerSystemChannelSnapshot(
+    val allChannelId: String = "",
+    val allChannelHidden: Boolean = false,
+    val canManage: Boolean = false
 )
 
 data class SettingsServerProfileSnapshot(

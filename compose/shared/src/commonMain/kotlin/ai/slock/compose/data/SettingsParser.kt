@@ -869,3 +869,24 @@ private fun String.toSettingsRoleLabel(): String =
     replace("_", " ")
         .replace("-", " ")
         .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+
+fun parseSharedSystemChannelSnapshot(bodyText: String): SettingsServerSystemChannelSnapshot? = runCatching {
+    val parsed = settingsJson.parseToJsonElement(bodyText)
+    val obj = parsed as? kotlinx.serialization.json.JsonObject ?: return@runCatching null
+    val channels = obj["channels"] as? kotlinx.serialization.json.JsonArray ?: return@runCatching null
+    val allChannel = channels
+        .mapNotNull { it as? kotlinx.serialization.json.JsonObject }
+        .firstOrNull { c ->
+            (c["name"] as? JsonPrimitive)?.contentOrNull == "all" &&
+                (c["type"] as? JsonPrimitive)?.contentOrNull == "channel"
+        }
+    if (allChannel == null) return@runCatching null
+    val id = (allChannel["id"] as? JsonPrimitive)?.contentOrNull ?: return@runCatching null
+    val type = (allChannel["type"] as? JsonPrimitive)?.contentOrNull
+    val hidden = type == "private"
+    SettingsServerSystemChannelSnapshot(
+        allChannelId = id,
+        allChannelHidden = hidden,
+        canManage = true
+    )
+}.getOrNull()
