@@ -6943,11 +6943,8 @@ private fun ThreadMessageFooterMeta(
     onOpenTaskStatusMenu: (Offset) -> Unit,
     onToggleReaction: ((String) -> Unit)? = null
 ) {
-    val hasTask =
-        !message.taskId.isNullOrBlank() ||
-            message.taskNumber != null ||
-            !message.taskStatus.isNullOrBlank() ||
-            !message.taskAssigneeName.isNullOrBlank()
+    val taskLabel = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName)
+    val hasTask = taskLabel != null
     val hasReplies = message.replyCount > 0
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
@@ -6959,8 +6956,7 @@ private fun ThreadMessageFooterMeta(
         horizontalArrangement =
             if (alignEnd) Arrangement.spacedBy(6.dp, Alignment.End) else Arrangement.spacedBy(6.dp)
     ) {
-        if (hasTask) {
-            val label = threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) ?: "Task"
+        if (taskLabel != null) {
             val selectedStatus = message.taskStatus.threadTaskStatusOption()
             val taskChipClick: ((Offset) -> Unit)? =
                 when {
@@ -6969,7 +6965,7 @@ private fun ThreadMessageFooterMeta(
                     else -> null
                 }
             SlockAnchoredMetaChip(
-                label = label,
+                label = taskLabel,
                 iconName = selectedStatus.icon,
                 iconSize = selectedStatus.iconSize,
                 color = selectedStatus.color,
@@ -7021,6 +7017,12 @@ internal fun threadMessageTaskMetaLabel(
         }
     }
 }
+
+internal fun shouldRenderThreadTaskMetaChip(
+    message: KuiklyThreadMessageItem,
+    resolvedTaskAssigneeName: String? = null
+): Boolean =
+    threadMessageTaskMetaLabel(message, resolvedTaskAssigneeName) != null
 
 internal fun String.isDisplaySafeTaskAssigneeName(assigneeId: String? = null): Boolean {
     val trimmed = trim().removePrefix("@")

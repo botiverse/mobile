@@ -2334,6 +2334,24 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun hidesTaskMetaChipUntilAssigneeOnlyStateIsResolved() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "m1",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "assigned",
+                taskAssigneeId = "agent_android",
+                taskAssigneeName = "agent_android"
+            )
+
+        assertEquals(null, threadMessageTaskMetaLabel(message))
+        assertEquals(false, shouldRenderThreadTaskMetaChip(message))
+        assertEquals("Task @Android Developer", threadMessageTaskMetaLabel(message, "Android Developer"))
+        assertEquals(true, shouldRenderThreadTaskMetaChip(message, "Android Developer"))
+    }
+
+    @Test
     fun threadListBoundsUseMeasuredItemsForBottomOffset() {
         assertEquals(0, threadMessagesBeyondBoundsItemCount(-1))
         assertEquals(1, threadMessagesBeyondBoundsItemCount(1))
