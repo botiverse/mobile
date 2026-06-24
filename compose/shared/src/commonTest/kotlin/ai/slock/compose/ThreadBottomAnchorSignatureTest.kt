@@ -404,27 +404,48 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun beginningReplyCountLabel_usesLiveReplyListWhenItExceedsOriginCount() {
+    fun originReplyCountProjection_usesLiveReplyListWhenItExceedsOriginCount() {
         assertEquals(
             "3 replies",
             payload(originMessage = message("origin", replyCount = 3))
+                .withOriginReplyCountAtLeastLoadedReplies()
                 .threadBeginningReplyCountLabel()
         )
         assertEquals(
             "1 reply",
             payload(originMessage = message("origin", replyCount = 1))
+                .withOriginReplyCountAtLeastLoadedReplies()
                 .threadBeginningReplyCountLabel()
         )
-        assertEquals(
-            "2 replies",
+        val projected =
             payload(
                 originMessage = message("origin", replyCount = 0),
                 messages = listOf(message("reply-1"), message("reply-2"))
-            ).threadBeginningReplyCountLabel()
-        )
+            ).withOriginReplyCountAtLeastLoadedReplies()
+        assertEquals(2, projected.originMessage?.replyCount)
+        assertEquals("2 replies", projected.threadBeginningReplyCountLabel())
+        val unchanged =
+            payload(
+                originMessage = message("origin", replyCount = 5),
+                messages = listOf(message("reply-1"), message("reply-2"))
+            ).withOriginReplyCountAtLeastLoadedReplies()
+        assertEquals(5, unchanged.originMessage?.replyCount)
         assertEquals(
             null,
             payload(messages = listOf(message("m1", replyCount = 5)))
+                .withOriginReplyCountAtLeastLoadedReplies()
+                .threadBeginningReplyCountLabel()
+        )
+    }
+
+    @Test
+    fun beginningReplyCountLabel_readsOriginProjectionOnly() {
+        assertEquals(
+            "0 replies",
+            payload(
+                originMessage = message("origin", replyCount = 0),
+                messages = listOf(message("reply-1"), message("reply-2"))
+            )
                 .threadBeginningReplyCountLabel()
         )
     }

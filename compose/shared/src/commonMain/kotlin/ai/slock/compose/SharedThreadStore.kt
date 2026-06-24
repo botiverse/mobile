@@ -172,7 +172,10 @@ internal class SharedThreadDataSource(
 
     fun cachePayload(payload: KuiklyThreadScreenPayload) {
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return
-        val cacheablePayload = payload.withoutTransientLocalSendingMessages()
+        val cacheablePayload =
+            payload
+                .withoutTransientLocalSendingMessages()
+                .withOriginReplyCountAtLeastLoadedReplies()
         if (cacheablePayload.hasRenderableThreadContent()) {
             payloadCache[threadId] = cacheablePayload.copy(status = "content", backgroundRefreshing = false, errorCode = null)
         }
@@ -3206,7 +3209,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
         status = "content",
         errorCode = null,
         messages = merged.sortedByThreadTimeline()
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun KuiklyThreadScreenPayload.mergePagedMessages(
@@ -3229,7 +3232,7 @@ private fun KuiklyThreadScreenPayload.mergePagedMessages(
         canLoadMoreAfter = if (before) canLoadMoreAfter else hasMore,
         olderMessagesStatus = if (before) "idle" else olderMessagesStatus,
         newerMessagesStatus = if (before) newerMessagesStatus else "idle"
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun KuiklyThreadScreenPayload.withLocalSendStarted(
@@ -3250,7 +3253,7 @@ private fun KuiklyThreadScreenPayload.withLocalSendStarted(
         status = "content",
         errorCode = null,
         messages = nextMessages.sortedByThreadTimeline()
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun KuiklyThreadScreenPayload.withLocalSendFailure(
@@ -3305,18 +3308,35 @@ private fun KuiklyThreadMessageItem.isPersistentLocalFailedMessage(): Boolean =
         pendingSendContext != null
 
 private fun KuiklyThreadScreenPayload.trimToLatestThreadWindow(limit: Int): KuiklyThreadScreenPayload {
-    if (limit <= 0 || messages.isEmpty()) return this
+    if (limit <= 0 || messages.isEmpty()) return withOriginReplyCountAtLeastLoadedReplies()
     val sortedMessages = messages.sortedByThreadTimeline()
     if (sortedMessages.size <= limit) {
-        return if (sortedMessages == messages) this else copy(messages = sortedMessages)
+        return (if (sortedMessages == messages) this else copy(messages = sortedMessages))
+            .withOriginReplyCountAtLeastLoadedReplies()
     }
+    val projectedOrigin =
+        originMessage?.let { origin ->
+            if (sortedMessages.size > origin.replyCount) {
+                origin.copy(replyCount = sortedMessages.size)
+            } else {
+                origin
+            }
+        }
     return copy(
         status = "content",
         errorCode = null,
         messages = sortedMessages.takeLast(limit),
+        originMessage = projectedOrigin,
         canLoadMoreBefore = true,
         olderMessagesStatus = "idle"
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
+}
+
+internal fun KuiklyThreadScreenPayload.withOriginReplyCountAtLeastLoadedReplies(): KuiklyThreadScreenPayload {
+    val origin = originMessage ?: return this
+    val loadedReplyCount = messages.size
+    if (loadedReplyCount <= origin.replyCount) return this
+    return copy(originMessage = origin.copy(replyCount = loadedReplyCount))
 }
 
 private fun List<KuiklyThreadMessageItem>.sortedByThreadTimeline(): List<KuiklyThreadMessageItem> =
@@ -3378,7 +3398,7 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessageUpdate(
         errorCode = null,
         messages = mergedMessages.distinctBy { it.id },
         originMessage = updatedOrigin
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): KuiklyThreadScreenPayload {
@@ -3402,6 +3422,7 @@ private fun KuiklyThreadScreenPayload.applyThreadUpdated(event: ThreadUpdated): 
     val updatedOrigin = originMessage?.updateIfMatches()
     if (updatedMessages == messages && updatedOrigin == originMessage) return this
     return copy(messages = updatedMessages, originMessage = updatedOrigin)
+        .withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun KuiklyThreadScreenPayload.mergeRealtimeTasks(tasks: List<TaskSummary>): KuiklyThreadScreenPayload {
@@ -3542,7 +3563,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         dmPeerAvatarUrl = patch.dmPeerAvatarUrl,
         dmPeerAvatarLabel = patch.dmPeerAvatarLabel,
         dmPeerGravatarUrl = patch.dmPeerGravatarUrl
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
@@ -4135,7 +4156,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         dmPeerAvatarUrl = base.dmPeerAvatarUrl ?: dmPeerAvatar.effectiveAvatarWireValue.takeIf { isDirectMessage },
         dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
         dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage && !isAgentDirectMessage }
-    )
+    ).withOriginReplyCountAtLeastLoadedReplies()
 }
 
 private fun ThreadSnapshot.matchesFocusedThreadRoute(
