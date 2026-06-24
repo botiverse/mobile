@@ -114,6 +114,29 @@ class ChannelRepositoryDataSourceTest {
         assertEquals(false, notJoined.permissions.canSend)
     }
 
+    @Test
+    fun getHomePreservesServerUnreadSummaryAfterCacheMerge() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                pathResponses =
+                    mapOf(
+                        "channels" to """[{"id":"channel-1","name":"general","type":"channel","joined":true}]""",
+                        "channels/dm" to """[]""",
+                        "channels/unread" to """{"channel-1":4}""",
+                        "servers/unread-summary" to """[{"serverId":"server-1","unreadCount":12}]"""
+                    )
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+
+        val home = assertIs<DataResult.Content<HomeSnapshot>>(repository.getHome(ServerId("server-1"))).data
+
+        assertEquals(AppBadgeSource.SERVER_UNREAD_SUMMARY, home.unreadSource)
+        assertEquals(4, home.channels.single().unreadCount)
+        assertEquals(12, home.unreadTotal)
+        assertEquals(12, home.server.unreadCount)
+        assertEquals(12, home.serverUnreadCounts["server-1"])
+    }
+
     private fun String.asJsonObject() =
         Json.parseToJsonElement(this).jsonObject
 
@@ -145,7 +168,8 @@ class ChannelRepositoryDataSourceTest {
 
     private class FakeChannelNetworkClient(
         private val responseCode: Int = 200,
-        var responseBody: String = """{"id":"channel-1","name":"general","type":"channel","joined":true}"""
+        var responseBody: String = """{"id":"channel-1","name":"general","type":"channel","joined":true}""",
+        private val pathResponses: Map<String, String> = emptyMap()
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedChannelRequest>()
         val bodies = mutableListOf<String>()
@@ -158,9 +182,13 @@ class ChannelRepositoryDataSourceTest {
             serverIdOverride: ServerId?,
             bodyText: String?
         ): HomeNetworkResponse {
-            requests += RecordedChannelRequest(priority, method, path.trim('/'))
+            val normalizedPath = path.trim('/')
+            requests += RecordedChannelRequest(priority, method, normalizedPath)
             bodyText?.let { bodies += it }
-            return HomeNetworkResponse(code = responseCode, bodyText = responseBody)
+            return HomeNetworkResponse(
+                code = responseCode,
+                bodyText = pathResponses[normalizedPath] ?: responseBody
+            )
         }
     }
 

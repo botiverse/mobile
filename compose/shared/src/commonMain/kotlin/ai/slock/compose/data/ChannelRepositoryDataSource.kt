@@ -91,12 +91,23 @@ class RealChannelRepository(
                 val directMessages =
                     mergeDirectMessageCache(serverId, snapshot.directMessages)
                         .withCachedConversationSummaries(serverId)
-                DataResult.Content(
+                val mergedSnapshot =
                     snapshot.copy(
                         channels = channels,
-                        directMessages = directMessages,
-                        unreadTotal = channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
+                        directMessages = directMessages
                     )
+                val mergedUnreadTotal =
+                    channels.sumOf { it.unreadCount } + directMessages.sumOf { it.unreadCount }
+                DataResult.Content(
+                    if (snapshot.unreadSource == AppBadgeSource.SERVER_UNREAD_SUMMARY) {
+                        mergedSnapshot
+                    } else {
+                        mergedSnapshot.copy(
+                            unreadTotal = mergedUnreadTotal,
+                            server = mergedSnapshot.server.copy(unreadCount = mergedUnreadTotal),
+                            serverUnreadCounts = mergedSnapshot.serverUnreadCounts + (serverId.value to mergedUnreadTotal)
+                        )
+                    }
                 )
             }
             else -> result
