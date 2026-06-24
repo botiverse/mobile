@@ -699,6 +699,7 @@ internal fun MembersPageContent() {
             decodedPayload.copy(instanceId = instanceId)
         }
     }
+    val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
 
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Mirrors ThreadPage's pattern: sharedStores gives us the auth store;
@@ -816,11 +817,17 @@ internal fun MembersPageContent() {
     // per non-empty email.
     var inviteJoinLinkLoading by remember { mutableStateOf(false) }
     var inviteJoinLinkUrl by remember { mutableStateOf<String?>(null) }
+    var inviteJoinLinkWebBaseUrl by remember { mutableStateOf<String?>(null) }
     var inviteJoinLinkCopied by remember { mutableStateOf(false) }
     fun loadInviteJoinLink() {
         if (serverId.isBlank() || inviteJoinLinkLoading) return
         inviteJoinLinkLoading = true
         scope.launch {
+            val webBaseUrl =
+                when (val developer = settingsCapabilities.loadDeveloper()) {
+                    is DataResult.Content -> developer.data.webUrl
+                    else -> null
+                }
             val listed = membersDataSource.loadJoinLinks(serverId)
             val existing = (listed as? DataResult.Content)?.data.orEmpty().firstOrNull()
             val result = if (existing != null) {
@@ -830,7 +837,10 @@ internal fun MembersPageContent() {
             }
             inviteJoinLinkLoading = false
             when (result) {
-                is DataResult.Content -> inviteJoinLinkUrl = normalizeInviteHumanJoinUrl(result.data.url)
+                is DataResult.Content -> {
+                    inviteJoinLinkWebBaseUrl = webBaseUrl
+                    inviteJoinLinkUrl = normalizeInviteHumanJoinUrl(result.data.url, webBaseUrl)
+                }
                 is DataResult.NoPermission ->
                     bridge.toast("You do not have permission to manage invites.")
                 is DataResult.Error ->
@@ -895,7 +905,7 @@ internal fun MembersPageContent() {
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
         inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
         inviteHumanJoinLinkCopy = {
-            val url = inviteHumanJoinUrlCopyPayload(inviteJoinLinkUrl)
+            val url = inviteHumanJoinUrlCopyPayload(inviteJoinLinkUrl, inviteJoinLinkWebBaseUrl)
             if (url != null) {
                 bridge.copyToPasteboard(url)
                 inviteJoinLinkCopied = true

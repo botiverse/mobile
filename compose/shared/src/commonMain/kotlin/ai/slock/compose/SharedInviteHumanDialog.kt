@@ -180,15 +180,18 @@ internal fun SharedInviteHumanDialog(
     }
 }
 
-internal fun normalizeInviteHumanJoinUrl(rawUrl: String?): String? {
+private const val DefaultInviteHumanWebUrl = "https://app.raft.build"
+
+internal fun normalizeInviteHumanJoinUrl(rawUrl: String?, webBaseUrl: String? = null): String? {
     val trimmed = rawUrl?.trim().orEmpty()
     if (trimmed.isBlank()) return null
+    val baseUrl = webBaseUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { DefaultInviteHumanWebUrl }
     return when {
         trimmed.startsWith("http://") || trimmed.startsWith("https://") -> trimmed
-        trimmed.startsWith("/") -> "https://app.raft.build$trimmed"
-        else -> "https://app.raft.build/$trimmed"
+        trimmed.startsWith("/") -> "$baseUrl$trimmed"
+        else -> "$baseUrl/$trimmed"
     }
 }
 
-internal fun inviteHumanJoinUrlCopyPayload(rawUrl: String?): String? =
-    normalizeInviteHumanJoinUrl(rawUrl)
+internal fun inviteHumanJoinUrlCopyPayload(rawUrl: String?, webBaseUrl: String? = null): String? =
+    normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)
