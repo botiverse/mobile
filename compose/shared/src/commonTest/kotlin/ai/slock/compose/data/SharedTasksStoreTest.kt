@@ -208,6 +208,30 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun sharedTasksDataStoreUpsertTaskUpdatesPublishedChannelProjection() = runBlocking {
+        val store = SharedTasksDataStore()
+        val original = task("task-1", TaskStatus.Todo, channelId = ChannelId("channel-1"))
+        val updated = original.copy(status = TaskStatus.InReview)
+
+        store.publishSnapshot(
+            serverId = "server-1",
+            scope = SharedTasksScope.Channel(ChannelId("channel-1")),
+            snapshot =
+                TaskSnapshot(
+                    tasks = listOf(original),
+                    summaryCounts = emptyMap()
+                )
+        )
+
+        store.upsertTask("server-1", updated)
+
+        val slice = store.channelProjectionFlow("server-1", "channel-1", null).first()
+
+        assertEquals(SharedTasksDataStoreStatus.Loaded, slice.status)
+        assertEquals(TaskStatus.InReview, slice.tasks.single().status)
+    }
+
+    @Test
     fun sharedTasksRepositoryKeepsChannelRefreshScopedToChannelCache() = runBlocking {
         val serverId = ServerId("server-1")
         val channelId = ChannelId("channel-thread")

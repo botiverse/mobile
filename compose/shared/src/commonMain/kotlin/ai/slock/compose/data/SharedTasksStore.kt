@@ -328,6 +328,15 @@ internal class SharedTasksViewModel(
         diagnosticsLogger("tasks_projection_publish source=$source scope=${scope.tasksScopeDiagnostics()} tasks=${snapshot.tasks.size}")
     }
 
+    private suspend fun publishSharedTaskUpdate(task: TaskSummary, source: String) {
+        val sharedStore = sharedTasksDataStore ?: return
+        val serverId = useCase.currentServerId() ?: return
+        sharedStore.upsertTask(serverId.value, task)
+        diagnosticsLogger(
+            "tasks_projection_upsert source=$source taskId=${task.id.value} status=${task.status.name}"
+        )
+    }
+
     private fun logTasksRefreshSkip(
         reason: String,
         skipReason: TasksRefreshSkipReason,
@@ -376,7 +385,10 @@ internal class SharedTasksViewModel(
         store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
         try {
             when (val result = useCase.updateTaskStatus(TasksStatusUpdateRequest(task.id, status))) {
-                is DataResult.Content -> store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
+                is DataResult.Content -> {
+                    publishSharedTaskUpdate(result.data.task, "status_result")
+                    store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(result.data.task))
+                }
                 else -> {
                     val errorCode = result.failureCodeOrNull() ?: "tasks_status_unknown"
                     events.emit(SharedTasksEvent.OperationFailed(errorCode))
