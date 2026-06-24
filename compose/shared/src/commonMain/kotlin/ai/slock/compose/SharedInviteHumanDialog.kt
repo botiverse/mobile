@@ -189,3 +189,6 @@ internal fun normalizeInviteHumanJoinUrl(rawUrl: String?): String? {
         else -> "https://app.raft.build/$trimmed"
     }
 }
+
+internal fun inviteHumanJoinUrlCopyPayload(rawUrl: String?): String? =
+    normalizeInviteHumanJoinUrl(rawUrl)

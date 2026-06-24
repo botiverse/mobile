@@ -895,7 +895,7 @@ internal fun MembersPageContent() {
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
         inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
         inviteHumanJoinLinkCopy = {
-            val url = inviteJoinLinkUrl
+            val url = inviteHumanJoinUrlCopyPayload(inviteJoinLinkUrl)
             if (url != null) {
                 bridge.copyToPasteboard(url)
                 inviteJoinLinkCopied = true

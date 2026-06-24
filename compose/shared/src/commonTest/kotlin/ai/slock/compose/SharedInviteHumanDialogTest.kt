@@ -22,4 +22,12 @@ class SharedInviteHumanDialogTest {
         assertNull(normalizeInviteHumanJoinUrl(null))
         assertNull(normalizeInviteHumanJoinUrl("  "))
     }
+
+    @Test
+    fun inviteHumanJoinUrlCopyPayloadMatchesDisplayedJoinUrl() {
+        assertEquals("https://app.raft.build/join/AB-Rt1m", inviteHumanJoinUrlCopyPayload("/join/AB-Rt1m"))
+        assertEquals("https://app.raft.build/join/AB-Rt1m", inviteHumanJoinUrlCopyPayload("join/AB-Rt1m"))
+        assertEquals("https://app.raft.build/join/AB-Rt1m", inviteHumanJoinUrlCopyPayload("https://app.raft.build/join/AB-Rt1m"))
+        assertNull(inviteHumanJoinUrlCopyPayload("  "))
+    }
 }
