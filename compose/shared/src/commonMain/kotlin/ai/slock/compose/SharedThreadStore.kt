@@ -93,6 +93,7 @@ import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.resolveAvatarSlot
+import ai.slock.compose.model.withPreviewMembershipFallback
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -208,6 +209,10 @@ internal class SharedThreadDataSource(
         val session = readSession() ?: return payload
         return payload.withKnownMarkdownChannelNames(session)
     }
+
+    suspend fun joinChannel(channelId: ChannelId) =
+        channelRepository?.joinChannel(channelId)
+            ?: DataResult.Error(ScreenError("channel_repository_unavailable", retryable = false))
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
         val cacheablePayload = payload.withoutTransientLocalSendingMessages()
@@ -1771,6 +1776,7 @@ internal sealed interface SharedThreadIntent {
     data class ApplyActionCard(val messageId: String, val card: ThreadActionCard) : SharedThreadIntent
     data class ApplyMessageSaved(val messageId: String, val saved: Boolean) : SharedThreadIntent
     data class ApplyTaskStatus(val taskId: String, val statusLabel: String?) : SharedThreadIntent
+    data class ApplyChannelJoined(val channelId: String) : SharedThreadIntent
     data class ApplyMembersPatch(
         val membersCount: Int,
         val members: List<KuiklyThreadMemberItem>,
@@ -1837,6 +1843,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard,
             is SharedThreadIntent.ApplyMessageSaved,
             is SharedThreadIntent.ApplyTaskStatus,
+            is SharedThreadIntent.ApplyChannelJoined,
             is SharedThreadIntent.ApplyMembersPatch,
             is SharedThreadIntent.SetAddMemberStatus,
             is SharedThreadIntent.SetRemoveMemberStatus,
@@ -1886,6 +1893,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyActionCard -> applyActionCard(intent.messageId, intent.card)
             is SharedThreadIntent.ApplyMessageSaved -> applyMessageSaved(intent.messageId, intent.saved)
             is SharedThreadIntent.ApplyTaskStatus -> applyTaskStatus(intent.taskId, intent.statusLabel)
+            is SharedThreadIntent.ApplyChannelJoined -> applyChannelJoined(intent.channelId)
             is SharedThreadIntent.ApplyMembersPatch -> applyMembersPatch(intent)
             is SharedThreadIntent.SetAddMemberStatus -> setAddMemberStatus(intent.status, intent.errorCode)
             is SharedThreadIntent.SetRemoveMemberStatus ->
@@ -2440,6 +2448,23 @@ internal class SharedThreadStore(
             cachePayload = true,
             writeCachedPayload = true
         ) { payload -> payload.withTaskStatusLabel(taskId, statusLabel) }
+    }
+
+    private suspend fun applyChannelJoined(channelId: String) {
+        reducePayloadPatchAndWriteCache(
+            cachePayload = true,
+            writeCachedPayload = true
+        ) { payload ->
+            if (payload.joinChannelTargetId()?.value != channelId) {
+                payload
+            } else {
+                payload.copy(
+                    joined = true,
+                    canSend = true,
+                    composer = payload.composer.copy(enabled = true)
+                )
+            }
+        }
     }
 
     private suspend fun applyMembersPatch(patch: SharedThreadIntent.ApplyMembersPatch) {
@@ -4060,7 +4085,7 @@ private fun ThreadSnapshot.withConversationHeaderFallback(
             current.name
         }
     val nextConversation =
-        current.copy(
+        current.withPreviewMembershipFallback(fallback).copy(
             name = nextName,
             subtitle = current.subtitle ?: fallback.subtitle,
             channelType = current.channelType ?: fallback.channelType,

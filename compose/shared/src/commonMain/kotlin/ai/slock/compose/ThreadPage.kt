@@ -478,6 +478,12 @@ internal data class KuiklyThreadScreenPayload(
     val dmPeerGravatarUrl: String? = null
 )
 
+internal fun KuiklyThreadScreenPayload.joinChannelTargetId(): ChannelId? =
+    (parentChannelId?.takeIf { it.isNotBlank() }
+        ?: sourceThreadId?.takeIf { it.isNotBlank() }
+        ?: streamChannelId?.takeIf { it.isNotBlank() })
+        ?.let(::ChannelId)
+
 internal fun KuiklyThreadScreenPayload.consumeComposerSeedForSend(
     sentBody: String,
     sentAttachmentIds: Set<String>
@@ -3471,6 +3477,28 @@ internal fun SharedThreadRouteContent(
                                 if (routeAuthRequired(result)) return@launch
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyTaskStatus(itemId, previousStatusLabel))
                                 bridge.toast("Unable to update task")
+                            }
+                        }
+                    }
+                }
+                action == "joinChannel" -> {
+                    val channelId = renderedThread.joinChannelTargetId()
+                    if (channelId == null) {
+                        bridge.toast("Unable to join channel")
+                        return@ThreadPageContent
+                    }
+                    coroutineScope.launch {
+                        when (val result = dataSource.joinChannel(channelId)) {
+                            is DataResult.Content -> {
+                                threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
+                                bridge.realtimeJoinChannel(result.data.channelId.value)
+                                bridge.toast("Joined channel")
+                            }
+                            is DataResult.Empty,
+                            is DataResult.Error -> bridge.toast("Unable to join channel")
+                            is DataResult.NoPermission -> {
+                                if (routeAuthRequired(result)) return@launch
+                                bridge.toast("Unable to join channel")
                             }
                         }
                     }

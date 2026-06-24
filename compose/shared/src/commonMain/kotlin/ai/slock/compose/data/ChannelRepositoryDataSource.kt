@@ -578,7 +578,7 @@ private fun ConversationSummary.mergeConversationSummary(incoming: ConversationS
         presenceMemberId = incoming.presenceMemberId ?: presenceMemberId,
         hasDraft = if (incoming.hasDraftKnown) incoming.hasDraft else hasDraft,
         hasDraftKnown = incoming.hasDraftKnown || hasDraftKnown,
-        joined = incoming.joined || joined,
+        joined = incoming.joined,
         archived = incoming.archived || archived,
         memberCount = incoming.memberCount ?: memberCount
     )
