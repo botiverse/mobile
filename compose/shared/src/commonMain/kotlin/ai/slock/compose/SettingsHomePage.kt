@@ -9026,7 +9026,7 @@ private fun SharedHomeScreen(
             val channelItems =
                 remember(snapshot.channels, draftProjection, conversationDirectoryProjections) {
                     snapshot.channels.map { conversation ->
-                        conversation.toSharedHomeConversationItem(
+                        conversation.toSharedHomeConversationRowSeed().toSharedHomeConversationItem(
                             draftProjection = draftProjection,
                             directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
                         )
@@ -9035,7 +9035,7 @@ private fun SharedHomeScreen(
             val directMessageItems =
                 remember(snapshot.directMessages, draftProjection, conversationDirectoryProjections) {
                     snapshot.directMessages.map { conversation ->
-                        conversation.toSharedHomeConversationItem(
+                        conversation.toSharedHomeConversationRowSeed().toSharedHomeConversationItem(
                             draftProjection = draftProjection,
                             directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
                         )
@@ -11751,27 +11751,64 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
         unreadCount = serverUnreadCounts[id.value] ?: unreadCount
     )
 
-internal fun ConversationSummary.toSharedHomeConversationItem(
+internal data class SharedHomeConversationRowSeed(
+    val id: String,
+    val kind: String,
+    val unreadCount: Int = 0,
+    val lastMessageAt: String? = null,
+    val avatarUrl: String? = null,
+    val gravatarUrl: String? = null,
+    val peerType: String? = null,
+    val fallbackName: String = "",
+    val fallbackChannelType: String? = null,
+    val fallbackDescription: String? = null,
+    val fallbackAvatarWireValue: String? = null,
+    val fallbackPresence: Presence? = null,
+    val fallbackAgentStatus: AgentStatus? = null,
+    val fallbackJoined: Boolean = true,
+    val fallbackArchived: Boolean = false
+)
+
+private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
+    SharedHomeConversationRowSeed(
+        id = threadId.value,
+        kind = kind.name.lowercase(),
+        unreadCount = unreadCount,
+        lastMessageAt = lastMessageAt,
+        avatarUrl = avatarUrl,
+        gravatarUrl = gravatarUrl,
+        peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
+        fallbackName = name,
+        fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
+        fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
+        fallbackAvatarWireValue = avatar?.wireValue ?: avatarUrl,
+        fallbackPresence = presence,
+        fallbackAgentStatus = agentStatus,
+        fallbackJoined = joined && permissions.canRead,
+        fallbackArchived = archived
+    )
+
+internal fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     directoryProjection: SharedConversationDirectoryProjection? = null
 ): SlockHomeConversationItem =
     SlockHomeConversationItem(
-        id = threadId.value,
-        name = directoryProjection?.title ?: name,
-        kind = kind.name.lowercase(),
-        channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: channelType?.takeIf { it.isNotBlank() },
+        id = id,
+        name = directoryProjection?.title ?: fallbackName,
+        kind = kind,
+        channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: fallbackChannelType,
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
-        description = directoryProjection?.subtitle ?: subtitle?.takeIf { it.isNotBlank() },
+        description = directoryProjection?.subtitle ?: fallbackDescription,
         avatarUrl = avatarUrl,
-        avatarWireValue = directoryProjection?.avatarWireValue ?: avatar?.wireValue ?: avatarUrl,
+        avatarWireValue = directoryProjection?.avatarWireValue ?: fallbackAvatarWireValue,
         gravatarUrl = gravatarUrl,
-        peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
-        presence = (directoryProjection?.presence ?: presence).toSharedPresence(),
-        agentStatus = (directoryProjection?.agentStatus ?: agentStatus)?.name,
-        hasDraft = draftProjection.hasRootDraft(threadId.value),
-        joined = directoryProjection?.joined ?: (joined && permissions.canRead),
-        archived = directoryProjection?.archived ?: archived
+        peerType = peerType,
+        presence = (directoryProjection?.presence ?: fallbackPresence).toSharedPresence(),
+        agentStatus = (directoryProjection?.agentStatus ?: fallbackAgentStatus)?.name,
+        hasDraft = draftProjection.hasRootDraft(id),
+        joined = directoryProjection?.joined ?: fallbackJoined,
+        archived = directoryProjection?.archived ?: fallbackArchived
     )
 
 private fun Presence?.toSharedPresence(): SlockPresence? =

@@ -8,16 +8,12 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.model.AgentStatus
-import ai.slock.compose.model.ChannelId
-import ai.slock.compose.model.ConversationKind
-import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
-import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -223,19 +219,19 @@ class SlockHomeComponentsTest {
 
     @Test
     fun homeConversationItemUsesDirectoryProjectionForDisplayFields() {
-        val summary =
-            ConversationSummary(
-                threadId = ThreadId("channel-1"),
-                channelId = ChannelId("channel-1"),
-                channelType = "channel",
-                kind = ConversationKind.Channel,
-                name = "stale-name",
-                subtitle = "stale-subtitle",
+        val seed =
+            SharedHomeConversationRowSeed(
+                id = "channel-1",
+                kind = "channel",
                 unreadCount = 7,
                 avatarUrl = "https://example.invalid/stale.png",
-                presence = Presence.Offline,
-                joined = false,
-                archived = false
+                fallbackName = "stale-name",
+                fallbackChannelType = "channel",
+                fallbackDescription = "stale-subtitle",
+                fallbackAvatarWireValue = "https://example.invalid/stale.png",
+                fallbackPresence = Presence.Offline,
+                fallbackJoined = false,
+                fallbackArchived = false
             )
         val directoryProjection =
             SharedConversationDirectoryProjection(
@@ -260,7 +256,7 @@ class SlockHomeComponentsTest {
             ).toSharedThreadComposerDraftProjection()
 
         val item =
-            summary.toSharedHomeConversationItem(
+            seed.toSharedHomeConversationItem(
                 draftProjection = draftProjection,
                 directoryProjection = directoryProjection
             )
