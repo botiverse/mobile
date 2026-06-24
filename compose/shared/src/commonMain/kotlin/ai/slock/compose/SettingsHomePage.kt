@@ -8986,6 +8986,14 @@ private fun SharedHomeScreen(
             val snapshot = current.snapshot
             val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
                 .collectAsState(emptySet())
+            val draftProjection =
+                remember(activeDraftRecords, draftPersistSlice) {
+                    if (draftPersistSlice != null) {
+                        activeDraftRecords.toSharedThreadComposerDraftProjection()
+                    } else {
+                        SharedThreadComposerDraftProjection.Empty
+                    }
+                }
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
@@ -8999,21 +9007,15 @@ private fun SharedHomeScreen(
                     }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
-                remember(snapshot.channels, activeDraftRecords, draftPersistSlice) {
-                    val items = snapshot.channels.map { it.toSharedHomeConversationItem() }
-                    if (draftPersistSlice != null) {
-                        items.withAuthoritativeLocalComposerDrafts(activeDraftRecords)
-                    } else {
-                        items
+                remember(snapshot.channels, draftProjection) {
+                    snapshot.channels.map { conversation ->
+                        conversation.toSharedHomeConversationItem(draftProjection)
                     }
                 }
             val directMessageItems =
-                remember(snapshot.directMessages, activeDraftRecords, draftPersistSlice) {
-                    val items = snapshot.directMessages.map { it.toSharedHomeConversationItem() }
-                    if (draftPersistSlice != null) {
-                        items.withAuthoritativeLocalComposerDrafts(activeDraftRecords)
-                    } else {
-                        items
+                remember(snapshot.directMessages, draftProjection) {
+                    snapshot.directMessages.map { conversation ->
+                        conversation.toSharedHomeConversationItem(draftProjection)
                     }
                 }
             val notificationItems =
@@ -11735,7 +11737,9 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
         unreadCount = serverUnreadCounts[id.value] ?: unreadCount
     )
 
-private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConversationItem =
+private fun ConversationSummary.toSharedHomeConversationItem(
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty
+): SlockHomeConversationItem =
     SlockHomeConversationItem(
         id = threadId.value,
         name = name,
@@ -11750,18 +11754,10 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
         presence = presence.toSharedPresence(),
         agentStatus = agentStatus?.name,
-        hasDraft = hasDraft,
+        hasDraft = draftProjection.hasRootDraft(threadId.value),
         joined = joined && permissions.canRead,
         archived = archived
     )
-
-internal fun List<SlockHomeConversationItem>.withAuthoritativeLocalComposerDrafts(
-    records: Set<SharedThreadComposerDraftRecord>
-): List<SlockHomeConversationItem> {
-    return map { item ->
-        item.copy(hasDraft = records.any { record -> record.matchesRootConversation(item.id) })
-    }
-}
 
 private fun Presence?.toSharedPresence(): SlockPresence? =
     when (this) {

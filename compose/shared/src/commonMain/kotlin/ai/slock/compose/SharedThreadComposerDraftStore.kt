@@ -47,6 +47,24 @@ internal data class SharedThreadComposerDraftRecord(
         !isRootComposer && this.parentMessageId == parentMessageId
 }
 
+internal data class SharedThreadComposerDraftProjection(
+    private val rootConversationIds: Set<String> = emptySet()
+) {
+    fun hasRootDraft(conversationId: String): Boolean =
+        conversationId in rootConversationIds
+
+    companion object {
+        val Empty = SharedThreadComposerDraftProjection()
+    }
+}
+
+internal fun Set<SharedThreadComposerDraftRecord>.toSharedThreadComposerDraftProjection(): SharedThreadComposerDraftProjection =
+    SharedThreadComposerDraftProjection(
+        rootConversationIds = mapNotNull { record ->
+            record.sendChannelId.takeIf { record.isRootComposer }
+        }.toSet()
+    )
+
 internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore
 ) {
