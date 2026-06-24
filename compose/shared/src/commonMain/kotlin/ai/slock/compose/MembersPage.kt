@@ -2519,17 +2519,18 @@ private fun MembersDetailHeader(
             agentStatusDisplayState.status?.label ?: member.detailStatusLabel
         }
     val avatarClick = onAvatarClick
-    Column(
+    val topSafeArea = slockTopSafeAreaPadding()
+    Box(
         modifier = Modifier
             .fillMaxWidth()
+            .height(topSafeArea + SlockSize.PageHeaderHeight)
             .background(SlockColor.SurfaceWhite)
     ) {
-        Spacer(Modifier.height(slockTopSafeAreaPadding()))
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 62.dp)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .height(topSafeArea + SlockSize.PageHeaderContentHeight)
+                .padding(start = 12.dp, top = topSafeArea + 8.dp, end = 12.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
         ) {
@@ -2624,6 +2625,7 @@ private fun MembersDetailHeader(
                 .fillMaxWidth()
                 .height(SlockStroke.Default)
                 .background(SlockColor.BorderBlack)
+                .align(Alignment.BottomCenter)
         )
     }
 }
