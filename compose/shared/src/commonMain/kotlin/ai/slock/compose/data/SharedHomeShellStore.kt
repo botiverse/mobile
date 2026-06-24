@@ -99,7 +99,7 @@ class SharedHomeShellStore(
             is SharedHomeShellIntent.DismissNotification ->
                 dispatchHome(SharedHomeIntent.DismissNotification(intent.id))
             is SharedHomeShellIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
-            is SharedHomeShellIntent.Home -> dispatchHome(intent.intent)
+            is SharedHomeShellIntent.Home -> dispatchHomeIntent(intent.intent)
             is SharedHomeShellIntent.Activity -> dispatchActivity(intent.intent)
             is SharedHomeShellIntent.SearchSaved -> dispatchSearchSaved(intent.intent)
         }
@@ -143,7 +143,10 @@ class SharedHomeShellStore(
 
     private fun refreshVisibleHomeDestination() {
         when (_state.value.destination) {
-            null -> dispatchHome(SharedHomeIntent.ForegroundRefresh)
+            null -> {
+                dispatchHome(SharedHomeIntent.ForegroundRefresh)
+                refreshBadgeSummaries()
+            }
             SharedHomeShellDestinationActivity -> dispatchActivity(SharedActivityIntent.Refresh)
             SharedHomeShellDestinationSaved -> dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
             SharedHomeShellDestinationSearch -> Unit
@@ -161,5 +164,17 @@ class SharedHomeShellStore(
     private fun preloadBadgeSummaries() {
         dispatchActivity(SharedActivityIntent.LoadInitial)
         dispatchSearchSaved(SharedHomeSearchSavedIntent.OpenSaved)
+    }
+
+    private fun refreshBadgeSummaries() {
+        dispatchActivity(SharedActivityIntent.Refresh)
+        dispatchSearchSaved(SharedHomeSearchSavedIntent.RefreshSaved)
+    }
+
+    private fun dispatchHomeIntent(intent: SharedHomeIntent) {
+        dispatchHome(intent)
+        if (intent == SharedHomeIntent.Refresh) {
+            refreshBadgeSummaries()
+        }
     }
 }
