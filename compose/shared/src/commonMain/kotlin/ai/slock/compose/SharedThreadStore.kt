@@ -1334,7 +1334,11 @@ internal class SharedThreadDataSource(
         transform: (ThreadSnapshot) -> KuiklyThreadScreenPayload
     ): DataResult<KuiklyThreadScreenPayload> {
         val result = fetchThreadSnapshotFromRepository(fallbackCode, call)
-        return result.map { snapshot -> transform(snapshot).withCachedSenderProfiles(session) }
+        return result.map { snapshot ->
+            transform(snapshot)
+                .withCachedSenderProfiles(session)
+                .withSenderProfiles(session)
+        }
     }
 
     private suspend fun fetchInitialThreadPayloadFromRepository(
@@ -1374,6 +1378,7 @@ internal class SharedThreadDataSource(
                         ?.withConversationHeaderFallback(headerFallback)
                         ?.toKuiklyThreadPayload(resolvedBase, session.user.id)
                         ?.withCachedSenderProfiles(session)
+                        ?.withSenderProfiles(session)
                         ?: resolvedBase.toEmptyReplyThreadPayload()
                 }
             initialData != null ->
@@ -1383,6 +1388,7 @@ internal class SharedThreadDataSource(
                         .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(basePayload, session.user.id)
                         .withCachedSenderProfiles(session)
+                        .withSenderProfiles(session)
                 )
             else -> initialResult as DataResult<KuiklyThreadScreenPayload>
         }
@@ -1408,6 +1414,7 @@ internal class SharedThreadDataSource(
                 .withConversationHeaderFallback(headerFallback)
                 .toKuiklyThreadPayload(basePayload, session.user.id)
                 .withCachedSenderProfiles(session)
+                .withSenderProfiles(session)
         )
     }
 

@@ -1642,6 +1642,60 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun repositoryThreadPayloadUsesMemberProfileAvatarBeforeFirstRender() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            messages =
+                                listOf(
+                                    message(id = "m1", seq = 1, body = "agent body", authorKind = MemberKind.Agent)
+                                        .copy(
+                                            author =
+                                                MemberProfile(
+                                                    id = MemberId("agent-1"),
+                                                    displayName = "Product UX",
+                                                    handle = "product-ux",
+                                                    kind = MemberKind.Agent,
+                                                    avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                                                    gravatarHash = "agent-hash"
+                                                )
+                                        )
+                                )
+                        )
+                    )
+            )
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Product UX",
+                            handle = "product-ux",
+                            kind = MemberKind.Agent,
+                            avatar = AvatarReference.Pixel("tree")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("network body")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                memberRepository = memberRepository
+            )
+
+        val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
+
+        val message = payload.messages.single()
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(null, message.gravatarHash)
+        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+    }
+
+    @Test
     fun fetchThreadPayloadUsesFocusedMessageContextWhenRouteCarriesFocusedMessage() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository = FakeConversationRepository(
