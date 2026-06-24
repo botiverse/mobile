@@ -8,41 +8,6 @@ const HEARTBEAT_SILENCE_MILLIS = 90_000;
 const INBOUND_SILENCE_MILLIS = 120_000;
 const WATCHDOG_INTERVAL_MILLIS = 30_000;
 
-const WIRE_EVENTS: Array<string> = [
-  'message:new',
-  'dm:new',
-  'message:updated',
-  'thread:updated',
-  'channel:updated',
-  'channel:members-updated',
-  'task:created',
-  'task:updated',
-  'task:deleted',
-  'agent:activity',
-  'agent:session',
-  'agent:created',
-  'agent:deleted',
-  'machine:status',
-  'machine:capabilities',
-  'machine:updated',
-  'computer:upgrade:progress',
-  'computer:upgrade:done',
-  'daemon:status',
-  'server:member-added',
-  'server:member-updated',
-  'server:member:left',
-  'server:member-removed',
-  'server:membership-removed',
-  'server:deleted',
-  'server:plan-updated',
-  'announcement:new',
-  'reminder:fired',
-  'reminder:scheduled',
-  'reminder:canceled',
-  'sync:resume:response',
-  'heartbeat',
-];
-
 interface RealtimeConnectParams {
   serverId: string;
   accessToken: string;
@@ -169,7 +134,7 @@ export class SlockOhosRealtimeBridge {
       this.onRoomsJoined();
       return;
     }
-    if (WIRE_EVENTS.indexOf(eventName) < 0) {
+    if (eventName.length === 0) {
       return;
     }
     if (eventName === 'heartbeat') {
