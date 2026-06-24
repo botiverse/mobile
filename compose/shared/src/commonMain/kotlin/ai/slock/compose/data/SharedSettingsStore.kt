@@ -54,6 +54,7 @@ data class SharedSettingsState(
     val appearance: ScreenLoadState<SettingsAppearanceSnapshot> = ScreenLoadState.Loading,
     val mobile: ScreenLoadState<SettingsMobileSnapshot> = ScreenLoadState.Loading,
     val storage: ScreenLoadState<SharedSettingsStorageSnapshot> = ScreenLoadState.Loading,
+    val addComputerDialog: AddComputerDialogState? = null,
     val about: ScreenLoadState<SharedSettingsAboutSnapshot> = ScreenLoadState.Loading,
     val developer: ScreenLoadState<SharedSettingsDeveloperSnapshot> = ScreenLoadState.Loading,
     val diagnostics: ScreenLoadState<SharedSettingsDiagnosticsSnapshot> = ScreenLoadState.Loading,
@@ -61,6 +62,22 @@ data class SharedSettingsState(
     val routeErrorCode: String? = null,
     val actionState: SharedSettingsActionState? = null,
     val effect: SharedSettingsEffect? = null
+)
+
+enum class AddComputerStep { Type, Waiting, Connected }
+
+enum class AddComputerType { Local, Cloud }
+
+data class AddComputerDialogState(
+    val step: AddComputerStep = AddComputerStep.Type,
+    val machineType: AddComputerType = AddComputerType.Local,
+    val name: String = "",
+    val machineId: String? = null,
+    val apiKeyPrefix: String? = null,
+    val errorMessage: String? = null,
+    val registering: Boolean = false,
+    val canManage: Boolean = true,
+    val atLimit: Boolean = false
 )
 
 data class SharedSettingsHomeSnapshot(
@@ -251,6 +268,14 @@ sealed interface SharedSettingsIntent {
     data class RenameComputer(val request: SettingsComputerRenameRequest) : SharedSettingsIntent
     data class DeleteComputer(val machineId: String) : SharedSettingsIntent
     data class RotateComputerKey(val machineId: String) : SharedSettingsIntent
+    data class RegisterComputer(val request: SettingsComputerRegisterRequest) : SharedSettingsIntent
+    data object ShowAddComputerDialog : SharedSettingsIntent
+    data object DismissAddComputerDialog : SharedSettingsIntent
+    data class SetAddComputerStep(val step: AddComputerStep) : SharedSettingsIntent
+    data class SetAddComputerType(val machineType: AddComputerType) : SharedSettingsIntent
+    data class SetAddComputerName(val name: String) : SharedSettingsIntent
+    data class SetAddComputerRegistration(val machineId: String, val apiKeyPrefix: String) : SharedSettingsIntent
+    data class SetAddComputerError(val message: String) : SharedSettingsIntent
     /**
      * #79: realtime event bridge for the Settings surface. Only used for
      * `RealtimeRefreshScope.Machines` events today. Listens to the same
@@ -496,6 +521,9 @@ class SharedSettingsDataSource(
 
     suspend fun rotateComputerKey(machineId: String): DataResult<SettingsComputerKeyRotationResult> =
         settingsRepository?.rotateComputerKey(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun registerComputer(request: SettingsComputerRegisterRequest): DataResult<SettingsComputerRegistrationResult> =
+        settingsRepository?.registerComputer(request) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun loadServer(): DataResult<SettingsServerSnapshot> =
         settingsRepository?.getServerSettings() ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -1198,6 +1226,63 @@ class SharedSettingsStore(
                     dataSource.rotateComputerKey(intent.machineId).applyComputerRotateKeyActionResult(COMPUTER_ACTION_ROTATE_KEY, intent.machineId)
                 }
             }
+            is SharedSettingsIntent.RegisterComputer -> {
+                runAction(COMPUTER_ACTION_REGISTER) {
+                    val result = dataSource.registerComputer(intent.request)
+                    when (result) {
+                        is DataResult.Content -> {
+                            val state = _state.value.addComputerDialog
+                            _state.value = _state.value.copy(
+                                addComputerDialog = state?.copy(
+                                    step = AddComputerStep.Waiting,
+                                    machineId = result.data.machine.id,
+                                    apiKeyPrefix = result.data.apiKeyPrefix,
+                                    registering = false,
+                                    errorMessage = null
+                                )
+                            )
+                            // Refresh computers list to show new machine
+                            dataSource.loadComputers()
+                            result.applyComputerRegisterActionResult(result.data.machine.id)
+                        }
+                        else -> Unit
+                    }
+                }
+            }
+            is SharedSettingsIntent.ShowAddComputerDialog ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = AddComputerDialogState(
+                        step = AddComputerStep.Type,
+                        canManage = true,
+                        atLimit = false
+                    )
+                )
+            is SharedSettingsIntent.DismissAddComputerDialog ->
+                _state.value = _state.value.copy(addComputerDialog = null)
+            is SharedSettingsIntent.SetAddComputerStep ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(step = intent.step)
+                )
+            is SharedSettingsIntent.SetAddComputerType ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(machineType = intent.machineType)
+                )
+            is SharedSettingsIntent.SetAddComputerName ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(name = intent.name)
+                )
+            is SharedSettingsIntent.SetAddComputerRegistration ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(
+                        machineId = intent.machineId,
+                        apiKeyPrefix = intent.apiKeyPrefix,
+                        step = AddComputerStep.Waiting
+                    )
+                )
+            is SharedSettingsIntent.SetAddComputerError ->
+                _state.value = _state.value.copy(
+                    addComputerDialog = _state.value.addComputerDialog?.copy(errorMessage = intent.message)
+                )
             is SharedSettingsIntent.ApplyRealtimeEvent -> applyRealtimeEvent(intent.serverId, intent.event)
             is SharedSettingsIntent.UpdateServerAgreement -> {
                 runAction(SERVER_ACTION_AGREEMENT_SAVE) {
@@ -1792,6 +1877,46 @@ class SharedSettingsStore(
         }
     }
 
+    private suspend fun DataResult<SettingsComputerRegistrationResult>.applyComputerRegisterActionResult(
+        machineId: String
+    ) {
+        when (this) {
+            is DataResult.Content -> {
+                _state.value = _state.value.copy(
+                    actionState = SharedSettingsActionState(
+                        action = COMPUTER_ACTION_REGISTER,
+                        itemId = machineId,
+                        inProgress = false
+                    )
+                )
+            }
+            is DataResult.Empty ->
+                _state.value = _state.value.copy(
+                    actionState = SharedSettingsActionState(
+                        action = COMPUTER_ACTION_REGISTER,
+                        inProgress = false,
+                        errorCode = reason.name
+                    )
+                )
+            is DataResult.Error ->
+                _state.value = _state.value.copy(
+                    actionState = SharedSettingsActionState(
+                        action = COMPUTER_ACTION_REGISTER,
+                        inProgress = false,
+                        errorCode = error.code
+                    )
+                )
+            is DataResult.NoPermission ->
+                _state.value = _state.value.copy(
+                    actionState = SharedSettingsActionState(
+                        action = COMPUTER_ACTION_REGISTER,
+                        inProgress = false,
+                        errorCode = blocker.code
+                    )
+                )
+        }
+    }
+
     private suspend fun DataResult<SettingsComputerKeyRotationResult>.applyComputerRotateKeyActionResult(
         action: String,
         machineId: String
@@ -1974,6 +2099,16 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.RenameComputer,
             is SharedSettingsIntent.DeleteComputer,
             is SharedSettingsIntent.RotateComputerKey,
+            is SharedSettingsIntent.RegisterComputer,
+            SharedSettingsIntent.ShowAddComputerDialog,
+            SharedSettingsIntent.DismissAddComputerDialog,
+            is SharedSettingsIntent.SetAddComputerStep,
+            is SharedSettingsIntent.SetAddComputerType,
+            is SharedSettingsIntent.SetAddComputerName,
+            is SharedSettingsIntent.SetAddComputerRegistration,
+            is SharedSettingsIntent.SetAddComputerError,
+            is SharedSettingsIntent.DeleteComputer,
+            is SharedSettingsIntent.RotateComputerKey,
             is SharedSettingsIntent.ApplyRealtimeEvent,
             SharedSettingsIntent.ConsumeEffect -> false
         }
@@ -2044,6 +2179,8 @@ internal const val LANGUAGE_REGION_ACTION_SERVER_TRANSLATION = "languageRegionSe
 internal const val COMPUTER_ACTION_RENAME = "renameComputer"
 internal const val COMPUTER_ACTION_DELETE = "deleteComputer"
 internal const val COMPUTER_ACTION_ROTATE_KEY = "rotateComputerKey"
+internal const val COMPUTER_ACTION_REGISTER = "registerComputer"
+internal const val COMPUTER_ACTION_AT_LIMIT = "atLimit"
 internal const val LANGUAGE_REGION_ACTION_AUTO_TRANSLATION = "languageRegionAutoTranslation"
 internal const val LANGUAGE_REGION_ACTION_LANGUAGE = "languageRegionLanguage"
 internal const val LANGUAGE_REGION_ACTION_TIMEZONE = "languageRegionTimezone"

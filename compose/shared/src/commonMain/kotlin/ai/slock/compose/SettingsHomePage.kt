@@ -2774,7 +2774,7 @@ private fun SettingsAppShellContent(
                         else -> onSettingsAction(action, null)
                     }
                 }
-            SettingsDestinationComputers ->
+            SettingsDestinationComputers -> {
                 SettingsComputersContent(
                     settingsState.computers.toComputersPayload(
                         refreshing = settingsState.isRefreshing(SharedSettingsDestination.Computers),
@@ -2784,10 +2784,14 @@ private fun SettingsAppShellContent(
                 ) { action, itemId ->
                     when (action) {
                         "openComputer" -> itemId?.takeIf { it.isNotBlank() }?.let(onOpenComputer)
-                        "addComputer" -> onSettingsAction(action, itemId)
+                        "addComputer" -> onSettingsIntent(SharedSettingsIntent.ShowAddComputerDialog)
                         else -> onSettingsAction(action, itemId)
                     }
                 }
+                settingsState.addComputerDialog?.let { dialogState ->
+                    AddComputerDialog(state = dialogState, onIntent = onSettingsIntent)
+                }
+            }
             SettingsDestinationStorage ->
                 SettingsStorageContent(
                     settingsState.storage.toStoragePayload(
