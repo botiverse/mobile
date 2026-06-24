@@ -34,4 +34,11 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertEquals("Downloading 1 KB", label)
     }
+
+    @Test
+    fun initialDownloadStatusShowsProgressImmediately() {
+        val label = slockFilePreviewDownloadStatusLabel(SlockFilePreviewInitialDownloadProgress)
+
+        assertEquals("Downloading 0%", label)
+    }
 }

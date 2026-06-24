@@ -199,7 +199,7 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (!canOpenWith || downloadStatus == "downloading") return
         downloadStatus = "downloading"
         downloadMessage = ""
-        downloadProgress = null
+        downloadProgress = SlockFilePreviewInitialDownloadProgress
         coroutineScope.launch {
             val error = openPayloadExternally(payload)
             if (error == null) {
@@ -726,7 +726,7 @@ internal fun SlockFilePreviewPayloadContent(
                     showProgress = downloadInProgress,
                     progressPercent = downloadProgressPercent,
                     actionLabel = if (onDownload != null) {
-                        if (downloadInProgress) "Downloading..." else "Download"
+                        if (downloadInProgress) downloadStatusLabel ?: "Downloading..." else "Download"
                     } else {
                         null
                     },
@@ -758,7 +758,7 @@ internal fun SlockFilePreviewPayloadContent(
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
                 actionLabel = if (onDownload != null) {
-                    if (downloadInProgress) "Downloading..." else "Download"
+                    if (downloadInProgress) downloadStatusLabel ?: "Downloading..." else "Download"
                 } else {
                     null
                 },
@@ -873,6 +873,14 @@ internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownl
         }
     return listOfNotNull(primary, speedLabel).joinToString(" · ")
 }
+
+internal val SlockFilePreviewInitialDownloadProgress =
+    BridgeAttachmentDownloadProgress(
+        percent = 0,
+        downloadedBytes = 0L,
+        totalBytes = null,
+        bytesPerSecond = null
+    )
 
 private fun Long?.slockFilePreviewSpeedLabel(): String? {
     val bytesPerSecond = this?.takeIf { it > 0L } ?: return null
