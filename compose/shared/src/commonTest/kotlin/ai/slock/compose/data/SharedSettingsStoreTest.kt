@@ -1239,7 +1239,7 @@ class SharedSettingsStoreTest {
         val diagnostics = assertIs<ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>>(store.state.value.diagnostics).data
         assertEquals(listOf("SlockTest"), diagnostics.entries.map { it.tag })
         assertEquals(false, diagnostics.profiler.supported)
-        assertEquals(listOf("about", "diagnostics"), capabilities.calls)
+        assertEquals(listOf("about", "about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1270,6 +1270,16 @@ class SharedSettingsStoreTest {
         assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "staging", inProgress = false), store.state.value.actionState)
         assertEquals(listOf("developer", "environment:staging"), capabilities.calls)
         scope.cancel()
+    }
+
+    @Test
+    fun defaultDeveloperEnvironmentPresetsIncludeProductionAndStaging() {
+        val options = sharedSettingsDefaultApiEnvironmentOptions()
+
+        assertEquals(listOf("production", "staging"), options.map { it.key })
+        assertEquals("https://api.raft.build/api/", options.first { it.key == "production" }.apiBaseUrl)
+        assertEquals("https://api-aws-staging.botiverse.dev/api/", options.first { it.key == "staging" }.apiBaseUrl)
+        assertEquals("https://api-aws-staging.botiverse.dev", options.first { it.key == "staging" }.socketBaseUrl)
     }
 
     @Test
@@ -1390,7 +1400,7 @@ class SharedSettingsStoreTest {
             SharedSettingsActionState(DIAGNOSTICS_ACTION_PROFILER_START, inProgress = false),
             store.state.value.actionState
         )
-        assertEquals(listOf("diagnostics", "profiler:true", "diagnostics"), capabilities.calls)
+        assertEquals(listOf("about", "diagnostics", "profiler:true", "about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1432,7 +1442,7 @@ class SharedSettingsStoreTest {
             ),
             store.state.value.actionState
         )
-        assertEquals(listOf("diagnostics", "profiler:true"), capabilities.calls)
+        assertEquals(listOf("about", "diagnostics", "profiler:true"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1465,7 +1475,7 @@ class SharedSettingsStoreTest {
         assertEquals(false, diagnostics.profiler.enabled)
         assertEquals(false, preferences.enabled)
         assertEquals("Idle", diagnostics.profiler.statusLabel)
-        assertEquals(listOf("diagnostics"), capabilities.calls)
+        assertEquals(listOf("about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 
@@ -1493,7 +1503,7 @@ class SharedSettingsStoreTest {
         assertEquals(emptyList(), diagnostics.entries)
         assertEquals(true, diagnostics.profiler.supported)
         assertEquals("Idle", diagnostics.profiler.statusLabel)
-        assertEquals(listOf("diagnostics"), capabilities.calls)
+        assertEquals(listOf("about", "diagnostics"), capabilities.calls)
         scope.cancel()
     }
 

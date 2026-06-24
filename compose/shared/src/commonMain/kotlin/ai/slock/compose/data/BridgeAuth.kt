@@ -294,7 +294,7 @@ internal class BridgeSettingsPlatformCapabilities(
             apiBaseUrl = optString("apiBaseUrl").ifBlank { SLOCK_API_BASE_URL },
             socketBaseUrl = optString("socketBaseUrl").ifBlank { SLOCK_SOCKET_BASE_URL },
             webUrl = optString("webUrl"),
-            options = options,
+            options = options.ifEmpty { sharedSettingsDefaultApiEnvironmentOptions() },
             feedback = optString("feedback").takeIf { it.isNotBlank() }
         )
     }

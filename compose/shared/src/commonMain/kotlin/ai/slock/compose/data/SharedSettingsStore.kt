@@ -146,6 +146,24 @@ data class SharedSettingsApiEnvironmentRequest(
     val webUrl: String
 )
 
+internal fun sharedSettingsDefaultApiEnvironmentOptions(): List<SharedSettingsApiEnvironmentOption> =
+    listOf(
+        SharedSettingsApiEnvironmentOption(
+            key = "production",
+            label = "Production",
+            apiBaseUrl = SLOCK_API_BASE_URL,
+            socketBaseUrl = SLOCK_SOCKET_BASE_URL,
+            webUrl = "https://app.raft.build"
+        ),
+        SharedSettingsApiEnvironmentOption(
+            key = "staging",
+            label = "Staging",
+            apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
+            socketBaseUrl = "https://api-aws-staging.botiverse.dev",
+            webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
+        )
+    )
+
 data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
     val networkProbe: SharedSettingsNetworkProbeSnapshot? = null,

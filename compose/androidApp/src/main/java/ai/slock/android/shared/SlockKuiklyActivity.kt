@@ -2001,12 +2001,13 @@ internal class SlockKuiklyBridgeModule(
                     "reachable" to (code > 0),
                     "code" to code,
                     "durationMillis" to duration,
-                    "statusLabel" to if (code > 0) "API host reachable" else "Network probe failed",
+                    "statusLabel" to if (code > 0) "API host reachable" else "API host unreachable",
                     "detail" to if (code > 0) "Host responded with HTTP $code${detail.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()}" else "No HTTP response"
             )
         }.getOrElse { throwable ->
             val duration = System.currentTimeMillis() - startedAt
-            val detail = throwable.message ?: throwable::class.java.simpleName
+            val errorType = throwable::class.java.simpleName.ifBlank { "Network error" }
+            val detail = throwable.message?.takeIf { it.isNotBlank() }?.let { "$errorType: $it" } ?: errorType
             SlockDiagnosticsLogger.record(
                     "SlockNetworkProbe",
                     "baseUrl=${safeUrlForDiagnostics(AndroidAuthApiFactory.currentBaseUrl(appContext))} failed=${throwable::class.java.simpleName} durationMs=$duration"
@@ -2017,8 +2018,8 @@ internal class SlockKuiklyBridgeModule(
                     "reachable" to false,
                     "code" to 0,
                     "durationMillis" to duration,
-                    "statusLabel" to "Network probe failed",
-                    "detail" to detail
+                    "statusLabel" to "API host unreachable",
+                    "detail" to "Could not reach the configured API host. $detail"
             )
         }
     }

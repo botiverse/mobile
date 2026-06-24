@@ -5973,7 +5973,7 @@ private fun SharedSettingsApiEnvironmentContent(
         }
         item {
             SettingsFormSectionCard(iconName = SlockLucideIconName.Server, title = "Environment form") {
-                SettingsFormDetailText("Saving changes may clear the current session and reconnect realtime against the selected API server.")
+                SettingsFormDetailText("Saving an environment change clears the current session and reconnects realtime against the selected API server.")
                 SlockBrutalTextField(
                     label = "Label",
                     value = label,
