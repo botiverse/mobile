@@ -667,11 +667,15 @@ internal fun KuiklyThreadScreenPayload.toWireThreadLaunchPayload(): WireThreadLa
         composerPendingAttachments = composer.pendingAttachments
     )
 
-private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
+internal fun threadLaunchPageData(launchPayload: WireThreadLaunchPayload): JSONObject =
     JSONObject().apply {
-        put("payload", threadPageJson.encodeToString(this@toThreadPageData))
-        put("instanceId", instanceId)
+        put("pageName", THREAD_PAGE)
+        put("payload", threadPageJson.encodeToString(launchPayload))
+        put("instanceId", launchPayload.instanceId)
     }
+
+private fun WireThreadLaunchPayload.toThreadPageData(): JSONObject =
+    threadLaunchPageData(this)
 
 private fun String?.threadLaunchParentSurfaceKindOrNull(): String? =
     when (this?.trim()?.lowercase()) {

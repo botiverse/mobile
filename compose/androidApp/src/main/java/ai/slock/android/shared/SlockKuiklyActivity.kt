@@ -873,6 +873,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
         private fun JSONObject.withAndroidHostPageData(pageName: String): JSONObject =
                 JSONObject(toString()).apply {
+                    put(KEY_PAGE_NAME, pageName)
                     putAndroidTimeContextIfMissing()
                     putKuiklyVerificationFlagsIfMissing()
                     if (pageName == PAGE_LOGIN || pageName == PAGE_APP_SHELL) {

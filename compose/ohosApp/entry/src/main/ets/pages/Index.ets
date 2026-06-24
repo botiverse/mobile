@@ -6,6 +6,7 @@ import { KuiklyViewDelegate } from '../kuikly/KuiklyViewDelegate';
 import globalNativeManager from '../kuikly/MyNativeManager';
 import slockOhosMotionBridge from '../kuikly/SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../kuikly/SlockOhosRealtimeBridge';
+import { SlockOhosDiagnostics } from '../kuikly/SlockOhosDiagnostics';
 import { SlockOhosBuglyDiagnostics } from '../entryability/SlockOhosBuglyDiagnostics';
 
 const SAFE_AREA_TOP_PX = 'slockSafeAreaTopPx';
@@ -15,6 +16,7 @@ const HDS_MIN_API_VERSION = 23;
 const HDS_TAB_BAR_SYSCAP = 'SystemCapability.UIDesign.HDSComponent.Core';
 const SLOCK_BACK_PRESS_LOG_TAG = 'SlockBackPress';
 const SLOCK_KUIKLY_EXCEPTION_LOG_TAG = 'SlockKuiklyException';
+const SLOCK_ROUTE_HOST_LOG_TAG = 'SlockRouteHost';
 
 @Entry
 @Component
@@ -31,8 +33,19 @@ struct Index {
     AppStorage.setOrCreate<UIContext>("context", this.getUIContext());
 
     const params = router.getParams() as Record<string, Object>;
-    this.pageName = params?.pageName as string;
     this.pageData = params?.pageData as KRRecord;
+    const paramsPageName = this.stringValue(params?.pageName);
+    const pageDataPageName = this.stringValue(this.pageData?.['pageName']);
+    const resolvedPageName =
+      paramsPageName.length > 0 ? paramsPageName :
+        pageDataPageName.length > 0 ? pageDataPageName : DEFAULT_PAGE_NAME;
+    this.pageName = resolvedPageName;
+    const payloadBytes = this.stringValue(this.pageData?.['payload']).length;
+    const instanceId = this.stringValue(this.pageData?.['instanceId']);
+    SlockOhosDiagnostics.record(
+      SLOCK_ROUTE_HOST_LOG_TAG,
+      `appear pageName=${resolvedPageName} paramsPageName=${paramsPageName.length > 0} pageDataPageName=${pageDataPageName.length > 0} instanceId=${instanceId} payloadBytes=${payloadBytes}`
+    );
   }
 
   build() {
@@ -166,5 +179,9 @@ struct Index {
       return distributionApiVersion;
     }
     return deviceInfo.sdkApiVersion;
+  }
+
+  private stringValue(value: Object | undefined): string {
+    return typeof value === 'string' ? value : '';
   }
 }

@@ -1789,6 +1789,31 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneThreadRoutePageDataCarriesHostPageName() {
+        val launch =
+            WireThreadLaunchPayload(
+                instanceId = "shared-shell-thread-channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                selectedTab = "chat",
+            )
+
+        val pageData = threadLaunchPageData(launch)
+        val parsed =
+            parseThreadScreenPayload(
+                payload = pageData.optString("payload"),
+                instanceId = pageData.optString("instanceId")
+            )
+
+        assertEquals(THREAD_PAGE, pageData.optString("pageName"))
+        assertEquals("shared-shell-thread-channel-1", pageData.optString("instanceId"))
+        assertEquals("shared-shell-thread-channel-1", parsed.instanceId)
+        assertEquals("channel-1", parsed.sourceThreadId)
+        assertEquals("channel-1", parsed.streamChannelId)
+    }
+
+    @Test
     fun standaloneActivityThreadLaunchShowsOpenInConversationAction() {
         val request =
             InboxItem(

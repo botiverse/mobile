@@ -369,7 +369,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.Json
 
 const val SETTINGS_HOME_PAGE = "compose_settings_home"
 const val SETTINGS_TAB_BAR_SMOKE_PAGE = "compose_settings_tabbar_smoke"
@@ -431,7 +430,6 @@ private val SearchPopoverBorderColor = SlockColor.BorderBlack
 private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
-private val AppShellThreadLaunchJson = Json { ignoreUnknownKeys = true }
 
 internal fun sharedSettingsResolvedWebBaseUrl(webUrl: String?): String =
     webUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { SharedSettingsDefaultWebBaseUrl }
@@ -11881,11 +11879,7 @@ private fun Pager.openStandaloneTaskThreadPage(
 }
 
 private fun Pager.openStandaloneThreadLaunchPayload(launchPayload: WireThreadLaunchPayload) {
-    val pageData =
-        JSONObject().apply {
-            put("payload", AppShellThreadLaunchJson.encodeToString(launchPayload))
-            put("instanceId", launchPayload.instanceId)
-        }
+    val pageData = threadLaunchPageData(launchPayload)
     acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage(THREAD_PAGE, pageData)
 }
 

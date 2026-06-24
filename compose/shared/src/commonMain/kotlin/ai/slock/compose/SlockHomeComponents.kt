@@ -375,11 +375,7 @@ private fun openThreadPageFromConversationId(
     val launchPayload =
         buildHomeConversationThreadLaunchPayload(payload, conversationId)
             ?: return
-    val pageData =
-        JSONObject().apply {
-            put("payload", threadPageJson.encodeToString(launchPayload))
-            put("instanceId", launchPayload.instanceId)
-        }
+    val pageData = threadLaunchPageData(launchPayload)
     pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
 }
 
@@ -413,8 +409,6 @@ internal fun buildHomeConversationThreadLaunchPayload(
         parentMessageId = null
     )
 }
-
-private val threadPageJson = Json { ignoreUnknownKeys = true }
 
 @Composable
 private fun HomeTitlebarVisualScreen() {
