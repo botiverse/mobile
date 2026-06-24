@@ -9075,6 +9075,9 @@ private fun SharedHomeScreen(
                 onNotificationDismiss = { notification ->
                     onNotificationDismiss(notification.id)
                 },
+                onRefresh = {
+                    onIntent(SharedHomeIntent.Refresh)
+                },
                 onChannelClick = { threadId ->
                     val conversation = conversationsByThreadId[threadId]
                     if (conversation == null) {

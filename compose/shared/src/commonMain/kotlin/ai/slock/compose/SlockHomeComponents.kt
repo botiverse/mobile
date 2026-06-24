@@ -47,6 +47,8 @@ import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
 import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.extension.bouncesEnable
+import com.tencent.kuikly.compose.material3.pullToRefreshItem
+import com.tencent.kuikly.compose.material3.rememberPullToRefreshState
 // #192 trace scope extension: reuse the markdown trace helper for avatar phase
 // attribution (process-wide `expect/actual` infrastructure; one `traceMarkdownSection`
 // overload set covers both `markdown.*` and `avatar.*` / future `composer.*` /
@@ -311,6 +313,7 @@ private fun SlockHomePageContent() {
         savedCount = payload.savedCount,
         notifications = payload.notifications,
         contentRefreshing = payload.contentRefreshing,
+        contentRefreshEnabled = payload.contentRefreshEnabled,
         serverSwitcherExpanded = payload.serverSwitcherExpanded,
         applyTopSafeArea = payload.applyTopSafeArea,
         activitySelected = payload.activitySelected,
@@ -336,6 +339,7 @@ private fun SlockHomePageContent() {
         onSearchClick = { bridge.settingsEvent(payload.instanceId, "openSearch", null) },
         onNotificationView = { bridge.settingsEvent(payload.instanceId, "viewNotification", it.id) },
         onNotificationDismiss = { bridge.settingsEvent(payload.instanceId, "dismissNotification", it.id) },
+        onRefresh = { bridge.settingsEvent(payload.instanceId, "refresh", null) },
         onChannelSortModeChange = { bridge.settingsEvent(payload.instanceId, "setChannelSortMode", it.wireValue) },
         onDmSortModeChange = { bridge.settingsEvent(payload.instanceId, "setDmSortMode", it.wireValue) },
         onPinnedSortModeChange = { bridge.settingsEvent(payload.instanceId, "setPinnedSortMode", it.wireValue) },
@@ -473,6 +477,7 @@ fun SlockStructuralHomeShell(
     savedCount: Int = 0,
     notifications: List<SlockHomeNotificationItem> = emptyList(),
     contentRefreshing: Boolean = false,
+    contentRefreshEnabled: Boolean = true,
     serverSwitcherExpanded: Boolean = false,
     pendingServerId: String? = null,
     applyTopSafeArea: Boolean = true,
@@ -503,6 +508,7 @@ fun SlockStructuralHomeShell(
     onSearchClick: () -> Unit = {},
     onNotificationView: (SlockHomeNotificationItem) -> Unit = {},
     onNotificationDismiss: (SlockHomeNotificationItem) -> Unit = {},
+    onRefresh: () -> Unit = {},
     onChannelSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onDmSortModeChange: (SlockSidebarSortMode) -> Unit = {},
     onPinnedSortModeChange: (SlockSidebarSortMode) -> Unit = {},
@@ -610,6 +616,7 @@ fun SlockStructuralHomeShell(
             pinnedExpanded = pinnedExpanded
         )
     val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
     val topSafeArea = if (applyTopSafeArea) slockTopSafeAreaPadding() else 0.dp
@@ -645,6 +652,19 @@ fun SlockStructuralHomeShell(
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
+                            if (contentRefreshEnabled) {
+                                pullToRefreshItem(
+                                    state = pullToRefreshState,
+                                    scrollState = listState,
+                                    onRefresh = onRefresh,
+                                    content = { pullProgress, isRefreshing, _ ->
+                                        SlockRaftPullRefreshIndicator(
+                                            pullProgress = pullProgress,
+                                            isRefreshing = isRefreshing
+                                        )
+                                    }
+                                )
+                            }
                             item { Spacer(Modifier.height(SlockSpacing.Md)) }
                             item { SidebarActionRow(SlockLucideIconName.Search, labels.search, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Search, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), onClick = if (sidebarInteractionsEnabled) onSearchClick else null) }
                             item {
