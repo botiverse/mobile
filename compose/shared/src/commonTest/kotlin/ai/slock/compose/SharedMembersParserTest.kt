@@ -9,6 +9,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerPermissions
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockTimeFormat12Hour
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -143,11 +144,19 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun membersDetailPageDataCarriesIdentityAndTimeContextOnly() {
+    fun membersDetailPageDataCarriesIdentityKindAndTimeContextOnly() {
         val payload =
             KuiklyMembersPayload(
                 instanceId = "members-server-1",
                 title = "Members",
+                members = listOf(
+                    MemberProfile(
+                        id = MemberId("human-artin"),
+                        displayName = "Artin",
+                        handle = "artin",
+                        kind = MemberKind.Human
+                    )
+                ),
                 initialAgentTab = "activity",
                 localOffsetMinutes = 480,
                 todayEpochDay = 20624,
@@ -155,11 +164,12 @@ class SharedMembersParserTest {
                 timeFormat = SlockTimeFormat12Hour
             )
 
-        val pageData = payload.toMemberDetailPageData("agent-product-ux")!!
+        val pageData = payload.toMemberDetailPageData("human-artin")!!
 
         assertEquals(MEMBER_DETAIL_PAGE, pageData.optString("pageName"))
-        assertEquals("members-detail-members-server-1-agent-product-ux", pageData.optString("instanceId"))
-        assertEquals("agent-product-ux", pageData.optString("memberId"))
+        assertEquals("members-detail-members-server-1-human-artin", pageData.optString("instanceId"))
+        assertEquals("human-artin", pageData.optString("memberId"))
+        assertEquals("human", pageData.optString("memberKind"))
         assertEquals("activity", pageData.optString("initialAgentTab"))
         assertEquals("480", pageData.optString("localOffsetMinutes"))
         assertEquals("20624", pageData.optString("todayEpochDay"))
@@ -167,6 +177,24 @@ class SharedMembersParserTest {
         assertEquals(SlockTimeFormat12Hour, pageData.optString("timeFormat"))
         assertEquals("", pageData.optString("members"))
         assertEquals("", pageData.optString("selectedMemberId"))
+    }
+
+    @Test
+    fun memberDetailPayloadParsesMemberKind() {
+        val payload =
+            JSONObject(
+                """
+                {
+                  "instanceId": "detail-human-artin",
+                  "memberId": "human-artin",
+                  "memberKind": "human"
+                }
+                """.trimIndent()
+            ).toKuiklyMemberDetailPayload()
+
+        assertEquals("detail-human-artin", payload.instanceId)
+        assertEquals("human-artin", payload.memberId)
+        assertEquals("human", payload.memberKind)
     }
 
     @Test
