@@ -8,8 +8,6 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
-import ai.slock.compose.data.SharedSettingsRecompositionProfilerDefaults
-import ai.slock.compose.data.SharedSettingsRecompositionProfilerFiles
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -185,25 +183,7 @@ class SettingsHomePageDiagnosticsTest {
                                     enabled = true,
                                     gateLabel = "Debug build",
                                     statusLabel = "Idle",
-                                    detail = "Profiler is ready.",
-                                    defaults =
-                                        SharedSettingsRecompositionProfilerDefaults(
-                                            enableFile = true,
-                                            enableLog = true,
-                                            enableOverlay = true,
-                                            sampleRateLabel = "100%",
-                                            hotspotThreshold = 10,
-                                            maxEventBufferSize = 100000,
-                                            overlayGuide = "Overlay shows the bottom-right FAB.",
-                                            filterStrategy = "Keep defaults.",
-                                            resetStrategy = "Reset before replay."
-                                        ),
-                                    files =
-                                        SharedSettingsRecompositionProfilerFiles(
-                                            reportFileName = "profiler_report.json",
-                                            framesFileName = "profiler_frames.jsonl",
-                                            locationHint = "Kuikly docs convention"
-                                        )
+                                    detail = "Profiler is ready."
                                 )
                         )
                     ),
@@ -211,16 +191,8 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Recomposition profiler", "Profiler defaults", "Profiler report", "Analyzer", "Actions", "Log"),
+            listOf("Recomposition profiler", "Actions", "Log"),
             payload.sections.map { it.title }
-        )
-        assertTrue(
-            payload.sections
-                .first { it.title == "Profiler defaults" }
-                .rows
-                .first { it.key == "profilerDefaults" }
-                .detail
-                .contains("overlay on")
         )
         val switchRow =
             payload.sections

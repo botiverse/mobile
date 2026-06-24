@@ -7273,13 +7273,6 @@ private fun ai.slock.compose.data.SharedSettingsActionState?.isDiagnosticsAction
 private fun <T> ScreenLoadState<T>.currentContent(): T? =
     (this as? ScreenLoadState.Content<T>)?.data
 
-private fun Boolean.onOffLabel(): String =
-    if (this) {
-        "on"
-    } else {
-        "off"
-    }
-
 private val profilerActionKeys =
     setOf(
         DIAGNOSTICS_ACTION_PROFILER_ENABLED,
@@ -7468,46 +7461,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             }
             .orEmpty()
-    val reportSummary =
-        when {
-            profiler.report.reportAvailable ->
-                buildString {
-                    append(profiler.report.durationLabel.ifBlank { "Ready" })
-                    append(" | ${profiler.report.totalFrames} frames")
-                    append(" | ${profiler.report.totalRecompositions} recompositions")
-                    if (profiler.report.hotspotCount > 0) {
-                        append(" | ${profiler.report.hotspotCount} hotspots")
-                    }
-                }
-            else -> "No report exported for this session yet."
-        }
-    val profilerHotspotRows =
-        if (profiler.report.topHotspots.isNotEmpty()) {
-            profiler.report.topHotspots.mapIndexed { index, hotspot ->
-                KuiklySharedSettingsRow(
-                    key = "profilerHotspot-$index",
-                    iconName = SlockLucideIconName.Flame,
-                    title = hotspot.name,
-                    detail =
-                        listOfNotNull(
-                            hotspot.sourceLocation,
-                            "${hotspot.recompositionCount}x recompositions",
-                            hotspot.avgDurationLabel.takeIf { it.isNotBlank() }
-                        ).joinToString(" | "),
-                    status = ""
-                )
-            }
-        } else {
-            listOf(
-                KuiklySharedSettingsRow(
-                    key = "profilerHotspotEmpty",
-                    iconName = SlockLucideIconName.CircleDashed,
-                    title = "No hotspots yet",
-                    detail = "Start a focused session, reproduce the jank, then refresh or export the report.",
-                    status = profiler.statusLabel
-                )
-            )
-        }
     val profilerControlSection =
         KuiklySharedSettingsSection(
             title = "Recomposition profiler",
@@ -7598,99 +7551,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                     )
                 }
         )
-    val profilerSections =
-        listOf(profilerControlSection) +
-            if (profiler.supported) {
-                listOf(
-                KuiklySharedSettingsSection(
-                    title = "Profiler defaults",
-                    rows =
-                        listOf(
-                            KuiklySharedSettingsRow(
-                                "profilerDefaults",
-                                SlockLucideIconName.SlidersHorizontal,
-                                "Default policy",
-                                "File ${profiler.defaults.enableFile.onOffLabel()}, log ${profiler.defaults.enableLog.onOffLabel()}, overlay ${profiler.defaults.enableOverlay.onOffLabel()}, sample ${profiler.defaults.sampleRateLabel}, hotspot ${profiler.defaults.hotspotThreshold}/s, buffer ${profiler.defaults.maxEventBufferSize}.",
-                                status = profiler.gateLabel
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerOverlayGuide",
-                                SlockLucideIconName.PanelBottomOpen,
-                                "Overlay behavior",
-                                profiler.defaults.overlayGuide,
-                                status = "Doc"
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerFilterStrategy",
-                                SlockLucideIconName.Funnel,
-                                "Recommended filtering",
-                                profiler.defaults.filterStrategy,
-                                status = "Hint"
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerResetStrategy",
-                                SlockLucideIconName.Route,
-                                "Recommended reset timing",
-                                profiler.defaults.resetStrategy,
-                                status = "Hint"
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerExtensionNote",
-                                SlockLucideIconName.Waypoints,
-                                "Implementation",
-                                profiler.extensionNote,
-                                status = "Shared"
-                            )
-                        )
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Profiler report",
-                    rows =
-                        listOf(
-                            KuiklySharedSettingsRow(
-                                "profilerReportSummary",
-                                SlockLucideIconName.ChartBar,
-                                "Current summary",
-                                reportSummary,
-                                status = profiler.report.generatedLabel.ifBlank { profiler.statusLabel }
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerSession",
-                                SlockLucideIconName.Hash,
-                                "Session and file names",
-                                listOfNotNull(
-                                    profiler.report.sessionId.takeIf { it.isNotBlank() }?.let { "session $it" },
-                                    profiler.files.reportFileName.takeIf { it.isNotBlank() },
-                                    profiler.files.framesFileName.takeIf { it.isNotBlank() }
-                                ).joinToString(" | ").ifBlank { "Use Kuikly default file names after the first export or stop." },
-                                status = if (profiler.report.reportAvailable) "Ready" else "Pending"
-                            ),
-                            KuiklySharedSettingsRow(
-                                "profilerLocationHint",
-                                SlockLucideIconName.FolderOpen,
-                                "Expected location",
-                                profiler.files.locationHint,
-                                status = "Hint"
-                            )
-                        ) + profilerHotspotRows
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Analyzer",
-                    rows =
-                        listOf(
-                            KuiklySharedSettingsRow(
-                                "profilerAnalyzerHint",
-                                SlockLucideIconName.Sparkles,
-                                "Next step",
-                                profiler.analyzerHint,
-                                status = "AI"
-                            )
-                        )
-                )
-            )
-        } else {
-            emptyList()
-        }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-diagnostics",
         title = "Diagnostics",
@@ -7716,7 +7576,7 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = "Load status", rows = it)
                 }
-            ) + profilerSections + listOf(
+            ) + listOf(profilerControlSection) + listOf(
                 KuiklySharedSettingsSection(
                     title = "Actions",
                     rows =
