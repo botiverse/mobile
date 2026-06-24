@@ -387,20 +387,72 @@ class SharedAuthDataSource(
     }
 
     suspend fun loadServers(): SharedAuthResult<StoredAuthSession> {
-        val session = sessionStore.readSession() ?: return SharedAuthResult.Unauthenticated
+        val session =
+            sessionStore.readSession()
+                ?: run {
+                    diagnosticsLogger("auth_servers_load_result result=unauthenticated reason=no_cached_session")
+                    return SharedAuthResult.Unauthenticated
+                }
+        diagnosticsLogger(
+            "auth_servers_load_start selectedServer=${!session.selectedServerId.isNullOrBlank()} cachedServers=${session.servers.size}"
+        )
         val servers =
             when (val response = api.servers(session.bearer())) {
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> {
                     if (response.code == 401) {
-                        sessionStore.clearSession()
-                        return SharedAuthResult.Unauthenticated
+                        diagnosticsLogger("auth_servers_load_result result=unauthorized source=access_token action=refresh")
+                        return loadServersAfterRefresh(session)
                     }
-                    return response.toSharedAuthFailure()
+                    val failure = response.toSharedAuthFailure()
+                    diagnosticsLogger("auth_servers_load_result result=failure source=access_token code=${failure.code}")
+                    return failure
                 }
             }
+        return persistLoadedServers(session, servers, source = "access_token")
+    }
+
+    private suspend fun loadServersAfterRefresh(session: StoredAuthSession): SharedAuthResult<StoredAuthSession> {
+        when (val refreshed = refresh(session.refreshToken)) {
+            is SharedAuthResult.Success -> {
+                val updated = refreshed.data
+                val servers =
+                    when (val retryResponse = api.servers(updated.bearer())) {
+                        is AuthApiResult.Success -> retryResponse.data
+                        is AuthApiResult.Failure -> {
+                            if (retryResponse.code == 401) {
+                                diagnosticsLogger("auth_servers_load_result result=unauthenticated source=refresh_retry")
+                                sessionStore.clearSession()
+                                return SharedAuthResult.Unauthenticated
+                            }
+                            val failure = retryResponse.toSharedAuthFailure()
+                            diagnosticsLogger("auth_servers_load_result result=failure source=refresh_retry code=${failure.code}")
+                            return failure
+                        }
+                    }
+                return persistLoadedServers(updated, servers, source = "refresh_retry")
+            }
+            SharedAuthResult.Unauthenticated -> {
+                diagnosticsLogger("auth_servers_load_result result=unauthenticated source=refresh")
+                return SharedAuthResult.Unauthenticated
+            }
+            is SharedAuthResult.Failure -> {
+                diagnosticsLogger("auth_servers_load_result result=failure source=refresh code=${refreshed.code}")
+                return refreshed
+            }
+        }
+    }
+
+    private suspend fun persistLoadedServers(
+        session: StoredAuthSession,
+        servers: List<StoredAuthServer>,
+        source: String
+    ): SharedAuthResult<StoredAuthSession> {
         val updated = session.withValidatedServerSelection(servers)
         sessionStore.saveSession(updated)
+        diagnosticsLogger(
+            "auth_servers_load_result result=success source=$source serversCount=${servers.size} selectedServer=${!updated.selectedServerId.isNullOrBlank()}"
+        )
         return SharedAuthResult.Success(updated)
     }
 

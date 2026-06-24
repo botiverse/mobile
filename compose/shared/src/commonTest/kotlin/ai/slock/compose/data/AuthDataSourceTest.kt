@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -482,6 +483,47 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loadServersRefreshesUnauthorizedAccessTokenBeforeSigningOut() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "expired-token",
+                    refreshToken = "refresh-token",
+                    servers = listOf(StoredAuthServer(id = "server-old", name = "Old", slug = "old"))
+                )
+            )
+        val api =
+            FakeAuthApi(
+                serversResponses =
+                    ArrayDeque(
+                        listOf(
+                            AuthNetworkResponse(401, null, """{"error":"expired"}"""),
+                            AuthNetworkResponse(200, """[{"id":"server-2","name":"Ops","slug":"ops"}]""")
+                        )
+                    ),
+                refreshResponse = AuthNetworkResponse(200, """{"accessToken":"fresh-token","refreshToken":"fresh-refresh"}""")
+            )
+        val source =
+            SharedAuthDataSource(
+                transport = api,
+                sessionStore = store,
+                diagnosticsLogger = logs::add
+            )
+
+        val result = source.loadServers()
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("fresh-token", store.readSession()?.accessToken)
+        assertEquals("fresh-refresh", store.readSession()?.refreshToken)
+        assertEquals(listOf("server-2"), store.readSession()?.servers?.map { it.id })
+        assertEquals(listOf("Bearer expired-token", "Bearer fresh-token"), api.serversAuthorizations)
+        assertContains(logs, "auth_servers_load_result result=unauthorized source=access_token action=refresh")
+        assertContains(logs, "auth_servers_load_result result=success source=refresh_retry serversCount=1 selectedServer=false")
+    }
+
+    @Test
     fun createServerSelectsCreatedServerInSharedLayer() = runBlocking {
         val store =
             InMemorySlockAuthSessionStore(
@@ -550,6 +592,7 @@ class AuthDataSourceTest {
             AuthNetworkResponse(200, """{"ok":true}"""),
         private val createServerResponse: AuthNetworkResponse =
             AuthNetworkResponse(201, """{"id":"server-2","name":"Ops","slug":"ops"}"""),
+        private val serversResponses: ArrayDeque<AuthNetworkResponse>? = null,
         private val throwCurrentUser: Boolean = false
     ) : SlockAuthTransport {
         var loginBody: String? = null
@@ -566,6 +609,7 @@ class AuthDataSourceTest {
             private set
         var serversAuthorization: String? = null
             private set
+        val serversAuthorizations = mutableListOf<String>()
         var createServerBody: String? = null
             private set
 
@@ -604,7 +648,14 @@ class AuthDataSourceTest {
 
         override suspend fun servers(authorization: String): AuthNetworkResponse {
             serversAuthorization = authorization
-            return serversResponse
+            serversAuthorizations += authorization
+            return serversResponses?.let { responses ->
+                if (responses.size > 1) {
+                    responses.removeFirst()
+                } else {
+                    responses.first()
+                }
+            } ?: serversResponse
         }
 
         override suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse {

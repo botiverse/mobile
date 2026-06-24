@@ -8261,7 +8261,10 @@ private fun AppShellServerGateContent(
         when (val result = runCatchingPreservingCancellation { authDataSource.loadServers() }.getOrNull()) {
             is SharedAuthResult.Success -> latestSession = result.data
             is SharedAuthResult.Failure -> errorMessage = result.message
-            SharedAuthResult.Unauthenticated -> onSignOut()
+            SharedAuthResult.Unauthenticated -> {
+                authDataSource.logDiagnostics("auth_choose_server_load_result result=unauthenticated action=stay_on_server_picker")
+                errorMessage = serverGateUnauthenticatedMessage()
+            }
             null -> errorMessage = "Could not load servers."
         }
     }
@@ -8403,11 +8406,17 @@ private fun AppShellServerGateContent(
         when (result) {
             is SharedAuthResult.Success -> onReady(result.data)
             is SharedAuthResult.Failure -> errorMessage = result.message
-            SharedAuthResult.Unauthenticated -> onSignOut()
+            SharedAuthResult.Unauthenticated -> {
+                authDataSource.logDiagnostics("auth_choose_server_action_result target=$target result=unauthenticated action=stay_on_server_picker")
+                errorMessage = serverGateUnauthenticatedMessage()
+            }
         }
     }
 
 }
+
+private fun serverGateUnauthenticatedMessage(): String =
+    "Your session needs to be refreshed before choosing a server. Try again, or sign out and sign in again."
 
 @Composable
 private fun AppShellServerEmptyState(
