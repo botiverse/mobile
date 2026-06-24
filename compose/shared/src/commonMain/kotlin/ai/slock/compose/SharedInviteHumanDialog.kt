@@ -3,28 +3,24 @@ package ai.slock.compose
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalInputField
+import ai.slock.compose.components.SlockBrutalReadOnlyValueField
 import ai.slock.compose.components.SlockBrutalSectionLabel
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import com.tencent.kuikly.compose.foundation.background
-import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
-import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.Spacer
 import com.tencent.kuikly.compose.foundation.layout.fillMaxWidth
-import com.tencent.kuikly.compose.foundation.layout.height
-import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
+import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
-import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
@@ -97,22 +93,18 @@ internal fun SharedInviteHumanDialog(
                         joinLinkUrl.isNullOrBlank() -> "Join link unavailable"
                         else -> normalizeInviteHumanJoinUrl(joinLinkUrl).orEmpty()
                     }
-                    Box(
+                    SlockBrutalReadOnlyValueField(
+                        value = linkText,
                         modifier = Modifier
-                            .weight(1f)
-                            .height(42.dp)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack)
-                            .background(SlockColor.SurfaceWhite)
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
-                    ) {
-                        Text(
-                            text = linkText,
-                            style = SlockType.Caption.copy(fontFamily = com.tencent.kuikly.compose.ui.text.font.FontFamily.Monospace),
-                            color = SlockColor.TextBlack,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                            .weight(1f),
+                        fieldMinHeight = 42.dp,
+                        horizontalPadding = 8.dp,
+                        verticalPadding = 8.dp,
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        borderColor = SlockColor.BorderBlack,
+                        textStyle = SlockType.Caption.copy(fontFamily = FontFamily.Monospace),
+                        textColor = SlockColor.TextBlack
+                    )
                     SlockBrutalIconButton(
                         iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
                         enabled = !joinLinkLoading && !joinLinkUrl.isNullOrBlank(),
