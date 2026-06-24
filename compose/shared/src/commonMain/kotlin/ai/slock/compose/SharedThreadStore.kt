@@ -1993,8 +1993,11 @@ internal class SharedThreadStore(
                     "messages=${persistentCached?.messages?.size ?: 0} " +
                     "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
             )
-            if (persistentCached != null && _state.value.payload.isUsableCachedPayloadForRoute(headerResolvedInitialPayload)) {
+            if (persistentCached != null && routeStillCurrent(headerResolvedInitialPayload, "thread_persistent_cache", "after_read")) {
                 reducePayloadPatch { currentPayload ->
+                    if (!routeStillCurrent(headerResolvedInitialPayload, "thread_persistent_cache", "apply", currentPayload)) {
+                        return@reducePayloadPatch currentPayload
+                    }
                     val patch = persistentCached.withRouteContext(headerResolvedInitialPayload)
                     diagnosticsLogger?.invoke(
                         "thread_persistent_cache_patch threadId=$threadId status=${patch.status} " +
@@ -2020,6 +2023,9 @@ internal class SharedThreadStore(
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
         val refreshStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
+        if (!routeStillCurrent(basePayload, "thread_refresh", "start", existing)) {
+            return
+        }
         val hasRenderableContent = existing.hasRenderableThreadContent()
         diagnosticsLogger?.invoke(
             "thread_refresh_start threadId=${basePayload.sourceThreadId.orEmpty()} " +
@@ -2036,29 +2042,46 @@ internal class SharedThreadStore(
             "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
                 "messages=${loadingBase.messages.size} " + loadingBase.originDiagnostics()
         )
-        reducePayloadPatch { currentPayload -> currentPayload.withContentPatchFrom(loadingBase) }
+        reducePayloadPatch { currentPayload ->
+            if (!routeStillCurrent(basePayload, "thread_refresh", "loading_apply", currentPayload)) {
+                return@reducePayloadPatch currentPayload
+            }
+            currentPayload.withContentPatchFrom(loadingBase)
+        }
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
         val result = dataSource.fetchThreadPayload(basePayload, persistResult = false)
+        val latest = _state.value.payload
+        if (!routeStillCurrent(basePayload, "thread_refresh", "after_fetch", latest)) {
+            diagnosticsLogger?.invoke(
+                "thread_refresh_result threadId=${basePayload.sourceThreadId.orEmpty()} " +
+                    "result=${result.threadDiagnosticsResult()} ignored=true reason=stale_route " +
+                    "durationMs=${refreshStartedAt.elapsedNow().inWholeMilliseconds}"
+            )
+            return
+        }
         val visiblePayload =
             (result as? DataResult.Content)
                 ?.data
                 ?.withRouteContext(basePayload)
-                ?.preserveStableTimelineFrom(_state.value.payload)
+                ?.preserveStableTimelineFrom(latest)
         val nextPayload =
             when (result) {
                 is DataResult.Content ->
                     visiblePayload ?: result.data.withRouteContext(basePayload)
                 is DataResult.Empty ->
-                    _state.value.payload.asRefreshFailed("empty_thread")
+                    latest.asRefreshFailed("empty_thread")
                 is DataResult.Error ->
-                    _state.value.payload.asRefreshFailed(result.error.code)
+                    latest.asRefreshFailed(result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.payload.asRefreshFailed(result.blocker.code)
+                    latest.asRefreshFailed(result.blocker.code)
             }.copy(backgroundRefreshing = false)
         val emitted =
             reducePayloadPatch(cachePayload = visiblePayload != null) { currentPayload ->
+                if (!routeStillCurrent(basePayload, "thread_refresh", "apply", currentPayload)) {
+                    return@reducePayloadPatch currentPayload
+                }
                 currentPayload.withContentPatchFrom(nextPayload)
             }
         diagnosticsLogger?.invoke(
@@ -2091,6 +2114,7 @@ internal class SharedThreadStore(
     private suspend fun loadMembers(force: Boolean = false) {
         val membersStartedAt = TimeSource.Monotonic.markNow()
         val existing = _state.value.payload
+        val basePayload = existing
         val threadKey = existing.sourceThreadId.orEmpty()
         if (threadKey.isBlank()) return
         val currentState = _state.value
@@ -2121,7 +2145,13 @@ internal class SharedThreadStore(
         _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.InFlight)
         when (val outcome = dataSource.enrichThreadMembers(existing)) {
             is SharedThreadDataSource.MembersEnrichOutcome.Updated -> {
+                if (!routeStillCurrent(basePayload, "thread_members_load", "after_fetch")) {
+                    return
+                }
                 reducePayloadPatch(cachePayload = true) { currentPayload ->
+                    if (!routeStillCurrent(basePayload, "thread_members_load", "apply", currentPayload)) {
+                        return@reducePayloadPatch currentPayload
+                    }
                     currentPayload.withMembersPatchFrom(outcome.payload)
                 }
                 _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
@@ -2133,6 +2163,9 @@ internal class SharedThreadStore(
                 )
             }
             is SharedThreadDataSource.MembersEnrichOutcome.Unchanged -> {
+                if (!routeStillCurrent(basePayload, "thread_members_load", "after_fetch")) {
+                    return
+                }
                 _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Loaded)
                 diagnosticsLogger?.invoke(
                     "thread_members_load_result threadId=$threadKey " +
@@ -2141,6 +2174,9 @@ internal class SharedThreadStore(
                 )
             }
             is SharedThreadDataSource.MembersEnrichOutcome.Failed -> {
+                if (!routeStillCurrent(basePayload, "thread_members_load", "after_fetch")) {
+                    return
+                }
                 // Transient failure: keep status as Error so the next
                 // modal open (or Refresh) can retry. Do not reduce payload.
                 _state.value = _state.value.copy(membersLoadStatus = LoadMembersStatus.Error)
@@ -2283,25 +2319,33 @@ internal class SharedThreadStore(
         }
         reducePayloadPatch { currentPayload -> currentPayload.copy(olderMessagesStatus = "loading", errorCode = null) }
         val result = dataSource.fetchOlderThreadPayload(existing, beforeSeq)
+        val latest = _state.value.payload
+        if (!routeStillCurrent(existing, "thread_page", "older_after_fetch", latest)) {
+            return
+        }
         val nextPayload =
             when (result) {
                 is DataResult.Content -> {
-                    val current = _state.value.payload
-                    current
+                    latest
                         .mergePagedMessages(result.data.messages, before = true)
-                        .preserveStableTimelineFrom(current)
+                        .preserveStableTimelineFrom(latest)
                 }
                 is DataResult.Empty ->
-                    _state.value.payload.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle")
+                    latest.copy(canLoadMoreBefore = false, olderMessagesStatus = "idle")
                 is DataResult.Error ->
-                    _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.error.code)
+                    latest.copy(olderMessagesStatus = "error", errorCode = result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.payload.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
+                    latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
             }
         reducePayloadPatchAndWriteCache(
             cachePayload = true,
             writeCachedPayload = true
-        ) { currentPayload -> currentPayload.withContentPatchFrom(nextPayload) }
+        ) { currentPayload ->
+            if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
+                return@reducePayloadPatchAndWriteCache currentPayload
+            }
+            currentPayload.withContentPatchFrom(nextPayload)
+        }
     }
 
     private suspend fun loadNewer() {
@@ -2316,25 +2360,33 @@ internal class SharedThreadStore(
         }
         reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
         val result = dataSource.fetchNewerThreadPayload(existing, afterSeq)
+        val latest = _state.value.payload
+        if (!routeStillCurrent(existing, "thread_page", "newer_after_fetch", latest)) {
+            return
+        }
         val nextPayload =
             when (result) {
                 is DataResult.Content -> {
-                    val current = _state.value.payload
-                    current
+                    latest
                         .mergePagedMessages(result.data.messages, before = false)
-                        .preserveStableTimelineFrom(current)
+                        .preserveStableTimelineFrom(latest)
                 }
                 is DataResult.Empty ->
-                    _state.value.payload.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
+                    latest.copy(canLoadMoreAfter = false, newerMessagesStatus = "idle")
                 is DataResult.Error ->
-                    _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.error.code)
+                    latest.copy(newerMessagesStatus = "error", errorCode = result.error.code)
                 is DataResult.NoPermission ->
-                    _state.value.payload.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
+                    latest.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
             }
         reducePayloadPatchAndWriteCache(
             cachePayload = true,
             writeCachedPayload = true
-        ) { currentPayload -> currentPayload.withContentPatchFrom(nextPayload) }
+        ) { currentPayload ->
+            if (!routeStillCurrent(existing, "thread_page", "newer_apply", currentPayload)) {
+                return@reducePayloadPatchAndWriteCache currentPayload
+            }
+            currentPayload.withContentPatchFrom(nextPayload)
+        }
     }
 
     private suspend fun appendSentPage(page: ThreadMessagesPage) {
@@ -2515,6 +2567,25 @@ internal class SharedThreadStore(
             dataSource.writeCachedPayload(nextPayload)
         }
         return emitted
+    }
+
+    private fun routeStillCurrent(
+        routePayload: KuiklyThreadScreenPayload,
+        source: String,
+        stage: String,
+        currentPayload: KuiklyThreadScreenPayload = _state.value.payload
+    ): Boolean {
+        if (currentPayload.isUsableCachedPayloadForRoute(routePayload)) {
+            return true
+        }
+        diagnosticsLogger?.invoke(
+            "${source}_stale_drop threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "currentThreadId=${currentPayload.sourceThreadId.orEmpty()} stage=$stage " +
+                "routeSurface=${routePayload.surfaceKind} currentSurface=${currentPayload.surfaceKind} " +
+                "routeParentMessageId=${routePayload.parentMessageId.orEmpty()} " +
+                "currentParentMessageId=${currentPayload.parentMessageId.orEmpty()}"
+        )
+        return false
     }
 
     private fun reducePayloadPatch(

@@ -103,6 +103,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -192,6 +193,87 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertFalse(payload.backgroundRefreshing)
         assertEquals("network body", payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
+    fun staleRefreshResultDoesNotOverwriteCurrentThreadRoute() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val channelStarted = CompletableDeferred<Unit>()
+        val channelRelease = CompletableDeferred<Unit>()
+        val replyStarted = CompletableDeferred<Unit>()
+        val replyRelease = CompletableDeferred<Unit>()
+        val api =
+            FakeThreadApi().apply {
+                bodyTextByThreadId["channel-1"] =
+                    messagesResponse("channel body", id = "channel-message", channelId = "channel-1")
+                bodyTextByThreadId["thread-a"] =
+                    messagesResponse("reply network", id = "reply-network", channelId = "thread-a")
+                channelMessagesStartedByThreadId["channel-1"] = channelStarted
+                releaseChannelMessagesByThreadId["channel-1"] = channelRelease
+                channelMessagesStartedByThreadId["thread-a"] = replyStarted
+                releaseChannelMessagesByThreadId["thread-a"] = replyRelease
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val replyRoute = replyPayload(parentMessageId = "parent-a", threadId = "thread-a")
+        dataSource.cachePayload(
+            contentPayloadForRoute(
+                base = replyRoute,
+                body = "reply cached",
+                id = "reply-cached",
+                channelId = "thread-a"
+            )
+        )
+        val logs = mutableListOf<String>()
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        val channelJob = scope.launch { store.accept(SharedThreadIntent.Start(basePayload())) }
+        channelStarted.await()
+        val replyJob = scope.launch { store.accept(SharedThreadIntent.Start(replyRoute)) }
+        replyStarted.await()
+
+        withTimeout(500) {
+            while (true) {
+                val payload = store.state.value.payload
+                if (payload.sourceThreadId == "thread-a" && payload.messages.singleOrNull()?.body == "reply cached") {
+                    return@withTimeout
+                }
+                delay(10)
+            }
+        }
+        assertEquals("thread-a", store.state.value.payload.sourceThreadId)
+        assertEquals("reply cached", store.state.value.payload.messages.single().body)
+
+        channelRelease.complete(Unit)
+        withTimeout(500) {
+            while (true) {
+                if (logs.any { it.startsWith("thread_refresh_stale_drop") && it.contains("threadId=channel-1") }) {
+                    return@withTimeout
+                }
+                delay(10)
+            }
+        }
+        assertTrue(logs.any { it.startsWith("thread_refresh_stale_drop") && it.contains("threadId=channel-1") })
+        assertEquals("thread-a", store.state.value.payload.sourceThreadId)
+        assertEquals("reply cached", store.state.value.payload.messages.single().body)
+
+        replyRelease.complete(Unit)
+        withTimeout(500) {
+            while (true) {
+                if (store.state.value.payload.messages.singleOrNull()?.body == "reply network") {
+                    return@withTimeout
+                }
+                delay(10)
+            }
+        }
+        assertEquals("thread-a", store.state.value.payload.sourceThreadId)
+        assertEquals("reply network", store.state.value.payload.messages.single().body)
+        channelJob.join()
+        replyJob.join()
         scope.cancel()
     }
 
@@ -3847,6 +3929,9 @@ class SharedThreadStoreTest {
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
         val mentionActionRequests: MutableList<Pair<String, List<String>>> = mutableListOf()
+        val bodyTextByThreadId: MutableMap<String, String> = mutableMapOf()
+        val channelMessagesStartedByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
+        val releaseChannelMessagesByThreadId: MutableMap<String, CompletableDeferred<Unit>> = mutableMapOf()
         var channelMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
 
@@ -3856,14 +3941,17 @@ class SharedThreadStoreTest {
             channelMessageLimits += limit
             if (beforeSeq == null) {
                 channelMessagesStarted?.complete(Unit)
+                channelMessagesStartedByThreadId[threadId]?.complete(Unit)
                 releaseChannelMessages?.await()
+                releaseChannelMessagesByThreadId[threadId]?.await()
             }
             if (failChannelMessages) throw IllegalStateException("offline")
+            val responseBody = bodyTextByThreadId[threadId] ?: bodyText
             return if (beforeSeq != null) {
                 beforeSeqs += beforeSeq
                 HomeNetworkResponse(code = 200, bodyText = olderBodyText)
             } else {
-                HomeNetworkResponse(code = 200, bodyText = bodyText)
+                HomeNetworkResponse(code = 200, bodyText = responseBody)
             }
         }
 
@@ -4417,12 +4505,35 @@ class SharedThreadStoreTest {
             showModeTabs = false
         )
 
+    private fun replyPayload(parentMessageId: String, threadId: String): KuiklyThreadScreenPayload =
+        basePayload().copy(
+            instanceId = "shared-shell-thread-$threadId",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = threadId,
+            streamChannelId = threadId,
+            parentChannelId = "channel-1",
+            parentMessageId = parentMessageId,
+            originParentMessageId = parentMessageId,
+            title = ThreadReplyPageTitle,
+            subtitle = "#general",
+            showModeTabs = false,
+            showReplyActions = false
+        )
+
     private fun contentPayload(body: String): KuiklyThreadScreenPayload =
+        contentPayloadForRoute(basePayload(), body)
+
+    private fun contentPayloadForRoute(
+        base: KuiklyThreadScreenPayload,
+        body: String,
+        id: String = "m1",
+        channelId: String = base.sourceThreadId ?: "channel-1"
+    ): KuiklyThreadScreenPayload =
         buildSharedThreadPayloadFromMessagesPage(
-            basePayload = basePayload(),
+            basePayload = base,
             page =
                 ThreadMessagesPage(
-                    messages = listOf(WireMessage(id = "m1", channelId = "channel-1", senderType = "user", senderId = "u1", senderName = "Artin", content = body)),
+                    messages = listOf(WireMessage(id = id, channelId = channelId, senderType = "user", senderId = "u1", senderName = "Artin", content = body)),
                     canLoadMoreBefore = false,
                     canLoadMoreAfter = null
                 ),
