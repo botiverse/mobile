@@ -67,7 +67,7 @@ class SharedRealtimeDomainEventOwnerTest {
     }
 
     @Test
-    fun duplicateIngressPatchesDomainSinksOnce() {
+    fun duplicateAcceptedEventsPatchDomainSinksOnce() {
         val owner = SharedRealtimeDomainEventOwner()
         val homeEvents = mutableListOf<RealtimeEventRecord>()
         val settingsEvents = mutableListOf<RealtimeEventRecord>()
@@ -84,7 +84,7 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.registerSinks(sinks)
 
         owner.accept("server-1", event, source = "app_shell")
-        owner.accept("server-1", event, source = "thread_page")
+        owner.accept("server-1", event, source = "app_shell")
 
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
@@ -161,7 +161,7 @@ class SharedRealtimeDomainEventOwnerTest {
             )
 
         owner.accept("server-1", event, source = "app_shell")
-        owner.accept("server-1", event, source = "thread_page")
+        owner.accept("server-1", event, source = "app_shell")
 
         assertEquals(1L, owner.threadProjections.value?.sequence)
         assertSame(event, owner.threadProjections.value?.event)
