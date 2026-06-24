@@ -452,7 +452,6 @@ internal fun Button(
     val onClickUpdate = rememberUpdatedState(onClick)
     val onClick2Update = rememberUpdatedState(onClick2)
     val enabledUpdate = rememberUpdatedState(enabled)
-    val density = LocalDensity.current
     Box(
         modifier = Modifier
             .onGloballyPositioned {
@@ -472,15 +471,11 @@ internal fun Button(
                     },
                     onTap = { offset ->
                         if (enabledUpdate.value) {
-                            // 获取点击的相对于 Box 的坐标
-                            val clickedPositionInBox = offset
-                            // 转换为相对于根节点的位置
-                            val clickedPositionInRoot = with(density) {
+                            val clickedPositionInRoot =
                                 Offset(
-                                    (clickedPositionInBox.x + rootPosition.value.x).toDp().value,
-                                    (clickedPositionInBox.y + rootPosition.value.y).toDp().value
+                                    offset.x + rootPosition.value.x,
+                                    offset.y + rootPosition.value.y
                                 )
-                            }
                             onClickUpdate.value.invoke()
                             onClick2Update.value.invoke(clickedPositionInRoot)
                         }

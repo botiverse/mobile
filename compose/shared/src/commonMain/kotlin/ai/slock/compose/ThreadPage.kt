@@ -8323,9 +8323,9 @@ private data class ThreadMessageMenuAction(
 )
 
 private val ThreadMessageMenuWidth = 208.dp
-private const val ThreadMessageMenuFallbackHeight = 210f
-private const val ThreadMessageMenuAnchorGap = 8f
-private const val ThreadMessageMenuHorizontalNudge = 16f
+private val ThreadMessageMenuFallbackHeight = 210.dp
+private val ThreadMessageMenuAnchorGap = 8.dp
+private val ThreadMessageMenuHorizontalNudge = 16.dp
 internal val ThreadQuickReactionEmojis = listOf("👍", "❤️", "🎉", "👀", "🔥", "😂", "✅")
 
 @Composable
@@ -8383,22 +8383,25 @@ private fun ThreadMessageActionMenu(
                     )
                 )
             }
-        }
+    }
     var menuSize by remember { mutableStateOf(Size.Zero) }
     val density = LocalDensity.current
-    val menuWidth = menuSize.width.takeIf { it > 0f } ?: ThreadMessageMenuWidth.value
-    val menuHeight = menuSize.height.takeIf { it > 0f } ?: ThreadMessageMenuFallbackHeight
+    val menuWidth = menuSize.width.takeIf { it > 0f } ?: with(density) { ThreadMessageMenuWidth.toPx() }
+    val menuHeight = menuSize.height.takeIf { it > 0f } ?: with(density) { ThreadMessageMenuFallbackHeight.toPx() }
+    val anchorGapPx = with(density) { ThreadMessageMenuAnchorGap.toPx() }
+    val horizontalNudgePx = with(density) { ThreadMessageMenuHorizontalNudge.toPx() }
+    val shadowOffsetPx = with(density) { 4.dp.toPx() }
     val contentSize = Size(
-        width = menuWidth + 4f,
-        height = menuHeight + 4f
+        width = menuWidth + shadowOffsetPx,
+        height = menuHeight + shadowOffsetPx
     )
     SlockAnchoredPopover(
         anchor = anchor,
         contentSize = contentSize,
         onDismiss = onDismiss,
-        viewportGap = ThreadMessageMenuAnchorGap,
-        horizontalOffset = -ThreadMessageMenuHorizontalNudge,
-        verticalOffset = ThreadMessageMenuAnchorGap,
+        viewportGap = anchorGapPx,
+        horizontalOffset = -horizontalNudgePx,
+        verticalOffset = anchorGapPx,
         horizontalAutoFlip = true,
         verticalPlacement = SlockFloatingVerticalPlacement.Auto
     ) { popoverModifier, position ->
@@ -8416,7 +8419,7 @@ private fun ThreadMessageActionMenu(
                 .padding(end = 4.dp, bottom = 4.dp)
                 .width(ThreadMessageMenuWidth)
                 .onGloballyPositioned { coordinates ->
-                    menuSize = coordinates.size.toSlockDpSize(density)
+                    menuSize = Size(coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
                 }
         ) {
             Box(

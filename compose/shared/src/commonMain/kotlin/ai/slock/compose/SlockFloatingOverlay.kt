@@ -17,9 +17,7 @@ import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
-import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.IntOffset
-import com.tencent.kuikly.compose.ui.unit.IntSize
 
 internal data class SlockFloatingOverlayLayout(
     val origin: Offset = Offset.Zero,
@@ -257,16 +255,6 @@ internal fun slockVerticalPosition(
 
 internal fun Offset.isSlockUsableAnchor(): Boolean =
     x != 0f || y != 0f
-
-internal fun Offset.toSlockDpOffset(density: Density): Offset =
-    with(density) {
-        Offset(x.toDp().value, y.toDp().value)
-    }
-
-internal fun IntSize.toSlockDpSize(density: Density): Size =
-    with(density) {
-        Size(width.toDp().value, height.toDp().value)
-    }
 
 internal const val SlockFloatingDefaultViewportGap = 8f
 internal const val SlockFloatingDefaultVerticalOffset = 8f
