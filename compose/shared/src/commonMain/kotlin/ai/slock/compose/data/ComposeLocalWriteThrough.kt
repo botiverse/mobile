@@ -143,6 +143,26 @@ class ComposeLocalWriteThrough(
         logger("clear_home_unread source=$source channelId=${channelId.value}")
     }
 
+    suspend fun clearServerUnread(serverId: ServerId, source: String) {
+        store.readUnread(serverId)?.let { unread ->
+            val updatedUnread =
+                unread.copy(
+                    unreadCounts = emptyMap(),
+                    totalUnreadCount = 0
+                )
+            if (updatedUnread != unread) {
+                store.writeUnread(updatedUnread)
+            }
+        }
+        store.readHome(serverId)?.let { home ->
+            val updatedHome = home.clearAllUnread()
+            if (updatedHome != home) {
+                store.writeHome(updatedHome)
+            }
+        }
+        logger("clear_home_unread_all source=$source serverId=${serverId.value}")
+    }
+
     suspend fun writeRealtimeEvent(
         serverId: ServerId,
         event: RealtimeEvent,
@@ -785,6 +805,22 @@ private fun HomeSnapshot.clearConversationUnread(channelId: ChannelId): HomeSnap
         channels = channels.map { it.clearIfMatches() },
         directMessages = directMessages.map { it.clearIfMatches() },
         unreadTotal = (unreadTotal - cleared).coerceAtLeast(0)
+    )
+}
+
+private fun HomeSnapshot.clearAllUnread(): HomeSnapshot {
+    fun ConversationSummary.clearUnread(): ConversationSummary =
+        copy(
+            unreadCount = 0,
+            unreadCountKnown = true,
+            mentionCount = 0,
+            mentionCountKnown = true,
+            firstUnreadMessageId = null
+        )
+    return copy(
+        channels = channels.map { it.clearUnread() },
+        directMessages = directMessages.map { it.clearUnread() },
+        unreadTotal = 0
     )
 }
 

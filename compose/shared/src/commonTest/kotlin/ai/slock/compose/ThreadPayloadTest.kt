@@ -3225,6 +3225,8 @@ class ThreadPayloadTest {
         assertEquals("Cindy", message.metadata["actor"])
         assertEquals("invite", message.metadata["source"]?.sanitizeThreadSystemText())
         assertEquals("10:00 Cindy joined\nthe channel", message.collapsedSystemSummary("10:00"))
+        assertEquals("Cindy joined\nthe channel", message.systemContentSummary())
+        assertEquals("Cindy joined\nthe channel\nType: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemContent())
         assertEquals("Type: member_joined\nactor: Cindy\nsource: invite", message.expandedSystemDetails())
     }
 

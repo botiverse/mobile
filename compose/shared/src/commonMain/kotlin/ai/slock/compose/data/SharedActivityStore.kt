@@ -234,6 +234,7 @@ class SharedActivityStore(
         _state.value = previous.copy(snapshot = updatedSnapshot, errorCode = null)
         scope.launch {
             val serverId = currentServerId()
+            serverId?.let { localWriteThrough?.clearServerUnread(it, "shared_activity_mark_all_read") }
             val result = serverId?.let { readReceiptRepository.markInboxReadAll(it) }
                 ?: DataResult.NoPermission(PermissionBlocker(code = "server_missing"))
             if (result is DataResult.Content || result is DataResult.Empty) {

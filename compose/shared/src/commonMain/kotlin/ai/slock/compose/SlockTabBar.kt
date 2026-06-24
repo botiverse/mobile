@@ -438,7 +438,7 @@ private fun SlockVerticalTabItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(44.dp)
+            .height(36.dp)
             .padding(horizontal = 0.dp, vertical = 2.dp)
     ) {
         if (selected) {
@@ -452,7 +452,7 @@ private fun SlockVerticalTabItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(38.dp)
+                .height(34.dp)
                 .background(if (selected) SlockColor.AccentPink else Color.Transparent)
                 .then(if (selected) Modifier.border(SlockStroke.Default, SlockColor.BorderBlack) else Modifier)
                 .clickable(enabled = item.enabled) { onSelect(item.key) }

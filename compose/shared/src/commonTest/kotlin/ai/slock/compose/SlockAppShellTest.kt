@@ -14,6 +14,7 @@ import ai.slock.compose.model.ServerSummary
 import com.tencent.kuikly.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class SlockAppShellTest {
     @Test
@@ -242,6 +243,21 @@ class SlockAppShellTest {
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("saved"))
         assertEquals(false, homeDestinationRefreshesOnLifecycleResume("search"))
         assertEquals(true, homeDestinationRefreshesOnLifecycleResume("unknown"))
+    }
+
+    @Test
+    fun membersCachedContentSeedsOnlyMatchingServer() {
+        val content =
+            SharedMembersUiState.Content(
+                server = ServerSummary(ServerId("server-1"), "Slock"),
+                members = emptyList(),
+                currentUserId = "user-1"
+            )
+
+        assertEquals(content, sharedMembersCachedContentForServer(content, "server-1"))
+        assertNull(sharedMembersCachedContentForServer(content, "server-2"))
+        assertNull(sharedMembersCachedContentForServer(content, null))
+        assertNull(sharedMembersCachedContentForServer(content, ""))
     }
 
     @Test
