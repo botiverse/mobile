@@ -298,6 +298,7 @@ import androidx.compose.runtime.key
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
+import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.text.KeyboardActions
 import com.tencent.kuikly.compose.foundation.text.KeyboardOptions
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
@@ -335,6 +336,7 @@ import com.tencent.kuikly.compose.ui.layout.ContentScale
 import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
+import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -733,6 +735,7 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
     val searchSavedViewModel = rememberHomeSearchSavedViewModel(environment, key = "home-secondary-saved")
     val searchSavedState by searchSavedViewModel.state.collectAsState()
     val listState = rememberLazyListState()
+    val copyScope = rememberCoroutineScope()
     SharedHomeSavedPanel(
         state = searchSavedState.saved,
         onIntent = searchSavedViewModel::dispatch,
@@ -749,7 +752,23 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
         bottomContentPadding = environment.shellScope.bottomInset(includeBottomTabBar = false),
         timeContext = environment.timeContext,
         shellScope = environment.shellScope,
-        listState = listState
+        listState = listState,
+        onCopyLink = { item ->
+            copyScope.launch {
+                val serverSlug = environment.authStore.readSession()?.currentServerSlug()
+                val permalink = serverSlug?.let { sharedHomeSavedPermalink(item, it) }
+                if (permalink != null) {
+                    environment.bridge.copyToPasteboard(permalink)
+                    environment.bridge.toast("Copied")
+                } else {
+                    environment.bridge.toast("Unable to copy link")
+                }
+            }
+        },
+        onCopyMarkdown = { item ->
+            environment.bridge.copyToPasteboard(item.sharedHomeSavedMarkdownContent())
+            environment.bridge.toast("Copied")
+        }
     )
 }
 
@@ -9970,16 +9989,23 @@ private fun SharedHomeSavedPanel(
     includeTopSafeArea: Boolean = true,
     timeContext: AppShellThreadTimeContext? = null,
     shellScope: SlockAppShellScope = rememberSlockAppShellScope(),
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    onCopyLink: (InboxItem) -> Unit = {},
+    onCopyMarkdown: (InboxItem) -> Unit = {}
 ) {
     LaunchedEffect(Unit) {
         onIntent(SharedHomeSearchSavedIntent.OpenSaved)
     }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
+    var activeMenu by remember { mutableStateOf<SharedHomeSavedContextMenuState?>(null) }
     LaunchedEffect(state.items) {
         val selected = selectedItemKey
         if (selected != null && state.items.none { it.key == selected }) {
             selectedItemKey = null
+        }
+        val menuItemKey = activeMenu?.item?.key
+        if (menuItemKey != null && state.items.none { it.key == menuItemKey }) {
+            activeMenu = null
         }
     }
     val pullToRefreshState = rememberPullToRefreshState(state.pullRefreshing)
@@ -10000,83 +10026,150 @@ private fun SharedHomeSavedPanel(
         }
         return
     }
-    Column(
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
                 .background(SlockColor.SurfaceWhite)
     ) {
-        SharedHomeSavedHeader(
-            count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
-            onClose = onClose,
-            refreshing = state.refreshing && !state.pullRefreshing,
-            topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
-        )
-        LazyColumn(
-            state = listState,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(SlockColor.SurfaceWhite),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            pullToRefreshItem(
-                state = pullToRefreshState,
-                scrollState = listState,
-                onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
-                content = { pullProgress, isRefreshing, _ ->
-                    SlockRaftPullRefreshIndicator(
-                        pullProgress = pullProgress,
-                        isRefreshing = isRefreshing
+        Column(Modifier.fillMaxSize()) {
+            SharedHomeSavedHeader(
+                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                onClose = onClose,
+                refreshing = state.refreshing && !state.pullRefreshing,
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+            )
+            LazyColumn(
+                state = listState,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .background(SlockColor.SurfaceWhite),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                pullToRefreshItem(
+                    state = pullToRefreshState,
+                    scrollState = listState,
+                    onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
+                    content = { pullProgress, isRefreshing, _ ->
+                        SlockRaftPullRefreshIndicator(
+                            pullProgress = pullProgress,
+                            isRefreshing = isRefreshing
+                        )
+                    }
+                )
+                val hasSavedRows = state.items.isNotEmpty()
+                if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
+                    item {
+                        SharedHomePanelStatus(
+                            errorCode = state.errorCode,
+                            noPermissionCode = state.noPermissionCode,
+                            empty = false,
+                            emptyTitle = "",
+                            emptyDetail = "",
+                            onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                        )
+                    }
+                } else if (state.empty || (state.loaded && state.items.isEmpty())) {
+                    item {
+                        SharedHomeSavedEmptyState()
+                    }
+                }
+                items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
+                    val item = state.items[index]
+                    SharedHomeSavedResultCard(
+                        item = item,
+                        selected = selectedItemKey == item.key || activeMenu?.item?.key == item.key,
+                        onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
+                        onOpen = {
+                            selectedItemKey = item.key
+                            onOpenItem(item)
+                        },
+                        onContextMenu = { anchor -> activeMenu = SharedHomeSavedContextMenuState(item, anchor) },
+                        timeContext = timeContext
                     )
+                }
+                if (state.hasMore) {
+                    item {
+                        SharedHomeLoadMoreRow(
+                            loading = state.loadingMore,
+                            label = "Load More",
+                            onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
+                        )
+                    }
+                }
+                item {
+                    Spacer(Modifier.height(bottomContentPadding))
+                }
+            }
+        }
+        activeMenu?.let { menu ->
+            SlockBaseMenuOverlay(
+                anchor = menu.anchor,
+                items = SharedHomeSavedContextMenuItems,
+                selectedId = "",
+                uppercaseLabels = false,
+                onDismiss = { activeMenu = null },
+                onSelect = { actionId ->
+                    val item = menu.item
+                    activeMenu = null
+                    when (actionId) {
+                        SharedHomeSavedMenuActionCopyLink -> onCopyLink(item)
+                        SharedHomeSavedMenuActionCopyMarkdown -> onCopyMarkdown(item)
+                        SharedHomeSavedMenuActionRemove -> onIntent(SharedHomeSearchSavedIntent.Unsave(item))
+                    }
                 }
             )
-            val hasSavedRows = state.items.isNotEmpty()
-            if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
-                item {
-                    SharedHomePanelStatus(
-                        errorCode = state.errorCode,
-                        noPermissionCode = state.noPermissionCode,
-                        empty = false,
-                        emptyTitle = "",
-                        emptyDetail = "",
-                        onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
-                    )
-                }
-            } else if (state.empty || (state.loaded && state.items.isEmpty())) {
-                item {
-                    SharedHomeSavedEmptyState()
-                }
-            }
-            items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
-                val item = state.items[index]
-                SharedHomeSavedResultCard(
-                    item = item,
-                    selected = selectedItemKey == item.key,
-                    onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
-                    onOpen = {
-                        selectedItemKey = item.key
-                        onOpenItem(item)
-                    },
-                    timeContext = timeContext
-                )
-            }
-            if (state.hasMore) {
-                item {
-                    SharedHomeLoadMoreRow(
-                        loading = state.loadingMore,
-                        label = "Load More",
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
-                    )
-                }
-            }
-            item {
-                Spacer(Modifier.height(bottomContentPadding))
-            }
         }
     }
 }
+
+private const val SharedHomeSavedMenuActionCopyLink = "copy-link"
+private const val SharedHomeSavedMenuActionCopyMarkdown = "copy-markdown"
+private const val SharedHomeSavedMenuActionRemove = "remove"
+
+private val SharedHomeSavedContextMenuItems =
+    listOf(
+        SlockBaseMenuItem(SharedHomeSavedMenuActionCopyLink, "Copy Link", SlockLucideIconName.Link),
+        SlockBaseMenuItem(SharedHomeSavedMenuActionCopyMarkdown, "Copy Markdown", SlockLucideIconName.Copy),
+        SlockBaseMenuItem(SharedHomeSavedMenuActionRemove, "Remove from Saved", SlockLucideIconName.Bookmark, dividerBefore = true)
+    )
+
+private data class SharedHomeSavedContextMenuState(
+    val item: InboxItem,
+    val anchor: Offset
+)
+
+private const val SharedHomeSavedWebBaseUrl = "https://app.raft.build"
+
+internal fun sharedHomeSavedPermalink(item: InboxItem, serverSlug: String): String? {
+    val messageId = item.savedMessageIdOrNull()?.value?.takeIf { it.isNotBlank() } ?: return null
+    val cleanServerSlug = serverSlug.trim().takeIf { it.isNotBlank() } ?: return null
+    val isThread = item.kind == InboxItemKind.Thread
+    val channelForLink = if (isThread) item.parentChannelId ?: item.channelId else item.channelId
+    val routeKind =
+        if (if (isThread) item.parentChannelKind == ConversationKind.DirectMessage else item.kind == InboxItemKind.DirectMessage) {
+            "dm"
+        } else {
+            "channel"
+        }
+    val params =
+        if (isThread) {
+            val parentMessageId = item.parentMessageId?.value?.takeIf { it.isNotBlank() }
+            if (parentMessageId != null) {
+                "msg=$messageId&thread=${channelForLink.value}%3A$parentMessageId"
+            } else {
+                "msg=$messageId"
+            }
+        } else {
+            "msg=$messageId"
+        }
+    return "$SharedHomeSavedWebBaseUrl/s/$cleanServerSlug/$routeKind/${channelForLink.value}?$params"
+}
+
+private fun InboxItem.sharedHomeSavedMarkdownContent(): String =
+    latestActivityPreview ?: lastMessagePreview ?: parentMessagePreview ?: ""
 
 @Composable
 private fun SharedHomeSavedEmptyState() {
@@ -10512,6 +10605,7 @@ private fun SharedHomeSavedResultCard(
     selected: Boolean,
     onUnsave: () -> Unit,
     onOpen: () -> Unit,
+    onContextMenu: (Offset) -> Unit,
     timeContext: AppShellThreadTimeContext? = null
 ) {
     val preview = item.latestActivityPreview ?: item.lastMessagePreview ?: item.parentMessagePreview ?: "No preview"
@@ -10523,6 +10617,7 @@ private fun SharedHomeSavedResultCard(
             item.kind == InboxItemKind.Thread -> item.parentChannelName?.takeIf { it.isNotBlank() }?.let { "#$it" }
             else -> item.channelName.takeIf { it.isNotBlank() }?.let { "#$it" }
         }
+    val contentTopLeft = remember { SlockMutableOffsetRef() }
     SharedHomeSavedSelectedSurface(
         selected = selected,
         modifier =
@@ -10533,13 +10628,24 @@ private fun SharedHomeSavedResultCard(
         Row(
             modifier =
                 surfaceModifier
-                .clickable(onClick = onOpen)
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                    .padding(horizontal = 12.dp, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
         ) {
             Column(
-                modifier = Modifier.weight(1f),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .onGloballyPositioned { coordinates -> contentTopLeft.update(coordinates.positionInRoot()) }
+                        .pointerInput(onOpen, onContextMenu) {
+                            detectTapGestures(
+                                onTap = { onOpen() },
+                                onLongPress = { localOffset ->
+                                    val topLeft = contentTopLeft.value
+                                    onContextMenu(Offset(topLeft.x + localOffset.x, topLeft.y + localOffset.y))
+                                }
+                            )
+                        },
                 verticalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 Row(
@@ -10597,12 +10703,49 @@ private fun SharedHomeSavedResultCard(
                     overflow = TextOverflow.Ellipsis
                 )
             }
-            SlockBrutalIconButton(
-                iconName = SlockLucideIconName.Bookmark,
-                onClick = onUnsave,
-                size = 31.dp,
-                shadowOffset = 3.dp
-            )
+            SharedHomeSavedUnsaveButton(onClick = onUnsave)
+        }
+    }
+}
+
+@Composable
+private fun SharedHomeSavedUnsaveButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val size = 31.dp
+    val shadowOffset = 3.dp
+    Box(
+        modifier =
+            modifier
+                .size(size + shadowOffset)
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(size)
+                    .offset(x = shadowOffset, y = shadowOffset)
+                    .background(SlockColor.ShadowBlack)
+        )
+        Box(
+            modifier =
+                Modifier
+                    .size(size)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(modifier = Modifier.size(16.dp), contentAlignment = Alignment.Center) {
+                SlockLucideIcon(SlockLucideIconName.Bookmark, color = SlockColor.TextBlackArgb, modifier = Modifier.size(16.dp))
+                Box(
+                    modifier =
+                        Modifier
+                            .width(9.dp)
+                            .height(2.dp)
+                            .background(SlockColor.TextBlack)
+                )
+            }
         }
     }
 }
