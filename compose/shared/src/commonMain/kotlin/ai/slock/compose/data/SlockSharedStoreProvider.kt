@@ -30,6 +30,7 @@ internal class SlockSharedStoreProvider private constructor(
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
     val conversationDirectoryStore: SharedConversationDirectoryStore,
+    val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
@@ -66,6 +67,7 @@ internal class SlockSharedStoreProvider private constructor(
                 ),
                 tasksDataStore = tasksDataStore,
                 conversationDirectoryStore = conversationDirectoryStore,
+                activityStateCache = SharedActivityStateCache(),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
             )

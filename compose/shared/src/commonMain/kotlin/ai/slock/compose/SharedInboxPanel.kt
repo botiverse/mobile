@@ -17,6 +17,7 @@ import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SharedActivityIntent
 import ai.slock.compose.data.SharedActivitySenderProfile
 import ai.slock.compose.data.SharedActivityState
+import ai.slock.compose.data.SharedActivityStateCache
 import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
@@ -87,6 +88,7 @@ private val ActivitySelectedRowShadowOffset = 2.dp
 internal fun SharedHomeActivityScreen(
     bridge: BridgeModule,
     authStore: SlockAuthSessionStore,
+    activityStateCache: SharedActivityStateCache? = null,
     onOpenMessage: (HomeMessageOpenRequest) -> Unit,
     onClose: (() -> Unit)? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg,
@@ -141,13 +143,14 @@ internal fun SharedHomeActivityScreen(
         }
     val scope = rememberCoroutineScope()
     val activityStore =
-        remember(authStore, repository, readReceiptRepository, conversationRepository, memberRepository, scope) {
+        remember(authStore, repository, readReceiptRepository, conversationRepository, memberRepository, activityStateCache, scope) {
             SharedActivityStore(
                 authStore = authStore,
                 inboxRepository = repository,
                 readReceiptRepository = readReceiptRepository,
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
+                activityStateCache = activityStateCache,
                 scope = scope
             )
         }

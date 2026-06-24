@@ -170,6 +170,7 @@ import ai.slock.compose.data.SlockComputersApiClient
 import ai.slock.compose.data.SlockComputersNetworkApi
 import ai.slock.compose.data.SharedCreateAgentCoordinator
 import ai.slock.compose.data.SharedActivityIntent
+import ai.slock.compose.data.SharedActivityStateCache
 import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
@@ -588,6 +589,7 @@ private data class HomeSecondaryRouteEnvironment(
     val networkClient: KuiklySlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
@@ -639,6 +641,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         networkClient,
         localWriteThrough,
         settingsCapabilities,
+        sharedStores.activityStateCache,
         sharedStores.homeSavedStateCache,
         timeContext,
         myMessageAlignment,
@@ -651,6 +654,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             networkClient = networkClient,
             localWriteThrough = localWriteThrough,
             settingsCapabilities = settingsCapabilities,
+            activityStateCache = sharedStores.activityStateCache,
             homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
@@ -681,6 +685,7 @@ private fun HomeActivityRouterContent(environment: HomeSecondaryRouteEnvironment
     SharedHomeActivityScreen(
         bridge = environment.bridge,
         authStore = environment.authStore,
+        activityStateCache = environment.activityStateCache,
         onOpenMessage = { request ->
             environment.pager.openStandaloneHomeMessageRequest(
                 bridge = environment.bridge,
@@ -1438,6 +1443,7 @@ private fun SlockAppShellContent() {
             conversationRepository,
             memberRepository,
             localWriteThrough,
+            sharedStores.activityStateCache,
             homeViewModel,
             appShellCoroutineScope
         ) {
@@ -1448,6 +1454,7 @@ private fun SlockAppShellContent() {
                 conversationRepository = conversationRepository,
                 memberRepository = memberRepository,
                 localWriteThrough = localWriteThrough,
+                activityStateCache = sharedStores.activityStateCache,
                 onUnreadCountsChanged = { homeViewModel.dispatch(SharedHomeIntent.ForegroundRefresh) },
                 scope = appShellCoroutineScope
             )
@@ -1608,6 +1615,7 @@ private fun SlockAppShellContent() {
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
+        sharedStores.activityStateCache.clear()
         sharedStores.homeSavedStateCache.clear()
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")

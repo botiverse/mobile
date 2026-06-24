@@ -36,6 +36,7 @@ class SharedActivityStore(
     private val conversationRepository: ConversationRepository,
     private val memberRepository: MemberRepository? = null,
     private val localWriteThrough: ComposeLocalWriteThrough? = null,
+    private val activityStateCache: SharedActivityStateCache? = null,
     private val onUnreadCountsChanged: () -> Unit = {},
     private val scope: CoroutineScope
 ) {
@@ -111,8 +112,22 @@ class SharedActivityStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setLoadError("unauthenticated", append = !refresh)
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setLoadError("server_missing", append = !refresh)
+                    val userId = session.user.id
                     val server = session.servers.firstOrNull { it.id == serverId.value }?.toServerSummary()
                         ?: return@launch setLoadError("server_missing", append = !refresh)
+                    if (refresh && previous.snapshot == null) {
+                        activityStateCache?.read(serverId.value, userId, filter)?.let { cached ->
+                            _state.value =
+                                cached.copy(
+                                    refreshing = true,
+                                    pullRefreshing = false,
+                                    loading = false,
+                                    loadingMore = false,
+                                    errorCode = null,
+                                    loadMoreErrorCode = null
+                                )
+                        }
+                    }
                     val result =
                         if (refresh) {
                             inboxRepository.loadInitial(serverId, filter, SharedActivityPageSize)
@@ -129,7 +144,8 @@ class SharedActivityStore(
                         result = result,
                         server = server,
                         append = !refresh,
-                        senderProfiles = senderProfiles
+                        senderProfiles = senderProfiles,
+                        userId = userId
                     )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
@@ -143,7 +159,8 @@ class SharedActivityStore(
         result: DataResult<InboxSnapshot>,
         server: ServerSummary,
         append: Boolean,
-        senderProfiles: Map<String, SharedActivitySenderProfile>
+        senderProfiles: Map<String, SharedActivitySenderProfile>,
+        userId: String
     ) {
         val current = _state.value
         _state.value =
@@ -156,24 +173,27 @@ class SharedActivityStore(
                         } else {
                             pageItems
                         }
-                    current.copy(
-                        snapshot =
-                            result.data.copy(
-                                items = items,
-                                totalCount = result.data.totalCount,
-                                totalUnreadCount = result.data.totalUnreadCount,
-                                hasMore = result.data.hasMore,
-                                nextOffset = result.data.nextOffset
-                            ),
-                        senderProfiles = if (append) current.senderProfiles + senderProfiles else senderProfiles,
-                        loaded = true,
-                        loading = false,
-                        refreshing = false,
-                        pullRefreshing = false,
-                        loadingMore = false,
-                        errorCode = null,
-                        loadMoreErrorCode = null
-                    )
+                    val nextState =
+                        current.copy(
+                            snapshot =
+                                result.data.copy(
+                                    items = items,
+                                    totalCount = result.data.totalCount,
+                                    totalUnreadCount = result.data.totalUnreadCount,
+                                    hasMore = result.data.hasMore,
+                                    nextOffset = result.data.nextOffset
+                                ),
+                            senderProfiles = if (append) current.senderProfiles + senderProfiles else senderProfiles,
+                            loaded = true,
+                            loading = false,
+                            refreshing = false,
+                            pullRefreshing = false,
+                            loadingMore = false,
+                            errorCode = null,
+                            loadMoreErrorCode = null
+                        )
+                    activityStateCache?.write(result.data.server.id.value, userId, nextState)
+                    nextState
                 }
                 is DataResult.Empty -> {
                     val snapshot =
@@ -183,17 +203,20 @@ class SharedActivityStore(
                         } else {
                             InboxSnapshot(server = server, items = emptyList(), totalCount = 0, totalUnreadCount = 0)
                         }
-                    current.copy(
-                        snapshot = snapshot,
-                        senderProfiles = if (append) current.senderProfiles else senderProfiles,
-                        loaded = true,
-                        loading = false,
-                        refreshing = false,
-                        pullRefreshing = false,
-                        loadingMore = false,
-                        errorCode = null,
-                        loadMoreErrorCode = null
-                    )
+                    val nextState =
+                        current.copy(
+                            snapshot = snapshot,
+                            senderProfiles = if (append) current.senderProfiles else senderProfiles,
+                            loaded = true,
+                            loading = false,
+                            refreshing = false,
+                            pullRefreshing = false,
+                            loadingMore = false,
+                            errorCode = null,
+                            loadMoreErrorCode = null
+                        )
+                    activityStateCache?.write(server.id.value, userId, nextState)
+                    nextState
                 }
                 is DataResult.Error ->
                     current.copy(
@@ -212,7 +235,9 @@ class SharedActivityStore(
                         loadingMore = false,
                         errorCode = if (append) null else result.blocker.code,
                         loadMoreErrorCode = if (append) result.blocker.code else null
-                    )
+                    ).also {
+                        activityStateCache?.clear(server.id.value, userId, current.selectedFilter)
+                    }
             }
     }
 
@@ -444,6 +469,43 @@ data class SharedActivityState(
     val nextOffset: Int?
         get() = snapshot?.nextOffset
 }
+
+class SharedActivityStateCache {
+    private var ownerKey: String? = null
+    private var state: SharedActivityState? = null
+
+    fun read(serverId: String, userId: String, filter: InboxFilter): SharedActivityState? =
+        state.takeIf { ownerKey == activityStateCacheKey(serverId, userId, filter) }
+
+    fun write(serverId: String, userId: String?, state: SharedActivityState) {
+        if (!state.loaded || state.snapshot == null) return
+        val resolvedUserId = userId?.takeIf { it.isNotBlank() } ?: return
+        ownerKey = activityStateCacheKey(serverId, resolvedUserId, state.selectedFilter)
+        this.state =
+            state.copy(
+                loading = false,
+                refreshing = false,
+                pullRefreshing = false,
+                loadingMore = false,
+                errorCode = null,
+                loadMoreErrorCode = null
+            )
+    }
+
+    fun clear() {
+        ownerKey = null
+        state = null
+    }
+
+    fun clear(serverId: String, userId: String, filter: InboxFilter) {
+        if (ownerKey == activityStateCacheKey(serverId, userId, filter)) {
+            clear()
+        }
+    }
+}
+
+private fun activityStateCacheKey(serverId: String, userId: String, filter: InboxFilter): String =
+    "${serverId.trim()}:${userId.trim()}:${filter.name}"
 
 sealed interface SharedActivityIntent {
     data object LoadInitial : SharedActivityIntent

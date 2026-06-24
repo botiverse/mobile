@@ -157,6 +157,68 @@ class SharedActivityStoreTest {
     }
 
     @Test
+    fun loadInitialSeedsColdStoreFromMatchingActivityStateCache() = runBlocking {
+        val cache = SharedActivityStateCache()
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val preloadStore =
+            activityStore(
+                scope = preloadScope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))),
+                activityStateCache = cache
+            )
+        preloadStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val standaloneInbox = DeferredInboxRepository()
+        val standaloneStore =
+            activityStore(
+                scope = standaloneScope,
+                inboxRepository = standaloneInbox,
+                activityStateCache = cache
+            )
+
+        standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(false, standaloneStore.state.value.loading)
+        assertEquals(true, standaloneStore.state.value.refreshing)
+        assertEquals(listOf("channel:channel-1"), standaloneStore.state.value.items.map { it.key })
+        standaloneInbox.completeNext(activityItem("channel-2"))
+        assertEquals(false, standaloneStore.state.value.refreshing)
+        assertEquals(listOf("channel:channel-2"), standaloneStore.state.value.items.map { it.key })
+        preloadScope.cancel()
+        standaloneScope.cancel()
+    }
+
+    @Test
+    fun loadInitialIgnoresActivityStateCacheForDifferentUser() = runBlocking {
+        val cache = SharedActivityStateCache()
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val preloadStore =
+            activityStore(
+                scope = preloadScope,
+                inboxRepository = FakeInboxRepository(initialSnapshots = listOf(snapshot(listOf(activityItem("channel-1"))))),
+                activityStateCache = cache
+            )
+        preloadStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val standaloneStore =
+            activityStore(
+                scope = standaloneScope,
+                authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2")),
+                inboxRepository = DeferredInboxRepository(),
+                activityStateCache = cache
+            )
+
+        standaloneStore.dispatch(SharedActivityIntent.LoadInitial)
+
+        assertEquals(true, standaloneStore.state.value.loading)
+        assertEquals(emptyList(), standaloneStore.state.value.items.map { it.key })
+        preloadScope.cancel()
+        standaloneScope.cancel()
+    }
+
+    @Test
     fun activityThreadRowsResolveMissingSenderNameFromMembers() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val row =
@@ -288,15 +350,18 @@ class SharedActivityStoreTest {
         conversationRepository: FakeConversationRepository = FakeConversationRepository(),
         memberRepository: MemberRepository? = null,
         localWriteThrough: ComposeLocalWriteThrough? = null,
+        activityStateCache: SharedActivityStateCache? = null,
+        authStore: SlockAuthSessionStore = InMemorySlockAuthSessionStore(sampleSession()),
         onUnreadCountsChanged: () -> Unit = {}
     ): SharedActivityStore =
         SharedActivityStore(
-            authStore = InMemorySlockAuthSessionStore(sampleSession()),
+            authStore = authStore,
             inboxRepository = inboxRepository,
             readReceiptRepository = readReceiptRepository,
             conversationRepository = conversationRepository,
             memberRepository = memberRepository,
             localWriteThrough = localWriteThrough,
+            activityStateCache = activityStateCache,
             onUnreadCountsChanged = onUnreadCountsChanged,
             scope = scope
         )
@@ -604,9 +669,9 @@ class SharedActivityStoreTest {
             unreadTotal = unreadTotal
         )
 
-    private fun sampleSession(): StoredAuthSession =
+    private fun sampleSession(userId: String = "user-1"): StoredAuthSession =
         StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "user@slock.local", displayName = "User One"),
+            user = StoredAuthUser(id = userId, email = "$userId@slock.local", displayName = "User One"),
             accessToken = "access",
             refreshToken = "refresh",
             selectedServerId = "server-1",
