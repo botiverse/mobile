@@ -159,6 +159,32 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun emptyDirectMessageFetchRendersEmptyStateInsteadOfError() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = emptyMessagesResponse())
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(directMessagePayload()))
+
+        val payload = store.state.value.payload
+        assertEquals("empty", payload.status)
+        assertEquals(null, payload.errorCode)
+        assertEquals(emptyList(), payload.messages)
+        assertEquals("No messages yet", payload.emptyTitle)
+        assertEquals("This conversation has no messages yet.", payload.emptyDetail)
+        assertEquals("dm-1", payload.sourceThreadId)
+        assertEquals("dm-1", payload.streamChannelId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals(1, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val api =

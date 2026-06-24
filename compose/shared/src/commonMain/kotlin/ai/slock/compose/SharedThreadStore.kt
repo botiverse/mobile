@@ -2115,7 +2115,11 @@ internal class SharedThreadStore(
                 is DataResult.Content ->
                     visiblePayload ?: result.data.withRouteContext(basePayload)
                 is DataResult.Empty ->
-                    latest.asRefreshFailed("empty_thread")
+                    if (result.reason == EmptyReason.NoMessages) {
+                        latest.asRefreshEmpty(basePayload)
+                    } else {
+                        latest.asRefreshFailed("empty_thread")
+                    }
                 is DataResult.Error ->
                     latest.asRefreshFailed(result.error.code)
                 is DataResult.NoPermission ->
@@ -2695,6 +2699,20 @@ private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThrea
     } else {
         copy(status = "error", backgroundRefreshing = false, errorCode = code)
     }
+
+private fun KuiklyThreadScreenPayload.asRefreshEmpty(base: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+    withRouteContext(base).copy(
+        status = "empty",
+        backgroundRefreshing = false,
+        errorCode = null,
+        messages = emptyList(),
+        canLoadMoreBefore = false,
+        canLoadMoreAfter = false,
+        olderMessagesStatus = "idle",
+        newerMessagesStatus = "idle",
+        emptyTitle = "No messages yet",
+        emptyDetail = "This conversation has no messages yet."
+    )
 
 private fun DataResult<*>.threadDiagnosticsResult(): String =
     when (this) {
