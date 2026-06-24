@@ -212,10 +212,13 @@ internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
 
 internal fun KuiklyThreadScreenPayload.shouldRenderThreadEarlyLoadingShell(): Boolean =
-    status == "loading" &&
-        messages.isEmpty() &&
-        originMessage == null &&
-        originPreview.isNullOrBlank()
+    backgroundRefreshing ||
+        (
+            status == "loading" &&
+                messages.isEmpty() &&
+                originMessage == null &&
+                originPreview.isNullOrBlank()
+        )
 
 internal fun KuiklyThreadScreenPayload.shouldStageThreadFirstContentExtras(): Boolean =
     status == "content"
@@ -5515,9 +5518,6 @@ private fun ThreadPageHeader(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
-                    if (payload.backgroundRefreshing) {
-                        SlockHeaderRefreshIndicator()
-                    }
                 }
                 payload.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(

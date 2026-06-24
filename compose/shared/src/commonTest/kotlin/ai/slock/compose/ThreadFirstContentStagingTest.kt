@@ -36,6 +36,24 @@ class ThreadFirstContentStagingTest {
     }
 
     @Test
+    fun backgroundRefreshingUsesFullLoadingShell() {
+        assertTrue(
+            KuiklyThreadScreenPayload(
+                status = "content",
+                messages = listOf(
+                    KuiklyThreadMessageItem(
+                        id = "message-1",
+                        authorId = "user-1",
+                        authorName = "User One",
+                        body = "Loaded"
+                    )
+                ),
+                backgroundRefreshing = true
+            ).shouldRenderThreadEarlyLoadingShell()
+        )
+    }
+
+    @Test
     fun firstContentExtrasStageOnlyForContentPayloads() {
         assertTrue(
             KuiklyThreadScreenPayload(status = "content")
