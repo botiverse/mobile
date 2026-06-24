@@ -353,7 +353,7 @@ class SharedHomeStore(
         activeConversationId: String?
     ): List<SharedHomeNotification> {
         val message = (event as? MessageNew)?.message ?: return this
-        if (message.author.id == content.session.user.id) return this
+        if (message.author.id.value == content.session.user.id) return this
         if (message.matchesHomeConversation(activeConversationId)) return this
         val id = "foreground-message:${serverId.value}:${message.id.value}"
         if (any { it.id == id } || id in dismissedLocalNotificationIds) return this
