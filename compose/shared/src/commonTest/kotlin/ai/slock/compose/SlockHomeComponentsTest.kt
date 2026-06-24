@@ -177,6 +177,50 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun localComposerDraftOverlayClearsStaleSnapshotDraftFlags() {
+        val items =
+            listOf(
+                SlockHomeConversationItem(id = "channel-1", name = "home", hasDraft = true),
+                SlockHomeConversationItem(id = "channel-2", name = "random", hasDraft = false)
+            )
+
+        val cleared = items.withAuthoritativeLocalComposerDrafts(emptySet())
+
+        assertFalse(cleared.first { it.id == "channel-1" }.hasDraft)
+        assertFalse(cleared.first { it.id == "channel-2" }.hasDraft)
+    }
+
+    @Test
+    fun localComposerDraftOverlayMarksOnlyMatchingRootConversations() {
+        val items =
+            listOf(
+                SlockHomeConversationItem(id = "channel-1", name = "home", hasDraft = false),
+                SlockHomeConversationItem(id = "reply-thread-1", name = "reply", hasDraft = true)
+            )
+
+        val projected =
+            items.withAuthoritativeLocalComposerDrafts(
+                setOf(
+                    SharedThreadComposerDraftRecord(
+                        key = "send=channel-1|parent=_|mention=channel-1",
+                        sendChannelId = "channel-1",
+                        parentMessageId = null,
+                        mentionChannelId = "channel-1"
+                    ),
+                    SharedThreadComposerDraftRecord(
+                        key = "send=reply-thread-1|parent=message-1|mention=channel-1",
+                        sendChannelId = "reply-thread-1",
+                        parentMessageId = "message-1",
+                        mentionChannelId = "channel-1"
+                    )
+                )
+            )
+
+        assertTrue(projected.first { it.id == "channel-1" }.hasDraft)
+        assertFalse(projected.first { it.id == "reply-thread-1" }.hasDraft)
+    }
+
+    @Test
     fun sidebarSelectionRequiresMatchingConversationSection() {
         val pinnedSelection =
             SlockHomeSidebarSelection(

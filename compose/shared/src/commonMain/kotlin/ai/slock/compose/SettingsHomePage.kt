@@ -8984,16 +8984,22 @@ private fun SharedHomeScreen(
                     }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
-                remember(snapshot.channels, activeDraftRecords) {
-                    snapshot.channels
-                        .map { it.toSharedHomeConversationItem() }
-                        .withLocalComposerDrafts(activeDraftRecords)
+                remember(snapshot.channels, activeDraftRecords, draftPersistSlice) {
+                    val items = snapshot.channels.map { it.toSharedHomeConversationItem() }
+                    if (draftPersistSlice != null) {
+                        items.withAuthoritativeLocalComposerDrafts(activeDraftRecords)
+                    } else {
+                        items
+                    }
                 }
             val directMessageItems =
-                remember(snapshot.directMessages, activeDraftRecords) {
-                    snapshot.directMessages
-                        .map { it.toSharedHomeConversationItem() }
-                        .withLocalComposerDrafts(activeDraftRecords)
+                remember(snapshot.directMessages, activeDraftRecords, draftPersistSlice) {
+                    val items = snapshot.directMessages.map { it.toSharedHomeConversationItem() }
+                    if (draftPersistSlice != null) {
+                        items.withAuthoritativeLocalComposerDrafts(activeDraftRecords)
+                    } else {
+                        items
+                    }
                 }
             val notificationItems =
                 remember(state.notifications) {
@@ -11734,16 +11740,11 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         archived = archived
     )
 
-private fun List<SlockHomeConversationItem>.withLocalComposerDrafts(
+internal fun List<SlockHomeConversationItem>.withAuthoritativeLocalComposerDrafts(
     records: Set<SharedThreadComposerDraftRecord>
 ): List<SlockHomeConversationItem> {
-    if (records.isEmpty()) return this
     return map { item ->
-        if (records.any { record -> record.matchesRootConversation(item.id) }) {
-            item.copy(hasDraft = true)
-        } else {
-            item
-        }
+        item.copy(hasDraft = records.any { record -> record.matchesRootConversation(item.id) })
     }
 }
 
