@@ -2209,12 +2209,12 @@ private fun StoredAuthSession?.toSharedSettingsHomeSnapshot(
                 nav(SharedSettingsDestination.Appearance, "Appearance", "Message font size and reading density", SlockLucideIconName.Type, null, selectedDestination),
                 nav(SharedSettingsDestination.Notifications, "Notifications", "Push status and workspace mute", SlockLucideIconName.Bell, null, selectedDestination),
                 nav(SharedSettingsDestination.Mobile, "Mobile", "My message alignment", SlockLucideIconName.Smartphone, null, selectedDestination),
+                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.Server, "Server Profile", "Workspace name, slug, role", SlockLucideIconName.Building2, server?.role?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Billing, "Billing", "Plan and usage", SlockLucideIconName.CreditCard, server?.plan?.titleLabel(), selectedDestination),
                 nav(SharedSettingsDestination.Administration, "Administration", "Admins, invites, join links, agreements", SlockLucideIconName.Shield, null, selectedDestination),
                 nav(SharedSettingsDestination.ConnectedApps, "Connected Apps", "Marketplace, installed apps, OAuth clients", SlockLucideIconName.Link2, null, selectedDestination),
                 nav(SharedSettingsDestination.Computers, "Computers", "Connected machines and workspaces", SlockLucideIconName.Monitor, null, selectedDestination),
-                nav(SharedSettingsDestination.Storage, "Storage", "Local cache and temporary files", SlockLucideIconName.Archive, null, selectedDestination),
                 nav(SharedSettingsDestination.About, "About", "Version, diagnostics, feedback", SlockLucideIconName.Bug, null, selectedDestination),
                 nav(SharedSettingsDestination.Developer, "Developer", "API server, diagnostics, route launcher", SlockLucideIconName.Terminal, null, selectedDestination)
             )

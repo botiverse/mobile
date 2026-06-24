@@ -41,4 +41,51 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertEquals("Downloading 0%", label)
     }
+
+    @Test
+    fun primaryActionShowsDownloadBeforeCacheExists() {
+        val label =
+            slockFilePreviewPrimaryActionLabel(
+                SlockFilePreviewPayload(externalFileName = "report.pdf"),
+                cached = false
+            )
+
+        assertEquals("Download", label)
+    }
+
+    @Test
+    fun primaryActionShowsOpenWhenCached() {
+        val label =
+            slockFilePreviewPrimaryActionLabel(
+                SlockFilePreviewPayload(externalFileName = "report.pdf"),
+                cached = true
+            )
+
+        assertEquals("Open", label)
+    }
+
+    @Test
+    fun primaryActionShowsInstallForCachedApk() {
+        val label =
+            slockFilePreviewPrimaryActionLabel(
+                SlockFilePreviewPayload(
+                    externalFileName = "raft.apk",
+                    externalMimeType = "application/vnd.android.package-archive"
+                ),
+                cached = true
+            )
+
+        assertEquals("Install", label)
+    }
+
+    @Test
+    fun overflowActionShowsDownloadAndOpenBeforeCacheExists() {
+        val label =
+            slockFilePreviewOverflowActionLabel(
+                SlockFilePreviewPayload(externalFileName = "report.pdf"),
+                cached = false
+            )
+
+        assertEquals("Download and open...", label)
+    }
 }

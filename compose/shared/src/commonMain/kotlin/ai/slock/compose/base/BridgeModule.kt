@@ -329,6 +329,47 @@ internal class BridgeModule : Module() {
             }
         }
 
+    suspend fun attachmentCacheStatus(
+        attachmentId: String,
+        fileName: String,
+        mimeType: String? = null
+    ): JSONObject? =
+        attachmentCacheCall(ATTACHMENT_CACHE_STATUS, attachmentId, fileName, mimeType)
+
+    suspend fun deleteAttachmentCache(
+        attachmentId: String,
+        fileName: String,
+        mimeType: String? = null
+    ): JSONObject? =
+        attachmentCacheCall(DELETE_ATTACHMENT_CACHE, attachmentId, fileName, mimeType)
+
+    private suspend fun attachmentCacheCall(
+        methodName: String,
+        attachmentId: String,
+        fileName: String,
+        mimeType: String?
+    ): JSONObject? =
+        suspendCancellableCoroutine { continuation ->
+            val methodArgs = JSONObject()
+            methodArgs.put("attachmentId", attachmentId)
+            methodArgs.put("fileName", fileName)
+            mimeType?.takeIf { it.isNotBlank() }?.let { methodArgs.put("mimeType", it) }
+            val result =
+                toNative(
+                    methodName = methodName,
+                    param = methodArgs.toString(),
+                    callback = { payload ->
+                        if (continuation.isActive) {
+                            continuation.resume(payload)
+                        }
+                    },
+                    syncCall = false
+                )
+            continuation.invokeOnCancellation {
+                result.callbackRef?.let { removeCallback(it) }
+            }
+        }
+
     fun settingsEvent(instanceId: String, action: String, itemId: String? = null) {
         val methodArgs = JSONObject()
         methodArgs.put("instanceId", instanceId)
@@ -731,6 +772,8 @@ internal class BridgeModule : Module() {
         const val LOG = "log"
         const val PERFORMANCE_MARKER = "performanceMarker"
         const val OPEN_ATTACHMENT = "openAttachment"
+        const val ATTACHMENT_CACHE_STATUS = "attachmentCacheStatus"
+        const val DELETE_ATTACHMENT_CACHE = "deleteAttachmentCache"
         const val SSO_REQUEST = "ssoRequest"
         const val QQ_LIVE_SSO_REQUEST = "qqLiveSSORequest"
         const val REPORT_DT = "reportDT"

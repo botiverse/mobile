@@ -67,6 +67,7 @@ import kotlinx.coroutines.launch
 
 internal const val SLOCK_FILE_PREVIEW_PAGE = "compose_file_preview"
 private const val SlockFilePreviewOpenWithActionId = "open-with"
+private const val SlockFilePreviewDeleteDownloadActionId = "delete-download"
 private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
 private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
@@ -153,6 +154,9 @@ private fun SlockFilePreviewStandalonePageContent() {
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
     var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
+    var attachmentCacheState by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf(false) }
+    val attachmentCacheId = payload.attachmentCacheId()
+    val attachmentCacheFileName = payload.attachmentCacheFileName()
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
         val nextPayload =
             when (payload.source) {
@@ -166,6 +170,18 @@ private fun SlockFilePreviewStandalonePageContent() {
             payload = nextPayload
         }
     }
+    val canOpenWith = canOpenPayloadWithExternalViewer(payload)
+    LaunchedEffect(canOpenWith, attachmentCacheId, attachmentCacheFileName, payload.externalMimeType) {
+        attachmentCacheState = false
+        if (!canOpenWith) return@LaunchedEffect
+        val result =
+            bridge.attachmentCacheStatus(
+                attachmentId = attachmentCacheId,
+                fileName = attachmentCacheFileName,
+                mimeType = payload.externalMimeType
+            )
+        attachmentCacheState = result?.optBoolean("cached") == true
+    }
     suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload): String? {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
@@ -174,27 +190,23 @@ private fun SlockFilePreviewStandalonePageContent() {
         val result =
             bridge.openAttachment(
                 url = externalUrl,
-                attachmentId = currentPayload.attachmentId.ifBlank { currentPayload.path.ifBlank { currentPayload.name } },
-                fileName =
-                    currentPayload.externalFileName
-                        .ifBlank { currentPayload.name }
-                        .ifBlank { currentPayload.path }
-                        .ifBlank { "attachment" },
+                attachmentId = currentPayload.attachmentCacheId(),
+                fileName = currentPayload.attachmentCacheFileName(),
                 mimeType = currentPayload.externalMimeType,
                 onProgress = { progress ->
                     downloadProgress = progress
                 }
             )
         return when (result?.optString("status").orEmpty()) {
-            "opened", "" -> null
+            "opened", "" -> {
+                attachmentCacheState = result?.optBoolean("cached", true) ?: true
+                null
+            }
             "no_app" -> result?.optString("message").orEmpty().ifBlank { "No app can open this file" }
             "storage_failed" -> result?.optString("message").orEmpty().ifBlank { "Storage unavailable" }
             else -> result?.optString("message").orEmpty().ifBlank { "Unable to open attachment" }
         }
     }
-    val canOpenWith =
-        payload.externalUrl?.isNotBlank() == true ||
-            (payload.source == SlockFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
     fun requestExternalOpen() {
         if (!canOpenWith || downloadStatus == "downloading") return
         downloadStatus = "downloading"
@@ -214,6 +226,28 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     }
+    fun requestDeleteDownload() {
+        if (!canOpenWith || !attachmentCacheState || downloadStatus == "downloading") return
+        coroutineScope.launch {
+            val result =
+                bridge.deleteAttachmentCache(
+                    attachmentId = attachmentCacheId,
+                    fileName = attachmentCacheFileName,
+                    mimeType = payload.externalMimeType
+                )
+            val status = result?.optString("status").orEmpty()
+            if (status == "ok" || status.isBlank()) {
+                attachmentCacheState = false
+                downloadStatus = "idle"
+                downloadMessage = ""
+                downloadProgress = null
+                bridge.toast("Downloaded file deleted")
+            } else {
+                val error = result?.optString("message").orEmpty().ifBlank { "Unable to delete downloaded file" }
+                bridge.toast(error)
+            }
+        }
+    }
     SlockFilePreviewPageScaffold(
         title = payload.previewHeaderTitle(),
         subtitle = payload.previewHeaderSubtitle(),
@@ -222,19 +256,30 @@ private fun SlockFilePreviewStandalonePageContent() {
         contentPadding = 0.dp,
         overflowMenuItems =
             if (canOpenWith) {
-                listOf(
+                listOfNotNull(
                     SlockBrutalDropdownMenuItem(
                         id = SlockFilePreviewOpenWithActionId,
-                        label = "Open with...",
+                        label = slockFilePreviewOverflowActionLabel(payload, attachmentCacheState),
                         icon = SlockLucideIconName.ExternalLink
-                    )
+                    ),
+                    if (attachmentCacheState) {
+                        SlockBrutalDropdownMenuItem(
+                            id = SlockFilePreviewDeleteDownloadActionId,
+                            label = "Delete downloaded file",
+                            icon = SlockLucideIconName.Trash2
+                        )
+                    } else {
+                        null
+                    }
                 )
             } else {
                 emptyList()
             },
         onOverflowMenuSelect = { id ->
-            if (id != SlockFilePreviewOpenWithActionId) return@SlockFilePreviewPageScaffold
-            requestExternalOpen()
+            when (id) {
+                SlockFilePreviewOpenWithActionId -> requestExternalOpen()
+                SlockFilePreviewDeleteDownloadActionId -> requestDeleteDownload()
+            }
         }
     ) {
         SlockFilePreviewPayloadContent(
@@ -245,9 +290,10 @@ private fun SlockFilePreviewStandalonePageContent() {
                     "downloading" -> slockFilePreviewDownloadStatusLabel(downloadProgress)
                     "failed" -> downloadMessage.ifBlank { "Download failed" }
                     else -> null
-                },
+            },
             downloadInProgress = downloadStatus == "downloading",
             downloadProgressPercent = downloadProgress?.percent,
+            downloadCached = attachmentCacheState,
             onDownload = if (canOpenWith) ::requestExternalOpen else null,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
@@ -660,6 +706,7 @@ internal fun SlockFilePreviewPayloadContent(
     downloadStatusLabel: String? = null,
     downloadInProgress: Boolean = false,
     downloadProgressPercent: Int? = null,
+    downloadCached: Boolean = false,
     onDownload: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -726,11 +773,15 @@ internal fun SlockFilePreviewPayloadContent(
                     showProgress = downloadInProgress,
                     progressPercent = downloadProgressPercent,
                     actionLabel = if (onDownload != null) {
-                        if (downloadInProgress) downloadStatusLabel ?: "Downloading..." else "Download"
+                        if (downloadInProgress) {
+                            downloadStatusLabel ?: "Downloading..."
+                        } else {
+                            slockFilePreviewPrimaryActionLabel(payload, downloadCached)
+                        }
                     } else {
                         null
                     },
-                    actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                    actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                     actionEnabled = !downloadInProgress,
                     onAction = onDownload,
                     modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
@@ -758,11 +809,15 @@ internal fun SlockFilePreviewPayloadContent(
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
                 actionLabel = if (onDownload != null) {
-                    if (downloadInProgress) downloadStatusLabel ?: "Downloading..." else "Download"
+                    if (downloadInProgress) {
+                        downloadStatusLabel ?: "Downloading..."
+                    } else {
+                        slockFilePreviewPrimaryActionLabel(payload, downloadCached)
+                    }
                 } else {
                     null
                 },
-                actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
                 actionEnabled = !downloadInProgress,
                 onAction = onDownload,
                 modifier = modifier.fillMaxSize().padding(SlockSpacing.Md)
@@ -881,6 +936,47 @@ internal val SlockFilePreviewInitialDownloadProgress =
         totalBytes = null,
         bytesPerSecond = null
     )
+
+internal fun slockFilePreviewPrimaryActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+    when {
+        !cached -> "Download"
+        payload.isAndroidPackageArchive() -> "Install"
+        else -> "Open"
+    }
+
+internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayload, cached: Boolean): String =
+    when {
+        !cached -> "Download and open..."
+        payload.isAndroidPackageArchive() -> "Install"
+        else -> "Open with..."
+    }
+
+private fun slockFilePreviewPrimaryActionIcon(payload: SlockFilePreviewPayload, cached: Boolean): SlockLucideIconName =
+    when {
+        !cached -> SlockLucideIconName.Download
+        payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
+        else -> SlockLucideIconName.ExternalLink
+    }
+
+private fun canOpenPayloadWithExternalViewer(payload: SlockFilePreviewPayload): Boolean =
+    payload.externalUrl?.isNotBlank() == true ||
+        (payload.source == SlockFilePreviewSourceThreadAttachment && payload.attachmentId.isNotBlank())
+
+private fun SlockFilePreviewPayload.attachmentCacheId(): String =
+    attachmentId.ifBlank { path.ifBlank { name.ifBlank { externalFileName.ifBlank { "attachment" } } } }
+
+private fun SlockFilePreviewPayload.attachmentCacheFileName(): String =
+    externalFileName
+        .ifBlank { name }
+        .ifBlank { path }
+        .ifBlank { "attachment" }
+
+private fun SlockFilePreviewPayload.isAndroidPackageArchive(): Boolean {
+    val mime = externalMimeType.substringBefore(';').trim()
+    if (mime.equals("application/vnd.android.package-archive", ignoreCase = true)) return true
+    val name = attachmentCacheFileName().substringBefore('?').substringBefore('#')
+    return name.endsWith(".apk", ignoreCase = true)
+}
 
 private fun Long?.slockFilePreviewSpeedLabel(): String? {
     val bytesPerSecond = this?.takeIf { it > 0L } ?: return null

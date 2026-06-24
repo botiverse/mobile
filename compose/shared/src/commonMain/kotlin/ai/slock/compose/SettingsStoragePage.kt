@@ -92,6 +92,15 @@ internal val settingsStorageSmokePayload = KuiklySettingsStoragePayload(
             clearEnabled = true
         ),
         KuiklySettingsStorageRow(
+            target = "attachmentDownloads",
+            iconName = SlockLucideIconName.Download,
+            title = "Downloaded files",
+            detail = "Files downloaded for opening or installing from previews.",
+            size = "768 KB",
+            clearLabel = "Clear downloaded files",
+            clearEnabled = true
+        ),
+        KuiklySettingsStorageRow(
             target = "temporaryAndLogs",
             iconName = SlockLucideIconName.FileText,
             title = "Temporary files and logs",

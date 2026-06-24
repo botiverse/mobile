@@ -5,18 +5,21 @@ import java.io.File
 
 private const val SlockDatabaseName = "slock_shared.db"
 private const val SlockImageDiskCacheDir = "image_cache"
+private const val SlockAttachmentDownloadCacheDir = "slock-attachments"
 
 data class StorageManagementSnapshot(
         val localDatabaseBytes: Long,
         val imageCacheBytes: Long,
+        val attachmentDownloadBytes: Long,
         val temporaryAndLogBytes: Long
 ) {
     val totalBytes: Long
-        get() = localDatabaseBytes + imageCacheBytes + temporaryAndLogBytes
+        get() = localDatabaseBytes + imageCacheBytes + attachmentDownloadBytes + temporaryAndLogBytes
 }
 
 enum class StorageClearTarget {
     ImageCache,
+    AttachmentDownloads,
     TemporaryAndLogs
 }
 
@@ -27,12 +30,15 @@ class StorageManagementRepository(private val roots: StorageManagementRoots) {
             StorageManagementSnapshot(
                     localDatabaseBytes = roots.databaseFiles.sumExistingFileSizes(),
                     imageCacheBytes = roots.imageCacheDirs.sumExistingTreeSizes(),
+                    attachmentDownloadBytes = roots.attachmentDownloadCacheDirs.sumExistingTreeSizes(),
                     temporaryAndLogBytes = roots.temporaryAndLogDirs.sumExistingTreeSizes()
             )
 
     fun clear(target: StorageClearTarget): StorageManagementSnapshot {
         when (target) {
             StorageClearTarget.ImageCache -> roots.imageCacheDirs.forEach { it.deleteContents() }
+            StorageClearTarget.AttachmentDownloads ->
+                    roots.attachmentDownloadCacheDirs.forEach { it.deleteContents() }
             StorageClearTarget.TemporaryAndLogs ->
                     roots.temporaryAndLogDirs.forEach { it.deleteContents() }
         }
@@ -43,6 +49,7 @@ class StorageManagementRepository(private val roots: StorageManagementRoots) {
 data class StorageManagementRoots(
         val databaseFiles: List<File>,
         val imageCacheDirs: List<File>,
+        val attachmentDownloadCacheDirs: List<File>,
         val temporaryAndLogDirs: List<File>
 ) {
     companion object {
@@ -59,6 +66,7 @@ data class StorageManagementRoots(
                                     File(database.path + "-journal")
                             ),
                     imageCacheDirs = listOf(context.cacheDir.resolve(SlockImageDiskCacheDir)),
+                    attachmentDownloadCacheDirs = listOf(context.cacheDir.resolve(SlockAttachmentDownloadCacheDir)),
                     temporaryAndLogDirs =
                             listOfNotNull(
                                     context.cacheDir.resolve("tmp"),

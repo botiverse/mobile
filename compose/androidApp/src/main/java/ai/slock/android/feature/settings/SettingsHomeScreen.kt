@@ -201,6 +201,12 @@ private val settingsHomeSampleItems = listOf(
         icon = LucideIcons.MessageSquare
     ),
     SettingsHomeItem(
+        key = "storage",
+        title = "Storage",
+        subtitle = "Local cache and temporary files",
+        icon = LucideIcons.Archive
+    ),
+    SettingsHomeItem(
         key = "server",
         title = "Server",
         subtitle = "Workspace name, members, invites, permissions",

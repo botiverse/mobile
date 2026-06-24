@@ -6270,6 +6270,14 @@ private fun appShellSettingsHomePayload(
                     section = "Personal"
                 ),
                 SlockTabItemPayload(
+                    key = SettingsDestinationStorage,
+                    title = "Storage",
+                    subtitle = "Local cache and temporary files",
+                    iconName = SlockLucideIconName.Archive,
+                    selected = selectedDestination == SettingsDestinationStorage,
+                    section = "Personal"
+                ),
+                SlockTabItemPayload(
                     key = SettingsDestinationServer,
                     title = "Server Profile",
                     subtitle = "Workspace name, slug, role",
@@ -6461,6 +6469,7 @@ private fun SharedSettingsStorageRow.toStoragePayloadRow(clearInProgress: Boolea
             if (clearEnabled) {
                 when (target) {
                     "imageCache" -> "Clear image cache"
+                    "attachmentDownloads" -> "Clear downloaded files"
                     "temporaryAndLogs" -> "Clear temp files and logs"
                     else -> "Clear"
                 }
@@ -6475,6 +6484,7 @@ private fun storageTargetIconName(target: String): SlockLucideIconName =
     when (target) {
         "database" -> SlockLucideIconName.Archive
         "imageCache" -> SlockLucideIconName.Image
+        "attachmentDownloads" -> SlockLucideIconName.Download
         "temporaryAndLogs" -> SlockLucideIconName.FileText
         else -> SlockLucideIconName.Archive
     }

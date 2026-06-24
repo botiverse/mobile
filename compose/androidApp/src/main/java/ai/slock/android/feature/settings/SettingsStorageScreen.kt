@@ -98,6 +98,16 @@ private fun SettingsStorageNativeContent(
                 onClear = { onClear(StorageClearTarget.ImageCache) }
         )
         SettingsStorageRow(
+                icon = LucideIcons.Download,
+                title = stringResource(R.string.settings_storage_downloaded_files_title),
+                detail = stringResource(R.string.settings_storage_downloaded_files_detail),
+                size = snapshot.attachmentDownloadBytes.formatStorageSize(),
+                clearLabel = stringResource(R.string.settings_storage_clear_downloaded_files),
+                clearInProgress = actionInProgress == StorageClearTarget.AttachmentDownloads,
+                clearEnabled = snapshot.attachmentDownloadBytes > 0L,
+                onClear = { onClear(StorageClearTarget.AttachmentDownloads) }
+        )
+        SettingsStorageRow(
                 icon = LucideIcons.FileText,
                 title = stringResource(R.string.settings_storage_temp_logs_title),
                 detail = stringResource(R.string.settings_storage_temp_logs_detail),
@@ -254,6 +264,9 @@ private data class SettingsStorageKuiklyLabels(
         val imageCacheTitle: String,
         val imageCacheDetail: String,
         val clearImageCache: String,
+        val downloadedFilesTitle: String,
+        val downloadedFilesDetail: String,
+        val clearDownloadedFiles: String,
         val tempLogsTitle: String,
         val tempLogsDetail: String,
         val clearTempLogs: String,
@@ -287,6 +300,22 @@ private fun StorageManagementSnapshot.toKuiklyStoragePageData(
                                                                 clearLabel = "",
                                                                 clearEnabled = false,
                                                                 clearInProgress = false
+                                                        )
+                                                )
+                                                .put(
+                                                        storageRowJson(
+                                                                target = "attachmentDownloads",
+                                                                iconName = SlockLucideIconName.Download,
+                                                                title = labels.downloadedFilesTitle,
+                                                                detail = labels.downloadedFilesDetail,
+                                                                size = attachmentDownloadBytes,
+                                                                clearLabel = labels.clearDownloadedFiles,
+                                                                clearEnabled =
+                                                                        attachmentDownloadBytes > 0L,
+                                                                clearInProgress =
+                                                                        actionInProgress ==
+                                                                                StorageClearTarget
+                                                                                        .AttachmentDownloads
                                                         )
                                                 )
                                                 .put(
@@ -347,6 +376,7 @@ private fun storageRowJson(
 private fun String.toStorageClearTargetOrNull(): StorageClearTarget? =
         when (this) {
             "imageCache" -> StorageClearTarget.ImageCache
+            "attachmentDownloads" -> StorageClearTarget.AttachmentDownloads
             "temporaryAndLogs" -> StorageClearTarget.TemporaryAndLogs
             else -> null
         }
@@ -376,6 +406,7 @@ private fun SettingsStorageScreenPreview() {
                         StorageManagementSnapshot(
                                 localDatabaseBytes = 4_812_032,
                                 imageCacheBytes = 18_251_776,
+                                attachmentDownloadBytes = 786_432,
                                 temporaryAndLogBytes = 524_288
                         ),
                 feedback = "Storage refreshed."

@@ -16,6 +16,8 @@ class StorageManagementRepositoryTest {
             val wal = root.resolve("slock_shared.db-wal").writeBytesOfSize(4)
             val imageCache = root.resolve("image_cache").also { it.mkdirs() }
             imageCache.resolve("avatar.bin").writeBytesOfSize(8)
+            val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
+            attachmentCache.resolve("draft.apk").writeBytesOfSize(12)
             val logs = root.resolve("logs").also { it.mkdirs() }
             logs.resolve("crash.txt").writeBytesOfSize(6)
 
@@ -25,6 +27,7 @@ class StorageManagementRepositoryTest {
                                     StorageManagementRoots(
                                             databaseFiles = listOf(database, wal),
                                             imageCacheDirs = listOf(imageCache),
+                                            attachmentDownloadCacheDirs = listOf(attachmentCache),
                                             temporaryAndLogDirs = listOf(logs)
                                     )
                     )
@@ -33,8 +36,9 @@ class StorageManagementRepositoryTest {
 
             assertEquals(14L, snapshot.localDatabaseBytes)
             assertEquals(8L, snapshot.imageCacheBytes)
+            assertEquals(12L, snapshot.attachmentDownloadBytes)
             assertEquals(6L, snapshot.temporaryAndLogBytes)
-            assertEquals(28L, snapshot.totalBytes)
+            assertEquals(40L, snapshot.totalBytes)
         } finally {
             root.deleteRecursively()
         }
@@ -47,6 +51,8 @@ class StorageManagementRepositoryTest {
             val database = root.resolve("slock_shared.db").writeBytesOfSize(10)
             val imageCache = root.resolve("image_cache").also { it.mkdirs() }
             val image = imageCache.resolve("avatar.bin").writeBytesOfSize(8)
+            val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
+            val attachment = attachmentCache.resolve("draft.apk").writeBytesOfSize(12)
             val logs = root.resolve("logs").also { it.mkdirs() }
             val log = logs.resolve("crash.txt").writeBytesOfSize(6)
 
@@ -56,6 +62,7 @@ class StorageManagementRepositoryTest {
                                     StorageManagementRoots(
                                             databaseFiles = listOf(database),
                                             imageCacheDirs = listOf(imageCache),
+                                            attachmentDownloadCacheDirs = listOf(attachmentCache),
                                             temporaryAndLogDirs = listOf(logs)
                                     )
                     )
@@ -64,9 +71,49 @@ class StorageManagementRepositoryTest {
 
             assertEquals(10L, snapshot.localDatabaseBytes)
             assertEquals(0L, snapshot.imageCacheBytes)
+            assertEquals(12L, snapshot.attachmentDownloadBytes)
             assertEquals(6L, snapshot.temporaryAndLogBytes)
             assertTrue(database.exists())
             assertFalse(image.exists())
+            assertTrue(attachment.exists())
+            assertTrue(log.exists())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun clearAttachmentDownloadsKeepsDatabaseImageCacheAndLogs() {
+        val root = Files.createTempDirectory("slock-storage-attachment-clear-test").toFile()
+        try {
+            val database = root.resolve("slock_shared.db").writeBytesOfSize(10)
+            val imageCache = root.resolve("image_cache").also { it.mkdirs() }
+            val image = imageCache.resolve("avatar.bin").writeBytesOfSize(8)
+            val attachmentCache = root.resolve("slock-attachments").also { it.mkdirs() }
+            val attachment = attachmentCache.resolve("draft.apk").writeBytesOfSize(12)
+            val logs = root.resolve("logs").also { it.mkdirs() }
+            val log = logs.resolve("crash.txt").writeBytesOfSize(6)
+
+            val repository =
+                    StorageManagementRepository(
+                            roots =
+                                    StorageManagementRoots(
+                                            databaseFiles = listOf(database),
+                                            imageCacheDirs = listOf(imageCache),
+                                            attachmentDownloadCacheDirs = listOf(attachmentCache),
+                                            temporaryAndLogDirs = listOf(logs)
+                                    )
+                    )
+
+            val snapshot = repository.clear(StorageClearTarget.AttachmentDownloads)
+
+            assertEquals(10L, snapshot.localDatabaseBytes)
+            assertEquals(8L, snapshot.imageCacheBytes)
+            assertEquals(0L, snapshot.attachmentDownloadBytes)
+            assertEquals(6L, snapshot.temporaryAndLogBytes)
+            assertTrue(database.exists())
+            assertTrue(image.exists())
+            assertFalse(attachment.exists())
             assertTrue(log.exists())
         } finally {
             root.deleteRecursively()
