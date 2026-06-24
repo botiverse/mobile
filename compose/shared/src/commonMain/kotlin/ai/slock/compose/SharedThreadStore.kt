@@ -58,6 +58,7 @@ import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
 import ai.slock.compose.model.AvatarReference
+import ai.slock.compose.model.AvatarSlotResolution
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationPermissions
@@ -4153,10 +4154,41 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         membersCount = conversation.memberCount ?: base.membersCount,
         errorCode = null,
         dmPeerName = base.dmPeerName ?: conversation.name.takeIf { isDirectMessage },
-        dmPeerAvatarUrl = base.dmPeerAvatarUrl ?: dmPeerAvatar.effectiveAvatarWireValue.takeIf { isDirectMessage },
+        dmPeerAvatarUrl =
+            resolveDirectMessagePeerAvatar(
+                baseAvatarWireValue = base.dmPeerAvatarUrl,
+                conversationAvatar = dmPeerAvatar,
+                isDirectMessage = isDirectMessage,
+                isAgentDirectMessage = isAgentDirectMessage
+            ),
         dmPeerAvatarLabel = base.dmPeerAvatarLabel ?: conversation.name.take(2).uppercase().takeIf { isDirectMessage },
-        dmPeerGravatarUrl = base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage && !isAgentDirectMessage }
+        dmPeerGravatarUrl =
+            if (isAgentDirectMessage) {
+                null
+            } else {
+                base.dmPeerGravatarUrl ?: conversation.gravatarUrl.takeIf { isDirectMessage }
+            }
     ).withOriginReplyCountAtLeastLoadedReplies()
+}
+
+private fun resolveDirectMessagePeerAvatar(
+    baseAvatarWireValue: String?,
+    conversationAvatar: AvatarSlotResolution,
+    isDirectMessage: Boolean,
+    isAgentDirectMessage: Boolean
+): String? {
+    if (!isDirectMessage) return null
+    val baseAvatar = baseAvatarWireValue?.takeIf { it.isNotBlank() }
+    val resolvedAvatar = conversationAvatar.effectiveAvatarWireValue
+    if (!isAgentDirectMessage) return baseAvatar ?: resolvedAvatar
+    return when {
+        baseAvatar == null -> resolvedAvatar
+        baseAvatar.isGravatarAvatarWireValue() -> resolvedAvatar
+        baseAvatar.isAgentFallbackAvatarWireValue() &&
+            !resolvedAvatar.isNullOrBlank() &&
+            !resolvedAvatar.isAgentFallbackAvatarWireValue() -> resolvedAvatar
+        else -> baseAvatar
+    }
 }
 
 private fun ThreadSnapshot.matchesFocusedThreadRoute(

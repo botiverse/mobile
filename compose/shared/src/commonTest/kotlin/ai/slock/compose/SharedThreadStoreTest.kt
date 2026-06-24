@@ -1325,6 +1325,76 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun agentDirectMessageCachedSnapshotRejectsLaunchGravatarHeader() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("dm-agent-1"),
+                        channelId = ChannelId("dm-agent-1"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "Product-UX-Designer",
+                        directMessagePeerType = "agent",
+                        presenceMemberId = MemberId("agent-1"),
+                        avatar = AvatarReference.fromWireValue("pixel:tree"),
+                        avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                        gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId("cached-1"),
+                            threadId = ThreadId("dm-agent-1"),
+                            channelId = ChannelId("dm-agent-1"),
+                            author =
+                                MemberProfile(
+                                    id = MemberId("agent-1"),
+                                    displayName = "Product UX",
+                                    handle = "product-ux",
+                                    kind = MemberKind.Agent,
+                                    avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                                    gravatarHash = "agent-hash"
+                                ),
+                            timestampLabel = "2026-06-21T15:32:00Z",
+                            body = "cached agent dm body"
+                        )
+                    )
+            )
+        )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val gravatarSeed =
+            directMessagePayload().copy(
+                sourceThreadId = "dm-agent-1",
+                streamChannelId = "dm-agent-1",
+                title = "Product-UX-Designer",
+                dmPeerName = "Product-UX-Designer",
+                dmPeerAvatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                dmPeerAvatarLabel = "PU",
+                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
+            )
+
+        store.accept(SharedThreadIntent.Start(gravatarSeed))
+
+        val payload = store.state.value.payload
+        assertEquals("content", payload.status)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, payload.surfaceKind)
+        assertEquals("Product-UX-Designer", payload.dmPeerName)
+        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
+        assertEquals(null, payload.dmPeerGravatarUrl)
+        assertEquals("pixel:robot", payload.messages.single().avatarWireValue)
+        assertEquals(null, payload.messages.single().gravatarHash)
+        scope.cancel()
+    }
+
+    @Test
     fun persistentCachedThreadSnapshotUsesConfiguredInitialWindow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
