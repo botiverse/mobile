@@ -5,8 +5,8 @@ import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockAnchorPlacement
+import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalModalLayer
-import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarDefaultKey
 import ai.slock.compose.PixelAvatarPickerKeys
@@ -3569,8 +3569,7 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalTextField(
-                        label = "Display name",
+                    SlockBrutalInputField(
                         value = draftDisplayName,
                         placeholder = "Display name",
                         onValueChange = {
@@ -3663,8 +3662,7 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
                 ) {
-                    SlockBrutalTextField(
-                        label = "Description",
+                    SlockBrutalInputField(
                         value = draftRole,
                         placeholder = "Describe this agent",
                         onValueChange = {
