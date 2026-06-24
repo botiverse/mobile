@@ -94,6 +94,7 @@ import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -152,6 +153,45 @@ class SharedThreadStoreTest {
         assertEquals("content", payload.status)
         assertEquals("network body", payload.messages.single().body)
         assertEquals(2, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
+    fun cachedThreadRefreshExposesBackgroundRefreshingUntilNetworkCompletes() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val api =
+            FakeThreadApi(bodyText = messagesResponse("network body")).apply {
+                channelMessagesStarted = CompletableDeferred()
+                releaseChannelMessages = CompletableDeferred()
+            }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.dispatch(SharedThreadIntent.Start(basePayload()))
+        api.channelMessagesStarted?.await()
+
+        val refreshingPayload = store.state.value.payload
+        assertEquals("content", refreshingPayload.status)
+        assertEquals("cached body", refreshingPayload.messages.single().body)
+        assertTrue(refreshingPayload.backgroundRefreshing)
+
+        api.releaseChannelMessages?.complete(Unit)
+        repeat(50) {
+            val payload = store.state.value.payload
+            if (!payload.backgroundRefreshing && payload.messages.singleOrNull()?.body == "network body") {
+                scope.cancel()
+                return@runBlocking
+            }
+            delay(10)
+        }
+        val payload = store.state.value.payload
+        assertFalse(payload.backgroundRefreshing)
+        assertEquals("network body", payload.messages.single().body)
         scope.cancel()
     }
 
@@ -3753,11 +3793,17 @@ class SharedThreadStoreTest {
         val updatedTaskStatuses: MutableList<Pair<String, TaskStatus>> = mutableListOf()
         val createdThreads: MutableList<Pair<String, String>> = mutableListOf()
         val mentionActionRequests: MutableList<Pair<String, List<String>>> = mutableListOf()
+        var channelMessagesStarted: CompletableDeferred<Unit>? = null
+        var releaseChannelMessages: CompletableDeferred<Unit>? = null
 
         override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
             channelMessageCalls += 1
             channelIds += threadId
             channelMessageLimits += limit
+            if (beforeSeq == null) {
+                channelMessagesStarted?.complete(Unit)
+                releaseChannelMessages?.await()
+            }
             if (failChannelMessages) throw IllegalStateException("offline")
             return if (beforeSeq != null) {
                 beforeSeqs += beforeSeq

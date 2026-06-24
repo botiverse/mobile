@@ -173,7 +173,7 @@ internal class SharedThreadDataSource(
         val threadId = payload.sourceThreadId?.takeIf { it.isNotBlank() } ?: return
         val cacheablePayload = payload.withoutTransientLocalSendingMessages()
         if (cacheablePayload.hasRenderableThreadContent()) {
-            payloadCache[threadId] = cacheablePayload.copy(status = "content", errorCode = null)
+            payloadCache[threadId] = cacheablePayload.copy(status = "content", backgroundRefreshing = false, errorCode = null)
         }
     }
 
@@ -2021,9 +2021,9 @@ internal class SharedThreadStore(
         )
         val loadingBase =
             if (hasRenderableContent) {
-                existing.withRouteContext(basePayload)
+                existing.withRouteContext(basePayload).copy(backgroundRefreshing = true)
             } else {
-                basePayload.copy(status = "loading", errorCode = null)
+                basePayload.copy(status = "loading", backgroundRefreshing = false, errorCode = null)
             }
         diagnosticsLogger?.invoke(
             "thread_loading_patch threadId=${basePayload.sourceThreadId.orEmpty()} status=${loadingBase.status} " +
@@ -2049,7 +2049,7 @@ internal class SharedThreadStore(
                     _state.value.payload.asRefreshFailed(result.error.code)
                 is DataResult.NoPermission ->
                     _state.value.payload.asRefreshFailed(result.blocker.code)
-            }
+            }.copy(backgroundRefreshing = false)
         val emitted =
             reducePayloadPatch(cachePayload = visiblePayload != null) { currentPayload ->
                 currentPayload.withContentPatchFrom(nextPayload)
@@ -2549,9 +2549,9 @@ internal class SharedThreadViewModel(
 
 private fun KuiklyThreadScreenPayload.asRefreshFailed(code: String): KuiklyThreadScreenPayload =
     if (hasRenderableThreadContent()) {
-        copy(status = "content", errorCode = code)
+        copy(status = "content", backgroundRefreshing = false, errorCode = code)
     } else {
-        copy(status = "error", errorCode = code)
+        copy(status = "error", backgroundRefreshing = false, errorCode = code)
     }
 
 private fun DataResult<*>.threadDiagnosticsResult(): String =
@@ -3387,6 +3387,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showModeTabs = patch.showModeTabs,
         showReplyActions = patch.showReplyActions,
         status = patch.status,
+        backgroundRefreshing = patch.backgroundRefreshing,
         messages = patch.messages,
         originMessage = patch.originMessage,
         originPreview = patch.originPreview,
