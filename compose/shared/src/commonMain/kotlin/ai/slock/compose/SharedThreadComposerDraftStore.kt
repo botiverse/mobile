@@ -406,8 +406,13 @@ internal class SharedThreadComposerDraftStore(
 internal class SharedThreadComposerDraftViewModel(
     persistSlices: List<MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent>> = emptyList()
 ) : ViewModel() {
-    private val store = SharedThreadComposerDraftStore(persistSlices = persistSlices, scope = viewModelScope)
-    val state: StateFlow<SharedThreadComposerDraftState> = store.state
+    private val storeDelegate =
+        lazy {
+            SharedThreadComposerDraftStore(persistSlices = persistSlices, scope = viewModelScope)
+        }
+    private val store: SharedThreadComposerDraftStore by storeDelegate
+    val state: StateFlow<SharedThreadComposerDraftState>
+        get() = store.state
 
     fun dispatch(intent: SharedThreadComposerDraftIntent) {
         store.dispatch(intent)
