@@ -2225,7 +2225,11 @@ internal fun SharedThreadRouteContent(
     val composerDraftPersistSlice =
         remember(pager) {
             SharedThreadComposerDraftPersistSlice(
-                SharedThreadComposerDraftPersistence(kuiklySharedPreferenceStore(pager))
+                SharedThreadComposerDraftPersistence(
+                    kuiklySharedPreferenceStore(pager),
+                    diagnosticsLogger = { message -> bridge.log(message) }
+                ),
+                diagnosticsLogger = { message -> bridge.log(message) }
             )
         }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
@@ -3658,14 +3662,34 @@ internal fun SharedThreadRouteContent(
                 val composerInstanceId = currentComposer.instanceId.ifBlank { payload.instanceId }
                 when (action) {
                 "change" -> {
+                    bridge.log(
+                        "thread_composer_change instanceId=$composerInstanceId " +
+                            "valueLen=${value?.length ?: -1} valueBlank=${value?.isBlank()} asTask=$asTask " +
+                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
+                            "stateAsTask=${currentDraftState.seedAsTask} draftKey=${currentDraftState.draftKey.orEmpty()} " +
+                            "surfaceSendChannelId=${composerSurface.sendChannelId.orEmpty()} " +
+                            "surfaceParentMessageId=${composerSurface.parentMessageId.orEmpty()}"
+                    )
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.Change(
                             seedText = value,
                             seedAsTask = asTask
                         )
                     )
+                    val nextDraftState = composerDraftViewModel.state.value
+                    bridge.log(
+                        "thread_composer_change_result instanceId=$composerInstanceId " +
+                            "textLen=${nextDraftState.seedText.length} textBlank=${nextDraftState.seedText.isBlank()} " +
+                            "asTask=${nextDraftState.seedAsTask} draftKey=${nextDraftState.draftKey.orEmpty()} " +
+                            "activeRecords=${composerDraftPersistSlice.activeDraftRecordsState.value.toThreadComposerDraftDiagnosticsSummary()}"
+                    )
                 }
                 "toggleAsTask" -> {
+                    bridge.log(
+                        "thread_composer_toggle_as_task instanceId=$composerInstanceId asTask=$asTask " +
+                            "stateTextLen=${currentDraftState.seedText.length} stateTextBlank=${currentDraftState.seedText.isBlank()} " +
+                            "draftKey=${currentDraftState.draftKey.orEmpty()}"
+                    )
                     composerDraftViewModel.dispatch(
                         SharedThreadComposerDraftIntent.Change(seedAsTask = asTask)
                     )

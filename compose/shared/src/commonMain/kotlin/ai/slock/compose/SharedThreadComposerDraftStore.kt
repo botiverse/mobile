@@ -67,7 +67,8 @@ internal fun Set<SharedThreadComposerDraftRecord>.toSharedThreadComposerDraftPro
     )
 
 internal class SharedThreadComposerDraftPersistence(
-    private val store: SharedPreferenceStore
+    private val store: SharedPreferenceStore,
+    private val diagnosticsLogger: ((String) -> Unit)? = null
 ) {
     fun read(key: String): SharedThreadComposerPersistedDraft? {
         val text = store.getString(textKey(key)) ?: return null
@@ -78,6 +79,10 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     fun save(key: String, text: String, asTask: Boolean) {
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_save key=$key textLen=${text.length} " +
+                "textBlank=${text.isBlank()} asTask=$asTask activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
         if (text.isBlank() && !asTask) {
             clear(key)
             return
@@ -85,12 +90,21 @@ internal class SharedThreadComposerDraftPersistence(
         store.putString(textKey(key), text)
         store.putString(asTaskKey(key), asTask.toString())
         addActiveKey(key)
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_saved key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
     }
 
     fun clear(key: String) {
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_clear key=$key activeBefore=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
         store.putString(textKey(key), null)
         store.putString(asTaskKey(key), null)
         removeActiveKey(key)
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_persist_cleared key=$key activeAfter=${activeKeys().sorted().joinToString(separator = ",")}"
+        )
     }
 
     fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> =
@@ -150,13 +164,14 @@ internal class SharedThreadComposerDraftPersistence(
 }
 
 internal class SharedThreadComposerDraftPersistSlice(
-    private val persistence: SharedThreadComposerDraftPersistence
+    private val persistence: SharedThreadComposerDraftPersistence,
+    private val diagnosticsLogger: ((String) -> Unit)? = null
 ) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
     val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
         SharedActiveDraftRecordsState.asStateFlow()
 
     init {
-        refreshActiveDraftRecords()
+        refreshActiveDraftRecords(reason = "init")
     }
 
     override fun reduce(
@@ -193,27 +208,62 @@ internal class SharedThreadComposerDraftPersistSlice(
             is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
                 next.draftKey?.let { key ->
                     persistence.save(key, next.seedText, next.seedAsTask)
-                    refreshActiveDraftRecords()
+                    refreshActiveDraftRecords(reason = intent.toThreadComposerDraftIntentDiagnosticsLabel())
                 }
             is SharedThreadComposerDraftIntent.CompleteSend ->
                 if (previous.sending) {
                     next.draftKey?.let { key ->
                         persistence.clear(key)
-                        refreshActiveDraftRecords()
+                        refreshActiveDraftRecords(reason = "CompleteSend")
                     }
                 }
             else -> Unit
         }
     }
 
-    private fun refreshActiveDraftRecords() {
-        SharedActiveDraftRecordsState.value = persistence.activeDraftRecords()
+    private fun refreshActiveDraftRecords(reason: String) {
+        val records = persistence.activeDraftRecords()
+        SharedActiveDraftRecordsState.value = records
+        diagnosticsLogger?.invoke(
+            "thread_composer_draft_active_records reason=$reason count=${records.size} " +
+                "records=${records.toThreadComposerDraftDiagnosticsSummary()}"
+        )
     }
 
     private companion object {
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
+
+private fun SharedThreadComposerDraftIntent.toThreadComposerDraftIntentDiagnosticsLabel(): String =
+    when (this) {
+        is SharedThreadComposerDraftIntent.Start -> "Start"
+        is SharedThreadComposerDraftIntent.Change -> "Change"
+        is SharedThreadComposerDraftIntent.InsertMention -> "InsertMention"
+        is SharedThreadComposerDraftIntent.BeginSend -> "BeginSend"
+        is SharedThreadComposerDraftIntent.RestoreAfterFailure -> "RestoreAfterFailure"
+        is SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> "CompleteInlineSendFailure"
+        is SharedThreadComposerDraftIntent.CompleteSend -> "CompleteSend"
+        is SharedThreadComposerDraftIntent.ApplyPendingMentionActions -> "ApplyPendingMentionActions"
+        is SharedThreadComposerDraftIntent.DismissMentionAction -> "DismissMentionAction"
+        is SharedThreadComposerDraftIntent.BeginMentionAction -> "BeginMentionAction"
+        is SharedThreadComposerDraftIntent.FinishMentionAction -> "FinishMentionAction"
+        is SharedThreadComposerDraftIntent.AddUploadedAttachments -> "AddUploadedAttachments"
+        is SharedThreadComposerDraftIntent.AddLocalAttachments -> "AddLocalAttachments"
+        is SharedThreadComposerDraftIntent.MarkAttachmentsFailed -> "MarkAttachmentsFailed"
+        is SharedThreadComposerDraftIntent.RemoveAttachment -> "RemoveAttachment"
+        is SharedThreadComposerDraftIntent.RetryAttachment -> "RetryAttachment"
+    }
+
+internal fun Set<SharedThreadComposerDraftRecord>.toThreadComposerDraftDiagnosticsSummary(): String =
+    sortedWith(
+        compareBy<SharedThreadComposerDraftRecord> { it.sendChannelId }
+            .thenBy { it.parentMessageId.orEmpty() }
+            .thenBy { it.mentionChannelId.orEmpty() }
+            .thenBy { it.key }
+    ).joinToString(separator = ",") { record ->
+        "send=${record.sendChannelId};parent=${record.parentMessageId ?: "_"};mention=${record.mentionChannelId ?: "_"}"
+    }
 
 internal sealed interface SharedThreadComposerDraftIntent {
     data class Start(

@@ -95,6 +95,7 @@ class SharedHomeStore(
     private var homeSurfaceVisible: Boolean = true
     private var hiddenHomeSnapshotDirty: Boolean = false
     private val dismissedLocalNotificationIds = mutableSetOf<String>()
+    private var stateDiagnosticsReason: String = "unknown"
 
     fun dispatch(intent: SharedHomeIntent) {
         if (intent.loadsHome) {
@@ -128,7 +129,8 @@ class SharedHomeStore(
     }
 
     suspend fun accept(intent: SharedHomeIntent) {
-        when (intent) {
+        withStateDiagnosticsReason(intent.toSharedHomeIntentDiagnosticsLabel()) {
+            when (intent) {
             SharedHomeIntent.Start ->
                 load(
                     _state.value.serverSwitchState,
@@ -216,6 +218,17 @@ class SharedHomeStore(
                 closeDirectMessage(intent.conversationId)
             is SharedHomeIntent.ArchiveChannel ->
                 archiveConversationChannel(intent.conversationId)
+            }
+        }
+    }
+
+    private suspend fun withStateDiagnosticsReason(reason: String, block: suspend () -> Unit) {
+        val previousReason = stateDiagnosticsReason
+        stateDiagnosticsReason = reason
+        try {
+            block()
+        } finally {
+            stateDiagnosticsReason = previousReason
         }
     }
 
@@ -550,6 +563,8 @@ class SharedHomeStore(
         refreshJob?.cancel()
         refreshJob =
             scope.launch {
+                val previousReason = stateDiagnosticsReason
+                stateDiagnosticsReason = "BackgroundRefresh"
                 try {
                     loadHomeFromNetwork(
                         request = request,
@@ -565,6 +580,8 @@ class SharedHomeStore(
                         "home_ui_exception source=shared_home_background_refresh errorType=${throwable.safeHomeStoreDiagnosticsType()} mapped=${_state.value.content.refreshFailureMapping()} code=home_network"
                     )
                     reduceState(_state.value.copy(content = _state.value.content.asRefreshFailed("home_network")))
+                } finally {
+                    stateDiagnosticsReason = previousReason
                 }
             }
     }
@@ -1077,8 +1094,14 @@ class SharedHomeStore(
     }
 
     private fun reduceState(nextState: SharedHomeState): Boolean {
-        if (nextState == _state.value) return false
+        val previousState = _state.value
+        if (nextState == previousState) return false
         _state.value = nextState
+        diagnosticsLogger(
+            "shared_home_state_change reason=$stateDiagnosticsReason " +
+                "previous=${previousState.toSharedHomeStateDiagnosticsSummary()} " +
+                "next=${nextState.toSharedHomeStateDiagnosticsSummary()}"
+        )
         return true
     }
 
@@ -1188,6 +1211,69 @@ internal expect fun defaultNowMillis(): Long
 
 private fun HomeSnapshot.findHomeConversation(conversationId: String): ConversationSummary? =
     (channels + directMessages).firstOrNull { it.matchesHomeConversation(conversationId) }
+
+private fun SharedHomeIntent.toSharedHomeIntentDiagnosticsLabel(): String =
+    when (this) {
+        SharedHomeIntent.Start -> "Start"
+        SharedHomeIntent.Refresh -> "Refresh"
+        SharedHomeIntent.ForegroundRefresh -> "ForegroundRefresh"
+        SharedHomeIntent.ToggleServerSwitcher -> "ToggleServerSwitcher"
+        SharedHomeIntent.DismissServerSwitcher -> "DismissServerSwitcher"
+        is SharedHomeIntent.SelectConversation -> "SelectConversation:$threadId"
+        is SharedHomeIntent.SelectTopAction -> "SelectTopAction:$action"
+        is SharedHomeIntent.SelectServer -> "SelectServer:$serverId"
+        is SharedHomeIntent.ApplyRealtimeEvent -> "ApplyRealtimeEvent:$serverId:${event.toSharedHomeRealtimeEventDiagnosticsLabel()}"
+        is SharedHomeIntent.DismissNotification -> "DismissNotification:$id"
+        is SharedHomeIntent.ChannelCreated -> "ChannelCreated:${channel.threadId.value}"
+        is SharedHomeIntent.SetSurfaceVisible -> "SetSurfaceVisible:$visible"
+        is SharedHomeIntent.TogglePinned -> "TogglePinned:$conversationId"
+        is SharedHomeIntent.SetPinnedSortMode -> "SetPinnedSortMode:$mode"
+        is SharedHomeIntent.MarkRead -> "MarkRead:$conversationId"
+        is SharedHomeIntent.MarkUnread -> "MarkUnread:$conversationId"
+        is SharedHomeIntent.CloseDirectMessage -> "CloseDirectMessage:$conversationId"
+        is SharedHomeIntent.ArchiveChannel -> "ArchiveChannel:$conversationId"
+    }
+
+private fun RealtimeEvent.toSharedHomeRealtimeEventDiagnosticsLabel(): String =
+    toString().substringBefore("(").takeIf { it.isNotBlank() } ?: "RealtimeEvent"
+
+private fun SharedHomeState.toSharedHomeStateDiagnosticsSummary(): String =
+    buildString {
+        append("content=")
+        append(content.toSharedHomeContentDiagnosticsSummary())
+        append(" selectedConversation=")
+        append(selectedConversationId ?: "_")
+        append(" selectedTopAction=")
+        append(selectedTopAction ?: "_")
+        append(" serverSwitcherExpanded=")
+        append(serverSwitcherExpanded)
+        append(" switchSelected=")
+        append(serverSwitchState.selectedServerId ?: "_")
+        append(" homeRealtimeDirty=")
+        append(homeRealtimeDirty)
+        append(" notifications=")
+        append(notifications.size)
+        append(" badge=")
+        append(appBadgeCount.count)
+        append(":")
+        append(appBadgeCount.source)
+        append(":stale=")
+        append(appBadgeCount.isStale)
+    }
+
+private fun SharedHomeContentState.toSharedHomeContentDiagnosticsSummary(): String =
+    when (this) {
+        is SharedHomeContentState.Loading ->
+            "Loading(session=${session?.currentServerId ?: "_"})"
+        is SharedHomeContentState.Empty ->
+            "Empty(session=${session.currentServerId ?: "_"})"
+        is SharedHomeContentState.Error ->
+            "Error($code)"
+        is SharedHomeContentState.Content ->
+            "Content(server=${snapshot.server.id.value},channels=${snapshot.channels.size},dms=${snapshot.directMessages.size}," +
+                "channelDrafts=${snapshot.channels.count { it.hasDraft }},dmDrafts=${snapshot.directMessages.count { it.hasDraft }}," +
+                "refreshing=$contentRefreshing,unread=${snapshot.unreadTotal}:${snapshot.unreadSource})"
+    }
 
 private fun HomeSnapshot.withConversationUnread(
     conversationId: String,

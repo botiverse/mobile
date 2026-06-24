@@ -1383,7 +1383,11 @@ private fun SlockAppShellContent() {
     val composerDraftPersistSlice =
         remember(sharedPreferenceStore) {
             SharedThreadComposerDraftPersistSlice(
-                SharedThreadComposerDraftPersistence(sharedPreferenceStore)
+                SharedThreadComposerDraftPersistence(
+                    sharedPreferenceStore,
+                    diagnosticsLogger = { message -> bridge.log(message) }
+                ),
+                diagnosticsLogger = { message -> bridge.log(message) }
             )
         }
     val localeRepository =
@@ -9052,6 +9056,23 @@ private fun SharedHomeScreen(
                         conversationRowProjector.project(conversation)
                     }
                 }
+            val channelDraftIds =
+                remember(channelItems) {
+                    channelItems.filter { it.hasDraft }.map { it.id }
+                }
+            val directMessageDraftIds =
+                remember(directMessageItems) {
+                    directMessageItems.filter { it.hasDraft }.map { it.id }
+                }
+            LaunchedEffect(snapshot.server.id, activeDraftRecords, channelDraftIds, directMessageDraftIds) {
+                bridge.log(
+                    "shared_home_draft_projection serverId=${snapshot.server.id.value} " +
+                        "activeCount=${activeDraftRecords.size} " +
+                        "activeRecords=${activeDraftRecords.toThreadComposerDraftDiagnosticsSummary()} " +
+                        "channelDraftIds=${channelDraftIds.joinToString(separator = ",")} " +
+                        "directMessageDraftIds=${directMessageDraftIds.joinToString(separator = ",")}"
+                )
+            }
             val notificationItems =
                 remember(state.notifications) {
                     state.notifications.map { it.toHomeNotificationItem() }
