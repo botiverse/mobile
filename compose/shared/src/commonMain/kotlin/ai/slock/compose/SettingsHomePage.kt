@@ -1347,9 +1347,11 @@ private fun SlockAppShellContent() {
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
-    val composerDraftPersistence =
+    val composerDraftPersistSlice =
         remember(sharedPreferenceStore) {
-            SharedThreadComposerDraftPersistence(sharedPreferenceStore)
+            SharedThreadComposerDraftPersistSlice(
+                SharedThreadComposerDraftPersistence(sharedPreferenceStore)
+            )
         }
     val localeRepository =
         remember(sharedPreferenceStore) {
@@ -2256,7 +2258,7 @@ private fun SlockAppShellContent() {
                             bridge = bridge,
                             state = homeState,
                             active = active,
-                            draftPersistence = composerDraftPersistence,
+                            draftPersistSlice = composerDraftPersistSlice,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
@@ -8786,7 +8788,7 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
-    draftPersistence: SharedThreadComposerDraftPersistence? = null,
+    draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     activityUnreadLoaded: Boolean = false,
@@ -8858,7 +8860,7 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
-            val activeDraftRecords by (draftPersistence?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
+            val activeDraftRecords by (draftPersistSlice?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
                 .collectAsState(emptySet())
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {

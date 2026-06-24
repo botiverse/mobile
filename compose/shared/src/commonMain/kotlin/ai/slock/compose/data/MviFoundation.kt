@@ -28,6 +28,7 @@ class MviStoreRuntime<State, Intent>(
     initialState: State,
     private val scope: CoroutineScope,
     private val reduce: (State, Intent) -> State,
+    private val persistSlices: List<MviPersistSlice<State, Intent>> = emptyList(),
     private val transitionLogger: (MviTransition<Intent>) -> Unit = {},
     private val equivalent: (State, State) -> Boolean = { previous, next -> previous == next }
 ) {
@@ -48,15 +49,28 @@ class MviStoreRuntime<State, Intent>(
 
     fun accept(intent: Intent): Boolean {
         val previous = _state.value
-        val next = reduce(previous, intent)
+        val reduced = reduce(previous, intent)
+        val next =
+            persistSlices.fold(reduced) { state, slice ->
+                slice.reduce(previous = previous, intent = intent, reduced = state)
+            }
         if (equivalent(previous, next)) {
             transitionLogger(MviTransition(intent = intent, emitted = false, reason = "unchanged"))
             return false
         }
         _state.value = next
+        persistSlices.forEach { slice ->
+            slice.onTransition(previous = previous, intent = intent, next = next)
+        }
         transitionLogger(MviTransition(intent = intent, emitted = true))
         return true
     }
+}
+
+interface MviPersistSlice<State, Intent> {
+    fun reduce(previous: State, intent: Intent, reduced: State): State = reduced
+
+    fun onTransition(previous: State, intent: Intent, next: State) = Unit
 }
 
 class MviStateHolder<UiState, UiAction, StoreIntent, UiEvent>(
@@ -64,6 +78,7 @@ class MviStateHolder<UiState, UiAction, StoreIntent, UiEvent>(
     private val scope: CoroutineScope,
     reduce: (UiState, StoreIntent) -> UiState,
     private val handleAction: suspend MviActionScope<StoreIntent, UiEvent>.(UiAction) -> Unit,
+    persistSlices: List<MviPersistSlice<UiState, StoreIntent>> = emptyList(),
     transitionLogger: (MviTransition<StoreIntent>) -> Unit = {},
     equivalent: (UiState, UiState) -> Boolean = { previous, next -> previous == next }
 ) : SharedStateHolder<UiState, UiAction, UiEvent> {
@@ -72,6 +87,7 @@ class MviStateHolder<UiState, UiAction, StoreIntent, UiEvent>(
             initialState = initialState,
             scope = scope,
             reduce = reduce,
+            persistSlices = persistSlices,
             transitionLogger = transitionLogger,
             equivalent = equivalent
         )
