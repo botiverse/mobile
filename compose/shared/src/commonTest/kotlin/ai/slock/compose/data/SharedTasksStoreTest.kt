@@ -427,6 +427,32 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun taskStatusUpdateSkipReasonRejectsAlreadyAppliedAndStaleActions() {
+        val currentTask = task("task-1", TaskStatus.InProgress)
+        val staleTask = currentTask.copy(status = TaskStatus.Todo)
+        val state =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.InProgress to 1),
+                            tasks = listOf(currentTask)
+                        )
+                    )
+            )
+
+        assertEquals(
+            TaskStatusUpdateSkipReason.AlreadyCurrent,
+            state.taskStatusUpdateSkipReason(staleTask, TaskStatus.InProgress)
+        )
+        assertEquals(
+            TaskStatusUpdateSkipReason.StaleTaskStatus,
+            state.taskStatusUpdateSkipReason(staleTask, TaskStatus.InReview)
+        )
+        assertEquals(null, state.taskStatusUpdateSkipReason(currentTask, TaskStatus.InReview))
+    }
+
+    @Test
     fun setContentDerivesSummaryCountsWhenSnapshotCountsAreMissing() {
         val state = TasksUiState(ScreenLoadState.Loading)
 
