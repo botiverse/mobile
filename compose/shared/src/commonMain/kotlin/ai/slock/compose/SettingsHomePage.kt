@@ -567,6 +567,7 @@ private data class HomeSecondaryRouteEnvironment(
     val authStore: SlockAuthSessionStore,
     val networkClient: KuiklySlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
+    val settingsCapabilities: BridgeSettingsPlatformCapabilities,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val shellScope: SlockAppShellScope
@@ -578,6 +579,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
     val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
+    val settingsCapabilities = remember(bridge) { BridgeSettingsPlatformCapabilities(bridge) }
     val authStore = sharedStores.authStore
     val networkClient =
         remember(authStore, pager) {
@@ -615,6 +617,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         authStore,
         networkClient,
         localWriteThrough,
+        settingsCapabilities,
         timeContext,
         myMessageAlignment,
         shellScope
@@ -625,6 +628,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             authStore = authStore,
             networkClient = networkClient,
             localWriteThrough = localWriteThrough,
+            settingsCapabilities = settingsCapabilities,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             shellScope = shellScope
@@ -756,7 +760,12 @@ private fun HomeSavedRouterContent(environment: HomeSecondaryRouteEnvironment) {
         onCopyLink = { item ->
             copyScope.launch {
                 val serverSlug = environment.authStore.readSession()?.currentServerSlug()
-                val permalink = serverSlug?.let { sharedHomeSavedPermalink(item, it) }
+                val webBaseUrl =
+                    when (val developer = environment.settingsCapabilities.loadDeveloper()) {
+                        is DataResult.Content -> developer.data.webUrl
+                        else -> null
+                    }
+                val permalink = serverSlug?.let { sharedHomeSavedPermalink(item, it, webBaseUrl) }
                 if (permalink != null) {
                     environment.bridge.copyToPasteboard(permalink)
                     environment.bridge.toast("Copied")
@@ -10141,11 +10150,16 @@ private data class SharedHomeSavedContextMenuState(
     val anchor: Offset
 )
 
-private const val SharedHomeSavedWebBaseUrl = "https://app.raft.build"
+private const val SharedHomeSavedDefaultWebBaseUrl = "https://app.raft.build"
 
-internal fun sharedHomeSavedPermalink(item: InboxItem, serverSlug: String): String? {
+internal fun sharedHomeSavedPermalink(
+    item: InboxItem,
+    serverSlug: String,
+    webBaseUrl: String? = null
+): String? {
     val messageId = item.savedMessageIdOrNull()?.value?.takeIf { it.isNotBlank() } ?: return null
     val cleanServerSlug = serverSlug.trim().takeIf { it.isNotBlank() } ?: return null
+    val cleanWebBaseUrl = webBaseUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { SharedHomeSavedDefaultWebBaseUrl }
     val isThread = item.kind == InboxItemKind.Thread
     val channelForLink = if (isThread) item.parentChannelId ?: item.channelId else item.channelId
     val routeKind =
@@ -10165,7 +10179,7 @@ internal fun sharedHomeSavedPermalink(item: InboxItem, serverSlug: String): Stri
         } else {
             "msg=$messageId"
         }
-    return "$SharedHomeSavedWebBaseUrl/s/$cleanServerSlug/$routeKind/${channelForLink.value}?$params"
+    return "$cleanWebBaseUrl/s/$cleanServerSlug/$routeKind/${channelForLink.value}?$params"
 }
 
 private fun InboxItem.sharedHomeSavedMarkdownContent(): String =
