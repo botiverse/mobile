@@ -1417,7 +1417,7 @@ private fun SlockMarkdownInlineChip(label: String, color: Color) {
                 .fillMaxSize()
                 .background(color)
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(start = 5.dp, end = 5.dp, top = 1.dp, bottom = 1.dp),
+                .padding(start = 5.dp, end = 5.dp, top = 0.dp, bottom = 0.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
@@ -1445,27 +1445,32 @@ private fun SlockMarkdownMentionText(label: String) {
         contentAlignment = Alignment.Center
     ) {
         Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .height(2.dp)
-                    .background(SlockColor.EmptyStateGray)
-                    .align(Alignment.BottomCenter)
-        )
-        KuiklyText(
-            text = label,
-            style =
-                SlockType.Body
-                    .withSlockFontWeight(FontWeight.SemiBold)
-                    .copy(
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = SlockColor.TextBlack
-                    ),
-            color = SlockColor.TextBlack,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
-        )
+            modifier = Modifier.fillMaxWidth().height(20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                        .background(SlockColor.EmptyStateGray)
+                        .align(Alignment.BottomCenter)
+            )
+            KuiklyText(
+                text = label,
+                style =
+                    SlockType.Body
+                        .withSlockFontWeight(FontWeight.SemiBold)
+                        .copy(
+                            fontSize = 14.sp,
+                            lineHeight = 20.sp,
+                            color = SlockColor.TextBlack
+                        ),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
+        }
     }
 }
 
@@ -1477,7 +1482,7 @@ private fun SlockMarkdownInlineCodeChip(code: String, textStyle: TextStyle) {
                 .fillMaxSize()
                 .background(SlockColor.BrandYellow.copy(alpha = 0.4f))
                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .padding(horizontal = 4.dp, vertical = 1.dp),
+                .padding(horizontal = 4.dp, vertical = 0.dp),
         contentAlignment = Alignment.Center
     ) {
         KuiklyText(
