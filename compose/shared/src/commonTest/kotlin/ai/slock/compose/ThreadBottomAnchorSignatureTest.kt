@@ -52,12 +52,14 @@ class ThreadBottomAnchorSignatureTest {
     private fun payload(
         originStatus: String = "none",
         messages: List<KuiklyThreadMessageItem> = emptyList(),
+        originMessage: KuiklyThreadMessageItem? = null,
         canLoadMoreBefore: Boolean = false,
         canLoadMoreAfter: Boolean = false,
         members: List<KuiklyThreadMemberItem> = emptyList()
     ): KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(
         originStatus = originStatus,
         messages = messages,
+        originMessage = originMessage,
         canLoadMoreBefore = canLoadMoreBefore,
         canLoadMoreAfter = canLoadMoreAfter,
         members = members
@@ -398,6 +400,25 @@ class ThreadBottomAnchorSignatureTest {
                     allowBottomAutoAnchor = true
                 )
             )
+        )
+    }
+
+    @Test
+    fun beginningReplyCountLabel_usesOriginMessageReplyCountOnly() {
+        assertEquals(
+            "3 replies",
+            payload(originMessage = message("origin", replyCount = 3))
+                .threadBeginningReplyCountLabel()
+        )
+        assertEquals(
+            "1 reply",
+            payload(originMessage = message("origin", replyCount = 1))
+                .threadBeginningReplyCountLabel()
+        )
+        assertEquals(
+            null,
+            payload(messages = listOf(message("m1", replyCount = 5)))
+                .threadBeginningReplyCountLabel()
         )
     }
 

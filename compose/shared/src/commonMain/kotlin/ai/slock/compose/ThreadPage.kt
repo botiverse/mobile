@@ -6190,7 +6190,8 @@ private fun ThreadMessagesList(
                         else ->
                             ThreadHistoryStatusRow(
                                 label = "Beginning of conversation",
-                                iconName = SlockLucideIconName.Flag
+                                iconName = SlockLucideIconName.Flag,
+                                secondaryLabel = payload.threadBeginningReplyCountLabel()
                             )
                     }
                 }
@@ -7218,24 +7219,37 @@ private fun ThreadInlineActionRow(label: String, onClick: () -> Unit) {
 @Composable
 private fun ThreadHistoryStatusRow(
     label: String,
-    iconName: SlockLucideIconName
+    iconName: SlockLucideIconName,
+    secondaryLabel: String? = null
 ) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = SlockSpacing.Md, vertical = 8.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        SlockLucideIcon(
-            iconName,
-            modifier = Modifier.size(14.dp),
-            color = "#FF6B7280"
-        )
-        Spacer(Modifier.width(6.dp))
-        Text(
-            text = label,
-            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
-            color = SlockColor.TextMutedGray
-        )
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SlockLucideIcon(
+                iconName,
+                modifier = Modifier.size(14.dp),
+                color = "#FF6B7280"
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = label,
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        if (!secondaryLabel.isNullOrBlank()) {
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = secondaryLabel,
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
     }
 }
 
@@ -8113,6 +8127,14 @@ internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): St
             append(" new")
         }
     }
+
+internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
+    val replyCount = originMessage?.replyCount ?: return null
+    return buildString {
+        append(replyCount.coerceAtLeast(0))
+        append(if (replyCount == 1) " reply" else " replies")
+    }
+}
 
 private data class ThreadTaskStatusOption(
     val key: String,
