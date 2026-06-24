@@ -21,6 +21,13 @@ class ThreadFailureReasonTest {
             "Send failed: request cancelled · Retry",
             threadSendFailureStatusLabel("thread_send_cancelled")
         )
+        assertEquals(
+            "Send failed: server rejected the message body · Retry",
+            threadSendFailureStatusLabel(
+                errorCode = "validation_failed",
+                errorMessage = " server rejected the message body "
+            )
+        )
     }
 
     @Test
@@ -34,6 +41,19 @@ class ThreadFailureReasonTest {
         assertTrue(label!!.contains("Bearer <redacted>"))
         assertTrue(label.contains("sk_agent_<redacted>"))
         assertTrue(label.length <= 120)
+    }
+
+    @Test
+    fun failureReasonParsesReadableMessageFromErrorBody() {
+        assertEquals(
+            "Body is too large",
+            threadFailureReasonMessage("""{"code":"body_too_large","errorMessage":"Body is too large"}""")
+        )
+        assertEquals(
+            "body_too_large",
+            threadFailureDiagnosticCode("""{"code":"body_too_large","errorMessage":"Body is too large"}""")
+        )
+        assertEquals("plain failure", threadFailureReasonMessage("plain failure"))
     }
 
     @Test

@@ -1762,7 +1762,11 @@ internal sealed interface SharedThreadIntent {
     data object Refresh : SharedThreadIntent
     data class AppendSentPage(val page: ThreadMessagesPage) : SharedThreadIntent
     data class ApplyLocalSendStarted(val message: KuiklyThreadMessageItem) : SharedThreadIntent
-    data class ApplyLocalSendFailure(val messageId: String, val errorCode: String? = null) : SharedThreadIntent
+    data class ApplyLocalSendFailure(
+        val messageId: String,
+        val errorCode: String? = null,
+        val errorMessage: String? = null
+    ) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
     data class ConsumeComposerSeedForSend(
@@ -1900,7 +1904,8 @@ internal class SharedThreadStore(
             SharedThreadIntent.Refresh -> refresh(_state.value.payload)
             is SharedThreadIntent.AppendSentPage -> appendSentPage(intent.page)
             is SharedThreadIntent.ApplyLocalSendStarted -> applyLocalSendStarted(intent.message)
-            is SharedThreadIntent.ApplyLocalSendFailure -> applyLocalSendFailure(intent.messageId, intent.errorCode)
+            is SharedThreadIntent.ApplyLocalSendFailure ->
+                applyLocalSendFailure(intent.messageId, intent.errorCode, intent.errorMessage)
             is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
             is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
             is SharedThreadIntent.ConsumeComposerSeedForSend ->
@@ -2450,12 +2455,12 @@ internal class SharedThreadStore(
         }
     }
 
-    private suspend fun applyLocalSendFailure(messageId: String, errorCode: String?) {
+    private suspend fun applyLocalSendFailure(messageId: String, errorCode: String?, errorMessage: String?) {
         reducePayloadPatchAndWriteCache(
             cachePayload = true,
             writeCachedPayload = true
         ) { payload ->
-            payload.withLocalSendFailure(messageId, errorCode)
+            payload.withLocalSendFailure(messageId, errorCode, errorMessage)
         }
     }
 
@@ -3270,7 +3275,8 @@ private fun KuiklyThreadScreenPayload.withLocalSendStarted(
     val sendingMessage =
         message.copy(
             deliveryState = ThreadMessageDeliverySending,
-            pendingSendErrorCode = null
+            pendingSendErrorCode = null,
+            pendingSendErrorMessage = null
         )
     val nextMessages =
         if (messages.any { it.id == sendingMessage.id }) {
@@ -3287,7 +3293,8 @@ private fun KuiklyThreadScreenPayload.withLocalSendStarted(
 
 private fun KuiklyThreadScreenPayload.withLocalSendFailure(
     messageId: String,
-    errorCode: String?
+    errorCode: String?,
+    errorMessage: String?
 ): KuiklyThreadScreenPayload =
     copy(
         messages =
@@ -3295,7 +3302,8 @@ private fun KuiklyThreadScreenPayload.withLocalSendFailure(
                 if (message.id == messageId && message.pendingSendContext != null) {
                     message.copy(
                         deliveryState = ThreadMessageDeliveryFailed,
-                        pendingSendErrorCode = errorCode
+                        pendingSendErrorCode = errorCode,
+                        pendingSendErrorMessage = errorMessage
                     )
                 } else {
                     message
@@ -4356,7 +4364,7 @@ internal fun KuiklyThreadMessageItem.toMessage(
         body = body,
         messageType = if (messageType.equals("System", ignoreCase = true)) MessageType.System else MessageType.Chat,
         systemEventType = systemEventType,
-        metadata = metadata.withLocalSendMetadata(pendingSendContext, pendingSendErrorCode),
+        metadata = metadata.withLocalSendMetadata(pendingSendContext, pendingSendErrorCode, pendingSendErrorMessage),
         attachments = attachments.map { attachment -> attachment.toAttachment() },
         deliveryState = deliveryState.toMessageDeliveryState(),
         task = taskSummary,
@@ -4491,12 +4499,14 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         reactions = reactions.toRealtimeThreadReactionItems(currentUserId).orEmpty(),
         commentRef = commentRef?.toKuiklyThreadCommentRef(),
         pendingSendContext = pendingSendContext,
-        pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() }
+        pendingSendErrorCode = metadata[ThreadLocalSendErrorMetadataKey]?.takeIf { it.isNotBlank() },
+        pendingSendErrorMessage = metadata[ThreadLocalSendErrorMessageMetadataKey]?.takeIf { it.isNotBlank() }
     )
 }
 
 private const val ThreadLocalSendContextMetadataKey = "localSend.context"
 private const val ThreadLocalSendErrorMetadataKey = "localSend.errorCode"
+private const val ThreadLocalSendErrorMessageMetadataKey = "localSend.errorMessage"
 
 private val ThreadLocalSendMetadataJson =
     Json {
@@ -4506,7 +4516,8 @@ private val ThreadLocalSendMetadataJson =
 
 private fun Map<String, String>.withLocalSendMetadata(
     context: KuiklyThreadPendingSendContext?,
-    errorCode: String?
+    errorCode: String?,
+    errorMessage: String?
 ): Map<String, String> {
     val metadata = withoutLocalSendMetadata().toMutableMap()
     if (context != null) {
@@ -4515,13 +4526,17 @@ private fun Map<String, String>.withLocalSendMetadata(
     if (!errorCode.isNullOrBlank()) {
         metadata[ThreadLocalSendErrorMetadataKey] = errorCode
     }
+    if (!errorMessage.isNullOrBlank()) {
+        metadata[ThreadLocalSendErrorMessageMetadataKey] = errorMessage
+    }
     return metadata
 }
 
 private fun Map<String, String>.withoutLocalSendMetadata(): Map<String, String> =
     filterKeys { key ->
         key != ThreadLocalSendContextMetadataKey &&
-            key != ThreadLocalSendErrorMetadataKey
+            key != ThreadLocalSendErrorMetadataKey &&
+            key != ThreadLocalSendErrorMessageMetadataKey
     }
 
 private fun Map<String, String>.localSendContextFromMetadata(): KuiklyThreadPendingSendContext? =

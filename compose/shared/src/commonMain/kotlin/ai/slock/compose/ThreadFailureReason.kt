@@ -1,8 +1,17 @@
 package ai.slock.compose
 
 import ai.slock.compose.network.SlockRequestTimeoutException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 private const val ThreadFailureReasonMaxLength = 120
+
+private val ThreadFailureReasonJson = Json {
+    ignoreUnknownKeys = true
+}
 
 private val ThreadFailureReasonKnownLabels =
     mapOf(
@@ -12,8 +21,8 @@ private val ThreadFailureReasonKnownLabels =
         "thread_send_exception" to "unexpected error"
     )
 
-internal fun threadSendFailureStatusLabel(errorCode: String?): String {
-    val reason = threadFailureReasonLabel(errorCode)
+internal fun threadSendFailureStatusLabel(errorCode: String?, errorMessage: String? = null): String {
+    val reason = threadFailureReasonLabel(errorMessage) ?: threadFailureReasonLabel(errorCode)
     return if (reason == null) {
         "Send failed · Retry"
     } else {
@@ -53,8 +62,44 @@ internal fun threadSendExceptionErrorCode(throwable: Throwable): String {
     }
 }
 
+internal fun threadSendExceptionErrorMessage(throwable: Throwable): String? =
+    throwable.message?.takeIf { it.isNotBlank() }
+
+internal fun threadFailureReasonMessage(errorBodyText: String?): String? {
+    val cleanBody = errorBodyText?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val bodyObject = cleanBody.threadFailureJsonObjectOrNull()
+    if (bodyObject != null) {
+        return bodyObject.threadFailureStringField(
+            "errorMessage",
+            "message",
+            "detail",
+            "error_description"
+        )
+    }
+    return cleanBody
+}
+
+internal fun threadFailureDiagnosticCode(errorBodyText: String?): String? =
+    errorBodyText
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.threadFailureJsonObjectOrNull()
+        ?.threadFailureStringField("code", "errorCode", "diagnosticCode")
+
 private fun redactThreadFailureReason(value: String): String =
     value
         .replace(Regex("sk_agent_[A-Za-z0-9_=-]+"), "sk_agent_<redacted>")
         .replace(Regex("sk_machine_[A-Za-z0-9_=-]+"), "sk_machine_<redacted>")
         .replace(Regex("Bearer\\s+[A-Za-z0-9._=-]+", RegexOption.IGNORE_CASE), "Bearer <redacted>")
+
+private fun String.threadFailureJsonObjectOrNull(): JsonObject? =
+    runCatching { ThreadFailureReasonJson.parseToJsonElement(this).jsonObject }.getOrNull()
+
+private fun JsonObject.threadFailureStringField(vararg names: String): String? =
+    names.firstNotNullOfOrNull { name ->
+        get(name)
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }

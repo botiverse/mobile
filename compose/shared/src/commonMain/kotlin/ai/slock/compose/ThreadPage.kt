@@ -804,7 +804,8 @@ internal data class KuiklyThreadMessageItem(
     val commentRef: KuiklyThreadMessageCommentRef? = null,
     val deliveryState: String = ThreadMessageDeliverySent,
     val pendingSendContext: KuiklyThreadPendingSendContext? = null,
-    val pendingSendErrorCode: String? = null
+    val pendingSendErrorCode: String? = null,
+    val pendingSendErrorMessage: String? = null
 )
 
 internal const val ThreadMessageDeliverySending = "sending"
@@ -875,7 +876,8 @@ private fun buildThreadPendingSendMessage(
             },
         deliveryState = ThreadMessageDeliverySending,
         pendingSendContext = context,
-        pendingSendErrorCode = null
+        pendingSendErrorCode = null,
+        pendingSendErrorMessage = null
     )
 }
 
@@ -2755,8 +2757,14 @@ internal fun SharedThreadRouteContent(
                 )
         )
         coroutineScope.launch {
-            fun markFailed(errorCode: String?) {
-                threadViewModel.dispatch(SharedThreadIntent.ApplyLocalSendFailure(localMessageId, errorCode))
+            fun markFailed(errorCode: String?, errorMessage: String? = null) {
+                threadViewModel.dispatch(
+                    SharedThreadIntent.ApplyLocalSendFailure(
+                        messageId = localMessageId,
+                        errorCode = errorCode,
+                        errorMessage = errorMessage
+                    )
+                )
                 if (startedFromComposer) {
                     composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
                 }
@@ -2793,7 +2801,7 @@ internal fun SharedThreadRouteContent(
                                 "localMessageId" to localMessageId
                             )
                     )
-                    markFailed(errorCode)
+                    markFailed(errorCode, threadSendExceptionErrorMessage(it))
                     return@launch
                 }
             val sentPage =
@@ -2801,8 +2809,10 @@ internal fun SharedThreadRouteContent(
                     is ThreadApiResult.Success -> sendResponse.data
                     is ThreadApiResult.Failure -> {
                         val errorCode =
-                            threadFailureReasonLabel(sendResponse.contractCode ?: sendResponse.errorBodyText)
-                                ?: "send_failed"
+                            sendResponse.contractCode
+                                ?: threadFailureDiagnosticCode(sendResponse.errorBodyText)
+                                ?: "http_${sendResponse.code}"
+                        val errorMessage = threadFailureReasonMessage(sendResponse.errorBodyText)
                         bridge.performanceMarker(
                             phase = "composer_send",
                             routeName = "kuikly_thread",
@@ -2819,7 +2829,7 @@ internal fun SharedThreadRouteContent(
                                     "localMessageId" to localMessageId
                                 )
                         )
-                        markFailed(errorCode)
+                        markFailed(errorCode, errorMessage)
                         return@launch
                     }
                 }
@@ -2862,10 +2872,16 @@ internal fun SharedThreadRouteContent(
             }
         }
     }
-    fun markDeferredAttachmentSendFailed(errorCode: String?) {
+    fun markDeferredAttachmentSendFailed(errorCode: String?, errorMessage: String? = null) {
         val pending = deferredAttachmentSend ?: return
         deferredAttachmentSend = null
-        threadViewModel.dispatch(SharedThreadIntent.ApplyLocalSendFailure(pending.localMessageId, errorCode))
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyLocalSendFailure(
+                messageId = pending.localMessageId,
+                errorCode = errorCode,
+                errorMessage = errorMessage
+            )
+        )
         composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.CompleteInlineSendFailure)
     }
     fun handleAttachmentUploadFailure(errorCode: String, attachmentIds: Set<String> = emptySet()) {
@@ -3555,7 +3571,8 @@ internal fun SharedThreadRouteContent(
                         SharedThreadIntent.ApplyLocalSendStarted(
                             message.copy(
                                 deliveryState = ThreadMessageDeliverySending,
-                                pendingSendErrorCode = null
+                                pendingSendErrorCode = null,
+                                pendingSendErrorMessage = null
                             )
                         )
                     )
@@ -7553,7 +7570,10 @@ private fun ThreadMessageLocalSendStatus(
     val isFailed = message.deliveryState.equals(ThreadMessageDeliveryFailed, ignoreCase = true)
     val label =
         if (isFailed) {
-            threadSendFailureStatusLabel(message.pendingSendErrorCode)
+            threadSendFailureStatusLabel(
+                errorCode = message.pendingSendErrorCode,
+                errorMessage = message.pendingSendErrorMessage
+            )
         } else if (message.pendingSendContext?.asTask == true) {
             "Sending as task..."
         } else {

@@ -599,6 +599,40 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun localSendFailurePersistsReadableErrorMessage() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val localMessageId = "local-send-channel-1-1"
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyLocalSendStarted(localPendingMessage(localMessageId, "retry body")))
+
+        store.accept(
+            SharedThreadIntent.ApplyLocalSendFailure(
+                messageId = localMessageId,
+                errorCode = "body_too_large",
+                errorMessage = "Body is too large"
+            )
+        )
+
+        val failed = store.state.value.payload.messages.first { it.id == localMessageId }
+        assertEquals("body_too_large", failed.pendingSendErrorCode)
+        assertEquals("Body is too large", failed.pendingSendErrorMessage)
+        val cachedPayload = dataSource.readCachedPayload(basePayload())
+        assertNotNull(cachedPayload)
+        val cachedFailed = cachedPayload.messages.first { it.id == localMessageId }
+        assertEquals("body_too_large", cachedFailed.pendingSendErrorCode)
+        assertEquals("Body is too large", cachedFailed.pendingSendErrorMessage)
+        scope.cancel()
+    }
+
+    @Test
     fun dismissLocalFailedSendRemovesFailedBubbleFromStateAndLocalCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
