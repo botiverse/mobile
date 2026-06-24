@@ -50,6 +50,8 @@
         "description": "$string:SlockFormAbility_desc",
         "icon": "$media:icon",
         "label": "$string:SlockFormAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
         "exported": true
       }
     ],
