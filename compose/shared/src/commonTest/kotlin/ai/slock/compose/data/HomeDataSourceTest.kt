@@ -11,7 +11,9 @@ import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.ThreadId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -40,6 +42,49 @@ class HomeDataSourceTest {
 
         assertEquals(1, (result as DataResult.Content).data.channels.size)
         assertEquals(1, localStore.readHome(ServerId("server-1"))?.channels?.size)
+    }
+
+    @Test
+    fun loadHomeRequestsCoreHomeSectionsConcurrently() = runBlocking {
+        val api = ConcurrentHomeApi()
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = api,
+                parseHome = { payload, _ ->
+                    DataResult.Content(sampleHome(payload.serverId))
+                }
+            )
+
+        val result = withTimeout(1_000L) { source.loadHome() }
+
+        assertTrue(result is DataResult.Content)
+        assertEquals(
+            setOf("channels", "direct_messages", "channel_unread_counts", "server_unread_summary"),
+            api.calls.toSet()
+        )
+    }
+
+    @Test
+    fun loadNotificationsRequestsAnnouncementAndMachineSourcesConcurrently() = runBlocking {
+        val announcementsApi = ConcurrentAnnouncementsApi()
+        val computersApi = ConcurrentComputersApi(announcementsApi.announcementsStarted)
+        announcementsApi.machinesStarted = computersApi.machinesStarted
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                announcementsApi = announcementsApi,
+                computersApi = computersApi,
+                parseHome = { _, session ->
+                    DataResult.Content(sampleHome(ServerId(session.currentServerId!!)))
+                }
+            )
+
+        val result = withTimeout(1_000L) { source.loadNotifications() }
+
+        val notifications = (result as DataResult.Content).data
+        assertEquals(setOf("announcement-1", "machine-offline:machine-1"), notifications.map { it.id }.toSet())
     }
 
     @Test
@@ -321,6 +366,132 @@ class HomeDataSourceTest {
         override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse = ok(serverUnreadSummaryBody).also { calls++ }
 
         private fun ok(body: String): HomeNetworkResponse = HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private class ConcurrentHomeApi : SlockHomeApi {
+        val calls = mutableListOf<String>()
+        private val channelsStarted = CompletableDeferred<Unit>()
+        private val directMessagesStarted = CompletableDeferred<Unit>()
+        private val unreadCountsStarted = CompletableDeferred<Unit>()
+        private val serverUnreadSummaryStarted = CompletableDeferred<Unit>()
+
+        override suspend fun channels(priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "channels"
+            channelsStarted.complete(Unit)
+            directMessagesStarted.await()
+            unreadCountsStarted.await()
+            serverUnreadSummaryStarted.await()
+            return ok("[]")
+        }
+
+        override suspend fun directMessages(priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "direct_messages"
+            directMessagesStarted.complete(Unit)
+            channelsStarted.await()
+            return ok("[]")
+        }
+
+        override suspend fun channelUnreadCounts(priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "channel_unread_counts"
+            unreadCountsStarted.complete(Unit)
+            channelsStarted.await()
+            return ok("{}")
+        }
+
+        override suspend fun serverUnreadSummary(priority: DataRequestPriority): HomeNetworkResponse {
+            calls += "server_unread_summary"
+            serverUnreadSummaryStarted.complete(Unit)
+            channelsStarted.await()
+            return ok("[]")
+        }
+
+        private fun ok(body: String): HomeNetworkResponse =
+            HomeNetworkResponse(code = 200, bodyText = body)
+    }
+
+    private class ConcurrentAnnouncementsApi : SlockAnnouncementsRemindersApi {
+        val announcementsStarted = CompletableDeferred<Unit>()
+        lateinit var machinesStarted: CompletableDeferred<Unit>
+
+        override suspend fun activeAnnouncements(): HomeNetworkResponse {
+            announcementsStarted.complete(Unit)
+            machinesStarted.await()
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "announcements": [
+                        {
+                          "id": "announcement-1",
+                          "title": "Upgrade available",
+                          "pages": [
+                            { "body": "Install the newest desktop daemon." }
+                          ]
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        }
+
+        override suspend fun dismissAnnouncement(announcementId: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun reminders(ownerAgentId: MemberId, status: String): HomeNetworkResponse =
+            error("unused")
+    }
+
+    private class ConcurrentComputersApi(
+        private val announcementsStarted: CompletableDeferred<Unit>
+    ) : SlockComputersApi {
+        val machinesStarted = CompletableDeferred<Unit>()
+
+        override suspend fun machines(serverId: ServerId): HomeNetworkResponse {
+            machinesStarted.complete(Unit)
+            announcementsStarted.await()
+            return HomeNetworkResponse(
+                code = 200,
+                bodyText =
+                    """
+                    {
+                      "machines": [
+                        {
+                          "id": "machine-1",
+                          "name": "OranixSlockTest",
+                          "status": "offline",
+                          "statusVersion": 1
+                        }
+                      ]
+                    }
+                    """.trimIndent()
+            )
+        }
+
+        override suspend fun registerMachine(serverId: ServerId, body: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun renameMachine(serverId: ServerId, machineId: String, body: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun deleteMachine(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun rotateMachineKey(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun machineWorkspaces(serverId: ServerId, machineId: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun runtimeModels(serverId: ServerId, machineId: String, runtime: String): HomeNetworkResponse =
+            error("unused")
+
+        override suspend fun deleteMachineWorkspace(
+            serverId: ServerId,
+            machineId: String,
+            directoryName: String
+        ): HomeNetworkResponse =
+            error("unused")
     }
 
     private class ThrowingHomeApi : SlockHomeApi {

@@ -19,6 +19,8 @@ import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerializationException
@@ -178,10 +180,10 @@ class SharedHomeDataSource(
         return readCachedHome(serverId)
     }
 
-    suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> {
-        val announcementResult = loadAnnouncementNotifications()
-        val machineResult = loadMachineNotifications()
-        return mergeHomeNotificationResults(announcementResult, machineResult)
+    suspend fun loadNotifications(): DataResult<List<SharedHomeNotification>> = coroutineScope {
+        val announcementResult = async { loadAnnouncementNotifications() }
+        val machineResult = async { loadMachineNotifications() }
+        mergeHomeNotificationResults(announcementResult.await(), machineResult.await())
     }
 
     private suspend fun loadAnnouncementNotifications(): DataResult<List<SharedHomeNotification>> {
@@ -407,72 +409,77 @@ internal class SlockHomeApiClient(
     suspend fun homePayload(
         serverId: ServerId,
         priority: DataRequestPriority
-    ): DataResult<HomeNetworkPayload> {
+    ): DataResult<HomeNetworkPayload> = coroutineScope {
+        val channelsDeferred =
+            async {
+                requestHomeSection(
+                    category = "channels",
+                    contractCode = "home_channels_contract_mismatch",
+                    serializer = ListSerializer(HomeChannelWireDto.serializer())
+                ) {
+                    transport.channels(serverId, priority)
+                }
+            }
+        val directMessagesDeferred =
+            async {
+                requestHomeSection(
+                    category = "direct_messages",
+                    contractCode = "home_direct_messages_contract_mismatch",
+                    serializer = ListSerializer(HomeDirectMessageWireDto.serializer())
+                ) {
+                    transport.directMessages(serverId, priority)
+                }
+            }
+        val unreadCountsDeferred =
+            async {
+                requestHomeSection(
+                    category = "channel_unread_counts",
+                    contractCode = "home_unread_counts_contract_mismatch",
+                    serializer = MapSerializer(String.serializer(), Int.serializer())
+                ) {
+                    transport.channelUnreadCounts(serverId, priority)
+                }
+            }
+        val serverUnreadSummaryDeferred =
+            async {
+                requestHomeSection(
+                    category = "server_unread_summary",
+                    contractCode = "home_server_unread_summary_contract_mismatch",
+                    serializer = ListSerializer(ServerUnreadSummaryDto.serializer())
+                ) {
+                    transport.serverUnreadSummary(serverId, priority)
+                }
+            }
+
         val channels =
-            when (
-                val result =
-                    requestHomeSection(
-                        category = "channels",
-                        contractCode = "home_channels_contract_mismatch",
-                        serializer = ListSerializer(HomeChannelWireDto.serializer())
-                    ) {
-                        transport.channels(serverId, priority)
-                    }
-            ) {
+            when (val result = channelsDeferred.await()) {
                 is DataResult.Content -> result.data
-                is DataResult.Empty -> return DataResult.Empty(result.reason)
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
             }
         val directMessages =
-            when (
-                val result =
-                    requestHomeSection(
-                        category = "direct_messages",
-                        contractCode = "home_direct_messages_contract_mismatch",
-                        serializer = ListSerializer(HomeDirectMessageWireDto.serializer())
-                    ) {
-                        transport.directMessages(serverId, priority)
-                    }
-            ) {
+            when (val result = directMessagesDeferred.await()) {
                 is DataResult.Content -> result.data
-                is DataResult.Empty -> return DataResult.Empty(result.reason)
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
             }
         val unreadCounts =
-            when (
-                val result =
-                    requestHomeSection(
-                        category = "channel_unread_counts",
-                        contractCode = "home_unread_counts_contract_mismatch",
-                        serializer = MapSerializer(String.serializer(), Int.serializer())
-                    ) {
-                        transport.channelUnreadCounts(serverId, priority)
-                    }
-            ) {
+            when (val result = unreadCountsDeferred.await()) {
                 is DataResult.Content -> result.data.mapKeys { (key, _) -> ChannelId(key) }
-                is DataResult.Empty -> return DataResult.Empty(result.reason)
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
             }
         val serverUnreadSummary =
-            when (
-                val result =
-                    requestHomeSection(
-                        category = "server_unread_summary",
-                        contractCode = "home_server_unread_summary_contract_mismatch",
-                        serializer = ListSerializer(ServerUnreadSummaryDto.serializer())
-                    ) {
-                        transport.serverUnreadSummary(serverId, priority)
-                    }
-            ) {
+            when (val result = serverUnreadSummaryDeferred.await()) {
                 is DataResult.Content -> result.data
-                is DataResult.Empty -> return DataResult.Empty(result.reason)
-                is DataResult.Error -> return DataResult.Error(result.error)
-                is DataResult.NoPermission -> return DataResult.NoPermission(result.blocker)
+                is DataResult.Empty -> return@coroutineScope DataResult.Empty(result.reason)
+                is DataResult.Error -> return@coroutineScope DataResult.Error(result.error)
+                is DataResult.NoPermission -> return@coroutineScope DataResult.NoPermission(result.blocker)
             }
-        return DataResult.Content(
+        DataResult.Content(
             HomeNetworkPayload(
                 serverId = serverId,
                 channels = channels,
