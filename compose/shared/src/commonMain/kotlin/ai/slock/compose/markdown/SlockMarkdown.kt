@@ -603,10 +603,10 @@ internal fun slockMarkdownAnnotator(
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    codeToken.toSlockMarkdownInlineCodeChipSegments().forEachIndexed { index, segment ->
-                        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
-                        appendInlineContent(segment.id, segment.code)
-                    }
+                    appendSlockMarkdownInlineCodeWithBackground(
+                        code = code,
+                        style = slockMarkdownInlineCodeWrappingSpanStyle(inlineCodeTextStyle)
+                    )
                     return@markdownAnnotator true
                 }
             }
@@ -669,18 +669,6 @@ internal fun slockMarkdownAnnotator(
                             val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
                             SlockMarkdownInlineChip(label, chipColor)
                         }
-                    }
-                }
-            } + inlineCodeChipSegmentsById.mapValues { (_, segment) ->
-                val code = segment.code
-                InlineTextContent(
-                    Placeholder(
-                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[segment.id]),
-                        height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
-                    )
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineCodeChip(code, inlineCodeTextStyle)
                     }
                 }
             }
@@ -1379,14 +1367,13 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
+private fun slockMarkdownInlineCodeWrappingSpanStyle(textStyle: TextStyle): SpanStyle =
+    textStyle
+        .copy(color = SlockColor.TextBlack, background = SlockColor.BrandYellow.copy(alpha = 0.4f))
+        .toSpanStyle()
+
 internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
-    val code = code ?: return emptyList()
-    return code.slockMarkdownInlineCodeSoftBreakPieces().mapIndexed { index, piece ->
-        ThreadInlineCodeChipSegment(
-            id = if (index == 0) id else "$id:$index",
-            code = piece
-        )
-    }
+    return emptyList()
 }
 
 internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
@@ -1418,6 +1405,19 @@ private fun String.slockMarkdownInlineCodeSoftBreakPieces(): List<String> {
         pieces += current.toString()
     }
     return pieces
+}
+
+private fun AnnotatedString.Builder.appendSlockMarkdownInlineCodeWithBackground(
+    code: String,
+    style: SpanStyle
+) {
+    val pieces = code.slockMarkdownInlineCodeSoftBreakPieces()
+    pieces.forEachIndexed { index, piece ->
+        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
+        pushStyle(style)
+        append(piece)
+        pop()
+    }
 }
 
 internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
