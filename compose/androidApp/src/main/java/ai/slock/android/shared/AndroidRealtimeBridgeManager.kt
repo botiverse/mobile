@@ -32,10 +32,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal object AndroidRealtimeBridgeManager {
     private const val LOG_TAG = "SlockKuiklyRealtime"
+    private const val STORED_SESSION_CONNECT_RETRY_DELAY_MS = 1_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val consumers = linkedMapOf<String, RealtimeConsumer>()
@@ -85,16 +87,25 @@ internal object AndroidRealtimeBridgeManager {
         realtimeConnectJob =
             scope.launch {
                 try {
-                    val session = sessionStore.readSession()
-                    val serverId =
-                        session?.currentServerId?.let(::ServerId)
+                    var restoredSession = sessionStore.readSession()
+                    var serverId = restoredSession?.currentServerId?.let(::ServerId)
+                    if (serverId == null) {
+                        SlockDiagnosticsLogger.w(
+                            LOG_TAG,
+                            "connect_skip reason=missing_selected_server"
+                        )
+                        delay(STORED_SESSION_CONNECT_RETRY_DELAY_MS)
+                        restoredSession = sessionStore.readSession()
+                        serverId = restoredSession?.currentServerId?.let(::ServerId)
                             ?: run {
                                 SlockDiagnosticsLogger.w(
                                     LOG_TAG,
-                                    "connect_skip reason=missing_selected_server"
+                                    "connect_skip reason=missing_selected_server_after_retry delayMs=$STORED_SESSION_CONNECT_RETRY_DELAY_MS"
                                 )
                                 return@launch
                             }
+                    }
+                    val session = restoredSession ?: return@launch
                     val accessToken =
                         session.accessToken.takeIf { it.isNotBlank() }
                             ?: run {
@@ -128,7 +139,18 @@ internal object AndroidRealtimeBridgeManager {
         requestedLastSeq: Long,
         forceReconnect: Boolean
     ) {
-        if (serverId.value.isBlank() || accessToken.isBlank()) return
+        if (serverId.value.isBlank() || accessToken.isBlank()) {
+            SlockDiagnosticsLogger.w(
+                LOG_TAG,
+                "connect_skip reason=blank_request serverId=${serverId.value} has_access_token=${accessToken.isNotBlank()}"
+            )
+            ensureConnectedFromStoredSession(context, requestedLastSeq)
+            return
+        }
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
+        )
         val repository = ensureRealtimeRepository(context.applicationContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
@@ -160,6 +182,7 @@ internal object AndroidRealtimeBridgeManager {
                 LOG_TAG,
                 "foreground_reconnect_skip reason=missing_owner_session"
             )
+            ensureConnectedFromStoredSession(context, realtimeLastSeq)
             return
         }
         if (client.checkHeartbeatSilence()) {
