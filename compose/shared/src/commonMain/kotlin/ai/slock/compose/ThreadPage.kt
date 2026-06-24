@@ -158,6 +158,8 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -7289,6 +7291,7 @@ private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
 private const val ThreadInitialContentHeightTolerancePx = 8
 private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
 private const val ThreadInitialMarkdownMaxEstimatedLines = 8
+private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
@@ -7296,22 +7299,43 @@ private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
     timestampLabel: String
 ) {
-    val systemBody = remember(message.body, timestampLabel) { message.collapsedSystemSummary(timestampLabel) }
+    var expanded by remember(message.id) { mutableStateOf(false) }
+    val systemBody =
+        remember(message.body, message.metadata, message.systemEventType, timestampLabel, expanded) {
+            if (expanded) {
+                message.expandedSystemSummary(timestampLabel)
+            } else {
+                message.collapsedSystemSummary(timestampLabel)
+            }
+        }
+    val annotatedSystemBody =
+        remember(systemBody, timestampLabel) {
+            buildAnnotatedString {
+                pushStyle(SpanStyle(color = ThreadSystemMessageTimeColor))
+                append(timestampLabel)
+                pop()
+                val body = systemBody.removePrefix(timestampLabel).trimStart()
+                if (body.isNotBlank()) {
+                    append(" ")
+                    pushStyle(SpanStyle(color = ThreadSystemMessageBodyColor))
+                    append(body)
+                    pop()
+                }
+            }
+        }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
+                .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
     ) {
         Text(
-            text = systemBody,
-            style =
-                SlockType.Body.copy(
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    color = ThreadSystemMessageBodyColor
-                ),
+            text = annotatedSystemBody,
+            style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
             color = ThreadSystemMessageBodyColor,
+            maxLines = if (expanded) Int.MAX_VALUE else 1,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth()
         )
     }
