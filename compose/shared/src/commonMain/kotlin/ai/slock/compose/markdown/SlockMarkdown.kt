@@ -160,21 +160,9 @@ internal object SlockMarkdownInlineTokenRegistry {
                                 highlightedMentionKeys.containsThreadMention(match.tag.label)
                     )
                 }
-        val inlineCodeTokens =
-            content.threadInlineCodeMatches()
-                .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
-                .map { match ->
-                    MarkdownInlineToken(
-                        id = match.id,
-                        kind = MarkdownInlineTokenKind.InlineCode,
-                        range = match.range,
-                        label = match.code,
-                        code = match.code
-                    )
-                }
         return MarkdownInlineTokenPlan(
             content = content,
-            tokens = (tagTokens + inlineCodeTokens).sortedBy { it.range.first }
+            tokens = tagTokens.sortedBy { it.range.first }
         )
     }
 }
@@ -578,11 +566,11 @@ internal fun slockMarkdownAnnotator(
     val inlineTagTokens = tokenPlan.tagTokens()
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
-    val inlineCodeChipById = tokenPlan.inlineCodeTokens().associateBy { it.id }
+    val inlineCodeByStart = content.threadInlineCodeMatches().associateBy { it.range.first }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             inlineTagTokens.size,
-            inlineCodeChipById.size,
+            inlineCodeByStart.size,
             diagnosticsStartedAt.elapsedNow().inWholeMilliseconds
         )
     }
@@ -590,13 +578,20 @@ internal fun slockMarkdownAnnotator(
         annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeToken =
-                    inlineCodeChipById["slock-code:${child.startOffset}"]
-                        ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
-                val code = codeToken?.code
-                if (codeToken != null && code != null) {
-                    appendInlineContent(codeToken.id, code)
-                    return@markdownAnnotator true
-                }
+                    inlineCodeByStart[child.startOffset]
+                        ?: inlineCodeByStart.values.firstOrNull { child.startOffset in it.range }
+                val code =
+                    codeToken?.code
+                        ?: child.getTextInNode(markdownContent).toString().markdownInlineCodeText()
+                pushStyle(inlineCodeTextStyle.toSpanStyle())
+                pushStringAnnotation(
+                    tag = SlockMarkdownInlineCodeAnnotationTag,
+                    annotation = SlockMarkdownInlineCodeAnnotationValue
+                )
+                append(code)
+                pop()
+                pop()
+                return@markdownAnnotator true
             }
             if (child.type != MarkdownTokenTypes.TEXT ||
                 child.parent?.type == MarkdownElementTypes.CODE_SPAN
@@ -657,18 +652,6 @@ internal fun slockMarkdownAnnotator(
                             val chipColor = slockMarkdownTagColor(tag.kind, highlighted = isHighlightedMention)
                             SlockMarkdownInlineChip(label, chipColor)
                         }
-                    }
-                }
-            } + inlineCodeChipById.mapValues { (_, token) ->
-                val code = token.code.orEmpty()
-                InlineTextContent(
-                    Placeholder(
-                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
-                        height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
-                    )
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        SlockMarkdownInlineCodeChip(code, inlineCodeTextStyle)
                     }
                 }
             }
@@ -814,6 +797,8 @@ internal fun AnnotatedString.filteredSlockMarkdownInlineContent(
 }
 
 private const val SlockMarkdownInlineContentTag = "androidx.compose.foundation.text.inlineContent"
+internal const val SlockMarkdownInlineCodeAnnotationTag = "ai.slock.markdown.inlineCode"
+private const val SlockMarkdownInlineCodeAnnotationValue = "true"
 
 internal fun AnnotatedString.withSlockMarkdownSpanFonts(baseStyle: TextStyle): AnnotatedString {
     if (spanStyles.isEmpty()) return this
@@ -905,7 +890,7 @@ internal object SlockMarkdownInlineTextRenderCache {
     }
 }
 
-private fun buildSlockMarkdownInlineTextAnnotatedString(
+internal fun buildSlockMarkdownInlineTextAnnotatedString(
     content: String,
     style: TextStyle,
     annotator: MarkdownAnnotator
@@ -1367,6 +1352,20 @@ internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
 
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
+
+private fun String.markdownInlineCodeText(): String =
+    threadInlineCodeMatches().firstOrNull()?.code
+        ?: removeSurroundingMarkdownBackticks().normalizeMarkdownInlineCodeText()
+
+private fun String.removeSurroundingMarkdownBackticks(): String {
+    if (isEmpty() || first() != '`' || last() != '`') return this
+    val openingTickCount = countBackticks(0)
+    if (openingTickCount >= length) return ""
+    val closingStart = length - openingTickCount
+    if (closingStart <= openingTickCount) return ""
+    if (substring(closingStart) != "`".repeat(openingTickCount)) return this
+    return substring(openingTickCount, closingStart)
+}
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
