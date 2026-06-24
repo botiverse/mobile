@@ -198,6 +198,29 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentPatchPreservesReplyThreadChannelSubtitleWhenNetworkPayloadOmitsIt() {
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        val current = contentPayloadForRoute(route, "cached body").copy(subtitle = "#general")
+        val networkPatch = contentPayloadForRoute(route, "network body").copy(subtitle = null)
+
+        val payload = current.withContentPatchFrom(networkPatch)
+
+        assertEquals("#general", payload.subtitle)
+        assertEquals("network body", payload.messages.single().body)
+    }
+
+    @Test
+    fun contentPatchClearsNonReplySubtitleWhenNetworkPayloadOmitsIt() {
+        val current = contentPayload("cached body").copy(subtitle = "General updates")
+        val networkPatch = contentPayload("network body").copy(subtitle = null)
+
+        val payload = current.withContentPatchFrom(networkPatch)
+
+        assertNull(payload.subtitle)
+        assertEquals("network body", payload.messages.single().body)
+    }
+
+    @Test
     fun staleRefreshResultDoesNotOverwriteCurrentThreadRoute() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val channelStarted = CompletableDeferred<Unit>()
