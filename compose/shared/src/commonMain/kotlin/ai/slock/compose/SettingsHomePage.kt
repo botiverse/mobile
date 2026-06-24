@@ -2281,7 +2281,6 @@ private fun SlockAppShellContent() {
                             draftPersistSlice = composerDraftPersistSlice,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
-                            activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
                             savedCount = homeSearchSavedState.saved.totalCount,
                             onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
                             onNotificationDismiss = { id ->
@@ -8903,7 +8902,6 @@ private fun SharedHomeScreen(
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
-    activityUnreadLoaded: Boolean = false,
     savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
@@ -9007,9 +9005,8 @@ private fun SharedHomeScreen(
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
                 }
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
-                homeUnreadCount = snapshot.unreadTotal,
                 activityUnreadCount = activityUnreadCount,
-                activityUnreadLoaded = activityUnreadLoaded
+                activityTotalCount = activityTotalCount
             )
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,

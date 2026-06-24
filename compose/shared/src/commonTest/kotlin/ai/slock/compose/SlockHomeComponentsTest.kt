@@ -47,44 +47,26 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeActivitySidebarUnreadCountUsesUnreadThenActivityTotalFallback() {
+    fun homeActivitySidebarUnreadCountUsesActivityUnreadThenActivityTotalFallback() {
         assertEquals(
             14,
-            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 14, activityTotalCount = 40)
-        )
-        assertEquals(
-            9,
-            homeActivitySidebarUnreadCount(homeUnreadCount = 9, activityUnreadCount = 0, activityTotalCount = 40)
-        )
-        assertEquals(
-            12,
-            homeActivitySidebarUnreadCount(homeUnreadCount = 8, activityUnreadCount = 12, activityTotalCount = 40)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 14, activityTotalCount = 40)
         )
         assertEquals(
             40,
-            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 0, activityTotalCount = 40)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 0, activityTotalCount = 40)
+        )
+        assertEquals(
+            40,
+            homeActivitySidebarUnreadCount(activityUnreadCount = -1, activityTotalCount = 40)
         )
         assertEquals(
             0,
-            homeActivitySidebarUnreadCount(homeUnreadCount = 0, activityUnreadCount = 0, activityTotalCount = 0)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 0, activityTotalCount = 0)
         )
         assertEquals(
-            40,
-            homeActivitySidebarUnreadCount(
-                homeUnreadCount = 9,
-                activityUnreadCount = 0,
-                activityTotalCount = 40,
-                activityUnreadLoaded = true
-            )
-        )
-        assertEquals(
-            11,
-            homeActivitySidebarUnreadCount(
-                homeUnreadCount = 9,
-                activityUnreadCount = 11,
-                activityTotalCount = 40,
-                activityUnreadLoaded = true
-            )
+            3,
+            homeActivitySidebarUnreadCount(activityUnreadCount = 3, activityTotalCount = 0)
         )
     }
 

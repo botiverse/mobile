@@ -1116,14 +1116,10 @@ private fun SlockPresence.toModelPresence(): Presence =
     }
 
 internal fun homeActivitySidebarUnreadCount(
-    homeUnreadCount: Int,
     activityUnreadCount: Int,
-    activityTotalCount: Int = 0,
-    activityUnreadLoaded: Boolean = false
+    activityTotalCount: Int = 0
 ): Int =
-    (if (activityUnreadLoaded) activityUnreadCount else maxOf(homeUnreadCount, activityUnreadCount))
-        .takeIf { it > 0 }
-        ?: activityTotalCount
+    activityUnreadCount.takeIf { it > 0 } ?: activityTotalCount
 
 internal data class SlockHomeSidebarSelection(
     val topAction: SlockHomeSidebarTopSelection? = null,
