@@ -5506,11 +5506,31 @@ private fun ThreadComposerContentWithSuggestions(
                 )
             }
         }
+    var retainedMemberSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerMemberItem>()) }
+    var retainedChannelSuggestions by remember(surface) { mutableStateOf(emptyList<KuiklyComposerChannelItem>()) }
+    LaunchedEffect(loadedMemberSuggestions) {
+        if (loadedMemberSuggestions.isNotEmpty()) {
+            retainedMemberSuggestions = loadedMemberSuggestions
+        }
+    }
+    LaunchedEffect(loadedChannelSuggestions) {
+        if (loadedChannelSuggestions.isNotEmpty()) {
+            retainedChannelSuggestions = loadedChannelSuggestions
+        }
+    }
+    val renderedMemberSuggestions =
+        loadedMemberSuggestions.takeIf { it.isNotEmpty() }
+            ?: retainedMemberSuggestions.takeIf { it.isNotEmpty() }
+            ?: state.memberSuggestions
+    val renderedChannelSuggestions =
+        loadedChannelSuggestions.takeIf { it.isNotEmpty() }
+            ?: retainedChannelSuggestions.takeIf { it.isNotEmpty() }
+            ?: state.channelSuggestions
     val renderedState =
-        remember(state, loadedMemberSuggestions, loadedChannelSuggestions) {
+        remember(state, renderedMemberSuggestions, renderedChannelSuggestions) {
             state.copy(
-                memberSuggestions = loadedMemberSuggestions.takeIf { it.isNotEmpty() } ?: state.memberSuggestions,
-                channelSuggestions = loadedChannelSuggestions.takeIf { it.isNotEmpty() } ?: state.channelSuggestions
+                memberSuggestions = renderedMemberSuggestions,
+                channelSuggestions = renderedChannelSuggestions
             )
         }
     ThreadComposerContent(

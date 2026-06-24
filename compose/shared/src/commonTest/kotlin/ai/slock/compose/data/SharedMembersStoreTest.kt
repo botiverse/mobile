@@ -47,6 +47,55 @@ class SharedMembersStoreTest {
     }
 
     @Test
+    fun refreshSuggestionsKeepsLoadedMembersWhenRequestFails() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        val channelRepository = FakeChannelRepository()
+        val store = store(memberRepository, channelRepository)
+
+        store.ensureSuggestionsForServer("server-1")
+        memberRepository.failMembersNextCalls = 1
+        store.ensureSuggestionsForServer("server-1", force = true)
+
+        assertEquals(2, memberRepository.getMembersCalls)
+        assertEquals(SharedMembersLoadStatus.Error, store.state.value.memberStatus)
+        assertEquals("members_failed", store.state.value.memberErrorCode)
+        assertEquals(listOf(SharedMembersMemberSuggestion("Cindy", "cindy")), store.state.value.memberSuggestions)
+        assertEquals(
+            listOf(SharedMembersMemberSuggestion("Cindy", "cindy")),
+            store.state.value.selectMemberSuggestionSlice().suggestions
+        )
+    }
+
+    @Test
+    fun refreshScopedSuggestionsKeepsLoadedMembersWhenChannelReturnsEmpty() = runBlocking {
+        val memberRepository = FakeMemberRepository()
+        memberRepository.channelMembersByChannel["dm-1"] =
+            listOf(MemberProfile(MemberId("u2"), "Artin", "@artin", MemberKind.Human))
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            mentionChannelId = "dm-1",
+            memberScopedMentions = true
+        )
+        memberRepository.channelMembersByChannel["dm-1"] = emptyList()
+        store.ensureSuggestionsForServer(
+            serverId = "server-1",
+            force = true,
+            mentionChannelId = "dm-1",
+            memberScopedMentions = true
+        )
+
+        assertEquals(2, memberRepository.getChannelMembersCalls)
+        assertEquals(SharedMembersLoadStatus.Loaded, store.state.value.memberStatus)
+        assertEquals(listOf(SharedMembersMemberSuggestion("Artin", "artin")), store.state.value.memberSuggestions)
+        assertEquals(
+            listOf(SharedMembersMemberSuggestion("Artin", "artin")),
+            store.state.value.selectMemberSuggestionSlice("dm-1", memberScopedMentions = true).suggestions
+        )
+    }
+
+    @Test
     fun memberScopedMentionScopeLoadsChannelMembersWithoutServerMembers() = runBlocking {
         val memberRepository = FakeMemberRepository()
         memberRepository.channelMembersByChannel["dm-1"] =
@@ -459,10 +508,11 @@ class SharedMembersStoreTest {
 
     private class FakeMemberRepository(
         members: List<MemberProfile> = listOf(MemberProfile(MemberId("u1"), "Cindy", "cindy", MemberKind.Human)),
-        private var failMembersFirstCalls: Int = 0
+        failMembersFirstCalls: Int = 0
     ) : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to members)
         val channelMembersByChannel = mutableMapOf<String, List<MemberProfile>>()
+        var failMembersNextCalls = failMembersFirstCalls
         var getMembersCalls = 0
         var getChannelMembersCalls = 0
 
@@ -471,8 +521,8 @@ class SharedMembersStoreTest {
             serverId: ServerId
         ): DataResult<MemberSnapshot> {
             getMembersCalls += 1
-            if (failMembersFirstCalls > 0) {
-                failMembersFirstCalls -= 1
+            if (failMembersNextCalls > 0) {
+                failMembersNextCalls -= 1
                 return DataResult.Error(ScreenError("members_failed"))
             }
             return DataResult.Content(MemberSnapshot(server(serverId.value), membersByServer[serverId.value].orEmpty()))
