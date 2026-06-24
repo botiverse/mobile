@@ -833,7 +833,16 @@ private fun SettingsAccountEmptyMessage(title: String, detail: String) {
 }
 
 internal fun List<KuiklySettingsConnectedAccount>.visibleSettingsConnectedAccounts(): List<KuiklySettingsConnectedAccount> =
-    filterNot { it.isPasswordCredentialProvider() }
+    filterNot { it.isPasswordCredentialProvider() || it.isHiddenMobileAccountProvider() }
+
+private fun KuiklySettingsConnectedAccount.isHiddenMobileAccountProvider(): Boolean {
+    val providerIdValue = providerId.trim().lowercase()
+    val providerValue = provider.trim().lowercase()
+    return providerIdValue == "google" ||
+        providerIdValue == "github" ||
+        providerValue == "google" ||
+        providerValue == "github"
+}
 
 private fun KuiklySettingsConnectedAccount.isPasswordCredentialProvider(): Boolean {
     val providerIdValue = providerId.trim().lowercase()

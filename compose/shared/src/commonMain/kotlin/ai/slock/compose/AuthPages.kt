@@ -83,8 +83,13 @@ private const val AUTH_REGISTER_VISUAL_DEFAULT_PASSWORD = "correct horse battery
 private const val AUTH_TERMS_URL = "https://slock.ai/terms"
 private const val AUTH_PRIVACY_URL = "https://slock.ai/privacy"
 
+private val MobileHiddenSocialAuthProviders = setOf(AuthProvider.Google, AuthProvider.GitHub)
+
 private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
+
+private fun Set<AuthProvider>.visibleMobileSocialAuthProviders(): Set<AuthProvider> =
+    filterNot { provider -> provider in MobileHiddenSocialAuthProviders }.toSet()
 
 private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
     val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
@@ -850,6 +855,7 @@ internal fun LoginContent(
     var emailDraft by remember { mutableStateOf(email) }
     var passwordDraft by remember { mutableStateOf(password) }
     val passwordFocusRequester = remember { FocusRequester() }
+    val visibleSocialProviders = remember(socialProviders) { socialProviders.visibleMobileSocialAuthProviders() }
     LaunchedEffect(email) {
         if (email != emailDraft) {
             emailDraft = email
@@ -916,9 +922,9 @@ internal fun LoginContent(
                 loading = submitting,
                 preserveDisabledVisual = true
             )
-            if (socialProviders.isNotEmpty()) {
+            if (visibleSocialProviders.isNotEmpty()) {
                 AuthDivider()
-                if (AuthProvider.Google in socialProviders) {
+                if (AuthProvider.Google in visibleSocialProviders) {
                     AuthActionButton(
                         text = if (socialSubmittingProvider == AuthProvider.Google) "Opening Google" else "Continue with Google",
                         onClick = { onSocialSignIn(AuthProvider.Google) },
@@ -929,7 +935,7 @@ internal fun LoginContent(
                         leadingContent = { AuthProviderIcon(AuthProvider.Google) }
                     )
                 }
-                if (AuthProvider.GitHub in socialProviders) {
+                if (AuthProvider.GitHub in visibleSocialProviders) {
                     AuthActionButton(
                         text = if (socialSubmittingProvider == AuthProvider.GitHub) "Opening GitHub" else "Continue with GitHub",
                         onClick = { onSocialSignIn(AuthProvider.GitHub) },
