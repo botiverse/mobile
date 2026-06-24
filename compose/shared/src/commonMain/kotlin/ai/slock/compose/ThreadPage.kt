@@ -4867,6 +4867,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_LONG_CODE_BLOCK = "long_code_block"
 
 internal fun threadVisualFixture(
     fixture: String,
@@ -5024,6 +5025,79 @@ internal fun threadVisualFixture(
                             handle = "artin",
                             kind = "human",
                             avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                filesPayload = "{}",
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_LONG_CODE_BLOCK ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown",
+                subtitle = "Long code block fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_long_code_block_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "06/25 05:55",
+                            messageType = "Chat",
+                            body =
+                                """
+                                Long code block preview:
+
+                                ```kotlin
+                                data class RenderPlan(
+                                    val messageId: String,
+                                    val viewportWidthDp: Int,
+                                    val codeBlockShouldRemainReadable: Boolean,
+                                    val longLine: String = "alpha-beta-gamma-delta-epsilon-zeta-eta-theta-iota-kappa-lambda-mu"
+                                )
+
+                                fun buildPreview(plan: RenderPlan): String {
+                                    val header = "message=${'$'}{plan.messageId} width=${'$'}{plan.viewportWidthDp}"
+                                    val lines = listOf(
+                                        header,
+                                        "inline code stays separate from fenced blocks",
+                                        "long fenced code should keep a stable dark panel"
+                                    )
+                                    return lines.joinToString(separator = "\n")
+                                }
+                                ```
+
+                                End of preview.
+                                """.trimIndent(),
+                            threadChannelId = "thread-msg-long-code-block-visual"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
                         )
                     ),
                 showComposer = false,
