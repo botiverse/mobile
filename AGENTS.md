@@ -53,6 +53,19 @@ git submodule update --init --recursive third_party/slock-source
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
+## Members Invite Link URL Rule
+
+- Members invite-link loading and copying must use the current Developer
+  environment web base URL, not a hardcoded production host.
+- On load, read the active Developer environment through
+  `BridgeSettingsPlatformCapabilities.loadDeveloper()`, pass its `webUrl` to
+  `normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)`, and store/display the
+  normalized result.
+- The copy button must pass the same `webBaseUrl` into
+  `normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)` so the copied link and the
+  displayed field cannot drift across staging, local, or production
+  environments.
+
 ## Route / PageData MVI Contract Rule
 
 - Iron rule: do not pass product content/state through route, launch, or
