@@ -2516,12 +2516,7 @@ private fun MembersDetailHeader(
     val summary = detail?.summary
     val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
-    val statusLabel =
-        if (deleted) {
-            "Deleted"
-        } else {
-            agentStatusDisplayState.status?.label ?: member.detailStatusLabel
-        }
+    val headerMetaLabel = if (deleted) "Deleted" else member.detailHandle
     val avatarClick = onAvatarClick
     val topSafeArea = slockTopSafeAreaPadding()
     Box(
@@ -2548,6 +2543,7 @@ private fun MembersDetailHeader(
                 avatarSize = 42.dp,
                 statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
+                showStatusOverlay = false,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
                 } else {
@@ -2571,17 +2567,12 @@ private fun MembersDetailHeader(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = statusLabel,
+                        text = headerMetaLabel,
                         style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
                         color = if (deleted) SlockColor.AccentOrange else SlockColor.TextMutedGray,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
-                    )
-                    SlockStatusIndicator(
-                        color = if (deleted) SlockColor.AccentOrange else agentStatusDisplayState.color,
-                        size = 8.dp,
-                        pulsing = !deleted && agentStatusDisplayState.pulsing
                     )
                 }
             }
@@ -3284,14 +3275,7 @@ private fun MembersAgentProfileHeader(
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
-                    .then(
-                        if (canEdit) {
-                            Modifier.clickable { onToggleAvatarPicker() }
-                        } else {
-                            Modifier
-                        }
-                    ),
+                    .size(64.dp),
                 contentAlignment = Alignment.Center
             ) {
                 MembersAvatar(
@@ -3299,44 +3283,19 @@ private fun MembersAgentProfileHeader(
                     avatarSize = 64.dp,
                     showStatusOverlay = false
                 )
-                if (canEdit) {
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(alpha = 0.45f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        SlockLucideIcon(
-                            SlockLucideIconName.Pencil,
-                            modifier = Modifier.size(18.dp),
-                            color = "#FFFFFFFF"
-                        )
-                    }
-                }
             }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = member.displayName,
-                        style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 22.sp)
-                            .withSlockFontWeight(FontWeight.Bold),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
-                    )
-                    SlockStatusIndicator(
-                        color = statusDisplayState.color,
-                        pulsing = statusDisplayState.pulsing
-                    )
-                }
+                Text(
+                    text = member.displayName,
+                    style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 22.sp)
+                        .withSlockFontWeight(FontWeight.Bold),
+                    color = SlockColor.TextBlack,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Text(
                     text = member.detailHandle,
                     style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
@@ -3344,13 +3303,23 @@ private fun MembersAgentProfileHeader(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = statusLabel,
-                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockStatusIndicator(
+                        color = statusDisplayState.color,
+                        size = 8.dp,
+                        pulsing = statusDisplayState.pulsing
+                    )
+                    Text(
+                        text = statusLabel,
+                        style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
