@@ -57,6 +57,7 @@ internal object AndroidAppScopeRealtimeOwner {
     private var realtimeAccessToken: String? = null
     private var realtimeLastSeq: Long = 0L
     private var appVisibility: AppVisibility = AppVisibility.Background
+    private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
 
     fun install(context: Context) {
@@ -99,7 +100,11 @@ internal object AndroidAppScopeRealtimeOwner {
             LOG_TAG,
             "app_scope_lifecycle event=shown source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
         )
-        healthCheckForegroundConnection(context.applicationContext)
+        healthCheckRealtimeConnection(
+            context = context.applicationContext,
+            allowBackground = true,
+            reason = "app_shown"
+        )
     }
 
     fun onAppHidden(source: String = "unknown") {
@@ -107,6 +112,31 @@ internal object AndroidAppScopeRealtimeOwner {
         SlockDiagnosticsLogger.d(
             LOG_TAG,
             "app_scope_lifecycle event=hidden source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
+        )
+    }
+
+    fun enableBackgroundKeepAlive(
+        context: Context,
+        source: String = "unknown"
+    ) {
+        backgroundKeepAliveEnabled = true
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_keep_alive_enabled source=$source visibility=$appVisibility declared_room_surfaces=${surfaceRooms.size}"
+        )
+        healthCheckRealtimeConnection(
+            context = context.applicationContext,
+            allowBackground = true,
+            reason = "background_keep_alive"
+        )
+    }
+
+    fun disableBackgroundKeepAlive(reason: String = "unknown") {
+        if (!backgroundKeepAliveEnabled) return
+        backgroundKeepAliveEnabled = false
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_keep_alive_disabled reason=$reason visibility=$appVisibility"
         )
     }
 
@@ -241,9 +271,13 @@ internal object AndroidAppScopeRealtimeOwner {
     fun onNetworkAvailable(context: Context) {
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=network_available visibility=$appVisibility"
+            "app_scope_lifecycle event=network_available visibility=$appVisibility keep_alive=$backgroundKeepAliveEnabled"
         )
-        healthCheckForegroundConnection(context.applicationContext)
+        healthCheckRealtimeConnection(
+            context = context.applicationContext,
+            allowBackground = backgroundKeepAliveEnabled,
+            reason = "network_available"
+        )
     }
 
     fun onNetworkLost() {
@@ -253,11 +287,15 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    private fun healthCheckForegroundConnection(context: Context) {
-        if (appVisibility != AppVisibility.Foreground) {
+    private fun healthCheckRealtimeConnection(
+        context: Context,
+        allowBackground: Boolean,
+        reason: String
+    ) {
+        if (appVisibility != AppVisibility.Foreground && !allowBackground) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
-                "foreground_reconnect_skip reason=app_background"
+                "realtime_health_check_skip reason=app_background trigger=$reason"
             )
             return
         }
@@ -267,7 +305,7 @@ internal object AndroidAppScopeRealtimeOwner {
         if (client == null || serverId == null || accessToken.isNullOrBlank()) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
-                "foreground_reconnect_skip reason=missing_owner_session"
+                "realtime_health_check_missing_owner_session trigger=$reason"
             )
             connectFromStoredSession(context, realtimeLastSeq)
             return
@@ -275,7 +313,7 @@ internal object AndroidAppScopeRealtimeOwner {
         if (client.checkHeartbeatSilence()) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
-                "foreground_reconnect reason=heartbeat_silent serverId=${serverId.value}"
+                "realtime_health_check_reconnect reason=heartbeat_silent trigger=$reason serverId=${serverId.value}"
             )
             joinDeclaredRooms()
             return
@@ -287,14 +325,14 @@ internal object AndroidAppScopeRealtimeOwner {
             RealtimeConnectionState.RoomsJoined -> {
                 SlockDiagnosticsLogger.d(
                     LOG_TAG,
-                    "foreground_reconnect_skip reason=already_connected state=${state::class.simpleName} serverId=${serverId.value}"
+                    "realtime_health_check_skip reason=already_connected trigger=$reason state=${state::class.simpleName} serverId=${serverId.value}"
                 )
                 joinDeclaredRooms()
             }
             RealtimeConnectionState.Connecting ->
                 SlockDiagnosticsLogger.d(
                     LOG_TAG,
-                    "foreground_reconnect_skip reason=connecting serverId=${serverId.value}"
+                    "realtime_health_check_skip reason=connecting trigger=$reason serverId=${serverId.value}"
                 )
         }
     }
@@ -315,6 +353,7 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeSessionKey = null
         realtimeAccessToken = null
         realtimeLastSeq = 0L
+        backgroundKeepAliveEnabled = false
         surfaceRooms.clear()
         joinedRooms.clear()
         SlockDiagnosticsLogger.d(
@@ -430,7 +469,17 @@ internal object AndroidAppScopeRealtimeOwner {
                 maxOf(requestedLastSeq, realtimeLastSeq)
             }
         if (!forceReconnect && realtimeServerId == serverId && realtimeSessionKey == nextSessionKey) {
-            return DataResult.Content(Unit)
+            when (val state = client.state) {
+                RealtimeConnectionState.Connected,
+                RealtimeConnectionState.RoomsJoined,
+                RealtimeConnectionState.Connecting -> return DataResult.Content(Unit)
+                RealtimeConnectionState.Disconnected,
+                is RealtimeConnectionState.Failed ->
+                    SlockDiagnosticsLogger.d(
+                        LOG_TAG,
+                        "connect_same_session_reconnect state=${state::class.simpleName} serverId=${serverId.value}"
+                    )
+            }
         }
         realtimeSessionKey = nextSessionKey
         realtimeServerId = serverId

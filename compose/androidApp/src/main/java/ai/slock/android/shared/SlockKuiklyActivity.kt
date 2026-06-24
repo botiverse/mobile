@@ -178,6 +178,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             context = applicationContext,
             source = "activity_on_resume"
         )
+        AndroidRealtimeKeepAliveController.start(
+            context = applicationContext,
+            source = "activity_on_resume"
+        )
         attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
     }
@@ -698,6 +702,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     internal fun requestRealtimeDisconnect(reason: String) {
+        AndroidRealtimeKeepAliveController.stop(applicationContext, reason)
         AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(reason)
     }
 
