@@ -1762,7 +1762,7 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
 internal fun formatHomeSavedCount(savedCount: Int): String? =
     when {
         savedCount <= 0 -> null
-        savedCount > 100 -> "99+"
+        savedCount >= 100 -> "99+"
         else -> savedCount.toString()
     }
 
