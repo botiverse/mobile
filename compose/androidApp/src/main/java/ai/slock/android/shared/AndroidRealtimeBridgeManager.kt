@@ -10,17 +10,24 @@ import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
 import ai.slock.android.core.data.realtime.SocketIoSocketTransport
 import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.DirectMessageCreated
+import ai.slock.android.core.model.Message
+import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.SlockLocalPreferenceStore
+import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.realtime.RealtimeAuth
 import ai.slock.compose.data.realtime.RealtimeConnectionState
 import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
+import ai.slock.compose.model.ConversationKind
+import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -247,10 +254,13 @@ internal object AndroidRealtimeBridgeManager {
         realtimeSubscription =
             repository.observeEvents { event ->
                 scope.launch {
-                    realtimeServerId ?: return@launch
+                    val serverId = realtimeServerId ?: return@launch
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
                         joinRoom(event.channelId, reason = "direct_message_created")
+                    }
+                    if (event is MessageNew) {
+                        maybePostBackgroundUnreadNotification(appContext = context.applicationContext, sessionStore, serverId, event)
                     }
                 }
             }
@@ -390,6 +400,79 @@ internal object AndroidRealtimeBridgeManager {
             "raw_event_fanout eventName=$eventName serverId=${serverId.value} consumer_count=${snapshot.size}"
         )
     }
+
+    private suspend fun maybePostBackgroundUnreadNotification(
+        appContext: Context,
+        sessionStore: EncryptedAuthSessionStore,
+        serverId: ServerId,
+        event: MessageNew
+    ) {
+        val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
+        if (!shouldPostBackgroundUnreadNotification(consumers.isNotEmpty(), preferenceEnabled)) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(consumers.isNotEmpty(), preferenceEnabled)} serverId=${serverId.value}"
+            )
+            return
+        }
+        val session = sessionStore.readSession()
+        val request =
+            buildSystemUnreadNotificationRequest(
+                serverId = serverId.value,
+                message = event.message,
+                currentMemberId = session?.user?.id,
+                isVisibleThread = false,
+                conversationName = null,
+                conversationKind = event.message.backgroundNotificationConversationKind(),
+                currentMemberHandle = session?.user?.email,
+                isAppInForeground = false
+            )
+        if (request == null) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.message.id.value}"
+            )
+            return
+        }
+        val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.message.id.value}"
+        )
+    }
+
+    internal fun shouldPostBackgroundUnreadNotification(hasAttachedConsumers: Boolean, preferenceEnabled: Boolean): Boolean =
+        !hasAttachedConsumers && preferenceEnabled
+
+    internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
+        when {
+            message.parentMessageId != null || message.threadChannelId != null -> ConversationKind.Thread
+            message.channelId != null -> ConversationKind.Channel
+            else -> null
+        }
+
+    private fun Message.backgroundNotificationConversationKind(): ConversationKind? =
+        backgroundUnreadNotificationConversationKind(this)
+
+    private fun backgroundUnreadNotificationSkipReason(hasAttachedConsumers: Boolean, preferenceEnabled: Boolean): String =
+        when {
+            hasAttachedConsumers -> "foreground_consumer"
+            !preferenceEnabled -> "preference_disabled"
+            else -> "unknown"
+        }
+
+    private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
+        runCatching {
+            SlockKuiklyMMKVModule.ensureInitialized(context.applicationContext)
+            MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+                .decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "false") == "true"
+        }.getOrElse { error ->
+            SlockDiagnosticsLogger.w(
+                LOG_TAG,
+                "background_unread_notification_preference_failed message=${error.message.orEmpty()}"
+            )
+            false
+        }
 
     private fun Long.updateFrom(event: RealtimeEvent): Long =
         RealtimeCursorPolicy.updateAppliedSeq(this, event)

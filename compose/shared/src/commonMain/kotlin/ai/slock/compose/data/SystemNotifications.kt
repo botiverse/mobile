@@ -7,6 +7,8 @@ data class NotificationPreferenceSnapshot(
     val enabled: Boolean
 )
 
+const val NOTIFICATION_ENABLED_PREFERENCE_KEY = "notifications:enabled"
+
 interface NotificationPreferenceStore {
     fun readNotificationEnabledSync(): Boolean
     suspend fun readNotificationEnabled(): Boolean
@@ -27,7 +29,7 @@ class KeyValueNotificationPreferenceStore(
     }
 
     private companion object {
-        const val KEY_NOTIFICATION_ENABLED = "notifications:enabled"
+        const val KEY_NOTIFICATION_ENABLED = NOTIFICATION_ENABLED_PREFERENCE_KEY
     }
 }
 

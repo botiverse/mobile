@@ -1,0 +1,192 @@
+package ai.slock.android.shared
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import ai.slock.android.R
+import ai.slock.compose.data.SystemUnreadNotificationRequest
+import org.json.JSONObject
+
+internal object AndroidUnreadNotificationPoster {
+    const val SHARED_NOTIFICATION_CHANNEL_ID = "shared-system-notifications-v1"
+
+    private const val UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID = "slock-unread-general-v1"
+    private const val UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID = "slock-unread-channel-v1"
+    private const val UNREAD_DM_NOTIFICATION_CHANNEL_ID = "slock-unread-dm-v1"
+    private const val UNREAD_MENTION_NOTIFICATION_CHANNEL_ID = "slock-unread-mention-v1"
+
+    fun postUnreadNotification(context: Context, request: SystemUnreadNotificationRequest): Map<String, Any> =
+        postUnreadNotification(context, request.toJson())
+
+    fun postUnreadNotification(context: Context, request: JSONObject): Map<String, Any> {
+        val appContext = context.applicationContext
+        if (!hasNotificationPermission(appContext)) {
+            return mapOf("status" to "error", "code" to "permission_denied")
+        }
+        ensureSharedNotificationChannels(appContext)
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) {
+            return mapOf("status" to "error", "code" to "notifications_disabled")
+        }
+        val category = request.optString("category")
+        val channelId = notificationChannelIdForCategory(category)
+        if (isNotificationChannelBlocked(appContext, channelId)) {
+            return mapOf("status" to "error", "code" to "channel_blocked", "channelId" to channelId)
+        }
+        val title = request.optString("title").takeIf { it.isNotBlank() } ?: appContext.getString(R.string.app_name)
+        val body = request.optString("body").takeIf { it.isNotBlank() } ?: appContext.getString(R.string.notification_unread_default_text)
+        val notificationKey =
+            request.optString("notificationKey").takeIf { it.isNotBlank() }
+                ?: "${request.optString("serverId")}:${request.optString("threadId")}:${request.optString("messageId")}"
+        val notificationId = stableNotificationId(notificationKey)
+        val contentIntent = unreadNotificationContentIntent(appContext, request, notificationId)
+        return runCatching {
+            NotificationManagerCompat.from(appContext)
+                .notify(
+                    notificationId,
+                    NotificationCompat.Builder(appContext, channelId)
+                        .setSmallIcon(android.R.drawable.ic_dialog_info)
+                        .setContentTitle(title)
+                        .setContentText(body)
+                        .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .setCategory(NotificationCompat.CATEGORY_MESSAGE)
+                        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                        .setWhen(System.currentTimeMillis())
+                        .setShowWhen(true)
+                        .setContentIntent(contentIntent)
+                        .setAutoCancel(true)
+                        .build()
+                )
+            mapOf(
+                "status" to "ok",
+                "code" to "posted",
+                "notificationId" to notificationId,
+                "channelId" to channelId
+            )
+        }.getOrElse { error ->
+            mapOf(
+                "status" to "error",
+                "code" to "post_failed",
+                "message" to (error.message ?: error.javaClass.simpleName)
+            )
+        }
+    }
+
+    fun hasNotificationPermission(context: Context): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context.applicationContext, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    fun ensureSharedNotificationChannels(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val appContext = context.applicationContext
+        val manager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannels(
+            listOf(
+                NotificationChannel(
+                    SHARED_NOTIFICATION_CHANNEL_ID,
+                    appContext.getString(R.string.settings_notification_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = appContext.getString(R.string.settings_notification_channel_description)
+                    enableVibration(false)
+                },
+                NotificationChannel(
+                    UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID,
+                    appContext.getString(R.string.notification_unread_general_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = appContext.getString(R.string.notification_unread_general_channel_description)
+                },
+                NotificationChannel(
+                    UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID,
+                    appContext.getString(R.string.notification_unread_channel_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = appContext.getString(R.string.notification_unread_channel_channel_description)
+                },
+                NotificationChannel(
+                    UNREAD_DM_NOTIFICATION_CHANNEL_ID,
+                    appContext.getString(R.string.notification_unread_dm_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT
+                ).apply {
+                    description = appContext.getString(R.string.notification_unread_dm_channel_description)
+                },
+                NotificationChannel(
+                    UNREAD_MENTION_NOTIFICATION_CHANNEL_ID,
+                    appContext.getString(R.string.notification_unread_mention_channel_name),
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = appContext.getString(R.string.notification_unread_mention_channel_description)
+                }
+            )
+        )
+    }
+
+    fun isNotificationChannelBlocked(context: Context, channelId: String): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val appContext = context.applicationContext
+        val channel =
+            (appContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .getNotificationChannel(channelId)
+        return channel?.importance == NotificationManager.IMPORTANCE_NONE
+    }
+
+    private fun unreadNotificationContentIntent(context: Context, request: JSONObject, notificationId: Int): PendingIntent? {
+        val appContext = context.applicationContext
+        val pageData = SlockKuiklyActivity.buildUnreadNotificationThreadPageData(request)
+        val intent =
+            if (pageData != null) {
+                Intent(appContext, SlockKuiklyActivity::class.java)
+                    .putExtra(SlockKuiklyActivity.KEY_PAGE_NAME, SlockKuiklyActivity.PAGE_THREAD)
+                    .putExtra(SlockKuiklyActivity.KEY_PAGE_DATA, SlockKuiklyPageData.fromJson(pageData).text)
+            } else {
+                appContext.packageManager.getLaunchIntentForPackage(appContext.packageName)
+            } ?: return null
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        return PendingIntent.getActivity(
+            appContext,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun notificationChannelIdForCategory(category: String): String =
+        when (category) {
+            "channel_unread" -> UNREAD_CHANNEL_NOTIFICATION_CHANNEL_ID
+            "direct_message" -> UNREAD_DM_NOTIFICATION_CHANNEL_ID
+            "mention" -> UNREAD_MENTION_NOTIFICATION_CHANNEL_ID
+            else -> UNREAD_GENERAL_NOTIFICATION_CHANNEL_ID
+        }
+
+    private fun stableNotificationId(key: String): Int {
+        val hash = key.hashCode()
+        return if (hash == Int.MIN_VALUE) {
+            Int.MAX_VALUE
+        } else {
+            kotlin.math.abs(hash).coerceAtLeast(1)
+        }
+    }
+
+    private fun SystemUnreadNotificationRequest.toJson(): JSONObject =
+        JSONObject()
+            .put("serverId", serverId)
+            .put("messageId", messageId)
+            .put("threadId", threadId)
+            .put("channelId", channelId.orEmpty())
+            .put("parentChannelId", parentChannelId.orEmpty())
+            .put("parentMessageId", parentMessageId.orEmpty())
+            .put("category", category.wireValue)
+            .put("title", title)
+            .put("body", body)
+            .put("notificationKey", notificationKey)
+}

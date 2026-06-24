@@ -155,7 +155,7 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
         @Volatile
         private var initialized = false
 
-        private fun ensureInitialized(context: Context) {
+        internal fun ensureInitialized(context: Context) {
             if (initialized) return
             synchronized(this) {
                 if (!initialized) {

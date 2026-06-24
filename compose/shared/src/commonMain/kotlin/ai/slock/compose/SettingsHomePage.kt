@@ -20,7 +20,6 @@ import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
 import ai.slock.compose.data.NetworkSlockHomeApi
 import ai.slock.compose.data.BridgeSettingsPlatformCapabilities
-import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.ComposeLocalWriteThrough
 import ai.slock.compose.data.KeyValueChatLayoutPreferenceStore
 import ai.slock.compose.data.KeyValueLocalePreferenceStore
@@ -1509,8 +1508,6 @@ private fun SlockAppShellContent() {
     val settingsState by settingsViewModel.state.collectAsState()
     val readySession = (authGateState as? SharedAuthGateState.Ready)?.session
     val readyServerId = readySession?.currentServerId
-    val latestHomeState by rememberUpdatedState(homeState)
-    val latestNotificationPreferenceSnapshot by rememberUpdatedState(notificationPreferenceSnapshot)
     val latestReadySession by rememberUpdatedState(readySession)
     val latestSelectedTab by rememberUpdatedState(selectedTab)
     val latestSelectedHomeDestination by rememberUpdatedState(selectedHomeDestination)
@@ -2138,28 +2135,6 @@ private fun SlockAppShellContent() {
                         }
                     if (shouldRefreshMemberDetail) {
                         membersAgentDetailRefreshKey += 1
-                    }
-                    if (event is MessageNew && latestNotificationPreferenceSnapshot.enabled) {
-                        val conversation = latestHomeState.systemNotificationConversation(event.message)
-                        val request =
-                            buildSystemUnreadNotificationRequest(
-                                serverId = serverId,
-                                message = event.message,
-                                currentMemberId = activeSession?.user?.id,
-                                isVisibleThread = false,
-                                conversationName = conversation?.name,
-                                conversationKind = conversation?.kind,
-                                currentMemberHandle = activeSession?.user?.email,
-                                isAppInForeground = true
-                            )
-                        if (request != null) {
-                            appShellCoroutineScope.launch {
-                                val result = settingsCapabilities.postUnreadNotification(request)
-                                if (!result.ok) {
-                                    bridge.log("system_unread_notification_failed code=${result.code} message=${result.message}")
-                                }
-                            }
-                        }
                     }
                     if (event.shouldEmitAppShellRouteMarker()) {
                         bridge.performanceMarker(
