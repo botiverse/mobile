@@ -70,6 +70,8 @@ internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore,
     private val diagnosticsLogger: ((String) -> Unit)? = null
 ) {
+    private var activeKeysCache: Set<String>? = null
+
     fun read(key: String): SharedThreadComposerPersistedDraft? {
         val text = store.getString(textKey(key)) ?: return null
         return SharedThreadComposerPersistedDraft(
@@ -116,6 +118,9 @@ internal class SharedThreadComposerDraftPersistence(
     private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
 
     private fun activeKeys(): Set<String> =
+        activeKeysCache ?: readActiveKeysFromStore().also { activeKeysCache = it }
+
+    private fun readActiveKeysFromStore(): Set<String> =
         store.getString(ActiveIndexKey)
             ?.lineSequence()
             ?.map { it.trim() }
@@ -132,6 +137,7 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     private fun writeActiveKeys(keys: Set<String>) {
+        activeKeysCache = keys
         store.putString(ActiveIndexKey, keys.sorted().joinToString(separator = "\n").takeIf { it.isNotBlank() })
     }
 

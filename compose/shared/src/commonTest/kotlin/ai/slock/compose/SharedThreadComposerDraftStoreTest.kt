@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.InMemorySlockKeyValueStore
+import ai.slock.compose.data.SharedPreferenceStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -133,6 +134,22 @@ class SharedThreadComposerDraftStoreTest {
         persistence.save(draftKey, "", asTask = false)
 
         assertTrue(persistence.activeDraftRecords().isEmpty())
+    }
+
+    @Test
+    fun clearingBlankDraftUpdatesActiveRecordsBeforeAsyncStorageReadCatchesUp() {
+        val persistence = SharedThreadComposerDraftPersistence(DelayedReadSharedPreferenceStore())
+        val replyDraftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
+        val rootDraftKey = "send=channel-1|parent=_|mention=channel-1"
+
+        persistence.save(replyDraftKey, "reply draft", asTask = false)
+        persistence.save(rootDraftKey, "channel draft", asTask = false)
+
+        persistence.save(rootDraftKey, "", asTask = false)
+
+        val records = persistence.activeDraftRecords()
+        assertTrue(records.any { it.matchesReplyThread("message-1") })
+        assertFalse(records.any { it.matchesRootConversation("channel-1") })
     }
 
     @Test
@@ -443,5 +460,16 @@ class SharedThreadComposerDraftStoreTest {
         )
         assertEquals(emptyList(), store.state.value.pendingMentionActions)
         assertEquals("delivered", store.state.value.mentionActionNotice)
+    }
+}
+
+private class DelayedReadSharedPreferenceStore : SharedPreferenceStore {
+    private val committed = mutableMapOf<String, String>()
+
+    override fun getString(key: String): String? = committed[key]
+
+    override fun putString(key: String, value: String?) {
+        // Mirrors Kuikly MMKV's async bridge shape: a write can be scheduled
+        // before a same-turn read observes it.
     }
 }
