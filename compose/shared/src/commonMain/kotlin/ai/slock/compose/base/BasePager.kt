@@ -7,6 +7,7 @@ import ai.slock.compose.network.SlockNetworkModule
 import com.tencent.kuikly.compose.ComposeContainer
 import com.tencent.kuikly.core.module.Module
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IModuleCreator
 import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.core.reactive.handler.*
 
@@ -22,8 +23,21 @@ internal abstract class BasePager : ComposeContainer() {
     }
 
     override fun willInit() {
+        registerSlockExternalModuleCreators()
         super.willInit()
         configureKuiklyThreadVerification()
+    }
+
+    private fun registerSlockExternalModuleCreators() {
+        registerModule(BridgeModule.MODULE_NAME, object : IModuleCreator {
+            override fun createModule(): Module = BridgeModule()
+        })
+        registerModule(KuiklyMMKVModule.MODULE_NAME, object : IModuleCreator {
+            override fun createModule(): Module = KuiklyMMKVModule()
+        })
+        registerModule(SlockNetworkModule.MODULE_NAME, object : IModuleCreator {
+            override fun createModule(): Module = SlockNetworkModule()
+        })
     }
 
     override fun created() {
