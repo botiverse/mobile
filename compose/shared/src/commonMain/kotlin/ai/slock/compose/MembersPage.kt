@@ -908,12 +908,9 @@ internal fun MembersPageContent() {
         inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
         inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
         inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-        inviteHumanJoinLinkCopy = {
-            val url = inviteHumanJoinUrlCopyPayload(inviteJoinLinkUrl, inviteJoinLinkWebBaseUrl)
-            if (url != null) {
-                bridge.copyToPasteboard(url)
-                inviteJoinLinkCopied = true
-            }
+        inviteHumanJoinLinkCopy = { url ->
+            bridge.copyToPasteboard(url)
+            inviteJoinLinkCopied = true
         },
         inviteHumanLoadJoinLink = { loadInviteJoinLink() }
     )
@@ -1593,7 +1590,7 @@ internal fun MembersRouteContent(
     inviteHumanJoinLinkLoading: Boolean = false,
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: () -> Unit = {},
+    inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
@@ -1636,7 +1633,7 @@ internal fun MembersListContent(
     inviteHumanJoinLinkLoading: Boolean = false,
     inviteHumanJoinLinkUrl: String? = null,
     inviteHumanJoinLinkCopied: Boolean = false,
-    inviteHumanJoinLinkCopy: () -> Unit = {},
+    inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {

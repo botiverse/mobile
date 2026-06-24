@@ -56,7 +56,7 @@ internal fun SharedInviteHumanDialog(
     joinLinkLoading: Boolean,
     joinLinkUrl: String?,
     copied: Boolean,
-    onCopyJoinLink: () -> Unit,
+    onCopyJoinLink: (String) -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (emails: List<String>) -> Unit
 ) {
@@ -66,6 +66,7 @@ internal fun SharedInviteHumanDialog(
     val emails = listOf(email1, email2, email3)
     val anyFilled = emails.any { it.isNotBlank() }
     val canSubmit = !submitting && anyFilled && !joinLinkLoading
+    val copyableJoinLink = inviteHumanJoinUrlCopyPayload(joinLinkUrl)
 
     SlockUnifiedDialog(
         title = "INVITE HUMAN",
@@ -90,8 +91,8 @@ internal fun SharedInviteHumanDialog(
                 ) {
                     val linkText = when {
                         joinLinkLoading -> "Preparing join link…"
-                        joinLinkUrl.isNullOrBlank() -> "Join link unavailable"
-                        else -> normalizeInviteHumanJoinUrl(joinLinkUrl).orEmpty()
+                        copyableJoinLink == null -> "Join link unavailable"
+                        else -> copyableJoinLink
                     }
                     SlockBrutalReadOnlyValueField(
                         value = linkText,
@@ -107,11 +108,11 @@ internal fun SharedInviteHumanDialog(
                     )
                     SlockBrutalIconButton(
                         iconName = if (copied) SlockLucideIconName.Check else SlockLucideIconName.Copy,
-                        enabled = !joinLinkLoading && !joinLinkUrl.isNullOrBlank(),
+                        enabled = !joinLinkLoading && copyableJoinLink != null,
                         backgroundColor = SlockColor.SurfaceWhite,
                         size = 42.dp,
                         iconSize = 16.dp,
-                        onClick = onCopyJoinLink
+                        onClick = { copyableJoinLink?.let(onCopyJoinLink) }
                     )
                 }
                 Row(

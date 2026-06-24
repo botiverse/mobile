@@ -8699,12 +8699,9 @@ private fun SharedMembersScreen(
                 inviteHumanJoinLinkLoading = inviteJoinLinkLoading,
                 inviteHumanJoinLinkUrl = inviteJoinLinkUrl,
                 inviteHumanJoinLinkCopied = inviteJoinLinkCopied,
-                inviteHumanJoinLinkCopy = {
-                    val url = inviteJoinLinkUrl
-                    if (url != null) {
-                        bridge.copyToPasteboard(url)
-                        inviteJoinLinkCopied = true
-                    }
+                inviteHumanJoinLinkCopy = { url ->
+                    bridge.copyToPasteboard(url)
+                    inviteJoinLinkCopied = true
                 },
                 inviteHumanLoadJoinLink = { loadInviteJoinLink() },
                 bottomContentPadding = bottomContentPadding
