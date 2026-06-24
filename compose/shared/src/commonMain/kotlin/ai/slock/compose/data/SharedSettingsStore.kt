@@ -147,22 +147,7 @@ data class SharedSettingsApiEnvironmentRequest(
 )
 
 internal fun sharedSettingsDefaultApiEnvironmentOptions(): List<SharedSettingsApiEnvironmentOption> =
-    listOf(
-        SharedSettingsApiEnvironmentOption(
-            key = "production",
-            label = "Production",
-            apiBaseUrl = SLOCK_API_BASE_URL,
-            socketBaseUrl = SLOCK_SOCKET_BASE_URL,
-            webUrl = "https://app.raft.build"
-        ),
-        SharedSettingsApiEnvironmentOption(
-            key = "staging",
-            label = "Staging",
-            apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
-            socketBaseUrl = "https://api-aws-staging.botiverse.dev",
-            webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
-        )
-    )
+    SharedApiEnvironmentStore.predefined
 
 data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
@@ -367,6 +352,12 @@ interface SharedSettingsPlatformCapabilities {
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
         setApiEnvironment(request.key)
 
+    suspend fun onApiEnvironmentChanged(
+        before: SharedSettingsApiEnvironmentOption,
+        after: SharedSettingsApiEnvironmentOption
+    ): DataResult<Unit> =
+        DataResult.Content(Unit)
+
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
@@ -385,6 +376,7 @@ class SharedSettingsDataSource(
     private val localeRepository: LocaleRepository? = null,
     private val chatLayoutPreferenceRepository: ChatLayoutPreferenceRepository? = null,
     private val recompositionProfilerPreferenceRepository: RecompositionProfilerPreferenceRepository? = null,
+    private val apiEnvironmentStore: SharedApiEnvironmentStore? = null,
     private val platformCapabilities: SharedSettingsPlatformCapabilities = object : SharedSettingsPlatformCapabilities {},
     private val diagnosticsLogger: ((String) -> Unit)? = null,
     private val recompositionProfilerController: SharedSettingsRecompositionProfilerController =
@@ -692,13 +684,53 @@ class SharedSettingsDataSource(
     }
 
     suspend fun loadDeveloper(): DataResult<SharedSettingsDeveloperSnapshot> =
-        platformCapabilities.loadDeveloper()
+        apiEnvironmentStore?.developerSnapshot()?.let { DataResult.Content(it) }
+            ?: platformCapabilities.loadDeveloper()
 
     suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
-        platformCapabilities.setApiEnvironment(environmentKey)
+        apiEnvironmentStore?.let { store ->
+            val before = store.current()
+            val after =
+                store.select(environmentKey)
+                    ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
+            return applyApiEnvironmentChange(store, before, after)
+        } ?: platformCapabilities.setApiEnvironment(environmentKey)
 
     suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
-        platformCapabilities.saveApiEnvironment(request)
+        apiEnvironmentStore?.let { store ->
+            val before = store.current()
+            val after =
+                store.save(request)
+                    ?: return DataResult.Error(ScreenError("settings_developer_environment_unknown", retryable = false))
+            return applyApiEnvironmentChange(store, before, after)
+        } ?: platformCapabilities.saveApiEnvironment(request)
+
+    private suspend fun applyApiEnvironmentChange(
+        store: SharedApiEnvironmentStore,
+        before: SharedSettingsApiEnvironmentOption,
+        after: SharedSettingsApiEnvironmentOption
+    ): DataResult<SharedSettingsDeveloperSnapshot> {
+        val changed = before != after
+        if (changed) {
+            sessionStore.clearSession()
+            when (val result = platformCapabilities.onApiEnvironmentChanged(before, after)) {
+                is DataResult.Content -> Unit
+                is DataResult.Empty -> Unit
+                is DataResult.Error -> diagnosticsLogger?.invoke("api_environment_changed_hook_error code=${result.error.code}")
+                is DataResult.NoPermission -> diagnosticsLogger?.invoke("api_environment_changed_hook_no_permission code=${result.blocker.code}")
+            }
+        }
+        return DataResult.Content(
+            store.developerSnapshot(
+                feedback =
+                    if (changed) {
+                        "API server switched to ${after.label}. Sign in again to use this environment."
+                    } else {
+                        "${after.label} is already selected."
+                    }
+            )
+        )
+    }
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()

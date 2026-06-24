@@ -136,6 +136,26 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDeveloperSnapshot())
     }
 
+    override suspend fun onApiEnvironmentChanged(
+        before: SharedSettingsApiEnvironmentOption,
+        after: SharedSettingsApiEnvironmentOption
+    ): DataResult<Unit> {
+        val response =
+            bridge.settingsCapability(
+                JSONObject()
+                    .put("action", "apiEnvironmentChanged")
+                    .put("beforeEnvironmentKey", before.key)
+                    .put("afterEnvironmentKey", after.key)
+                    .put("apiBaseUrl", after.apiBaseUrl)
+                    .put("socketBaseUrl", after.socketBaseUrl)
+                    .put("webUrl", after.webUrl)
+            )
+        if (response?.optString("status") != "ok") {
+            return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_developer_environment_hook_failed" }))
+        }
+        return DataResult.Content(Unit)
+    }
+
     override suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "loadDiagnostics"))
         if (response?.optString("status") != "ok") {

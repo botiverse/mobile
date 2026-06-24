@@ -468,6 +468,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(this.setApiEnvironmentCapability(records));
           return;
         }
+        case "apiEnvironmentChanged": {
+          callback(this.onApiEnvironmentChangedCapability(records));
+          return;
+        }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
           return;
@@ -655,6 +659,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
         ? `API server switched to ${after.label}. Sign in again to use this environment.`
         : `${after.label} is already selected.`
     );
+  }
+
+  private onApiEnvironmentChangedCapability(records: Record<string, Object>): Record<string, Object> {
+    slockOhosRealtimeBridge.disconnectForSessionEnd("api_environment_changed");
+    SlockOhosDiagnostics.record(
+      "SlockDeveloper",
+      `api_environment_changed from=${(records["beforeEnvironmentKey"] as string) ?? ""} to=${(records["afterEnvironmentKey"] as string) ?? ""}`
+    );
+    return { "status": "ok" };
   }
 
   private loadDiagnosticsCapability(): Record<string, Object> {

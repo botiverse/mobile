@@ -430,6 +430,7 @@ private fun AuthDeveloperScreen() {
         remember {
             SharedSettingsDataSource(
                 sessionStore = sharedStores.authStore,
+                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = BridgeSettingsPlatformCapabilities(bridge),
                 diagnosticsLogger = { message -> bridge.log("compose_auth_developer $message") }
             )
@@ -493,6 +494,7 @@ private fun AuthDiagnosticsScreen() {
         remember {
             SharedSettingsDataSource(
                 sessionStore = sharedStores.authStore,
+                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("compose_auth_diagnostics $message") }
             )

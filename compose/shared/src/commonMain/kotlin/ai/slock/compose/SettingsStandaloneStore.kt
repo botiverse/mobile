@@ -95,6 +95,7 @@ internal fun rememberStandaloneSettingsEnvironment(
                     PersistentRecompositionProfilerPreferenceRepository(
                         KeyValueRecompositionProfilerPreferenceStore(sharedPreferenceStore)
                     ),
+                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("settings_standalone $message") }
             )

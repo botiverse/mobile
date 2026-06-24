@@ -1494,6 +1494,7 @@ private fun SlockAppShellContent() {
                 localeRepository = localeRepository,
                 chatLayoutPreferenceRepository = chatLayoutPreferenceRepository,
                 recompositionProfilerPreferenceRepository = recompositionProfilerPreferenceRepository,
+                apiEnvironmentStore = sharedStores.apiEnvironmentStore,
                 platformCapabilities = settingsCapabilities,
                 diagnosticsLogger = { message -> bridge.log("shared_settings $message") }
             )

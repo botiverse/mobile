@@ -1273,6 +1273,36 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun developerEnvironmentLoadsAndSwitchesThroughSharedApiEnvironmentStore() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = sessionStore,
+                        platformCapabilities = capabilities,
+                        apiEnvironmentStore = SharedApiEnvironmentStore(InMemorySlockKeyValueStore())
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        val initial = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("production", initial.environmentKey)
+
+        store.accept(SharedSettingsIntent.SetApiEnvironment("staging"))
+
+        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("staging", updated.environmentKey)
+        assertEquals("Staging", updated.environmentLabel)
+        assertNull(sessionStore.readSession())
+        assertEquals(listOf("environmentChanged:production:staging"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun defaultDeveloperEnvironmentPresetsIncludeProductionAndStaging() {
         val options = sharedSettingsDefaultApiEnvironmentOptions()
 
@@ -1280,6 +1310,34 @@ class SharedSettingsStoreTest {
         assertEquals("https://api.raft.build/api/", options.first { it.key == "production" }.apiBaseUrl)
         assertEquals("https://api-aws-staging.botiverse.dev/api/", options.first { it.key == "staging" }.apiBaseUrl)
         assertEquals("https://api-aws-staging.botiverse.dev", options.first { it.key == "staging" }.socketBaseUrl)
+    }
+
+    @Test
+    fun sharedApiEnvironmentStorePersistsCustomUrlsAndRewritesProductionDefaults() {
+        val persistence = InMemorySlockKeyValueStore()
+        val store = SharedApiEnvironmentStore(persistence)
+
+        val saved =
+            store.save(
+                SharedSettingsApiEnvironmentRequest(
+                    key = "custom",
+                    label = "Local Dev",
+                    apiBaseUrl = "http://10.0.2.2:3000/api/",
+                    socketBaseUrl = "http://10.0.2.2:3000",
+                    webUrl = "http://10.0.2.2:5173"
+                )
+            )
+
+        assertEquals("custom", saved?.key)
+        assertEquals("custom", SharedApiEnvironmentStore(persistence).current().key)
+        assertEquals(
+            "http://10.0.2.2:3000/api/messages",
+            store.rewriteApiUrl("https://api.raft.build/api/messages")
+        )
+        assertEquals(
+            "http://10.0.2.2:3000",
+            store.resolveSocketUrl("https://api.raft.build")
+        )
     }
 
     @Test
@@ -2254,6 +2312,14 @@ class SharedSettingsStoreTest {
                     buildDeveloperSnapshot(request.key)
                 }
             return DataResult.Content(developerSnapshot)
+        }
+
+        override suspend fun onApiEnvironmentChanged(
+            before: SharedSettingsApiEnvironmentOption,
+            after: SharedSettingsApiEnvironmentOption
+        ): DataResult<Unit> {
+            calls += "environmentChanged:${before.key}:${after.key}"
+            return DataResult.Content(Unit)
         }
 
         override suspend fun clearStorage(target: String): DataResult<SharedSettingsStorageSnapshot> {

@@ -1,6 +1,8 @@
 package ai.slock.android.widget
 
 import android.content.Context
+import ai.slock.android.core.data.auth.AndroidMMKVKeyValueStore
+import ai.slock.compose.data.SlockKeyValueStore
 import org.json.JSONObject
 
 sealed class SlockWidgetState(
@@ -55,11 +57,11 @@ fun SlockWidgetState.asStale(reason: String): SlockWidgetState =
     }
 
 class SlockWidgetCache(context: Context) {
-    private val preferences =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val store: SlockKeyValueStore =
+        AndroidMMKVKeyValueStore(context.applicationContext, PREFERENCES_NAME)
 
     fun read(refreshing: Boolean = false): SlockWidgetState {
-        val encoded = preferences.getString(KEY_STATE, null) ?: return SlockWidgetState.SignedOut
+        val encoded = store.getString(KEY_STATE) ?: return SlockWidgetState.SignedOut
         return runCatching {
             val json = JSONObject(encoded)
             when (json.optString("type")) {
@@ -104,11 +106,11 @@ class SlockWidgetCache(context: Context) {
                 json.put("lastUpdatedAtMillis", state.lastUpdatedAtMillis)
             }
             SlockWidgetState.SignedOut -> {
-                preferences.edit().remove(KEY_STATE).apply()
+                store.putString(KEY_STATE, null)
                 return
             }
         }
-        preferences.edit().putString(KEY_STATE, json.toString()).apply()
+        store.putString(KEY_STATE, json.toString())
     }
 
     private companion object {

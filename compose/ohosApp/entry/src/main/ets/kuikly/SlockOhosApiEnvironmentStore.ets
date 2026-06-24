@@ -45,12 +45,18 @@ export class SlockOhosApiEnvironmentStore {
 
   static current(owner?: Object): SlockOhosApiEnvironment {
     const store = SlockOhosApiEnvironmentStore.store(owner);
-    return SlockOhosApiEnvironmentStore.currentEnvironment(store.decodeString(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT) ?? '', store);
+    return SlockOhosApiEnvironmentStore.currentEnvironment(
+      store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT)) ?? '',
+      store
+    );
   }
 
   static currentForContext(context: common.Context): SlockOhosApiEnvironment {
     const store = SlockOhosApiEnvironmentStore.storeForContext(context);
-    return SlockOhosApiEnvironmentStore.currentEnvironment(store.decodeString(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT) ?? '', store);
+    return SlockOhosApiEnvironmentStore.currentEnvironment(
+      store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT)) ?? '',
+      store
+    );
   }
 
   static select(key: string, owner?: Object): SlockOhosApiEnvironment | null {
@@ -58,14 +64,20 @@ export class SlockOhosApiEnvironmentStore {
     if (environment === undefined) {
       return null;
     }
-    SlockOhosApiEnvironmentStore.store(owner).encodeString(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT, environment.key);
+    SlockOhosApiEnvironmentStore.store(owner).encodeString(
+      SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT),
+      environment.key
+    );
     return environment;
   }
 
   static save(environment: SlockOhosApiEnvironment, owner?: Object): SlockOhosApiEnvironment | null {
     const predefined = SlockOhosApiEnvironmentStore.PREDEFINED.find((item) => item.key === environment.key);
     if (predefined !== undefined) {
-      SlockOhosApiEnvironmentStore.store(owner).encodeString(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT, predefined.key);
+      SlockOhosApiEnvironmentStore.store(owner).encodeString(
+        SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT),
+        predefined.key
+      );
       return predefined;
     }
     const apiBaseUrl = environment.apiBaseUrl.trim();
@@ -82,11 +94,14 @@ export class SlockOhosApiEnvironmentStore {
       webUrl
     };
     const store = SlockOhosApiEnvironmentStore.store(owner);
-    store.encodeString(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT, SlockOhosApiEnvironmentStore.CUSTOM_KEY);
-    store.encodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_LABEL, custom.label);
-    store.encodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_API_BASE_URL, custom.apiBaseUrl);
-    store.encodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_SOCKET_BASE_URL, custom.socketBaseUrl);
-    store.encodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_WEB_URL, custom.webUrl);
+    store.encodeString(
+      SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_ENVIRONMENT),
+      SlockOhosApiEnvironmentStore.CUSTOM_KEY
+    );
+    store.encodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_LABEL), custom.label);
+    store.encodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_API_BASE_URL), custom.apiBaseUrl);
+    store.encodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_SOCKET_BASE_URL), custom.socketBaseUrl);
+    store.encodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_WEB_URL), custom.webUrl);
     return custom;
   }
 
@@ -132,15 +147,17 @@ export class SlockOhosApiEnvironmentStore {
       return predefined;
     }
     if (key === SlockOhosApiEnvironmentStore.CUSTOM_KEY) {
-      const apiBaseUrl = store.decodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_API_BASE_URL) ?? '';
-      const socketBaseUrl = store.decodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_SOCKET_BASE_URL) ?? '';
+      const apiBaseUrl =
+        store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_API_BASE_URL)) ?? '';
+      const socketBaseUrl =
+        store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_SOCKET_BASE_URL)) ?? '';
       if (apiBaseUrl.startsWith('http') && socketBaseUrl.startsWith('http')) {
         return {
           key: SlockOhosApiEnvironmentStore.CUSTOM_KEY,
-          label: store.decodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_LABEL) || 'Custom',
+          label: store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_LABEL)) || 'Custom',
           apiBaseUrl,
           socketBaseUrl,
-          webUrl: store.decodeString(SlockOhosApiEnvironmentStore.KEY_CUSTOM_WEB_URL) ?? ''
+          webUrl: store.decodeString(SlockOhosApiEnvironmentStore.namespaced(SlockOhosApiEnvironmentStore.KEY_CUSTOM_WEB_URL)) ?? ''
         };
       }
     }
@@ -186,5 +203,9 @@ export class SlockOhosApiEnvironmentStore {
 
   private static trimEndSlash(value: string): string {
     return value.replace(/\/+$/, '');
+  }
+
+  private static namespaced(key: string): string {
+    return `${SlockOhosApiEnvironmentStore.PREFERENCES_NAME}:${key}`;
   }
 }

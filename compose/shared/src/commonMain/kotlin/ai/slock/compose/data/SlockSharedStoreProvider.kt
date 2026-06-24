@@ -32,6 +32,7 @@ internal class SlockSharedStoreProvider private constructor(
     val conversationDirectoryStore: SharedConversationDirectoryStore,
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
+    val apiEnvironmentStore: SharedApiEnvironmentStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
@@ -69,6 +70,13 @@ internal class SlockSharedStoreProvider private constructor(
                 conversationDirectoryStore = conversationDirectoryStore,
                 activityStateCache = SharedActivityStateCache(),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
+                apiEnvironmentStore =
+                    SharedApiEnvironmentStore(
+                        KuiklyMMKVKeyValueStore(
+                            pager = pager,
+                            namespace = SharedApiEnvironmentStore.Namespace
+                        )
+                    ),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
             )
         }

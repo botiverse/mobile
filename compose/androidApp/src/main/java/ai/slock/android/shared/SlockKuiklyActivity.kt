@@ -1568,6 +1568,7 @@ internal class SlockKuiklyBridgeModule(
                         "loadAbout" -> loadSettingsAbout()
                         "loadDeveloper" -> loadSettingsDeveloper()
                         "setApiEnvironment" -> setApiEnvironment(request)
+                        "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
@@ -1934,6 +1935,15 @@ internal class SlockKuiklyBridgeModule(
                             "${after.label} is already selected."
                         }
         )
+    }
+
+    private fun onApiEnvironmentChanged(request: JSONObject): Map<String, Any> {
+        AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
+        SlockDiagnosticsLogger.record(
+                "SlockDeveloper",
+                "api_environment_changed from=${request.optString("beforeEnvironmentKey")} to=${request.optString("afterEnvironmentKey")}"
+        )
+        return mapOf("status" to "ok")
     }
 
     private fun loadSettingsDiagnostics(): Map<String, Any> {
