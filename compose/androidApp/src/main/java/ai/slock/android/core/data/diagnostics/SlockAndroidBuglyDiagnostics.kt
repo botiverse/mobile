@@ -49,6 +49,9 @@ object SlockAndroidBuglyDiagnostics {
     private const val TdLogMaxAliveDay = 7
     private const val DiagnoseUploadTimeWindowMillis = 7L * 24L * 60L * 60L * 1000L
     private const val RecentDiagnosticsMaxChars = 120_000
+    private const val BinaryPreviewSampleBytes = 512
+    private const val BinaryPreviewSuspiciousPercent = 5
+    private val BinaryDiagnosticExtensions = setOf("xlog", "mmap", "zip", "gz", "bin")
 
     private val initialized = AtomicBoolean(false)
     private val diagnoseInitialized = AtomicBoolean(false)
@@ -673,6 +676,9 @@ object SlockAndroidBuglyDiagnostics {
 
     private fun readTailText(file: File, maxChars: Int): String =
         runCatching {
+            if (file.shouldSkipTextPreview()) {
+                return@runCatching "Binary TDLog file; included raw in diagnostics zip, text preview skipped."
+            }
             val maxBytes = (maxChars * 2).coerceAtLeast(1_000)
             val length = file.length()
             file.inputStream().buffered().use { input ->
@@ -689,6 +695,29 @@ object SlockAndroidBuglyDiagnostics {
         }.getOrElse { error ->
             "Unable to read TDLog file ${file.name}: ${error.javaClass.simpleName}"
         }
+
+    private fun File.shouldSkipTextPreview(): Boolean {
+        val extension = name.substringAfterLast('.', missingDelimiterValue = "").lowercase(Locale.US)
+        if (extension in BinaryDiagnosticExtensions) return true
+        val sampleSize = minOf(length(), BinaryPreviewSampleBytes.toLong()).toInt()
+        if (sampleSize <= 0) return false
+        return runCatching {
+            inputStream().buffered().use { input ->
+                val sample = ByteArray(sampleSize)
+                val read = input.read(sample)
+                if (read <= 0) {
+                    false
+                } else {
+                    val suspiciousBytes =
+                        sample.take(read).count { byte ->
+                            val value = byte.toInt() and 0xff
+                            value == 0 || value < 0x09 || value in 0x0e..0x1f
+                        }
+                    suspiciousBytes * 100 / read > BinaryPreviewSuspiciousPercent
+                }
+            }
+        }.getOrDefault(false)
+    }
 
     private fun pruneFeedbackArchives(feedbackDir: File) {
         feedbackDir.listFiles()
