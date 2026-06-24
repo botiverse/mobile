@@ -11550,7 +11550,7 @@ internal fun buildAppShellThreadPayload(
             parentMessageId = parentMessageId,
             streamChannelId = streamChannelId
         )
-    return KuiklyThreadScreenPayload(
+    val payload = KuiklyThreadScreenPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         title = SharedThreadHeaderContextStore.launchContext(surfaceKind, originParentMessageId).title,
         subtitle = null,
@@ -11587,6 +11587,11 @@ internal fun buildAppShellThreadPayload(
         emptyDetail = "Loading messages from this conversation.",
         composer = composer
     ).withLaunchHeaderContext()
+    return if (isReplyThread) {
+        payload.withReplyThreadHeaderFallback(conversation)
+    } else {
+        payload
+    }
 }
 
 private fun Pager.openStandaloneTaskThreadPage(

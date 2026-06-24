@@ -67,6 +67,9 @@ internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
     fallback: ConversationSummary?
 ): KuiklyThreadScreenPayload {
     fallback ?: return this
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
+        return withReplyThreadHeaderFallback(fallback)
+    }
     val headerState = sharedConversationHeaderState(listOf(fallback))
     val entry = headerState.entryFor(this) ?: return this
     val headerPayload = withConversationHeader(entry)
@@ -79,6 +82,19 @@ internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
     } else {
         headerPayload
     }
+}
+
+internal fun KuiklyThreadScreenPayload.withReplyThreadHeaderFallback(
+    fallback: ConversationSummary?
+): KuiklyThreadScreenPayload {
+    fallback ?: return this
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return this
+    val fallbackSubtitle =
+        existingThreadChannelHeaderSubtitle(subtitle)
+            ?: existingThreadChannelHeaderSubtitle(fallback.subtitle)
+            ?: threadChannelHeaderSubtitle(fallback.name)
+            ?: return this
+    return if (fallbackSubtitle == subtitle) this else copy(subtitle = fallbackSubtitle)
 }
 
 private fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =

@@ -763,6 +763,58 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun replyThreadHeaderFallbackUsesMatchedParentChannelName() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                title = ThreadReplyPageTitle,
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                originParentMessageId = "message-1",
+                subtitle = null
+            )
+        val fallback =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "general",
+                subtitle = "General updates",
+                permissions = ConversationPermissions(canSend = true)
+            )
+
+        val renderedPayload = payload.withConversationHeaderFallback(fallback)
+
+        assertEquals(ThreadReplyPageTitle, renderedPayload.title)
+        assertEquals("#general", renderedPayload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, renderedPayload.surfaceKind)
+    }
+
+    @Test
+    fun replyThreadHeaderFallbackKeepsExistingSafeChannelSubtitle() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                title = ThreadReplyPageTitle,
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                subtitle = "#product"
+            )
+        val fallback =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                kind = ConversationKind.Channel,
+                name = "general",
+                permissions = ConversationPermissions(canSend = true)
+            )
+
+        val renderedPayload = payload.withConversationHeaderFallback(fallback)
+
+        assertEquals("#product", renderedPayload.subtitle)
+    }
+
+    @Test
     fun appShellPrivateChannelPayloadUsesLockHeaderKind() {
         val conversation =
             ConversationSummary(
@@ -1099,7 +1151,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun sharedShellReplyThreadRouteUsesLaunchOnlyThreadHeader() {
+    fun sharedShellReplyThreadRouteUsesConversationChannelSubtitle() {
         val payload =
             buildAppShellThreadPayload(
                 ConversationSummary(
@@ -1121,7 +1173,7 @@ class ThreadPayloadTest {
             )
 
         assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals(null, payload.subtitle)
+        assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.originMessage)
         assertEquals(null, payload.originPreview)
@@ -1196,7 +1248,7 @@ class ThreadPayloadTest {
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals(null, payload.subtitle)
+        assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals("reply-message-1", payload.focusedMessageId)
         assertEquals("thread-channel-1", payload.sourceThreadId)
@@ -1590,7 +1642,7 @@ class ThreadPayloadTest {
         assertEquals(threadIdentity(ChannelId("channel-1"), MessageId("message-1")), conversation.threadId)
         assertEquals(ConversationKind.Thread, conversation.kind)
         assertEquals(ThreadReplyPageTitle, payload.title)
-        assertEquals(null, payload.subtitle)
+        assertEquals("#general", payload.subtitle)
         assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
         assertEquals(null, payload.sourceThreadId)
         assertEquals(null, payload.streamChannelId)
