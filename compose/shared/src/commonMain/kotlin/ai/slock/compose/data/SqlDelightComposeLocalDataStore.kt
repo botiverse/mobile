@@ -29,6 +29,7 @@ import ai.slock.compose.model.threadIdentity
 import ai.slock.shared.data.local.AttachmentEntity
 import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.MessageEntity
+import ai.slock.shared.data.local.SlockDatabaseQueries
 import ai.slock.shared.data.local.TaskSummaryEntity
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -65,6 +66,17 @@ internal class SqlDelightComposeLocalDataStore(
         fallback.readHome(serverId)
 
     override suspend fun writeHome(snapshot: HomeSnapshot) {
+        val now = clock()
+        val queries = database.queries
+        database.transaction {
+            (snapshot.channels + snapshot.directMessages).forEach { conversation ->
+                queries.upsertConversationChannel(
+                    serverId = snapshot.server.id.value,
+                    channel = conversation,
+                    now = now
+                )
+            }
+        }
         fallback.writeHome(snapshot)
     }
 
@@ -117,38 +129,12 @@ internal class SqlDelightComposeLocalDataStore(
         database.transaction {
             val channel = snapshot.conversation
             val messageChannelId = channel.messageStreamChannelId()
-            queries.upsertChannel(
+            queries.upsertConversationChannel(
                 serverId = serverId.value,
-                channelId = messageChannelId.value,
-                type = channel.toChannelType(),
-                name = channel.name.ifBlank { messageChannelId.value },
-                description = channel.subtitle,
-                parentChannelId = channel.thread?.parentChannelId?.value,
-                parentMessageId = channel.thread?.parentMessageId?.value,
-                avatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl,
-                presence = channel.presence?.name,
-                agentStatus = channel.agentStatus?.name,
-                presenceMemberId = channel.presenceMemberId?.value,
-                joined = channel.joined.toLongFlag(),
-                archived = channel.archived.toLongFlag(),
-                memberCount = channel.memberCount?.toLong(),
-                unreadCount = channel.unreadCount.toLong(),
-                mentionCount = channel.mentionCount.toLong(),
-                lastMessageId = channel.lastMessageId?.value,
-                firstUnreadMessageId = channel.firstUnreadMessageId?.value,
-                lastMessagePreview = channel.lastMessagePreview,
-                lastMessageSenderName = channel.lastMessageSenderName,
-                hasDraft = channel.hasDraft.toLongFlag(),
-                replyCount = snapshot.parentMessage?.replyCount?.toLong() ?: 0L,
-                jointChannelId = channel.jointChannelId,
-                jointRole = channel.jointRole,
-                jointPeerServerId = channel.jointPeerServerId?.value,
-                jointPeerServerName = channel.jointPeerServerName,
-                jointPeerServerSlug = channel.jointPeerServerSlug,
-                jointPeerStatus = channel.jointPeerStatus,
-                capabilities = channel.permissions.toCapabilityMask(),
-                updatedAtLabel = channel.lastMessageAt,
-                lastSyncedAtMs = now
+                channel = channel,
+                now = now,
+                canonicalChannelId = messageChannelId.value,
+                replyCount = snapshot.parentMessage?.replyCount?.toLong() ?: 0L
             )
             val allMessages =
                 (listOfNotNull(snapshot.parentMessage) + snapshot.messages)
@@ -390,6 +376,73 @@ internal class SqlDelightComposeLocalDataStore(
             lastSyncedAtMs = now
         )
     }
+
+    private fun SlockDatabaseQueries.upsertConversationChannel(
+        serverId: String,
+        channel: ConversationSummary,
+        now: Long,
+        canonicalChannelId: String = channel.messageStreamChannelId().value,
+        replyCount: Long = 0L
+    ) {
+        upsertChannel(
+            serverId = serverId,
+            channelId = canonicalChannelId,
+            type = channel.toChannelType(),
+            name = channel.name.ifBlank { canonicalChannelId },
+            description = channel.subtitle,
+            parentChannelId = channel.thread?.parentChannelId?.value,
+            parentMessageId = channel.thread?.parentMessageId?.value,
+            avatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl,
+            presence = channel.presence?.name,
+            agentStatus = channel.agentStatus?.name,
+            presenceMemberId = channel.presenceMemberId?.value,
+            joined = channel.joined.toLongFlag(),
+            archived = channel.archived.toLongFlag(),
+            memberCount = channel.memberCount?.toLong(),
+            unreadCount = channel.unreadCount.toLong(),
+            mentionCount = channel.mentionCount.toLong(),
+            lastMessageId = channel.lastMessageId?.value,
+            firstUnreadMessageId = channel.firstUnreadMessageId?.value,
+            lastMessagePreview = channel.lastMessagePreview,
+            lastMessageSenderName = channel.lastMessageSenderName,
+            hasDraft = channel.hasDraft.toLongFlag(),
+            replyCount = replyCount,
+            jointChannelId = channel.jointChannelId,
+            jointRole = channel.jointRole,
+            jointPeerServerId = channel.jointPeerServerId?.value,
+            jointPeerServerName = channel.jointPeerServerName,
+            jointPeerServerSlug = channel.jointPeerServerSlug,
+            jointPeerStatus = channel.jointPeerStatus,
+            capabilities = channel.permissions.toCapabilityMask(),
+            updatedAtLabel = channel.lastMessageAt,
+            lastSyncedAtMs = now
+        )
+        channel.conversationAliases(canonicalChannelId).forEach { alias ->
+            upsertConversationAlias(
+                serverId = serverId,
+                aliasId = alias.id,
+                aliasKind = alias.kind.name,
+                canonicalChannelId = canonicalChannelId,
+                lastSyncedAtMs = now
+            )
+        }
+    }
+
+    private data class StoredConversationAlias(
+        val id: String,
+        val kind: SharedConversationAliasKind
+    )
+
+    private fun ConversationSummary.conversationAliases(canonicalChannelId: String): Set<StoredConversationAlias> =
+        buildSet {
+            add(StoredConversationAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
+            channelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Channel)) }
+            threadId.value.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Thread)) }
+            thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.Stream)) }
+            thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentChannel)) }
+            thread?.parentMessageId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.ParentMessage)) }
+            presenceMemberId?.value?.takeIf { it.isNotBlank() }?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.PresenceMember)) }
+        }
 
     private fun decodeMetadata(value: String): Map<String, String> =
         runCatching { json.decodeFromString<Map<String, String>>(value) }.getOrDefault(emptyMap())

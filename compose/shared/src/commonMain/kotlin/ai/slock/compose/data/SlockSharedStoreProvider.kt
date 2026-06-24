@@ -29,6 +29,7 @@ internal class SlockSharedStoreProvider private constructor(
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
+    val conversationDirectoryStore: SharedConversationDirectoryStore,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
@@ -44,6 +45,11 @@ internal class SlockSharedStoreProvider private constructor(
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore = RelationalComposeLocalDataStore(relationalStore)
             val tasksDataStore = SharedTasksDataStore()
+            val conversationDirectoryStore =
+                SharedConversationDirectoryStore(
+                    database = database,
+                    logger = { message -> bridge.log("shared_conversation_directory $message") }
+                )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authStore =
@@ -58,6 +64,7 @@ internal class SlockSharedStoreProvider private constructor(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
                 ),
                 tasksDataStore = tasksDataStore,
+                conversationDirectoryStore = conversationDirectoryStore,
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
             )
         }

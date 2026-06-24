@@ -2,6 +2,7 @@ package ai.slock.compose.data
 
 import ai.slock.compose.model.Attachment
 import ai.slock.compose.model.AttachmentId
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -13,6 +14,7 @@ import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
@@ -173,6 +175,54 @@ class SqlDelightComposeLocalDataStoreTest {
         assertEquals(ChannelId("thread-channel-1"), restored.conversation.thread?.streamChannelId)
         assertEquals("parent", restored.parentMessage?.body)
         assertEquals("reply", restored.messages.single().body)
+    }
+
+    @Test
+    fun writeHomePersistsConversationDirectoryRowsAndAliases() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+
+        store.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(serverId, name = "Slock"),
+                currentMember = member,
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            kind = ConversationKind.Channel,
+                            name = "general"
+                        )
+                    ),
+                directMessages =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("dm-1"),
+                            channelId = ChannelId("dm-1"),
+                            kind = ConversationKind.DirectMessage,
+                            name = "Codex Agent",
+                            directMessagePeerType = "agent",
+                            presence = Presence.Active,
+                            agentStatus = AgentStatus.Working,
+                            presenceMemberId = MemberId("agent-1")
+                        )
+                    ),
+                unreadTotal = 0
+            )
+        )
+
+        val directory = SharedConversationDirectoryStore(database)
+        assertEquals("general", assertNotNull(directory.resolveProjection(serverId, "channel-1")).title)
+        val dmByMember = assertNotNull(directory.resolveProjection(serverId, "agent-1"))
+        assertEquals("Codex Agent", dmByMember.title)
+        assertEquals(AgentStatus.Working, dmByMember.agentStatus)
     }
 
     private fun createDatabase(): SlockSqlDatabase {

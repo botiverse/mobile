@@ -41,6 +41,23 @@ CREATE INDEX channelEntity_serverType ON channelEntity(serverId, type);
 CREATE INDEX channelEntity_parentMessageId ON channelEntity(serverId, parentMessageId);
 CREATE INDEX channelEntity_parentChannelId ON channelEntity(serverId, parentChannelId);
 
+-- Stable aliases for resolving channel/thread/member-facing ids to the
+-- canonical channelEntity row used by the conversation directory facade.
+CREATE TABLE conversationAliasEntity (
+  serverId TEXT NOT NULL,
+  aliasId TEXT NOT NULL,
+  aliasKind TEXT NOT NULL,
+  canonicalChannelId TEXT NOT NULL,
+  lastSyncedAtMs INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (serverId, aliasId, aliasKind),
+  FOREIGN KEY (serverId, canonicalChannelId)
+    REFERENCES channelEntity(serverId, channelId)
+    ON DELETE CASCADE
+);
+
+CREATE INDEX conversationAliasEntity_alias ON conversationAliasEntity(serverId, aliasId);
+CREATE INDEX conversationAliasEntity_canonical ON conversationAliasEntity(serverId, canonicalChannelId);
+
 -- Per-principal read and inbox state for normal channels, private channels,
 -- and DMs. Thread follow/done state lives in threadFollowEntity.
 CREATE TABLE channelReadStateEntity (
@@ -251,6 +268,26 @@ END,
 name COLLATE NOCASE ASC,
 channelId ASC;
 
+selectConversationDirectory:
+SELECT *
+FROM channelEntity
+WHERE serverId = ?
+ORDER BY channelId ASC;
+
+selectConversationAliasesForServer:
+SELECT *
+FROM conversationAliasEntity
+WHERE serverId = ?
+ORDER BY aliasId ASC,
+         aliasKind ASC;
+
+selectConversationAliasesForId:
+SELECT *
+FROM conversationAliasEntity
+WHERE serverId = ?
+  AND aliasId = ?
+ORDER BY aliasKind ASC;
+
 selectThreadForParentMessage:
 SELECT *
 FROM channelEntity
@@ -308,6 +345,15 @@ INSERT OR REPLACE INTO channelEntity(
   updatedAtLabel,
   lastSyncedAtMs
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+upsertConversationAlias:
+INSERT OR REPLACE INTO conversationAliasEntity(
+  serverId,
+  aliasId,
+  aliasKind,
+  canonicalChannelId,
+  lastSyncedAtMs
+) VALUES (?, ?, ?, ?, ?);
 
 selectChannelReadState:
 SELECT *
