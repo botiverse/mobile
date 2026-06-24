@@ -1,6 +1,8 @@
 package ai.slock.compose
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.remember
 import com.tencent.kuikly.compose.extension.MakeKuiklyComposeNode
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.core.base.Attr
@@ -75,6 +77,7 @@ internal class SlockLucideIconAttr : Attr() {
 }
 
 @Composable
+@NonRestartableComposable
 internal fun SlockLucideIcon(
     name: SlockLucideIconName,
     modifier: Modifier = Modifier,
@@ -92,6 +95,7 @@ internal fun SlockLucideIcon(
 }
 
 @Composable
+@NonRestartableComposable
 internal fun SlockLucideIcon(
     name: String,
     modifier: Modifier = Modifier,
@@ -118,6 +122,17 @@ internal fun SlockLucideIconByName(
 ) {
     val resolvedFill = fill ?: ""
     val resolvedStrokeWidth = strokeWidth ?: 0f
+    val updateIconAttrs =
+        remember(name, color, resolvedFill, resolvedStrokeWidth) {
+            { view: SlockLucideIconView ->
+                view.applyIconAttrs(
+                    name = name,
+                    color = color,
+                    fill = resolvedFill,
+                    strokeWidth = resolvedStrokeWidth
+                )
+            }
+        }
     MakeKuiklyComposeNode<SlockLucideIconView>(
         factory = { SlockLucideIconView() },
         modifier = modifier,
@@ -130,13 +145,6 @@ internal fun SlockLucideIconByName(
                 force = true
             )
         },
-        viewUpdate = { view ->
-            view.applyIconAttrs(
-                name = name,
-                color = color,
-                fill = resolvedFill,
-                strokeWidth = resolvedStrokeWidth
-            )
-        }
+        viewUpdate = updateIconAttrs
     )
 }
