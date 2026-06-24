@@ -234,6 +234,8 @@ class ThreadApiTest {
                             {
                               "resolutionId": "res-1",
                               "messageId": "m3",
+                              "channelId": "channel-1",
+                              "channelName": "对话流专修",
                               "targetType": "agent",
                               "targetHandle": "outside",
                               "reason": "not_member",
@@ -253,6 +255,8 @@ class ThreadApiTest {
         val pending = page.pendingMentionActions.single()
         assertEquals("res-1", pending.resolutionId)
         assertEquals("m3", pending.messageId?.value)
+        assertEquals("channel-1", pending.channelId?.value)
+        assertEquals("对话流专修", pending.channelName)
         assertEquals("agent", pending.targetType)
         assertEquals("outside", pending.targetHandle)
         assertEquals(listOf("invite", "notify"), pending.availableActions)

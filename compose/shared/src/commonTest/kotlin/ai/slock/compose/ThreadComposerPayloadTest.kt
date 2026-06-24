@@ -416,6 +416,31 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun mentionScopeChannelLabelUsesDisplayNameInsteadOfRawIdentity() {
+        assertEquals(
+            "#对话流专修",
+            ThreadComposerSurface(
+                channelId = "707fec3f-7c26-4a00-8f94-1e4201f13f83",
+                mentionChannelLabel = "对话流专修"
+            ).mentionScopeChannelLabel()
+        )
+        assertEquals(
+            "#对话流专修",
+            ThreadComposerSurface(
+                channelId = "707fec3f-7c26-4a00-8f94-1e4201f13f83",
+                mentionChannelLabel = "#对话流专修"
+            ).mentionScopeChannelLabel()
+        )
+        assertEquals(
+            "this channel",
+            ThreadComposerSurface(
+                channelId = "707fec3f-7c26-4a00-8f94-1e4201f13f83",
+                mentionChannelLabel = "707fec3f-7c26-4a00-8f94-1e4201f13f83"
+            ).mentionScopeChannelLabel()
+        )
+    }
+
+    @Test
     fun mentionActionFailureStatusMapsKnownReasons() {
         assertEquals(
             "Only channel admins can add members from this mention action.",

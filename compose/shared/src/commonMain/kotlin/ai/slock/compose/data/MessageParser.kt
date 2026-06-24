@@ -157,6 +157,8 @@ private data class MessagesWirePendingMentionAction(
     val resolutionId: String? = null,
     val id: String? = null,
     val messageId: String? = null,
+    val channelId: String? = null,
+    val channelName: String? = null,
     val targetType: String? = null,
     val targetHandle: String? = null,
     val reason: String? = null,
@@ -355,6 +357,8 @@ private fun MessagesWirePendingMentionAction.toDomain(): PendingMentionAction? {
     return PendingMentionAction(
         resolutionId = resolvedId,
         messageId = messageId?.takeIf { it.isNotBlank() }?.let(::MessageId),
+        channelId = channelId?.takeIf { it.isNotBlank() }?.let(::ChannelId),
+        channelName = channelName?.takeIf { it.isNotBlank() },
         targetType = targetType?.takeIf { it.isNotBlank() } ?: "unknown",
         targetHandle = targetHandle.orEmpty(),
         reason = reason.orEmpty(),
