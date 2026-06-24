@@ -2140,117 +2140,131 @@ private fun MembersDetailContent(
             .fillMaxSize()
             .background(SlockColor.SurfaceWhite)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-        ) {
-        MembersDetailHeader(
-            member = member,
-            detail = detail,
-            deleted = deleted,
-            canManage = canManage,
-            onBack = onBack,
-            onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
-            onOpenDirectMessage = onOpenDirectMessage,
-            onCopyMemberId = onCopyMemberId,
-            onRequestManagementMenu = { anchor ->
-                managementMenuAnchor = anchor
-                managementMenuOpen = true
-            }
-        )
-        if (member.kind == MemberKind.Agent) {
-            MembersAgentTabBar(
-                tabs = visibleTabs,
-                selectedTab = selectedTab,
-                onSelectedTabChange = { selectedTab = it }
+        Column(modifier = Modifier.fillMaxSize()) {
+            MembersDetailHeader(
+                member = member,
+                detail = detail,
+                deleted = deleted,
+                canManage = canManage,
+                onBack = onBack,
+                onAvatarClick = if (canManage && !deleted) ({ showAvatarPicker = true }) else null,
+                onOpenDirectMessage = onOpenDirectMessage,
+                onCopyMemberId = onCopyMemberId,
+                onRequestManagementMenu = { anchor ->
+                    managementMenuAnchor = anchor
+                    managementMenuOpen = true
+                }
             )
-        }
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
-            beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
-        ) {
-            item { Spacer(Modifier.height(SlockSpacing.Sm)) }
             if (member.kind == MemberKind.Agent) {
-                item {
+                MembersAgentTabBar(
+                    tabs = visibleTabs,
+                    selectedTab = selectedTab,
+                    onSelectedTabChange = { selectedTab = it }
+                )
+            }
+            if (member.kind == MemberKind.Agent && selectedTab == MembersAgentDetailTab.Activity) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    Spacer(Modifier.height(SlockSpacing.Sm))
                     MembersAgentDetailStateNotice(
                         state = agentDetailState,
                         canViewPrivate = canViewPrivate,
                         modifier = Modifier.padding(horizontal = MembersPageInset)
                     )
-                }
-                item {
-                    when (selectedTab) {
-                        MembersAgentDetailTab.Profile ->
-                            MembersAgentProfileTab(
-                                member = member,
-                                detail = detail,
-                                canManage = canManage,
-                                sharedAgentDetailStore = sharedAgentDetailStore,
-                                storeState = storeState.takeIf { sharedAgentDetailStore != null },
-                                agentDetailActions = agentDetailActions,
-                                onUpdateAgentProfile = onUpdateAgentProfile,
-                                onUnavailableAction = onUnavailableAction,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Permissions ->
-                            MembersAgentPlaceholderTab(
-                                title = "PERMISSIONS",
-                                detail = "No permission scopes available.",
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Dms ->
-                            MembersAgentDmsTab(
-                                detail = detail,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Reminders ->
-                            MembersAgentRemindersTab(
-                                detail = detail,
-                                timeContext = timeContext,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Workspace ->
-                            MembersAgentWorkspaceTab(
-                                treeState = workspaceTreeState,
-                                expandedDirs = expandedWorkspaceDirs,
-                                loadedDirs = loadedWorkspaceDirs,
-                                loadingDirs = loadingWorkspaceDirs,
-                                dirErrors = workspaceDirErrors,
-                                onRefresh = { loadWorkspaceRoot() },
-                                onToggleDirectory = { toggleWorkspaceDirectory(it) },
-                                onSelectFile = { selectWorkspaceFile(it) },
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Apps ->
-                            MembersAgentAppsTab(
-                                detail = detail,
-                                timeContext = timeContext,
-                                onOpenUrl = onOpenUrl,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                        MembersAgentDetailTab.Activity ->
-                            MembersAgentActivityTab(
-                                member = member,
-                                detail = detail,
-                                diagnosticActionState = effectiveDiagnosticActionState,
-                                onCopyDiagnostics = { copyDiagnostics() },
-                                timeContext = timeContext,
-                                onOpenUrl = onOpenUrl,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
-                    }
-                }
-            } else {
-                item {
-                    MembersHumanDetailSections(
-                        member = member,
-                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                    MembersAgentActivityTab(
+                        detail = detail,
+                        diagnosticActionState = effectiveDiagnosticActionState,
+                        onCopyDiagnostics = { copyDiagnostics() },
+                        timeContext = timeContext,
+                        onOpenUrl = onOpenUrl,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
                     )
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
+                ) {
+                    item { Spacer(Modifier.height(SlockSpacing.Sm)) }
+                    if (member.kind == MemberKind.Agent) {
+                        item {
+                            MembersAgentDetailStateNotice(
+                                state = agentDetailState,
+                                canViewPrivate = canViewPrivate,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        }
+                        item {
+                            when (selectedTab) {
+                                MembersAgentDetailTab.Profile ->
+                                    MembersAgentProfileTab(
+                                        member = member,
+                                        detail = detail,
+                                        canManage = canManage,
+                                        sharedAgentDetailStore = sharedAgentDetailStore,
+                                        storeState = storeState.takeIf { sharedAgentDetailStore != null },
+                                        agentDetailActions = agentDetailActions,
+                                        onUpdateAgentProfile = onUpdateAgentProfile,
+                                        onUnavailableAction = onUnavailableAction,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Permissions ->
+                                    MembersAgentPlaceholderTab(
+                                        title = "PERMISSIONS",
+                                        detail = "No permission scopes available.",
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Dms ->
+                                    MembersAgentDmsTab(
+                                        detail = detail,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Reminders ->
+                                    MembersAgentRemindersTab(
+                                        detail = detail,
+                                        timeContext = timeContext,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Workspace ->
+                                    MembersAgentWorkspaceTab(
+                                        treeState = workspaceTreeState,
+                                        expandedDirs = expandedWorkspaceDirs,
+                                        loadedDirs = loadedWorkspaceDirs,
+                                        loadingDirs = loadingWorkspaceDirs,
+                                        dirErrors = workspaceDirErrors,
+                                        onRefresh = { loadWorkspaceRoot() },
+                                        onToggleDirectory = { toggleWorkspaceDirectory(it) },
+                                        onSelectFile = { selectWorkspaceFile(it) },
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Apps ->
+                                    MembersAgentAppsTab(
+                                        detail = detail,
+                                        timeContext = timeContext,
+                                        onOpenUrl = onOpenUrl,
+                                        modifier = Modifier.padding(horizontal = MembersPageInset)
+                                    )
+                                MembersAgentDetailTab.Activity -> Unit
+                            }
+                        }
+                    } else {
+                        item {
+                            MembersHumanDetailSections(
+                                member = member,
+                                modifier = Modifier.padding(horizontal = MembersPageInset)
+                            )
+                        }
+                    }
+                    item { Spacer(Modifier.height(180.dp)) }
+                }
             }
-            item { Spacer(Modifier.height(180.dp)) }
-        }
         }
         if (showAvatarPicker && canManage && !deleted) {
             MembersAgentAvatarPicker(
@@ -5054,7 +5068,6 @@ private fun MembersAgentAppLoginScopeChip(scope: String) {
 
 @Composable
 private fun MembersAgentActivityTab(
-    member: MemberProfile,
     detail: AgentDetailSnapshot?,
     diagnosticActionState: MembersAgentDiagnosticActionState?,
     onCopyDiagnostics: () -> Unit,
@@ -5062,11 +5075,24 @@ private fun MembersAgentActivityTab(
     onOpenUrl: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    MembersDetailSection(
-        title = "ACTIVITY DIAGNOSTICS",
-        modifier = modifier,
-        framed = false,
-        trailingContent = {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(SlockColor.SurfaceWhite),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
+        MembersDetailSectionDivider()
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = MembersPageInset,
+                    vertical = SlockSpacing.Sm
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+        ) {
+            MembersDetailSectionTitle("ACTIVITY DIAGNOSTICS", modifier = Modifier.weight(1f))
             SlockBrutalActionButton(
                 label = diagnosticActionState?.takeIf { it.actionKey == "copy" }?.successLabel ?: "Copy Diagnostic Info",
                 leadingIcon = SlockLucideIconName.Clipboard,
@@ -5075,13 +5101,7 @@ private fun MembersAgentActivityTab(
                 onClick = onCopyDiagnostics
             )
         }
-    ) {
-        // #63 React parity: wrap the activity list in a `SlockBrutalCard` so
-        // the visible list surface matches the brutal bordered box with
-        // right + bottom shadow used in React's `AgentDetailPanel.tsx`
-        // activity section. The previous flat layout (no border, no shadow)
-        // contributed to the 12.66% pixel mismatch on
-        // `screens.members.agent-detail.activity`.
+        MembersDetailSectionDivider()
         val rows =
             remember(detail?.agentId, detail?.activity) {
                 detail?.activity.orEmpty()
@@ -5095,7 +5115,7 @@ private fun MembersAgentActivityTab(
                 iconName = SlockLucideIconName.Activity,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 220.dp, max = 520.dp)
+                    .weight(1f)
             )
         } else {
             val listState = rememberLazyListState()
@@ -5122,26 +5142,20 @@ private fun MembersAgentActivityTab(
                     listState.scrollToItem(rows.lastIndex)
                 }
             }
-            SlockBrutalCard(
-                shadowOffset = 4.dp,
-                contentPadding = 0.dp,
-                verticalArrangement = Arrangement.spacedBy(0.dp)
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .nestedScroll(
+                        scrollUp = NestedScrollMode.SELF_FIRST,
+                        scrollDown = NestedScrollMode.SELF_FIRST
+                    ),
+                verticalArrangement = Arrangement.spacedBy(0.dp),
+                beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 220.dp, max = 520.dp)
-                        .nestedScroll(
-                            scrollUp = NestedScrollMode.SELF_FIRST,
-                            scrollDown = NestedScrollMode.SELF_FIRST
-                        ),
-                    verticalArrangement = Arrangement.spacedBy(0.dp),
-                    beyondBoundsItemCount = sharedListBeyondBoundsItemCount(rows.size)
-                ) {
-                    items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
-                        MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
-                    }
+                items(rows.size, key = { rows[it].activityTimelineKey() }) { index ->
+                    MembersAgentActivityRow(rows[index], timeContext, onOpenUrl)
                 }
             }
         }
@@ -5188,27 +5202,15 @@ private fun MembersAgentActivityRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = activity.title,
-                    style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
-                        .withSlockFontWeight(FontWeight.Bold),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = activity.type.membersActivityTypeLabel(),
-                    style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
-                    color = SlockColor.TextMutedGray,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = activity.title,
+                style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp)
+                    .withSlockFontWeight(FontWeight.Bold),
+                color = SlockColor.TextBlack,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.fillMaxWidth()
+            )
             if (displayBody.isNotBlank()) {
                 // #64 owner override (artin 06-23 17:41): '改成用 SlockMarkdownBody
                 // 比较好，它能展示出来 #xxx 这些东西'. Restore the markdown branch so
@@ -5856,15 +5858,6 @@ private val MembersReminderMonthNames =
 private const val MembersReminderMillisPerMinute = 60_000L
 private const val MembersReminderMillisPerHour = 3_600_000L
 private const val MembersReminderMillisPerDay = 86_400_000L
-
-private fun String.membersActivityTypeLabel(): String =
-    when (this) {
-        "tool_start" -> "Tool"
-        "slock_action" -> "Action"
-        "compaction_started",
-        "compaction_finished" -> "Compaction"
-        else -> toMembersDisplayLabel().ifBlank { "Activity" }
-    }
 
 private fun String.membersActivityAccentColor(): Color =
     when (membersActivityStatusKey()) {
