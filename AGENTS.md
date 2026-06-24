@@ -53,18 +53,20 @@ git submodule update --init --recursive third_party/slock-source
   app consumes `:shared` as a direct project dependency, so no MavenLocal publish step
   is needed for normal app validation.
 
-## Members Invite Link URL Rule
+## Environment Web Link URL Rule
 
-- Members invite-link loading and copying must use the current Developer
-  environment web base URL, not a hardcoded production host.
-- On load, read the active Developer environment through
-  `BridgeSettingsPlatformCapabilities.loadDeveloper()`, pass its `webUrl` to
-  `normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)`, and store/display the
-  normalized result.
-- The copy button must pass the same `webBaseUrl` into
-  `normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)` so the copied link and the
-  displayed field cannot drift across staging, local, or production
-  environments.
+- Any Android/KMP code path that generates, normalizes, displays, copies, or
+  sends a web link/base URL through an API must use the current Developer
+  environment web URL, not a hardcoded production host.
+- Read the active Developer environment through
+  `BridgeSettingsPlatformCapabilities.loadDeveloper()` and pass its `webUrl`
+  into the relevant URL normalizer, request builder, or copy/display helper.
+- Keep one source of the base URL per flow. If a value is loaded and later
+  copied or sent, reuse the same environment-derived base so staging, local,
+  and production links cannot drift between load, API, display, and copy
+  behavior.
+- Example: Members invite-link loading and copying should both pass the same
+  `webBaseUrl` to `normalizeInviteHumanJoinUrl(rawUrl, webBaseUrl)`.
 
 ## Route / PageData MVI Contract Rule
 
