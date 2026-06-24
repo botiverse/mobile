@@ -108,7 +108,7 @@ class KuiklySlockNetworkClient(
                 }
             warningLogger(
                 "endpoint category=attachments_upload path=attachments/upload method=POST " +
-                    "fileCount=${files.size} requestBytes=${files.sumOf { it.bytes.size }} " +
+                    "fileCount=${files.size} requestBytes=${files.uploadByteEstimate()} " +
                     "responseBytes=${response.bodyText?.encodeToByteArray()?.size ?: 0} " +
                     "errorBytes=${response.errorBodyText?.encodeToByteArray()?.size ?: 0} " +
                     "code=${response.code} durationMs=${startedAt.elapsedNow().inWholeMilliseconds} " +
@@ -460,6 +460,9 @@ private fun buildMultipartBody(
     chunks += "--$boundary--\r\n".encodeToByteArray()
     return chunks.fold(ByteArray(0)) { acc, chunk -> acc + chunk }
 }
+
+private fun List<MultipartFile>.uploadByteEstimate(): Long =
+    sumOf { file -> file.bytes.size.toLong().takeIf { it > 0L } ?: file.sizeBytes ?: 0L }
 
 private fun String.sanitizeMultipartFileName(): String =
     replace("\"", "'").replace("\r", "").replace("\n", "")

@@ -490,7 +490,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
         SlockDiagnosticsLogger.record(
                 "SlockKuiklyAttachment",
-                "picker_files_ready fileCount=${files.size}"
+                "picker_files_ready fileCount=${files.size} bytes=${files.sumOf { it.sizeBytes ?: 0L }}"
         )
         return mapOf(
                 "code" to 200,
@@ -502,15 +502,38 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private fun pickedThreadAttachmentRef(uri: Uri, index: Int): PickedThreadAttachment {
         val fileName = queryPickedFileName(uri) ?: uri.lastPathSegment ?: "attachment"
         val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-        val sizeBytes = queryPickedFileSize(uri)
+        val cachedFile = cachePickedThreadAttachment(uri, fileName, index)
+        val copiedBytes = cachedFile.length()
+        if (copiedBytes <= 0L) {
+            throw IllegalStateException("Picked attachment is empty or unreadable")
+        }
+        val sizeBytes = queryPickedFileSize(uri) ?: copiedBytes
         return PickedThreadAttachment(
-                fileRef = uri.toString(),
+                fileRef = Uri.fromFile(cachedFile).toString(),
                 fileName = fileName,
                 mimeType = mimeType,
                 previewUri = uri.toString(),
                 sizeBytes = sizeBytes
         )
     }
+
+    private fun cachePickedThreadAttachment(uri: Uri, fileName: String, index: Int): File {
+        val directory = File(cacheDir, "thread-attachment-picks").apply { mkdirs() }
+        val safeName = fileName.toSafeCacheFileName().ifBlank { "attachment-$index" }
+        val target = File(directory, "${System.nanoTime()}-$index-$safeName")
+        contentResolver.openInputStream(uri)?.use { input ->
+            target.outputStream().use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw IllegalStateException("Picked attachment cannot be opened")
+        return target
+    }
+
+    private fun String.toSafeCacheFileName(): String =
+            trim()
+                    .replace(Regex("[^A-Za-z0-9._-]+"), "_")
+                    .trim('_', '.', '-')
+                    .take(96)
 
     private fun queryPickedFileName(uri: Uri): String? =
             contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)

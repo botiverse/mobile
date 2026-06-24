@@ -7,6 +7,7 @@ import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
@@ -134,15 +135,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             return multipartRequestBody(files, optJSONObject("multipartFields"), activity)
         }
         if (has("bodyFileRef")) {
-            return activity
-                    ?.contentResolver
-                    ?.openInputStream(Uri.parse(optString("bodyFileRef")))
-                    ?.use { input ->
-                        ByteArrayOutputStream().use { output ->
-                            input.copyTo(output)
-                            output.toByteArray()
-                        }
-                    }
+            return readFileRefBytes(activity, optString("bodyFileRef"))
                     ?.toRequestBody(mediaType)
         }
         if (has("bodyText")) {
@@ -177,17 +170,12 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                     when {
                         file.has("bodyBase64") -> Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
                         file.has("fileRef") ->
-                                activity
-                                        ?.contentResolver
-                                        ?.openInputStream(Uri.parse(file.optString("fileRef")))
-                                        ?.use { input ->
-                                            ByteArrayOutputStream().use { output ->
-                                                input.copyTo(output)
-                                                output.toByteArray()
-                                            }
-                                        }
+                                readFileRefBytes(activity, file.optString("fileRef"))
                         else -> null
                     } ?: continue
+            if (bytes.isEmpty()) {
+                continue
+            }
             builder.addFormDataPart(fieldName, fileName, bytes.toRequestBody(mimeType))
             addedFiles += 1
         }
@@ -195,6 +183,25 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             throw IOException("No readable multipart files")
         }
         return builder.build()
+    }
+
+    private fun readFileRefBytes(activity: android.app.Activity?, fileRef: String): ByteArray? {
+        if (activity == null || fileRef.isBlank()) return null
+        val uri = Uri.parse(fileRef)
+        return if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = uri.path ?: return null
+            File(path).takeIf { it.isFile }?.readBytes()
+        } else {
+            activity
+                    .contentResolver
+                    .openInputStream(uri)
+                    ?.use { input ->
+                        ByteArrayOutputStream().use { output ->
+                            input.copyTo(output)
+                            output.toByteArray()
+                        }
+                    }
+        }
     }
 
     companion object {
