@@ -10,6 +10,8 @@ import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
+import ai.slock.compose.model.TaskCreated
+import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -153,6 +155,61 @@ class RealtimeEventMapperTest {
         assertEquals(MessageType.System, message.messageType)
         assertEquals(MemberKind.System, message.author.kind)
         assertEquals("✅ artin moved #252 \"Implement Thread timeline system-message rendering\" to Done", message.body)
+    }
+
+    @Test
+    fun taskUpdatedUsesEnvelopeChannelIdWhenTaskOmitsChannelId() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.TaskUpdated,
+                """
+                {
+                  "channelId": "channel-2",
+                  "task": {
+                    "id": "task-2",
+                    "messageId": "m2",
+                    "taskNumber": 2,
+                    "title": "Update channel two",
+                    "status": "in_review",
+                    "updatedAt": "2026-06-25T06:10:00Z"
+                  }
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<TaskUpdated>(event)
+        assertEquals("task-2", updated.task.id.value)
+        assertEquals("channel-2", updated.task.channelId?.value)
+        assertEquals("m2", updated.task.messageId?.value)
+    }
+
+    @Test
+    fun taskCreatedUsesEnvelopeChannelIdWhenTaskOmitsChannelId() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.TaskCreated,
+                """
+                {
+                  "channelId": "channel-3",
+                  "tasks": [
+                    {
+                      "id": "task-3",
+                      "messageId": "m3",
+                      "taskNumber": 3,
+                      "title": "Create channel three",
+                      "status": "todo",
+                      "createdAt": "2026-06-25T06:11:00Z"
+                    }
+                  ]
+                }
+                """.trimIndent()
+            )
+
+        val created = assertIs<TaskCreated>(event)
+        val task = created.tasks.single()
+        assertEquals("task-3", task.id.value)
+        assertEquals("channel-3", task.channelId?.value)
+        assertEquals("m3", task.messageId?.value)
     }
 
     @Test
