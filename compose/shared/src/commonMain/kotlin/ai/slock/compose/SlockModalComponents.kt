@@ -42,6 +42,8 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 
+private val SlockUnifiedDialogShadowOffset = 4.dp
+
 @Composable
 internal fun SlockModalLayer(
     title: String,
@@ -94,16 +96,21 @@ internal fun SlockUnifiedDialog(
                 modifier =
                     modifier
                         .padding(outerPadding)
+                        .padding(end = SlockUnifiedDialogShadowOffset, bottom = SlockUnifiedDialogShadowOffset)
                         .widthIn(min = minWidth, max = maxWidth)
-                        .padding(end = 4.dp, bottom = 4.dp)
-                        .background(SlockColor.ShadowBlack)
                         .clickable(enabled = false, onClick = {})
             ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .matchParentSize()
+                            .offset(x = SlockUnifiedDialogShadowOffset, y = SlockUnifiedDialogShadowOffset)
+                            .background(SlockColor.ShadowBlack)
+                )
                 Column(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(end = 4.dp, bottom = 4.dp)
                             .background(SlockColor.SurfaceWhite)
                             .border(SlockStroke.Default, SlockColor.BorderBlack)
                             .padding(contentPadding),
