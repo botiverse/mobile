@@ -4613,6 +4613,7 @@ class SharedThreadStoreTest {
         override suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
+        override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse = error("unused")
         override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse = error("unused")
     }
 

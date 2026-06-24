@@ -48,8 +48,9 @@ class AgentsApiTest {
         assertEquals(1, assertIs<DataResult.Content<AgentWorkspaceFilePage>>(client.agentWorkspaceFiles(agentId)).data.fileCount)
         assertEquals("/repo/README.md", assertIs<DataResult.Content<AgentWorkspaceFileRead>>(client.readAgentWorkspaceFile(agentId, "/repo/README.md")).data.path)
         assertEquals(1, assertIs<DataResult.Content<AgentSkillsSummary>>(client.agentSkills(agentId)).data.globalCount)
-        assertEquals(2, assertIs<DataResult.Content<AgentScopesSummary>>(client.agentScopes(agentId)).data.grantedCount)
-        assertEquals(2, assertIs<DataResult.Content<AgentScopesSummary>>(client.updateAgentScopes(agentId, """{"mode":"default"}""")).data.grantedCount)
+        assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(client.agentScopes(agentId)).data.granted.size)
+        val scopesUpdateBody = client.updateAgentScopes(agentId, listOf("server:read", "channel:read"))
+        assertEquals(2, assertIs<DataResult.Content<AgentScopeSet>>(scopesUpdateBody).data.granted.size)
         assertEquals(true, assertIs<DataResult.Content<AgentBootstrapTokenSummary>>(client.issueBootstrapToken(agentId, """{"ttlMs":60000}""")).data.bootstrapTokenPresent)
 
         assertEquals(
@@ -69,7 +70,7 @@ class AgentsApiTest {
                 "GET agents/agent-1/workspace-files/read path=/repo/README.md",
                 "GET agents/agent-1/skills",
                 "GET agents/agent-1/scopes",
-                """PUT agents/agent-1/scopes body={"mode":"default"}""",
+                """PUT agents/agent-1/scopes body={"scopes":["server:read","channel:read"]}""",
                 """POST agents/agent-1/bootstrap-tokens body={"ttlMs":60000}"""
             ),
             transport.calls
@@ -231,6 +232,11 @@ class AgentsApiTest {
 
         override suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse {
             calls += "PUT agents/${agentId.value}/scopes body=$body"
+            return ok(scopesBody)
+        }
+
+        override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse {
+            calls += "PUT agents/${agentId.value}/scopes body={\"mode\":\"default\"}"
             return ok(scopesBody)
         }
 

@@ -11,6 +11,7 @@ import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarDefaultKey
 import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.components.SlockBrutalCard
+import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.components.slockAnchoredTriggerGeometryAnchor
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
@@ -22,6 +23,7 @@ import ai.slock.compose.data.AgentAvatarUploadRequest
 import ai.slock.compose.data.AgentCreatedSummary
 import ai.slock.compose.data.AgentCreatorSummary
 import ai.slock.compose.data.AgentDetailSnapshot
+import ai.slock.compose.data.AgentScopeSet
 import ai.slock.compose.data.AgentDetailSummary
 import ai.slock.compose.data.AgentDmSummary
 import ai.slock.compose.data.AgentLifecycleActionResult
@@ -912,7 +914,10 @@ internal fun MembersPageContent() {
             bridge.copyToPasteboard(url)
             inviteJoinLinkCopied = true
         },
-        inviteHumanLoadJoinLink = { loadInviteJoinLink() }
+        inviteHumanLoadJoinLink = { loadInviteJoinLink() },
+        // #89: pass agentsApiClient so Permissions tab can call
+        // `agentScopes` / `updateAgentScopes` / `resetAgentScopes` directly.
+        agentsApiClient = agentsApiClient
     )
 }
 
@@ -933,7 +938,8 @@ private class MemberDetailRouteProvider(
     val authStore: SlockAuthSessionStore,
     val memberRepository: MemberRepository,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
-    val agentDetailStore: SharedAgentDetailStore
+    val agentDetailStore: SharedAgentDetailStore,
+    val agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null
 ) {
     suspend fun cachedContext(
         memberId: String,
@@ -1164,13 +1170,20 @@ private fun rememberMemberDetailRouteProvider(
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val agentDetailStore = sharedStores.agentDetailStore
-    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore) {
+    val agentsApiClient = remember(networkClient) {
+        ai.slock.compose.data.SlockAgentsApiClient(
+            transport = ai.slock.compose.data.SlockAgentsNetworkApi(networkClient),
+            diagnosticsLogger = { message -> bridge.log("member_detail_agents_api $message") }
+        )
+    }
+    return remember(bridge, authStore, memberRepository, settingsCapabilities, agentDetailStore, agentsApiClient) {
         MemberDetailRouteProvider(
             bridge = bridge,
             authStore = authStore,
             memberRepository = memberRepository,
             settingsCapabilities = settingsCapabilities,
-            agentDetailStore = agentDetailStore
+            agentDetailStore = agentDetailStore,
+            agentsApiClient = agentsApiClient
         )
     }
 }
@@ -1318,7 +1331,8 @@ private fun MemberDetailPageContent() {
                     timeContext = timeContext,
                     sharedAgentDetailStore = provider.agentDetailStore,
                     initialAgentTab = initialAgentTab,
-                    agentPanelTabOrder = payload.agentPanelTabOrder
+                    agentPanelTabOrder = payload.agentPanelTabOrder,
+                    agentsApiClient = provider.agentsApiClient
                 )
             }
         }
@@ -1592,6 +1606,7 @@ internal fun MembersRouteContent(
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
+    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     MembersListContent(
@@ -1635,6 +1650,7 @@ internal fun MembersListContent(
     inviteHumanJoinLinkCopied: Boolean = false,
     inviteHumanJoinLinkCopy: (String) -> Unit = {},
     inviteHumanLoadJoinLink: () -> Unit = {},
+    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
     val groupedMembers = remember(payload.members) {
@@ -1887,7 +1903,11 @@ private fun MembersDetailContent(
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     initialVisualMode: MembersAgentDetailVisualMode = MembersAgentDetailVisualMode.Profile,
     initialAgentTab: MembersAgentDetailTab? = null,
-    agentPanelTabOrder: List<String> = emptyList()
+    agentPanelTabOrder: List<String> = emptyList(),
+    // #89: forwarded to the Permissions tab so it can call
+    // `agentScopes` / `updateAgentScopes` / `resetAgentScopes`. When null
+    // the Permissions tab renders an "Agent API not available" error banner.
+    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient? = null
 ) {
     val detail = (agentDetailState as? MembersAgentDetailLoadState.Content)?.detail
     val deleted = detail?.summary?.deletedAt?.isNotBlank() == true
@@ -2286,9 +2306,12 @@ private fun MembersDetailContent(
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Permissions ->
-                                    MembersAgentPlaceholderTab(
-                                        title = "PERMISSIONS",
-                                        detail = "No permission scopes available.",
+                                    MembersAgentPermissionsTab(
+                                        member = member,
+                                        detail = detail,
+                                        canManage = canManage,
+                                        agentsApiClient = agentsApiClient,
+                                        onUnavailableAction = onUnavailableAction,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Dms ->
@@ -5436,6 +5459,443 @@ private fun MembersAgentPlaceholderTab(title: String, detail: String, modifier: 
     }
 }
 
+// #89 React parity: agent scope grant list + per-group row definitions.
+// Mirrors `packages/shared/src/agentScopes.ts` AGENT_SCOPE_GROUPS. Kept local
+// (private to MembersPage.kt) for now — owner pending whether to lift to
+// shared model module if other surfaces need it. Two sections
+// ("notifications" / "cli") group 14 grantable scopes into 8 resources;
+// each row carries the scope token, a short verbLabel and a one-sentence
+// description that mirrors the React `AgentScopeGroup.scopes[]` shape.
+private data class MembersAgentScopeRow(
+    val scope: String,
+    val verbLabel: String,
+    val description: String
+)
+
+private data class MembersAgentScopeGroup(
+    val resource: String,
+    val section: String,
+    val label: String,
+    val description: String,
+    val scopes: List<MembersAgentScopeRow>
+)
+
+private val membersAgentScopeGroups: List<MembersAgentScopeGroup> = listOf(
+    MembersAgentScopeGroup(
+        resource = "inbox",
+        section = "notifications",
+        label = "Inbox",
+        description = "Control whether new activity can be delivered to this agent and wake it up.",
+        scopes = listOf(
+            MembersAgentScopeRow(
+                scope = "inbox:receive",
+                verbLabel = "Receive notifications",
+                description = "Receive new inbox events and wake for activity from other people and agents."
+            )
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "server",
+        section = "cli",
+        label = "Server",
+        description = "Discover channels, members, and other agents in this server.",
+        scopes = listOf(
+            MembersAgentScopeRow(
+                scope = "server:read",
+                verbLabel = "Read",
+                description = "List channels, members, and agents (slock server info)."
+            )
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "channel",
+        section = "cli",
+        label = "Channels",
+        description = "View channel rosters, join visible public channels, and leave channels the agent is no longer using.",
+        scopes = listOf(
+            MembersAgentScopeRow("channel:read", "Read", "View channel membership and metadata."),
+            MembersAgentScopeRow("channel:join", "Join", "Join visible public channels."),
+            MembersAgentScopeRow("channel:leave", "Leave", "Leave channels the agent is no longer using.")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "thread",
+        section = "cli",
+        label = "Threads",
+        description = "Follow and unfollow thread updates.",
+        scopes = listOf(
+            MembersAgentScopeRow("thread:unfollow", "Unfollow", "Unfollow a thread to stop receiving updates.")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "message",
+        section = "cli",
+        label = "Messages",
+        description = "Read, search, and send messages across channels, threads, and DMs.",
+        scopes = listOf(
+            MembersAgentScopeRow("message:read", "Read", "Read / search / resolve messages."),
+            MembersAgentScopeRow("message:send", "Send", "Send messages (DM / channel / thread).")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "attachment",
+        section = "cli",
+        label = "Attachments",
+        description = "Upload and view file attachments in conversation.",
+        scopes = listOf(
+            MembersAgentScopeRow("attachment:upload", "Upload", "Upload files to conversation."),
+            MembersAgentScopeRow("attachment:view", "View", "View uploaded files in conversation.")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "task",
+        section = "cli",
+        label = "Tasks",
+        description = "List, create, and update tasks on the board.",
+        scopes = listOf(
+            MembersAgentScopeRow("task:read", "Read", "List tasks."),
+            MembersAgentScopeRow("task:write", "Write", "Create, claim, unclaim, update tasks.")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "knowledge",
+        section = "cli",
+        label = "Knowledge",
+        description = "Read agent manual / knowledge base entries.",
+        scopes = listOf(
+            MembersAgentScopeRow("knowledge:read", "Read", "Read slock knowledge base entries.")
+        )
+    ),
+    MembersAgentScopeGroup(
+        resource = "action",
+        section = "cli",
+        label = "Actions",
+        description = "Prepare action cards for the user to commit.",
+        scopes = listOf(
+            MembersAgentScopeRow("action:prepare", "Prepare", "Prepare an action card; the human commits the action.")
+        )
+    )
+)
+
+@Composable
+private fun MembersAgentPermissionsTab(
+    member: MemberProfile,
+    detail: AgentDetailSnapshot?,
+    canManage: Boolean,
+    agentsApiClient: ai.slock.compose.data.SlockAgentsApiClient?,
+    onUnavailableAction: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // #89 React parity: mirror `AgentScopesPanel.tsx` state machine.
+    // Local state only (per owner 06-25 04:08 — `SharedAgentDetailStore`
+    // integration deferred to AD4 #56 lane).
+    var serverSet by remember { mutableStateOf<AgentScopeSet?>(null) }
+    var draft by remember { mutableStateOf<Set<String>?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var saving by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    suspend fun loadScopes() {
+        if (agentsApiClient == null) {
+            error = "Agent API not available"
+            loading = false
+            return
+        }
+        when (val result = agentsApiClient.agentScopes(member.id)) {
+            is DataResult.Content -> {
+                serverSet = result.data
+                draft = result.data.granted.toSet()
+                error = null
+            }
+            is DataResult.Error -> {
+                error = "Failed to load agent permissions: ${result.error.code}"
+            }
+            is DataResult.Empty -> error = "No permissions data"
+            is DataResult.NoPermission -> error = "No permission to view permissions."
+        }
+        loading = false
+    }
+
+    LaunchedEffect(member.id) {
+        loadScopes()
+    }
+
+    fun toggle(scope: String) {
+        val current = draft ?: return
+        val next = if (scope in current) current - scope else current + scope
+        draft = next
+    }
+
+    suspend fun save() {
+        val current = draft ?: return
+        val currentServer = serverSet ?: return
+        if (agentsApiClient == null) return
+        saving = true
+        error = null
+        when (val result = agentsApiClient.updateAgentScopes(member.id, current.toList())) {
+            is DataResult.Content -> {
+                serverSet = result.data
+                draft = result.data.granted.toSet()
+            }
+            is DataResult.Error -> error = "Failed to save: ${result.error.code}"
+            is DataResult.Empty -> error = "Empty response"
+            is DataResult.NoPermission -> error = "No permission to save permissions."
+        }
+        saving = false
+    }
+
+    suspend fun resetToDefault() {
+        if (agentsApiClient == null) return
+        saving = true
+        error = null
+        when (val result = agentsApiClient.resetAgentScopes(member.id)) {
+            is DataResult.Content -> {
+                serverSet = result.data
+                draft = result.data.granted.toSet()
+            }
+            is DataResult.Error -> error = "Failed to reset: ${result.error.code}"
+            is DataResult.Empty -> error = "Empty response"
+            is DataResult.NoPermission -> error = "No permission to reset permissions."
+        }
+        saving = false
+    }
+
+    fun discard() {
+        val currentServer = serverSet ?: return
+        draft = currentServer.granted.toSet()
+    }
+
+    val currentServer = serverSet
+    val currentDraft = draft
+    val isDirty = currentServer != null && currentDraft != null && !currentDraft.toSet().equals(currentServer.granted.toSet())
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)) {
+        if (error != null && currentServer == null) {
+            // Initial-load error: brutal warning card + Retry button. Return
+            // early after rendering so the rest of the panel is not drawn
+            // over the error.
+            ErrorBanner(
+                text = error ?: "",
+                action = "Retry",
+                onAction = { scope.launch { loadScopes() } }
+            )
+            return
+        }
+        if (loading || currentServer == null || currentDraft == null) {
+            // Loading state: text "Loading permissions…"
+            Text(
+                text = "Loading permissions…",
+                style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                color = SlockColor.TextMutedGray,
+                modifier = Modifier.padding(SlockSpacing.Sm)
+            )
+            return
+        }
+
+        if (error != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(SlockStroke.Default, SlockColor.BorderBlack)
+                    .background(SlockColor.SurfaceCream)
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SlockLucideIcon(
+                    SlockLucideIconName.TriangleAlert,
+                    modifier = Modifier.size(16.dp),
+                    color = "#FFD32F2F"
+                )
+                Text(
+                    text = error ?: "",
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextBlack,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Mode banner (custom / default)
+        val isCustom = currentServer.mode == "custom"
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .background(SlockColor.SurfaceWhite)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = if (isCustom) "Customized permissions" else "Using default permissions",
+                    style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                    color = SlockColor.TextBlack
+                )
+                Text(
+                    text = if (isCustom) "New capabilities stay off until you turn them on for this agent." else "New default capabilities are enabled automatically for this agent.",
+                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                    color = SlockColor.TextMutedGray
+                )
+            }
+            if (isCustom) {
+                SlockBrutalActionButton(
+                    label = "Use default",
+                    onClick = {
+                        scope.launch { resetToDefault() }
+                    },
+                    enabled = !saving,
+                    minWidth = 88.dp,
+                    minHeight = 32.dp
+                )
+            }
+        }
+
+        // Notifications section
+        val notificationGroups = membersAgentScopeGroups.filter { it.section == "notifications" }
+        val cliGroups = membersAgentScopeGroups.filter { it.section == "cli" }
+
+        PermissionsSection(title = "Notifications / inbox", description = "Controls what can wake the agent or enter its inbox.", groups = notificationGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+        PermissionsSection(title = "Raft CLI permissions", description = "Controls what the agent can actively do through slock CLI commands.", groups = cliGroups, draft = currentDraft, canManage = canManage, onToggle = ::toggle)
+
+        // Action bar
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SlockBrutalActionButton(
+                label = if (saving) "Saving…" else "Save permissions",
+                onClick = {
+                    scope.launch { save() }
+                },
+                enabled = !saving && isDirty,
+                backgroundColor = SlockColor.AccentPink,
+                minWidth = 132.dp
+            )
+            SlockBrutalActionButton(
+                label = "Discard",
+                onClick = ::discard,
+                enabled = !saving && isDirty,
+                minWidth = 88.dp
+            )
+            Text(
+                text = "rev ${currentServer.revision}",
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.4f),
+                modifier = Modifier.padding(start = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PermissionsSection(
+    title: String,
+    description: String,
+    groups: List<MembersAgentScopeGroup>,
+    draft: Set<String>,
+    canManage: Boolean,
+    onToggle: (String) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 17.sp),
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = description,
+                style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 15.sp),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            groups.forEach { group ->
+                PermissionsGroupBox(group = group, draft = draft, canManage = canManage, onToggle = onToggle)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionsGroupBox(
+    group: MembersAgentScopeGroup,
+    draft: Set<String>,
+    canManage: Boolean,
+    onToggle: (String) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceWhite)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().border(width = 0.dp, color = Color.Transparent).padding(horizontal = 12.dp, vertical = 8.dp)) {
+            Text(
+                text = group.label,
+                style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = group.description,
+                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                color = SlockColor.TextMutedGray.copy(alpha = 0.5f)
+            )
+        }
+        // Hairline divider between header and rows.
+        Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+        group.scopes.forEachIndexed { index, row ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(width = 0.dp, color = Color.Transparent)
+                    .let {
+                        if (index < group.scopes.lastIndex) {
+                            it.border(width = 0.dp, color = Color.Transparent)
+                        } else it
+                    }
+                    .clickable(enabled = canManage) { onToggle(row.scope) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                SlockCheckbox(
+                    checked = row.scope in draft,
+                    onCheckedChange = { onToggle(row.scope) },
+                    enabled = canManage,
+                    size = 14.dp
+                )
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = row.verbLabel,
+                            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextBlack
+                        )
+                        Text(
+                            text = row.scope,
+                            style = SlockType.Caption.copy(fontSize = 9.sp, lineHeight = 12.sp),
+                            color = SlockColor.TextMutedGray.copy(alpha = 0.5f)
+                        )
+                    }
+                    Text(
+                        text = row.description,
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
+                        color = SlockColor.TextMutedGray.copy(alpha = 0.6f)
+                    )
+                }
+            }
+            if (index < group.scopes.lastIndex) {
+                Box(modifier = Modifier.fillMaxWidth().height(SlockStroke.Thin).background(SlockColor.BorderBlack.copy(alpha = 0.1f)))
+            }
+        }
+    }
+}
+
 @Composable
 private fun MemberKindBadge(kind: MemberKind) {
     // Mirrors React `AgentDetailPanel.tsx` header agent/human tag style:
@@ -6149,6 +6609,39 @@ private data class MembersAgentGroup(
  * spinner without being so fast it looks nervous on the cheap-ohm
  * emulator display.
  */
+@Composable
+private fun ErrorBanner(text: String, action: String? = null, onAction: (() -> Unit)? = null) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
+            .background(SlockColor.SurfaceCream)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.TriangleAlert,
+            modifier = Modifier.size(16.dp),
+            color = "#FFD32F2F"
+        )
+        Text(
+            text = text,
+            style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+            color = SlockColor.TextBlack,
+            modifier = Modifier.weight(1f)
+        )
+        if (action != null && onAction != null) {
+            SlockBrutalActionButton(
+                label = action,
+                onClick = onAction,
+                minWidth = 72.dp,
+                minHeight = 32.dp
+            )
+        }
+    }
+}
+
 @Composable
 private fun SlockSpinnerIcon(
     size: Dp = 14.dp,

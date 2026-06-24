@@ -44,8 +44,14 @@ internal interface SlockAgentsApi {
     suspend fun agentWorkspaceFiles(agentId: MemberId, dirPath: String? = null): HomeNetworkResponse
     suspend fun readAgentWorkspaceFile(agentId: MemberId, path: String): HomeNetworkResponse
     suspend fun agentSkills(agentId: MemberId): HomeNetworkResponse
+    // #89 React parity: agent permissions (scope grants) per React
+    // `AgentScopesPanel.tsx`. Mirrors `GET / PUT /api/agents/:id/scopes`.
+    // `updateAgentScopes` body is `{ scopes: AgentGrantableScope[] }`;
+    // `resetAgentScopes` sends `{ mode: "default" }` and returns the
+    // server's updated `AgentScopeSet` (granted list empty + mode "default").
     suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse
     suspend fun updateAgentScopes(agentId: MemberId, body: String): HomeNetworkResponse
+    suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse
 }
 
@@ -150,9 +156,10 @@ internal class SlockAgentsNetworkApi(
             path = "agents/${agentId.value}/skills"
         )
 
+    // #89 React parity: agent scope grants endpoints.
     override suspend fun agentScopes(agentId: MemberId): HomeNetworkResponse =
         networkClient.request(
-            priority = DataRequestPriority.Visible,
+            priority = DataRequestPriority.Foreground,
             path = "agents/${agentId.value}/scopes"
         )
 
@@ -162,6 +169,14 @@ internal class SlockAgentsNetworkApi(
             path = "agents/${agentId.value}/scopes",
             method = "PUT",
             bodyText = body
+        )
+
+    override suspend fun resetAgentScopes(agentId: MemberId): HomeNetworkResponse =
+        networkClient.request(
+            priority = DataRequestPriority.Foreground,
+            path = "agents/${agentId.value}/scopes",
+            method = "PUT",
+            bodyText = """{"mode":"default"}"""
         )
 
     override suspend fun issueBootstrapToken(agentId: MemberId, body: String): HomeNetworkResponse =
@@ -217,6 +232,31 @@ internal class SlockAgentsApiClient(
     suspend fun deleteAgent(agentId: MemberId): DataResult<AgentCommandResult> =
         transport.deleteAgent(agentId).mapAgentsCommand("agent_delete_contract_mismatch", diagnosticsLogger)
 
+    // #89 React parity: agent scope grants typed accessors. Mirror React
+    // `AgentScopesPanel.tsx` load / save / reset flows.
+    suspend fun agentScopes(agentId: MemberId): DataResult<AgentScopeSet> =
+        transport.agentScopes(agentId).mapAgentsBody(
+            "agent_scopes_contract_mismatch",
+            AgentScopesWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire -> wire.toScopeSet(agentId) }
+
+    suspend fun updateAgentScopes(agentId: MemberId, scopes: List<String>): DataResult<AgentScopeSet> {
+        val body = agentsApiJson.encodeToString(AgentScopesUpdateDto.serializer(), AgentScopesUpdateDto(scopes = scopes))
+        return transport.updateAgentScopes(agentId, body).mapAgentsBody(
+            "agent_scopes_update_contract_mismatch",
+            AgentScopesWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire -> wire.toScopeSet(agentId) }
+    }
+
+    suspend fun resetAgentScopes(agentId: MemberId): DataResult<AgentScopeSet> =
+        transport.resetAgentScopes(agentId).mapAgentsBody(
+            "agent_scopes_reset_contract_mismatch",
+            AgentScopesWireDto.serializer(),
+            diagnosticsLogger = diagnosticsLogger
+        ) { wire -> wire.toScopeSet(agentId) }
+
     suspend fun assignMachine(agentId: MemberId, body: String): DataResult<AgentCommandResult> =
         transport.assignMachine(agentId, body).mapAgentsCommand("agent_assign_machine_contract_mismatch", diagnosticsLogger)
 
@@ -262,26 +302,6 @@ internal class SlockAgentsApiClient(
             AgentSkillsResponseDto.serializer(),
             diagnosticsLogger = diagnosticsLogger
         ) { AgentSkillsSummary(globalCount = it.global.size, workspaceCount = it.workspace.size) }
-
-    suspend fun agentScopes(agentId: MemberId): DataResult<AgentScopesSummary> =
-        transport.agentScopes(agentId).mapAgentsBody(
-            "agent_scopes_contract_mismatch",
-            AgentScopesResponseDto.serializer(),
-            diagnosticsLogger = diagnosticsLogger
-        ) { wire ->
-            val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
-            AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
-        }
-
-    suspend fun updateAgentScopes(agentId: MemberId, body: String): DataResult<AgentScopesSummary> =
-        transport.updateAgentScopes(agentId, body).mapAgentsBody(
-            "agent_scopes_update_contract_mismatch",
-            AgentScopesResponseDto.serializer(),
-            diagnosticsLogger = diagnosticsLogger
-        ) { wire ->
-            val id = wire.agentId?.takeIf { it.isNotBlank() } ?: return@mapAgentsBody null
-            AgentScopesSummary(agentId = id, grantedCount = wire.granted.size, revision = wire.revision)
-        }
 
     suspend fun issueBootstrapToken(agentId: MemberId, body: String): DataResult<AgentBootstrapTokenSummary> =
         transport.issueBootstrapToken(agentId, body).mapAgentsBody(
@@ -335,7 +355,6 @@ internal data class AgentActivityPage(val entryCount: Int)
 internal data class AgentWorkspaceFilePage(val fileCount: Int)
 internal data class AgentWorkspaceFileRead(val path: String, val content: String, val binary: Boolean, val size: Long?)
 internal data class AgentSkillsSummary(val globalCount: Int, val workspaceCount: Int)
-internal data class AgentScopesSummary(val agentId: String, val grantedCount: Int, val revision: Long?)
 internal data class AgentBootstrapTokenSummary(
     val tokenId: String,
     val tokenPrefix: String,
@@ -528,6 +547,29 @@ private data class AgentRuntimeProfileCurrentDto(
 
 @Serializable
 private data class AgentCommandResponseDto(val ok: Boolean)
+
+@Serializable
+private data class AgentScopesWireDto(
+    val agentId: String,
+    val granted: List<String>,
+    val mode: String = "default",
+    val revision: Long = 0L,
+    val updatedAt: String? = null
+)
+
+@Serializable
+private data class AgentScopesUpdateDto(
+    val scopes: List<String> = emptyList()
+)
+
+private fun AgentScopesWireDto.toScopeSet(agentId: MemberId): AgentScopeSet =
+    AgentScopeSet(
+        agentId = agentId,
+        granted = granted,
+        mode = mode,
+        revision = revision,
+        updatedAt = updatedAt
+    )
 
 @Serializable
 private data class AgentDmWireDto(val id: String)

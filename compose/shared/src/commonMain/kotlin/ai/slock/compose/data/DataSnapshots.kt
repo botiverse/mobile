@@ -234,6 +234,18 @@ data class AgentActivitySnapshot(
     val activity: List<AgentActivityEntry>
 )
 
+// #89 React parity: agent permissions (scope grants) snapshot.
+// Mirrors React `AgentScopeSet` returned by `GET /api/agents/:id/scopes`.
+// `granted` is a list of `AgentGrantableScope` strings (e.g. "inbox:receive",
+// "server:read", "channel:read", ...). `mode` is "default" vs "custom".
+data class AgentScopeSet(
+    val agentId: MemberId,
+    val granted: List<String> = emptyList(),
+    val mode: String = "default",
+    val revision: Long = 0L,
+    val updatedAt: String? = null
+)
+
 data class AgentWorkspaceSnapshot(
     val agentId: MemberId,
     val computerId: String? = null,
