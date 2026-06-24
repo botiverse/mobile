@@ -47,26 +47,42 @@ class SlockHomeComponentsTest {
     }
 
     @Test
-    fun homeActivitySidebarUnreadCountUsesActivityUnreadThenActivityTotalFallback() {
+    fun homeActivitySidebarUnreadCountUsesActivityUnreadOnly() {
         assertEquals(
             14,
-            homeActivitySidebarUnreadCount(activityUnreadCount = 14, activityTotalCount = 40)
-        )
-        assertEquals(
-            40,
-            homeActivitySidebarUnreadCount(activityUnreadCount = 0, activityTotalCount = 40)
-        )
-        assertEquals(
-            40,
-            homeActivitySidebarUnreadCount(activityUnreadCount = -1, activityTotalCount = 40)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 14)
         )
         assertEquals(
             0,
-            homeActivitySidebarUnreadCount(activityUnreadCount = 0, activityTotalCount = 0)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 0)
+        )
+        assertEquals(
+            0,
+            homeActivitySidebarUnreadCount(activityUnreadCount = -1)
         )
         assertEquals(
             3,
-            homeActivitySidebarUnreadCount(activityUnreadCount = 3, activityTotalCount = 0)
+            homeActivitySidebarUnreadCount(activityUnreadCount = 3)
+        )
+    }
+
+    @Test
+    fun homeActivitySidebarTotalCountOnlyShowsWhenUnreadIsZero() {
+        assertEquals(
+            40,
+            homeActivitySidebarTotalCount(activityUnreadCount = 0, activityTotalCount = 40)
+        )
+        assertEquals(
+            0,
+            homeActivitySidebarTotalCount(activityUnreadCount = 14, activityTotalCount = 40)
+        )
+        assertEquals(
+            0,
+            homeActivitySidebarTotalCount(activityUnreadCount = 0, activityTotalCount = 0)
+        )
+        assertEquals(
+            0,
+            homeActivitySidebarTotalCount(activityUnreadCount = -1, activityTotalCount = -1)
         )
     }
 

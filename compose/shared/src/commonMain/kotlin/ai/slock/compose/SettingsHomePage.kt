@@ -9004,8 +9004,7 @@ private fun SharedHomeScreen(
                     (snapshot.channels + snapshot.directMessages).associateBy { it.threadId.value }
                 }
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
-                activityUnreadCount = activityUnreadCount,
-                activityTotalCount = activityTotalCount
+                activityUnreadCount = activityUnreadCount
             )
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
@@ -9016,7 +9015,10 @@ private fun SharedHomeScreen(
                 selectedChannelId = selectedConversationId,
                 serverUnreadCount = snapshot.server.unreadCount,
                 inboxUnreadCount = homeActivityUnreadCount,
-                inboxTotalCount = activityTotalCount.takeIf { homeActivityUnreadCount == 0 } ?: 0,
+                inboxTotalCount = homeActivitySidebarTotalCount(
+                    activityUnreadCount = homeActivityUnreadCount,
+                    activityTotalCount = activityTotalCount
+                ),
                 savedCount = savedCount,
                 serverSwitcherExpanded = serverSwitcherExpanded,
                 pendingServerId = serverSwitchState.pendingServerId,
