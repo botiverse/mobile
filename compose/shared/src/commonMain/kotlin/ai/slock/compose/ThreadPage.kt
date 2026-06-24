@@ -66,6 +66,7 @@ import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
 import ai.slock.compose.data.kuiklySharedPreferenceStore
+import ai.slock.compose.data.withReadYourWritesCache
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
@@ -2226,7 +2227,7 @@ internal fun SharedThreadRouteContent(
         remember(pager) {
             SharedThreadComposerDraftPersistSlice(
                 SharedThreadComposerDraftPersistence(
-                    kuiklySharedPreferenceStore(pager),
+                    kuiklySharedPreferenceStore(pager).withReadYourWritesCache(),
                     diagnosticsLogger = { message -> bridge.log(message) }
                 ),
                 diagnosticsLogger = { message -> bridge.log(message) }

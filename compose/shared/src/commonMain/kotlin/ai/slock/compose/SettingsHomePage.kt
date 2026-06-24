@@ -205,6 +205,7 @@ import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.InboxSnapshot
 import ai.slock.compose.data.kuiklyNotificationPreferenceRepository
 import ai.slock.compose.data.kuiklySharedPreferenceStore
+import ai.slock.compose.data.withReadYourWritesCache
 import ai.slock.compose.data.savedMessageIdOrNull
 import ai.slock.compose.data.SettingsAppearanceSnapshot
 import ai.slock.compose.data.SettingsAppearanceUpdateRequest
@@ -1384,7 +1385,7 @@ private fun SlockAppShellContent() {
         remember(sharedPreferenceStore) {
             SharedThreadComposerDraftPersistSlice(
                 SharedThreadComposerDraftPersistence(
-                    sharedPreferenceStore,
+                    sharedPreferenceStore.withReadYourWritesCache(),
                     diagnosticsLogger = { message -> bridge.log(message) }
                 ),
                 diagnosticsLogger = { message -> bridge.log(message) }

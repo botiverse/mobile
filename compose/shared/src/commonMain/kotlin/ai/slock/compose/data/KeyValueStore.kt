@@ -11,6 +11,42 @@ interface SharedPreferenceStore {
 
 interface SlockKeyValueStore : SharedPreferenceStore
 
+class ReadYourWritesSharedPreferenceStore(
+    private val delegate: SharedPreferenceStore
+) : SharedPreferenceStore {
+    private val cachedValues = mutableMapOf<String, String?>()
+
+    override fun getString(key: String): String? =
+        if (cachedValues.containsKey(key)) {
+            cachedValues[key]
+        } else {
+            delegate.getString(key)
+        }
+
+    override fun putString(key: String, value: String?) {
+        val hadPreviousValue = cachedValues.containsKey(key)
+        val previousValue = cachedValues[key]
+        cachedValues[key] = value
+        try {
+            delegate.putString(key, value)
+        } catch (throwable: Throwable) {
+            if (hadPreviousValue) {
+                cachedValues[key] = previousValue
+            } else {
+                cachedValues.remove(key)
+            }
+            throw throwable
+        }
+    }
+}
+
+fun SharedPreferenceStore.withReadYourWritesCache(): SharedPreferenceStore =
+    if (this is ReadYourWritesSharedPreferenceStore) {
+        this
+    } else {
+        ReadYourWritesSharedPreferenceStore(this)
+    }
+
 object SlockLocalPreferenceStore {
     const val KuiklyNamespace = "slockLocal"
 }

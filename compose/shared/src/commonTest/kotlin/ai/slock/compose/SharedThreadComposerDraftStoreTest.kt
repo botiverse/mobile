@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.data.InMemorySlockKeyValueStore
 import ai.slock.compose.data.SharedPreferenceStore
+import ai.slock.compose.data.withReadYourWritesCache
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -138,7 +139,7 @@ class SharedThreadComposerDraftStoreTest {
 
     @Test
     fun clearingBlankDraftUpdatesActiveRecordsBeforeAsyncStorageReadCatchesUp() {
-        val persistence = SharedThreadComposerDraftPersistence(DelayedReadSharedPreferenceStore())
+        val persistence = SharedThreadComposerDraftPersistence(DelayedReadSharedPreferenceStore().withReadYourWritesCache())
         val replyDraftKey = "send=reply-thread-1|parent=message-1|mention=channel-1"
         val rootDraftKey = "send=channel-1|parent=_|mention=channel-1"
 
