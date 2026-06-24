@@ -126,7 +126,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeUsesTextMarkerInsteadOfInlinePlaceholder() {
+    fun shortInlineCodeUsesChipAndLongInlineCodeUsesTextMarker() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
         val body = "short `$shortCode` long `$longCode`"
@@ -136,7 +136,7 @@ class SlockMarkdownTest {
         assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
 
         val inlineContent = annotator.inlineContent?.invoke().orEmpty()
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:") })
+        assertTrue(inlineContent.containsKey("slock-code:6"))
 
         val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
         val inlineCodeText =
@@ -144,7 +144,7 @@ class SlockMarkdownTest {
                 .map { annotated.text.substring(it.start, it.end) }
 
         assertEquals("short inline-code long very-long-inline-code-value-that-should-wrap-normally", annotated.text)
-        assertEquals(listOf(shortCode, longCode), inlineCodeText)
+        assertEquals(listOf(longCode), inlineCodeText)
     }
 
     @Test
@@ -395,7 +395,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTagPlaceholdersReserveVerticalPaddingAndCodeStaysInTextFlow() {
+    fun inlineTagAndShortCodePlaceholdersReserveVerticalPadding() {
         val body = "Ping @artin for #405 and `mimo`"
         val annotator =
             slockMarkdownAnnotator(
@@ -408,12 +408,10 @@ class SlockMarkdownTest {
 
         assertEquals(24.sp, inlineContent.getValue("slock:5").placeholder.height)
         assertEquals(24.sp, inlineContent.getValue("slock:16").placeholder.height)
-        assertFalse(inlineContent.containsKey("slock-code:25"))
+        assertEquals(24.sp, inlineContent.getValue("slock-code:25").placeholder.height)
 
         val annotated = buildSlockMarkdownInlineTextAnnotatedString(body, SlockType.Body, annotator)
-        val codeAnnotation =
-            annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length).single()
-        assertEquals("mimo", annotated.text.substring(codeAnnotation.start, codeAnnotation.end))
+        assertTrue(annotated.getStringAnnotations(SlockMarkdownInlineCodeAnnotationTag, 0, annotated.length).isEmpty())
     }
 
     @Test
@@ -426,18 +424,19 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         assertTrue(fallbackWidth.value in 44f..48f)
-        assertFalse(inlineContent.containsKey("slock-code:4"))
+        assertEquals(72.sp, inlineContent.getValue("slock-code:4").placeholder.width)
     }
 
     @Test
-    fun inlineCodeTokensAreNotRegisteredAsInlineContent() {
+    fun onlyShortInlineCodeTokensAreRegisteredAsInlineContent() {
         val tokens =
             listOf(
                 "mimo",
                 "MIMO_API_KEY",
                 "~/.pi/agent/auth.json",
                 "SlockColor.BorderBlack",
-                "blockNextChannels"
+                "blockNextChannels",
+                "very-long-inline-code-value-that-should-wrap-normally"
             )
         val body = tokens.joinToString(separator = " ") { "`$it`" }
         val plan = SlockMarkdownInlineTokenRegistry.plan(body)
@@ -447,8 +446,20 @@ class SlockMarkdownTest {
                 inlineCodeTextStyle = SlockType.Body
             ).inlineContent?.invoke().orEmpty()
 
-        assertTrue(plan.inlineCodeTokens().isEmpty())
-        assertTrue(inlineContent.isEmpty())
+        assertEquals(
+            listOf(
+                "mimo",
+                "MIMO_API_KEY",
+                "~/.pi/agent/auth.json",
+                "SlockColor.BorderBlack",
+                "blockNextChannels"
+            ),
+            plan.inlineCodeTokens().map { it.code }
+        )
+        assertEquals(
+            listOf("slock-code:0", "slock-code:7", "slock-code:22", "slock-code:46", "slock-code:71"),
+            inlineContent.keys.toList()
+        )
     }
 
     @Test
