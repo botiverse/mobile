@@ -12,11 +12,7 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import ai.slock.android.MainActivity
 import ai.slock.android.R
-import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
-import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runBlocking
 
 internal class SlockRealtimeKeepAliveService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
@@ -32,8 +28,9 @@ internal class SlockRealtimeKeepAliveService : Service() {
             }
             else -> {
                 val source = intent?.getStringExtra(EXTRA_SOURCE).takeUnless { it.isNullOrBlank() } ?: "service_start"
-                if (!hasStoredRealtimeSession()) {
+                if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(applicationContext)) {
                     AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
+                    satisfyForegroundStartContractBeforeStop(source, "missing_session")
                     stopSelf(startId)
                     return START_NOT_STICKY
                 }
@@ -68,16 +65,22 @@ internal class SlockRealtimeKeepAliveService : Service() {
         }
     }
 
-    private fun hasStoredRealtimeSession(): Boolean =
+    private fun satisfyForegroundStartContractBeforeStop(source: String, reason: String) {
+        ensureNotificationChannel()
         runCatching {
-            runBlocking(Dispatchers.IO) {
-                KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
-                    .readSession()
-                    ?.let { session ->
-                        !session.accessToken.isNullOrBlank() && !session.currentServerId.isNullOrBlank()
-                    } == true
-            }
-        }.getOrDefault(false)
+            startForeground(NOTIFICATION_ID, buildNotification())
+            stopForegroundCompat()
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "foreground_service_start_satisfied_before_stop source=$source reason=$reason"
+            )
+        }.onFailure { error ->
+            SlockDiagnosticsLogger.w(
+                LOG_TAG,
+                "foreground_service_start_satisfy_failed source=$source reason=$reason message=${error.message.orEmpty()}"
+            )
+        }
+    }
 
     private fun buildNotification(): Notification {
         val contentIntent =

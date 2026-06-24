@@ -11,6 +11,14 @@ internal object AndroidRealtimeKeepAliveController {
 
     fun start(context: Context, source: String = "unknown") {
         val appContext = context.applicationContext
+        if (!AndroidRealtimeSessionAvailability.hasStoredRealtimeSession(appContext)) {
+            AndroidAppScopeRealtimeOwner.disableBackgroundKeepAlive("missing_session")
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "start_skipped_no_session source=$source"
+            )
+            return
+        }
         val intent =
             Intent(appContext, SlockRealtimeKeepAliveService::class.java)
                 .setAction(SlockRealtimeKeepAliveService.ACTION_START)
