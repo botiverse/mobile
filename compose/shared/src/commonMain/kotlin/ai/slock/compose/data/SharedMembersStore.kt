@@ -3,8 +3,11 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.avatarSlotResolution
 import kotlinx.coroutines.CoroutineScope
@@ -32,7 +35,10 @@ data class SharedMembersMemberSuggestion(
     val description: String? = null,
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase()
+    val avatarLabel: String = displayName.take(1).uppercase(),
+    val presence: Presence? = null,
+    val agentStatus: AgentStatus? = null,
+    val memberId: String? = null
 )
 
 data class SharedMembersChannelSuggestion(
@@ -103,6 +109,8 @@ sealed interface SharedMembersIntent {
         val memberScopedMentions: Boolean = false
     ) : SharedMembersIntent
 
+    data class ApplyPresence(val event: MemberPresenceUpdated) : SharedMembersIntent
+
     data object Clear : SharedMembersIntent
 }
 
@@ -148,6 +156,7 @@ class SharedMembersStore(
                     mentionChannelId = intent.mentionChannelId,
                     memberScopedMentions = intent.memberScopedMentions
                 )
+            is SharedMembersIntent.ApplyPresence -> applyPresence(intent.event)
             SharedMembersIntent.Clear -> _state.value = SharedMembersState()
         }
     }
@@ -239,6 +248,24 @@ class SharedMembersStore(
         if (shouldLoadChannels) {
             loadChannelSuggestions(normalizedServerId)
         }
+    }
+
+    private fun applyPresence(event: MemberPresenceUpdated) {
+        val current = _state.value
+        val nextSlices =
+            current.memberSuggestionSlices.mapValues { (_, slice) ->
+                slice.withPresence(event)
+            }
+        if (nextSlices == current.memberSuggestionSlices) return
+        val activeScope = current.activeMemberScope()
+        val activeSlice = activeScope?.let { nextSlices[it] }
+        _state.value =
+            current.copy(
+                memberSuggestions = activeSlice?.suggestions ?: current.memberSuggestions,
+                memberStatus = activeSlice?.status ?: current.memberStatus,
+                memberErrorCode = activeSlice?.errorCode ?: current.memberErrorCode,
+                memberSuggestionSlices = nextSlices
+            )
     }
 
     private fun bindScope(
@@ -627,7 +654,10 @@ private fun List<MemberProfile>.toSharedMembersMemberSuggestions(
                     avatarWireValue = avatar.effectiveAvatarWireValue,
                     gravatarHash = avatar.gravatarHash,
                     avatarLabel = member.avatarLabel.trim().takeIf { it.isNotBlank() }
-                        ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() }
+                        ?: member.displayName.trim().take(1).uppercase().ifBlank { handle.take(1).uppercase() },
+                    presence = member.suggestionPresence(),
+                    agentStatus = member.agentStatus.takeIf { member.kind == MemberKind.Agent },
+                    memberId = member.id.value.takeIf { member.kind == MemberKind.Agent }
                 )
         }
     }
@@ -651,7 +681,10 @@ private fun List<SharedMembersMemberSuggestion>.mergeMentionChannelSuggestions(
                         sourceServerLabel = existing.sourceServerLabel ?: suggestion.sourceServerLabel,
                         description = existing.description ?: suggestion.description,
                         avatarWireValue = existing.avatarWireValue.preferConcreteSuggestionAvatar(suggestion.avatarWireValue),
-                        gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash
+                        gravatarHash = existing.gravatarHash ?: suggestion.gravatarHash,
+                        presence = existing.presence ?: suggestion.presence,
+                        agentStatus = existing.agentStatus ?: suggestion.agentStatus,
+                        memberId = existing.memberId ?: suggestion.memberId
                     )
                 else -> existing
             }
@@ -669,6 +702,27 @@ private fun String?.preferConcreteSuggestionAvatar(candidate: String?): String? 
 
 private fun String?.isAgentFallbackSuggestionAvatar(): Boolean =
     this?.equals("pixel:robot", ignoreCase = true) == true || this?.startsWith("random:", ignoreCase = true) == true
+
+private fun SharedMembersMemberSuggestionSlice.withPresence(event: MemberPresenceUpdated): SharedMembersMemberSuggestionSlice {
+    if (suggestions.isEmpty()) return this
+    var changed = false
+    val updated =
+        suggestions.map { suggestion ->
+            if (suggestion.kind == MemberKind.Agent && suggestion.memberId == event.memberId.value) {
+                changed = true
+                suggestion.copy(
+                    presence = event.presence,
+                    agentStatus = event.agentStatus ?: suggestion.agentStatus
+                )
+            } else {
+                suggestion
+            }
+        }
+    return if (changed) copy(suggestions = updated) else this
+}
+
+private fun MemberProfile.suggestionPresence(): Presence? =
+    if (kind == MemberKind.Agent && (agentStatus != null || presence != Presence.Offline)) presence else null
 
 private fun MemberProfile.remoteSourceServerLabel(localServerId: String?): String? {
     val sourceId = serverId?.value?.takeIf { it.isNotBlank() } ?: return null

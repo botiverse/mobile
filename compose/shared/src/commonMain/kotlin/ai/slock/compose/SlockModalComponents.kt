@@ -298,6 +298,7 @@ internal fun SlockModalCompactMemberRow(
     selected: Boolean = false,
     enabled: Boolean = true,
     avatarSize: Dp = 30.dp,
+    statusPulsing: Boolean = false,
     sourceBadgeLabel: String? = null,
     trailingText: String = "",
     trailingIcon: SlockLucideIconName? = null,
@@ -322,7 +323,8 @@ internal fun SlockModalCompactMemberRow(
         SlockAvatarWithStatus(
             statusColor = statusColor,
             avatarSize = avatarSize,
-            statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp
+            statusSize = if (avatarSize >= 40.dp) 10.dp else 8.dp,
+            statusPulsing = statusPulsing
         ) {
             SlockAvatar(
                 avatarWireValue = avatarWireValue,

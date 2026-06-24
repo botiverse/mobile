@@ -74,6 +74,8 @@ import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Presence
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.markdown.ThreadMarkdownTag
 import ai.slock.compose.markdown.ThreadMarkdownTagKind
@@ -1014,7 +1016,9 @@ internal data class KuiklyThreadMemberItem(
     val kind: String = "human",
     val sourceServerId: String? = null,
     val sourceServerLabel: String? = null,
-    val canRemove: Boolean = true
+    val canRemove: Boolean = true,
+    val presence: Presence? = null,
+    val agentStatus: AgentStatus? = null
 )
 
 @Serializable
@@ -2225,6 +2229,9 @@ internal fun SharedThreadRouteContent(
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
         )
+        if (signal.event is MemberPresenceUpdated) {
+            membersStore?.dispatch(SharedMembersIntent.ApplyPresence(signal.event))
+        }
         if (signal.event.refreshesThreadMemberSuggestions(memberSuggestionScopeChannelId)) {
             membersStore?.dispatch(
                 SharedMembersIntent.RefreshSuggestions(
@@ -5408,7 +5415,9 @@ private fun ThreadComposerContentWithSuggestions(
                     description = suggestion.description,
                     avatarWireValue = suggestion.avatarWireValue,
                     gravatarHash = suggestion.gravatarHash,
-                    avatarLabel = suggestion.avatarLabel
+                    avatarLabel = suggestion.avatarLabel,
+                    presence = suggestion.presence,
+                    agentStatus = suggestion.agentStatus
                 )
             }
         }
@@ -9759,6 +9768,7 @@ private fun ThreadMembersModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
+                                statusPulsing = member.modalStatusPulsing(),
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
@@ -9778,6 +9788,7 @@ private fun ThreadMembersModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
+                                statusPulsing = member.modalStatusPulsing(),
                                 enabled = !removing,
                                 trailingIcon = SlockLucideIconName.X.takeIf { member.canRemove && !removing },
                                 trailingText = if (removing) "REMOVING" else "",
@@ -9885,6 +9896,7 @@ private fun ThreadAddMemberModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
+                                statusPulsing = member.modalStatusPulsing(),
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
@@ -9909,6 +9921,7 @@ private fun ThreadAddMemberModal(
                                 avatarWireValue = member.modalAvatarWireValue(),
                                 avatarLabel = member.modalAvatarLabel(),
                                 statusColor = member.modalStatusColor(),
+                                statusPulsing = member.modalStatusPulsing(),
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
@@ -9944,7 +9957,18 @@ private fun KuiklyThreadMemberItem.modalAvatarLabel(): String =
     avatarLabel.ifBlank { displayName.ifBlank { handle.ifBlank { id } } }
 
 private fun KuiklyThreadMemberItem.modalStatusColor(): Color? =
-    if (kind.equals("agent", ignoreCase = true)) SlockColor.AccentLime else null
+    modalAgentStatusIndicatorState()?.color
+
+private fun KuiklyThreadMemberItem.modalStatusPulsing(): Boolean =
+    modalAgentStatusIndicatorState()?.pulsing == true
+
+private fun KuiklyThreadMemberItem.modalAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
+    if (!kind.equals("agent", ignoreCase = true)) return null
+    return slockAgentStatusIndicatorState(
+        status = agentStatus,
+        presence = presence ?: agentStatus?.presence ?: Presence.Offline
+    )
+}
 
 private enum class ThreadSettingsDangerAction(
     val id: String,

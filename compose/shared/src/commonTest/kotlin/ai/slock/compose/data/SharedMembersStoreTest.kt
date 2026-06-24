@@ -110,7 +110,8 @@ class SharedMembersStoreTest {
                     "build",
                     inMentionChannel = false,
                     kind = MemberKind.Agent,
-                    avatarWireValue = "pixel:robot"
+                    avatarWireValue = "pixel:robot",
+                    memberId = "u2"
                 ),
                 SharedMembersMemberSuggestion(
                     "Remote User",
@@ -147,7 +148,8 @@ class SharedMembersStoreTest {
                     "outside",
                     inMentionChannel = false,
                     kind = MemberKind.Agent,
-                    avatarWireValue = "pixel:robot"
+                    avatarWireValue = "pixel:robot",
+                    memberId = "u2"
                 )
             ),
             store.state.value.memberSuggestions
@@ -188,11 +190,74 @@ class SharedMembersStoreTest {
                     description = "Builds and validates Android changes",
                     avatarWireValue = "pixel:build-agent",
                     gravatarHash = null,
-                    avatarLabel = "BA"
+                    avatarLabel = "BA",
+                    memberId = "a1"
                 )
             ),
             store.state.value.memberSuggestions
         )
+    }
+
+    @Test
+    fun memberSuggestionsPreserveAgentStatusProjection() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("a1"),
+                            displayName = "Build Agent",
+                            handle = "build",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Active,
+                            agentStatus = AgentStatus.Working
+                        )
+                    )
+            )
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(serverId = "server-1")
+
+        val suggestion = store.state.value.memberSuggestions.single()
+        assertEquals("a1", suggestion.memberId)
+        assertEquals(MemberKind.Agent, suggestion.kind)
+        assertEquals(Presence.Active, suggestion.presence)
+        assertEquals(AgentStatus.Working, suggestion.agentStatus)
+    }
+
+    @Test
+    fun memberSuggestionPresenceEventPatchesLoadedAgentSlices() = runBlocking {
+        val memberRepository =
+            FakeMemberRepository(
+                members =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("a1"),
+                            displayName = "Build Agent",
+                            handle = "build",
+                            kind = MemberKind.Agent,
+                            presence = Presence.Offline,
+                            agentStatus = AgentStatus.Offline
+                        )
+                    )
+            )
+        val store = store(memberRepository, FakeChannelRepository())
+
+        store.ensureSuggestionsForServer(serverId = "server-1")
+        store.dispatch(
+            SharedMembersIntent.ApplyPresence(
+                MemberPresenceUpdated(
+                    memberId = MemberId("a1"),
+                    presence = Presence.Active,
+                    kind = MemberKind.Agent,
+                    agentStatus = AgentStatus.Working
+                )
+            )
+        )
+
+        val suggestion = store.state.value.memberSuggestions.single()
+        assertEquals(Presence.Active, suggestion.presence)
+        assertEquals(AgentStatus.Working, suggestion.agentStatus)
     }
 
     @Test
@@ -238,7 +303,8 @@ class SharedMembersStoreTest {
                     description = "Builds and validates Android changes",
                     avatarWireValue = "pixel:robot",
                     gravatarHash = null,
-                    avatarLabel = "BA"
+                    avatarLabel = "BA",
+                    memberId = "a1"
                 )
             ),
             store.state.value.memberSuggestions
@@ -371,7 +437,8 @@ class SharedMembersStoreTest {
                     "Build Agent",
                     "build-agent",
                     kind = MemberKind.Agent,
-                    avatarWireValue = "pixel:robot"
+                    avatarWireValue = "pixel:robot",
+                    memberId = "a1"
                 )
             ),
             store.state.value.memberSuggestions

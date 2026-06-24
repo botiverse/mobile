@@ -2884,7 +2884,9 @@ private fun MemberProfile.toKuiklyThreadMemberItem(localServerId: ServerId? = nu
         kind = kind.name.lowercase(),
         sourceServerId = serverId?.value,
         sourceServerLabel = remoteSourceServerLabel(localServerId),
-        canRemove = isLocalToServer(localServerId)
+        canRemove = isLocalToServer(localServerId),
+        presence = presence.takeIf { kind == MemberKind.Agent && (agentStatus != null || presence != Presence.Offline) },
+        agentStatus = agentStatus.takeIf { kind == MemberKind.Agent }
     )
 
 private fun MemberProfile.isLocalToServer(localServerId: ServerId?): Boolean {

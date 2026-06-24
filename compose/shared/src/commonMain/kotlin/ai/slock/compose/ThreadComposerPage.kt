@@ -6,9 +6,11 @@ import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockCheckbox
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.toGravatarAvatarUrl
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -222,7 +224,9 @@ internal data class KuiklyComposerMemberItem(
     val description: String? = null,
     val avatarWireValue: String? = null,
     val gravatarHash: String? = null,
-    val avatarLabel: String = displayName.take(1).uppercase()
+    val avatarLabel: String = displayName.take(1).uppercase(),
+    val presence: Presence? = null,
+    val agentStatus: AgentStatus? = null
 )
 
 @Serializable
@@ -1172,7 +1176,7 @@ private fun ComposerMemberSuggestionRow(
                 overflow = TextOverflow.Ellipsis
             )
             if (inChannel && member.kind == MemberKind.Agent) {
-                ComposerAgentActivityDot()
+                ComposerAgentStatusDot(member.composerAgentStatusIndicatorState())
             }
             if (secondary != null) {
                 Text(
@@ -1199,14 +1203,21 @@ private fun ComposerMemberSuggestionRow(
 }
 
 @Composable
-private fun ComposerAgentActivityDot() {
+private fun ComposerAgentStatusDot(status: SlockAgentStatusIndicatorState) {
     SlockStatusIndicator(
-        color = SlockColor.BrandYellow,
+        color = status.color,
         size = ComposerAgentActivityDotSize,
         borderColor = SlockColor.BorderBlack,
-        borderWidth = SlockStroke.Thin
+        borderWidth = SlockStroke.Thin,
+        pulsing = status.pulsing
     )
 }
+
+private fun KuiklyComposerMemberItem.composerAgentStatusIndicatorState(): SlockAgentStatusIndicatorState =
+    slockAgentStatusIndicatorState(
+        status = agentStatus,
+        presence = presence ?: agentStatus?.presence ?: Presence.Offline
+    )
 
 @Composable
 private fun PendingMentionActionBanner(
