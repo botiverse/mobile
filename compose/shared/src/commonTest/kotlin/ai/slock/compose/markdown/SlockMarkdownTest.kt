@@ -133,22 +133,23 @@ class SlockMarkdownTest {
         val inlineContent = slockMarkdownAnnotator("short `$shortCode` long `$longCode`").inlineContent?.invoke().orEmpty()
 
         assertTrue(inlineContent.containsKey("slock-code:6"))
-        assertTrue(inlineContent.keys.any { it.startsWith("slock-code:25:") })
+        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:25") })
         assertFalse(inlineContent.containsKey("slock-code:25"))
     }
 
     @Test
-    fun longInlineCodeSegmentsPreserveVisibleTextForWrapping() {
+    fun longInlineCodeUsesTextFlowSoftBreaksInsteadOfInlineBoxSegments() {
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
         val token =
             SlockMarkdownInlineTokenRegistry.plan("Use `$longCode`")
                 .inlineCodeTokens()
                 .single()
         val segments = token.toSlockMarkdownInlineCodeChipSegments()
+        val wrappedCode = longCode.slockMarkdownInlineCodeWithSoftBreaks()
 
-        assertTrue(segments.size > 1)
-        assertEquals(longCode, segments.joinToString(separator = "") { it.code })
-        assertTrue(segments.all { it.code.length < longCode.length })
+        assertTrue(segments.isEmpty())
+        assertTrue(wrappedCode.contains(SlockMarkdownInlineCodeSoftBreak))
+        assertEquals(longCode, wrappedCode.replace(SlockMarkdownInlineCodeSoftBreak.toString(), ""))
     }
 
     @Test

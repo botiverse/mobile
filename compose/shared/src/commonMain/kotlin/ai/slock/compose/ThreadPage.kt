@@ -191,6 +191,7 @@ import kotlin.time.TimeSource
 internal const val THREAD_PAGE = "compose_thread"
 private const val THREAD_MESSAGE_VISUAL_PAGE = "compose_thread_message_visual"
 private const val THREAD_MESSAGE_ROW_VISUAL_PAGE = "compose_thread_message_row_visual"
+private const val THREAD_MESSAGE_MARKDOWN_CHIPS_VISUAL_PAGE = "compose_thread_message_markdown_chips"
 private const val THREAD_HEADER_VISUAL_PAGE = "compose_thread_header_visual"
 private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_panel_visual"
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
@@ -372,6 +373,14 @@ internal class ComposeThreadMessageRowVisualPage : ai.slock.compose.base.BasePag
     override fun willInit() {
         super.willInit()
         setContent { ThreadMessageVisualScreen() }
+    }
+}
+
+@Page(THREAD_MESSAGE_MARKDOWN_CHIPS_VISUAL_PAGE, supportInLocal = true)
+internal class ComposeThreadMessageMarkdownChipsVisualPage : ai.slock.compose.base.BasePager() {
+    override fun willInit() {
+        super.willInit()
+        setContent { ThreadMessageVisualScreen(defaultFixture = THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_CHIPS) }
     }
 }
 
@@ -1675,14 +1684,14 @@ private fun ThreadPageScreen() {
 }
 
 @Composable
-private fun ThreadMessageVisualScreen() {
+private fun ThreadMessageVisualScreen(defaultFixture: String = THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT) {
     val pager = LocalActivity.current.getPager() as Pager
     val params = pager.pageData.params
     val visualFixture = params.optString("visualFixture")
     val instanceId = params.optString("instanceId")
     val payload =
         remember(visualFixture, instanceId) {
-            threadVisualFixture(fixture = visualFixture.ifBlank { THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT }, instanceId = instanceId)
+            threadVisualFixture(fixture = visualFixture.ifBlank { defaultFixture }, instanceId = instanceId)
         }
     val highlightedMentions =
         remember(visualFixture) {
@@ -4724,6 +4733,7 @@ internal fun parseThreadLaunchPayload(source: String, instanceId: String): Kuikl
 
 internal const val THREAD_MESSAGE_VISUAL_FIXTURE_DEFAULT = "default"
 private const val THREAD_MESSAGE_VISUAL_FIXTURE_RICH_CONTENT = "rich_content"
+internal const val THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_CHIPS = "markdown_chips"
 
 internal fun threadVisualFixture(
     fixture: String,
@@ -4864,6 +4874,69 @@ internal fun threadVisualFixture(
                             assigneeId = "agent-cindy",
                             assigneeName = "Cindy",
                             updatedAtLabel = "06/22 23:30"
+                        )
+                    ),
+                members =
+                    listOf(
+                        KuiklyThreadMemberItem(
+                            id = "agent-cindy",
+                            displayName = "Cindy",
+                            handle = "Cindy",
+                            kind = "agent",
+                            avatarLabel = "CI"
+                        ),
+                        KuiklyThreadMemberItem(
+                            id = "visual-user",
+                            displayName = "artin",
+                            handle = "artin",
+                            kind = "human",
+                            avatarLabel = "AR"
+                        )
+                    ),
+                showComposer = false,
+                joined = true,
+                filesPayload = "{}",
+                composer =
+                    KuiklyThreadComposerPayload(
+                        instanceId = resolvedInstanceId,
+                        enabled = false
+                    )
+            )
+        THREAD_MESSAGE_VISUAL_FIXTURE_MARKDOWN_CHIPS ->
+            KuiklyThreadScreenPayload(
+                instanceId = resolvedInstanceId,
+                title = "#markdown专修",
+                subtitle = "Thread markdown chips fixture",
+                status = "content",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                streamChannelId = "channel-markdown",
+                sourceThreadId = "channel-markdown",
+                selectedTab = "chat",
+                showModeTabs = false,
+                showReplyActions = false,
+                alignOwnMessagesRight = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "msg_markdown_chips_visual",
+                            authorId = "agent-cindy",
+                            authorName = "Cindy",
+                            authorKind = "agent",
+                            avatarLabel = "CI",
+                            timestampLabel = "06/24 21:15",
+                            messageType = "Chat",
+                            body =
+                                "Markdown chips fixture: short `git diff --check` and long " +
+                                    "`very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes` " +
+                                    "next to @artin in #markdown专修 for task #29.",
+                            threadChannelId = "thread-msg-markdown-chips",
+                            reactions =
+                                listOf(
+                                    KuiklyThreadReactionItem(emoji = "👍", count = 1, selected = false)
+                                )
                         )
                     ),
                 members =

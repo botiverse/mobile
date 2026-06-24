@@ -143,6 +143,15 @@ class KmpVisualScreenshotCaptureTest {
     }
 
     @Test
+    fun captureThreadMessageMarkdownChips() {
+        captureKmpComponentCase(
+            caseId = "thread.message.markdown-chips",
+            pageName = "compose_thread_message_markdown_chips",
+            crop = FULL_VIEWPORT_CROP
+        )
+    }
+
+    @Test
     fun captureThreadHeaderStates() {
         captureKmpComponentCase(
             caseId = "components.thread.header.states",

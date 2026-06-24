@@ -215,6 +215,7 @@ object SlockMarkdownPreviewSamples {
 
                 - lists stay left aligned
                 - `inline code #999` stays code, not a task chip
+                - `very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes`
                 - tags like #283 and #android-dev become clickable chips
 
                 > quoted text remains inside the message column
@@ -595,18 +596,22 @@ internal fun slockMarkdownAnnotator(
         )
     }
     return markdownAnnotator(
-        annotate = { markdownContent, child, _ ->
+        annotate = { markdownContent, child, annotatorSettings ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeToken =
                     inlineCodeChipById["slock-code:${child.startOffset}"]
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    codeToken.toSlockMarkdownInlineCodeChipSegments().forEachIndexed { index, segment ->
-                        if (index > 0) {
-                            append(SlockMarkdownInlineCodeSoftBreak)
-                        }
-                        appendInlineContent(segment.id, segment.code)
+                    val segments = codeToken.toSlockMarkdownInlineCodeChipSegments()
+                    if (segments.isNotEmpty()) {
+                        appendInlineContent(segments.single().id, segments.single().code)
+                    } else {
+                        pushStyle(annotatorSettings.codeSpanStyle)
+                        append(' ')
+                        append(code.slockMarkdownInlineCodeWithSoftBreaks())
+                        append(' ')
+                        pop()
                     }
                     return@markdownAnnotator true
                 }
@@ -1381,16 +1386,21 @@ internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
 internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
     val code = code.orEmpty()
     if (code.isEmpty()) return listOf(ThreadInlineCodeChipSegment(id, code))
-    if (code.slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeSoftBreakEveryUnits) {
+    if (code.slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxUnits) {
         return listOf(ThreadInlineCodeChipSegment(id, code))
     }
+    return emptyList()
+}
+
+internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
+    if (isEmpty() || slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxUnits) return this
     val pieces = mutableListOf<String>()
     val current = StringBuilder()
     var unitsSinceBreak = 0
-    code.forEachIndexed { index, char ->
+    forEachIndexed { index, char ->
         current.append(char)
         unitsSinceBreak += if (char.code > 0x7F) 2 else 1
-        val isLast = index == code.lastIndex
+        val isLast = index == lastIndex
         val isNaturalBreak = char in SlockMarkdownInlineCodeNaturalBreakChars
         val shouldBreak =
             !isLast &&
@@ -1405,16 +1415,11 @@ internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<T
     if (current.isNotEmpty()) {
         pieces += current.toString()
     }
-    return if (pieces.size == 1) {
-        listOf(ThreadInlineCodeChipSegment(id, pieces.single()))
-    } else {
-        pieces.mapIndexed { index, piece ->
-            ThreadInlineCodeChipSegment(id = "$id:$index", code = piece)
-        }
-    }
+    return pieces.joinToString(separator = SlockMarkdownInlineCodeSoftBreak.toString())
 }
 
-private const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
+internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
+private const val SlockMarkdownInlineCodeChipMaxUnits = 28
 private const val SlockMarkdownInlineCodeSoftBreakEveryUnits = 16
 private const val SlockMarkdownInlineCodeMinNaturalBreakUnits = 4
 private val SlockMarkdownInlineCodeNaturalBreakChars = setOf('.', '/', '-', '_', ':', '=', '?', '&')
