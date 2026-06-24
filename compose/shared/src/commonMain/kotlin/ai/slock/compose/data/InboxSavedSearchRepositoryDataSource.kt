@@ -81,11 +81,14 @@ private suspend fun SlockNetworkClient.searchMessages(
                 "limit" to limit.toString(),
                 "offset" to offset.toString(),
                 options.sort.wireValue?.let { "sort" to it },
-                options.senderId?.takeIf { it.isNotBlank() }?.let { "senderId" to it },
                 options.channelId?.value?.let { "channelId" to it },
                 options.afterIso?.takeIf { it.isNotBlank() }?.let { "after" to it },
                 options.beforeIso?.takeIf { it.isNotBlank() }?.let { "before" to it }
-            )
+            ) + options.senderIds
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+                .map { "senderId" to it }
     )
 
 class RealInboxRepository(

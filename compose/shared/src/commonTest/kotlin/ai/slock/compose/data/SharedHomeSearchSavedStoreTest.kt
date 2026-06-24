@@ -155,7 +155,7 @@ class SharedHomeSearchSavedStoreTest {
 
         assertEquals("release", search.query)
         assertEquals(SearchSort.Recent, search.options?.sort)
-        assertEquals("user-1", search.options?.senderId)
+        assertEquals(listOf("user-1"), search.options?.senderIds)
         assertEquals(ChannelId("channel-1"), search.options?.channelId)
         assertEquals("2026-05-15T00:00:00Z", search.options?.afterIso)
         assertEquals("2026-05-15T15:04:43.904Z", search.options?.beforeIso)
@@ -246,10 +246,10 @@ class SharedHomeSearchSavedStoreTest {
                 searchDebounceMillis = 0L
             )
 
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("user-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
 
         assertEquals("", search.query)
-        assertEquals("user-1", search.options?.senderId)
+        assertEquals(listOf("user-1"), search.options?.senderIds)
         assertEquals(listOf("message-filter-only"), store.state.value.search.items.map { it.key })
         assertEquals(true, store.state.value.search.searched)
         scope.cancel()
@@ -333,7 +333,7 @@ class SharedHomeSearchSavedStoreTest {
         assertEquals(false, store.state.value.search.myMessagesOnly)
         assertEquals(null, store.state.value.search.selectedChannelId)
         assertEquals(SearchTimeRange.Any, store.state.value.search.timeRange)
-        assertEquals(null, search.options?.senderId)
+        assertEquals(emptyList(), search.options?.senderIds)
         assertEquals(null, search.options?.channelId)
         assertEquals(null, search.options?.afterIso)
         assertEquals(null, search.options?.beforeIso)
@@ -355,12 +355,38 @@ class SharedHomeSearchSavedStoreTest {
 
         store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("handoff"))
         store.dispatch(SharedHomeSearchSavedIntent.SetMyMessagesOnly(true))
-        store.dispatch(SharedHomeSearchSavedIntent.SetSearchSender("agent-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("agent-1"))
         store.dispatch(SharedHomeSearchSavedIntent.SubmitSearch)
 
         assertEquals(false, store.state.value.search.myMessagesOnly)
-        assertEquals("agent-1", store.state.value.search.selectedSenderId)
-        assertEquals("agent-1", search.options?.senderId)
+        assertEquals(listOf("agent-1"), store.state.value.search.selectedSenderIds)
+        assertEquals(listOf("agent-1"), search.options?.senderIds)
+        scope.cancel()
+    }
+
+    @Test
+    fun senderFilterSupportsMultipleSelectedSenders() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-multi-sender")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 0L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("agent-1"))
+
+        assertEquals(listOf("user-1", "agent-1"), store.state.value.search.selectedSenderIds)
+        assertEquals(listOf("user-1", "agent-1"), search.options?.senderIds)
+
+        store.dispatch(SharedHomeSearchSavedIntent.ToggleSearchSender("user-1"))
+
+        assertEquals(listOf("agent-1"), store.state.value.search.selectedSenderIds)
+        assertEquals(listOf("agent-1"), search.options?.senderIds)
         scope.cancel()
     }
 

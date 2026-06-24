@@ -400,14 +400,14 @@ interface SearchRepository {
 
 data class SearchQueryOptions(
     val sort: SearchSort = SearchSort.Relevance,
-    val senderId: String? = null,
+    val senderIds: List<String> = emptyList(),
     val channelId: ChannelId? = null,
     val afterIso: String? = null,
     val beforeIso: String? = null
 )
 
 fun SearchQueryOptions.hasMeaningfulFilter(): Boolean =
-    !senderId.isNullOrBlank() ||
+    senderIds.any { it.isNotBlank() } ||
         (channelId?.value?.isNotBlank() == true) ||
         !afterIso.isNullOrBlank() ||
         !beforeIso.isNullOrBlank()

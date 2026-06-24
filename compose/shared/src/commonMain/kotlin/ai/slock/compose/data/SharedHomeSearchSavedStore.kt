@@ -75,12 +75,23 @@ class SharedHomeSearchSavedStore(
                     _state.value.copy(search = _state.value.search.copy(selectedChannelId = intent.channelId))
                 scheduleSearchRefresh()
             }
-            is SharedHomeSearchSavedIntent.SetSearchSender -> {
+            is SharedHomeSearchSavedIntent.ToggleSearchSender -> {
                 _state.value =
                     _state.value.copy(
                         search =
                             _state.value.search.copy(
-                                selectedSenderId = intent.senderId,
+                                selectedSenderIds = _state.value.search.selectedSenderIds.toggleSenderId(intent.senderId),
+                                myMessagesOnly = false
+                            )
+                    )
+                scheduleSearchRefresh()
+            }
+            SharedHomeSearchSavedIntent.ClearSearchSenders -> {
+                _state.value =
+                    _state.value.copy(
+                        search =
+                            _state.value.search.copy(
+                                selectedSenderIds = emptyList(),
                                 myMessagesOnly = false
                             )
                     )
@@ -100,7 +111,7 @@ class SharedHomeSearchSavedStore(
                         search =
                             _state.value.search.copy(
                                 myMessagesOnly = intent.enabled,
-                                selectedSenderId = if (intent.enabled) null else _state.value.search.selectedSenderId
+                                selectedSenderIds = if (intent.enabled) emptyList() else _state.value.search.selectedSenderIds
                             )
                     )
                 scheduleSearchRefresh()
@@ -111,7 +122,7 @@ class SharedHomeSearchSavedStore(
                         search =
                             _state.value.search.copy(
                                 myMessagesOnly = false,
-                                selectedSenderId = null,
+                                selectedSenderIds = emptyList(),
                                 selectedChannelId = null,
                                 timeRange = SearchTimeRange.Any
                             )
@@ -281,7 +292,12 @@ class SharedHomeSearchSavedStore(
                         ?: return@launch setSearchErrorIfActive(requestToken, "server_missing")
                     val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val bounds = timeRangeBoundsProvider(previous.timeRange)
-                    val senderId = previous.selectedSenderId ?: session.user.id.takeIf { previous.myMessagesOnly }
+                    val senderIds =
+                        when {
+                            previous.selectedSenderIds.isNotEmpty() -> previous.selectedSenderIds
+                            previous.myMessagesOnly -> listOf(session.user.id)
+                            else -> emptyList()
+                        }
                     val result =
                         searchRepository.search(
                             serverId = serverId,
@@ -291,7 +307,7 @@ class SharedHomeSearchSavedStore(
                             options =
                                 SearchQueryOptions(
                                     sort = previous.sort,
-                                    senderId = senderId,
+                                    senderIds = senderIds,
                                     channelId = previous.selectedChannelId?.let(::ChannelId),
                                     afterIso = bounds.afterIso,
                                     beforeIso = bounds.beforeIso
@@ -664,7 +680,7 @@ data class SharedHomeSearchPanelState(
     val sort: SearchSort = SearchSort.Relevance,
     val timeRange: SearchTimeRange = SearchTimeRange.Any,
     val myMessagesOnly: Boolean = false,
-    val selectedSenderId: String? = null,
+    val selectedSenderIds: List<String> = emptyList(),
     val senderFilters: List<SearchSenderFilterItem> = emptyList(),
     val senderFiltersLoading: Boolean = false,
     val senderFiltersErrorCode: String? = null,
@@ -686,9 +702,15 @@ data class SharedHomeSearchPanelState(
 private fun SharedHomeSearchPanelState.hasMessageSearchIntent(): Boolean =
     query.trim().isNotBlank() ||
         myMessagesOnly ||
-        !selectedSenderId.isNullOrBlank() ||
+        selectedSenderIds.any { it.isNotBlank() } ||
         !selectedChannelId.isNullOrBlank() ||
         timeRange != SearchTimeRange.Any
+
+private fun List<String>.toggleSenderId(senderId: String): List<String> {
+    val normalized = senderId.trim()
+    if (normalized.isBlank()) return this
+    return if (normalized in this) filterNot { it == normalized } else this + normalized
+}
 
 sealed interface SharedHomeSearchSavedIntent {
     data object OpenSearch : SharedHomeSearchSavedIntent
@@ -701,7 +723,8 @@ sealed interface SharedHomeSearchSavedIntent {
     data object SubmitSearch : SharedHomeSearchSavedIntent
     data object RefreshSearch : SharedHomeSearchSavedIntent
     data object LoadMoreSearch : SharedHomeSearchSavedIntent
-    data class SetSearchSender(val senderId: String?) : SharedHomeSearchSavedIntent
+    data class ToggleSearchSender(val senderId: String) : SharedHomeSearchSavedIntent
+    data object ClearSearchSenders : SharedHomeSearchSavedIntent
     data class SetSearchChannel(val channelId: String?) : SharedHomeSearchSavedIntent
     data class SetSearchSort(val sort: SearchSort) : SharedHomeSearchSavedIntent
     data class SetSearchTimeRange(val range: SearchTimeRange) : SharedHomeSearchSavedIntent

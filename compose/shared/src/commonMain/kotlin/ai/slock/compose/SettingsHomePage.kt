@@ -9707,13 +9707,13 @@ private fun SharedHomeSearchPanel(
                     searchText = senderSearch,
                     onSearchChange = { senderSearch = it },
                     options = state.senderFilterOptions(),
-                    selectedIds = state.selectedSenderId?.let { setOf(it) } ?: emptySet(),
+                    selectedIds = state.selectedSenderIds.toSet(),
                     onToggle = {
-                        onIntent(SharedHomeSearchSavedIntent.SetSearchSender(it))
+                        onIntent(SharedHomeSearchSavedIntent.ToggleSearchSender(it))
                     },
-                    onClear = { onIntent(SharedHomeSearchSavedIntent.SetSearchSender(null)) },
+                    onClear = { onIntent(SharedHomeSearchSavedIntent.ClearSearchSenders) },
                     onDismiss = { openFilterId = null },
-                    multiSelect = false,
+                    multiSelect = true,
                     surfaceBorderColor = SearchPopoverBorderColor,
                     surfaceShadowColor = SearchPopoverShadowColor,
                     selectedRowColor = SlockColor.SurfaceWhite,
@@ -10241,12 +10241,11 @@ private fun SharedHomeSearchFilters(
 ) {
     val hasActiveFilters =
         state.myMessagesOnly ||
-            state.selectedSenderId != null ||
+            state.selectedSenderIds.isNotEmpty() ||
             state.selectedChannelId != null ||
             state.timeRange != SearchTimeRange.Any
-    val selectedSender = state.senderFilters.firstOrNull { it.id == state.selectedSenderId }
     val selectedChannel = channelFilters.firstOrNull { it.id == state.selectedChannelId }
-    val senderActive = state.selectedSenderId != null
+    val senderActive = state.selectedSenderIds.isNotEmpty()
     val channelActive = state.selectedChannelId != null
     val timeActive = state.timeRange != SearchTimeRange.Any
     val sortActive = state.sort != SearchSort.Relevance
@@ -10258,10 +10257,10 @@ private fun SharedHomeSearchFilters(
             if (showSenderFilter) {
                 item {
                     SlockAnchoredToolbarChip(
-                        label = selectedSender?.let { "From: ${if (it.isSelf) "Me" else it.displayLabel}" } ?: "From",
+                        label = state.senderFilterLabel(),
                         active = senderActive,
                         enabled = true,
-                        uppercase = selectedSender == null,
+                        uppercase = !senderActive,
                         iconName = SlockLucideIconName.CircleUser,
                         activeBackgroundColor = SlockColor.BrandYellow,
                         activeShadowOffset = SearchControlShadowOffset,
@@ -11265,6 +11264,16 @@ private fun SharedHomeSearchPanelState.senderFilterOptions(): List<SlockFilterOp
             )
         }
         .distinctBy { it.id }
+
+private fun SharedHomeSearchPanelState.senderFilterLabel(): String {
+    val selectedIds = selectedSenderIds.map { it.trim() }.filter { it.isNotBlank() }.distinct()
+    if (selectedIds.isEmpty()) return "From"
+    val selected = senderFilters.filter { it.id in selectedIds.toSet() }
+    return when (selectedIds.size) {
+        1 -> "From: ${selected.singleOrNull()?.let { if (it.isSelf) "Me" else it.displayLabel } ?: selectedIds.first()}"
+        else -> "From: ${selectedIds.size} selected"
+    }
+}
 
 private val SearchSenderFilterItem.displayLabel: String
     get() = label.ifBlank { handle.ifBlank { id } }
@@ -12954,7 +12963,7 @@ private val homeSearchVisualSearchState = SharedHomeSearchPanelState(
         sort = SearchSort.Recent,
         timeRange = SearchTimeRange.Last7Days,
     myMessagesOnly = false,
-    selectedSenderId = "user_artin",
+    selectedSenderIds = listOf("user_artin"),
     // Visual fixture is static + non-interactive (`onIntent = {}` in HomeSearchVisualContent),
     // so the store never actually runs a search. Mark `searched = true` explicitly so the
     // panel's "items/empty/results-count" branch falls into the "has results" path instead

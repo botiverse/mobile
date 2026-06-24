@@ -197,7 +197,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                 query = " ",
                 options =
                     SearchQueryOptions(
-                        senderId = "user-1",
+                        senderIds = listOf("user-1"),
                         channelId = ChannelId("channel-1"),
                         afterIso = "2026-05-14T16:00:00.000Z"
                     )
@@ -211,7 +211,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                     limit = 30,
                     offset = 0,
                     sort = null,
-                    senderId = "user-1",
+                    senderIds = listOf("user-1"),
                     channelId = "channel-1",
                     after = "2026-05-14T16:00:00.000Z",
                     before = null
@@ -234,7 +234,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
             options =
                 SearchQueryOptions(
                     sort = SearchSort.Recent,
-                    senderId = "user-1",
+                    senderIds = listOf("user-1", "agent-1", "user-1"),
                     channelId = ChannelId("channel-1"),
                     afterIso = "2026-05-14T16:00:00.000Z",
                     beforeIso = "2026-05-15T15:04:43.904Z"
@@ -248,7 +248,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                     limit = 20,
                     offset = 20,
                     sort = "recent",
-                    senderId = "user-1",
+                    senderIds = listOf("user-1", "agent-1"),
                     channelId = "channel-1",
                     after = "2026-05-14T16:00:00.000Z",
                     before = "2026-05-15T15:04:43.904Z"
@@ -388,7 +388,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
                             limit = query.firstValue("limit")?.toIntOrNull() ?: 30,
                             offset = query.firstValue("offset")?.toIntOrNull() ?: 0,
                             sort = query.firstValue("sort"),
-                            senderId = query.firstValue("senderId"),
+                            senderIds = query.values("senderId"),
                             channelId = query.firstValue("channelId"),
                             after = query.firstValue("after"),
                             before = query.firstValue("before")
@@ -414,7 +414,7 @@ class InboxSavedSearchRepositoryDataSourceTest {
         val limit: Int,
         val offset: Int,
         val sort: String?,
-        val senderId: String?,
+        val senderIds: List<String>,
         val channelId: String?,
         val after: String?,
         val before: String?
@@ -423,3 +423,6 @@ class InboxSavedSearchRepositoryDataSourceTest {
 
 private fun List<Pair<String, String>>.firstValue(name: String): String? =
     firstOrNull { it.first == name }?.second
+
+private fun List<Pair<String, String>>.values(name: String): List<String> =
+    filter { it.first == name }.map { it.second }
