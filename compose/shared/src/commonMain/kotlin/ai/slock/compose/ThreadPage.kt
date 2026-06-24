@@ -2766,15 +2766,29 @@ internal fun SharedThreadRouteContent(
                         attachmentIds = context.attachmentIds
                     )
                 }.getOrElse {
+                    val errorCode = threadSendExceptionErrorCode(it)
+                    val errorType = it::class.simpleName.orEmpty().ifBlank { "Throwable" }
+                    val durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds
+                    bridge.log(
+                        "thread_send_exception localMessageId=$localMessageId " +
+                            "channelId=${context.channelId} errorType=$errorType " +
+                            "mapped=$errorCode durationMs=$durationMs"
+                    )
                     bridge.performanceMarker(
                         phase = "composer_send",
                         routeName = "kuikly_thread",
                         event = "end",
                         threadId = context.channelId,
-                        durationMs = sendStartedAt.elapsedNow().inWholeMilliseconds,
-                        metadata = mapOf("result" to "exception", "localMessageId" to localMessageId)
+                        durationMs = durationMs,
+                        metadata =
+                            mapOf(
+                                "result" to "exception",
+                                "code" to errorCode,
+                                "errorType" to errorType,
+                                "localMessageId" to localMessageId
+                            )
                     )
-                    markFailed("exception")
+                    markFailed(errorCode)
                     return@launch
                 }
             val sentPage =

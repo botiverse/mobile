@@ -1,6 +1,16 @@
 package ai.slock.compose
 
+import ai.slock.compose.network.SlockRequestTimeoutException
+
 private const val ThreadFailureReasonMaxLength = 120
+
+private val ThreadFailureReasonKnownLabels =
+    mapOf(
+        "thread_send_timeout" to "request timed out",
+        "thread_send_cancelled" to "request cancelled",
+        "thread_send_network" to "network error",
+        "thread_send_exception" to "unexpected error"
+    )
 
 internal fun threadSendFailureStatusLabel(errorCode: String?): String {
     val reason = threadFailureReasonLabel(errorCode)
@@ -16,6 +26,7 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
         ?.trim()
         ?.replace(Regex("\\s+"), " ")
         ?.takeIf { it.isNotBlank() }
+        ?.let { value -> ThreadFailureReasonKnownLabels[value] ?: value }
         ?.let(::redactThreadFailureReason)
         ?.let { value ->
             if (value.length <= ThreadFailureReasonMaxLength) {
@@ -24,6 +35,23 @@ internal fun threadFailureReasonLabel(errorCode: String?): String? =
                 value.take(ThreadFailureReasonMaxLength - 3).trimEnd() + "..."
             }
         }
+
+internal fun threadSendExceptionErrorCode(throwable: Throwable): String {
+    val type = throwable::class.simpleName.orEmpty()
+    val message = throwable.message.orEmpty()
+    return when {
+        throwable is SlockRequestTimeoutException -> "thread_send_timeout"
+        type.contains("Timeout", ignoreCase = true) -> "thread_send_timeout"
+        type.contains("Cancel", ignoreCase = true) ||
+            message.contains("cancel", ignoreCase = true) ->
+            "thread_send_cancelled"
+        type.equals("IOException", ignoreCase = true) ||
+            type.endsWith("IOException", ignoreCase = true) ||
+            type.contains("Network", ignoreCase = true) ->
+            "thread_send_network"
+        else -> "thread_send_exception"
+    }
+}
 
 private fun redactThreadFailureReason(value: String): String =
     value
