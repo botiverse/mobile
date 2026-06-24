@@ -65,8 +65,6 @@ import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
-import ai.slock.compose.data.kuiklySharedPreferenceStore
-import ai.slock.compose.data.withReadYourWritesCache
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
@@ -1642,6 +1640,7 @@ private fun ThreadPageScreen() {
         computersStore = computersStore,
         membersStore = membersStore,
         conversationDirectoryStore = sharedStores.conversationDirectoryStore,
+        composerDraftPersistSlice = sharedStores.composerDraftPersistSlice,
         onBack = {
             routerModule.closePage()
         },
@@ -1995,6 +1994,7 @@ internal fun SharedThreadRouteContent(
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
     conversationDirectoryStore: SharedConversationDirectoryStore? = null,
+    composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     conversationHeaderState: SharedConversationHeaderState = SharedConversationHeaderState(),
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
@@ -2222,16 +2222,6 @@ internal fun SharedThreadRouteContent(
     val filesViewModel: SharedThreadFilesViewModel =
         viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
-        }
-    val composerDraftPersistSlice =
-        remember(pager) {
-            SharedThreadComposerDraftPersistSlice(
-                SharedThreadComposerDraftPersistence(
-                    kuiklySharedPreferenceStore(pager).withReadYourWritesCache(),
-                    diagnosticsLogger = { message -> bridge.log(message) }
-                ),
-                diagnosticsLogger = { message -> bridge.log(message) }
-            )
         }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {

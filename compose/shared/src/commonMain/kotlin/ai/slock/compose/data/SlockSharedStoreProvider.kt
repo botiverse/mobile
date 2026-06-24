@@ -1,6 +1,8 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.base.BridgeModule
+import ai.slock.compose.SharedThreadComposerDraftPersistSlice
+import ai.slock.compose.SharedThreadComposerDraftPersistence
 import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.DirectMessageCreated
@@ -30,6 +32,7 @@ internal class SlockSharedStoreProvider private constructor(
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
     val conversationDirectoryStore: SharedConversationDirectoryStore,
+    val composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
     val activityStateCache: SharedActivityStateCache,
     val homeSavedStateCache: SharedHomeSavedStateCache,
     val apiEnvironmentStore: SharedApiEnvironmentStore,
@@ -53,6 +56,11 @@ internal class SlockSharedStoreProvider private constructor(
                     database = database,
                     logger = { message -> bridge.log("shared_conversation_directory $message") }
                 )
+            val sharedPreferenceStore =
+                KuiklyMMKVKeyValueStore(
+                    pager = pager,
+                    namespace = SlockLocalPreferenceStore.KuiklyNamespace
+                )
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
                 authStore =
@@ -68,6 +76,14 @@ internal class SlockSharedStoreProvider private constructor(
                 ),
                 tasksDataStore = tasksDataStore,
                 conversationDirectoryStore = conversationDirectoryStore,
+                composerDraftPersistSlice =
+                    SharedThreadComposerDraftPersistSlice(
+                        SharedThreadComposerDraftPersistence(
+                            sharedPreferenceStore.withReadYourWritesCache(),
+                            diagnosticsLogger = { message -> bridge.log(message) }
+                        ),
+                        diagnosticsLogger = { message -> bridge.log(message) }
+                    ),
                 activityStateCache = SharedActivityStateCache(),
                 homeSavedStateCache = SharedHomeSavedStateCache(),
                 apiEnvironmentStore =
