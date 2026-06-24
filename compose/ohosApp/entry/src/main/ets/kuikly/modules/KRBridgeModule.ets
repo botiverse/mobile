@@ -1033,7 +1033,7 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   ): Promise<boolean> {
     const tempPath = `${path}.part`;
     const request = http.createHttp();
-    let file: File | undefined = undefined;
+    let file: fs.File | undefined = undefined;
     let downloadedBytes = 0;
     let totalBytes: number | undefined = undefined;
     let lastPercent = -1;

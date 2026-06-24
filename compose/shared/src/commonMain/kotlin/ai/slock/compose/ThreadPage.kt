@@ -1212,6 +1212,12 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageId(): Map<String, TaskS
 private const val ThreadTaskIdLookupPrefix = "task-id:"
 private const val ThreadTaskNumberLookupPrefix = "task-number:"
 
+private fun <K, V> MutableMap<K, V>.putIfAbsentCompat(key: K, value: V) {
+    if (!containsKey(key)) {
+        put(key, value)
+    }
+}
+
 internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(): Map<String, TaskSummary> =
     buildMap {
         this@threadLinkedTasksByMessageLookup.forEach { task ->
@@ -1219,10 +1225,10 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(): Map<String, T
                 put(messageId, task)
             }
             task.id.value.trim().takeIf { it.isNotBlank() }?.let { taskId ->
-                putIfAbsent(ThreadTaskIdLookupPrefix + taskId, task)
+                putIfAbsentCompat(ThreadTaskIdLookupPrefix + taskId, task)
             }
             task.taskNumber?.let { taskNumber ->
-                putIfAbsent(ThreadTaskNumberLookupPrefix + taskNumber, task)
+                putIfAbsentCompat(ThreadTaskNumberLookupPrefix + taskNumber, task)
             }
         }
     }

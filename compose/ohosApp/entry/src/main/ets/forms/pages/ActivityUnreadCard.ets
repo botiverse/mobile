@@ -68,12 +68,13 @@ struct ActivityUnreadCard {
     .height('100%')
     .padding({ right: 5, bottom: 5 })
   }
+  }
 }
 
 @Component
 struct SlockWidgetHeader {
-  title: string = 'Raft';
-  accentLabel: string = 'RAFT';
+  @Prop title: string = 'Raft';
+  @Prop accentLabel: string = 'RAFT';
 
   build() {
     Row() {
@@ -99,8 +100,8 @@ struct SlockWidgetHeader {
 
 @Component
 struct SlockWidgetFooter {
-  footerLabel: string = 'Updated';
-  updatedAtLabel: string = '--:--';
+  @Prop footerLabel: string = 'Updated';
+  @Prop updatedAtLabel: string = '--:--';
 
   build() {
     Row() {

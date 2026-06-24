@@ -135,7 +135,7 @@ export async function loadAgentRuntimeSnapshot(context: common.Context): Promise
   };
 }
 
-export function snapshotRecord(snapshot: SlockWidgetSnapshot): Object {
+export function snapshotRecord(snapshot: SlockWidgetSnapshot): SlockWidgetSnapshot {
   return {
     kind: snapshot.kind,
     title: snapshot.title,

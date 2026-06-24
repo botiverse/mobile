@@ -138,7 +138,7 @@ private fun slockBaseMenuWidth(items: List<SlockBaseMenuItem>, uppercaseLabels: 
     val widestLabelWidth =
         items.maxOfOrNull { item ->
             val label = if (uppercaseLabels) item.label.uppercase() else item.label
-            label.sumOf { char -> if (char.code > 127) 14 else 8 }
+            label.fold(0) { total, char -> total + if (char.code > 127) 14 else 8 }
         } ?: 0
     return (widestLabelWidth + SlockBaseMenuChromeWidthValue)
         .coerceIn(SlockBaseMenuMinWidth.value.toInt(), SlockBaseMenuMaxWidth.value.toInt())

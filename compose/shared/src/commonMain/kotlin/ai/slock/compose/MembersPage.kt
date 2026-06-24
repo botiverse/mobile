@@ -58,6 +58,7 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.defaultNowMillis
 import ai.slock.compose.markdown.SlockMarkdownBody
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
@@ -4809,7 +4810,7 @@ private fun String?.membersDmRelativeTime(): String {
     // Try ISO timestamp first.
     val epochMillis = parseSlockTimestampEpochMillisOrNull(raw)
     if (epochMillis != null) {
-        val now = System.currentTimeMillis()
+        val now = defaultNowMillis()
         val diffMs = now - epochMillis
         if (diffMs < 0L) return raw
         val minutes = diffMs / 60_000L

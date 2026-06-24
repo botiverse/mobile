@@ -50,10 +50,7 @@ export class RouterAdapter implements IKRRouterAdapter {
   }
 
   private routePageData(pageName: string, pageData: KRRecord): KRRecord {
-    const routePageData: KRRecord = {};
-    Object.keys(pageData ?? {}).forEach((key: string) => {
-      routePageData[key] = pageData[key];
-    });
+    const routePageData = pageData;
     routePageData['pageName'] = pageName;
     return routePageData;
   }
