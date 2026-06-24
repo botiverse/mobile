@@ -16,8 +16,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.coil3.rememberAsyncImagePainter
+import com.tencent.kuikly.compose.extension.scrollToTop
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.ui.draw.drawBehind
 import com.tencent.kuikly.compose.foundation.Image
@@ -78,6 +80,7 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
 import com.tencent.kuikly.core.annotations.Page
+import kotlinx.coroutines.launch
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
@@ -621,6 +624,7 @@ fun SlockStructuralHomeShell(
             pinnedExpanded = pinnedExpanded
         )
     val listState = rememberLazyListState()
+    val listScope = rememberCoroutineScope()
     val pullToRefreshState = rememberPullToRefreshState(contentRefreshing)
     val sidebarInteractionsEnabled = true
     val disabledListAction: () -> Unit = {}
@@ -653,7 +657,14 @@ fun SlockStructuralHomeShell(
                     traceMarkdownSection(SlockHomeTraceNames.LIST_RENDER, lazyItemCount) {
                         LazyColumn(
                             state = listState,
-                            modifier = Modifier.fillMaxSize(),
+                            modifier =
+                                Modifier
+                                    .fillMaxSize()
+                                    .scrollToTop {
+                                        listScope.launch {
+                                            listState.scrollToItem(0)
+                                        }
+                                    },
                             verticalArrangement = Arrangement.spacedBy(2.dp),
                             beyondBoundsItemCount = homeListBeyondBoundsItemCount(lazyItemCount)
                         ) {
