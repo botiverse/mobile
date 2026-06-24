@@ -27,6 +27,11 @@
             android:theme="@style/Theme.Slock"
             android:windowSoftInputMode="adjustNothing" />
         <activity
+            android:name=".widget.SlockWidgetServerConfigureActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:theme="@style/Theme.Slock" />
+        <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize"
             android:exported="true"

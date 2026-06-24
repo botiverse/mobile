@@ -33,8 +33,8 @@ class SlockAgentWidgetCache(context: Context) {
     private val store: SlockKeyValueStore =
         AndroidMMKVKeyValueStore(context.applicationContext, PREFERENCES_NAME)
 
-    fun read(refreshing: Boolean = false): SlockAgentWidgetState {
-        val encoded = store.getString(KEY_STATE) ?: return SlockAgentWidgetState()
+    fun read(appWidgetId: Int, refreshing: Boolean = false): SlockAgentWidgetState {
+        val encoded = store.getString(stateKey(appWidgetId)) ?: store.getString(KEY_STATE) ?: return SlockAgentWidgetState()
         return runCatching {
             val json = JSONObject(encoded)
             SlockAgentWidgetState(
@@ -52,7 +52,7 @@ class SlockAgentWidgetCache(context: Context) {
         }.getOrElse { SlockAgentWidgetState(refreshing = refreshing) }
     }
 
-    fun write(state: SlockAgentWidgetState) {
+    fun write(appWidgetId: Int, state: SlockAgentWidgetState) {
         val json = JSONObject()
             .put("title", state.title)
             .put("agentName", state.agentName)
@@ -61,11 +61,17 @@ class SlockAgentWidgetCache(context: Context) {
             .put("statusTone", state.statusTone.name)
             .put("lastUpdatedAtMillis", state.lastUpdatedAtMillis)
             .put("staleReason", state.staleReason)
-        store.putString(KEY_STATE, json.toString())
+        store.putString(stateKey(appWidgetId), json.toString())
+    }
+
+    fun clear(appWidgetId: Int) {
+        store.putString(stateKey(appWidgetId), null)
     }
 
     private companion object {
         private const val PREFERENCES_NAME = "slock_agent_status_widget"
         private const val KEY_STATE = "state"
+
+        private fun stateKey(appWidgetId: Int): String = "state:$appWidgetId"
     }
 }

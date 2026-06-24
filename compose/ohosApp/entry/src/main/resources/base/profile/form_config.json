@@ -5,6 +5,7 @@
       "displayName": "$string:activity_unread_form_display_name",
       "description": "$string:activity_unread_form_desc",
       "src": "./ets/forms/pages/ActivityUnreadCard.ets",
+      "formConfigAbility": "ability://entry/SlockWidgetServerConfigAbility",
       "uiSyntax": "arkts",
       "window": {
         "designWidth": 720,
@@ -26,6 +27,7 @@
       "displayName": "$string:agent_runtime_form_display_name",
       "description": "$string:agent_runtime_form_desc",
       "src": "./ets/forms/pages/AgentRuntimeStatusCard.ets",
+      "formConfigAbility": "ability://entry/SlockWidgetServerConfigAbility",
       "uiSyntax": "arkts",
       "window": {
         "designWidth": 720,

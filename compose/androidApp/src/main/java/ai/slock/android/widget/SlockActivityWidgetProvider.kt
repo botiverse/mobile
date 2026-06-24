@@ -5,9 +5,9 @@ import ai.slock.android.R
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
-import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InboxFilter
+import ai.slock.compose.data.InMemorySlockAuthSessionStore
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealInboxRepository
@@ -31,8 +31,18 @@ import java.util.Date
 
 class SlockActivityWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        renderWidgets(context, appWidgetManager, appWidgetIds, SlockWidgetCache(context).read())
+        renderWidgetsFromCache(context, appWidgetManager, appWidgetIds)
         refreshWidgets(context.applicationContext, appWidgetManager, appWidgetIds)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        val cache = SlockWidgetCache(context)
+        val config = SlockWidgetServerConfigStore(context)
+        appWidgetIds.forEach { appWidgetId ->
+            cache.clear(appWidgetId)
+            config.clear(appWidgetId)
+        }
+        super.onDeleted(context, appWidgetIds)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -40,9 +50,12 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         if (intent.action == ACTION_REFRESH) {
             val appContext = context.applicationContext
             val appWidgetManager = AppWidgetManager.getInstance(appContext)
-            val appWidgetIds =
-                appWidgetManager.getAppWidgetIds(ComponentName(appContext, SlockActivityWidgetProvider::class.java))
-            renderWidgets(appContext, appWidgetManager, appWidgetIds, SlockWidgetCache(appContext).read(refreshing = true))
+            val appWidgetIds = intent.requestedWidgetIds(
+                appContext,
+                appWidgetManager,
+                SlockActivityWidgetProvider::class.java
+            )
+            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
             refreshWidgets(appContext, appWidgetManager, appWidgetIds)
         }
     }
@@ -52,6 +65,14 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         private const val TAG = "SlockStatusWidget"
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+        fun refreshWidget(context: Context, appWidgetId: Int) {
+            val appContext = context.applicationContext
+            val appWidgetManager = AppWidgetManager.getInstance(appContext)
+            val appWidgetIds = intArrayOf(appWidgetId)
+            renderWidgetsFromCache(appContext, appWidgetManager, appWidgetIds, refreshing = true)
+            refreshWidgets(appContext, appWidgetManager, appWidgetIds)
+        }
+
         private fun refreshWidgets(
             context: Context,
             appWidgetManager: AppWidgetManager,
@@ -60,24 +81,36 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             if (appWidgetIds.isEmpty()) return
             scope.launch {
                 val cache = SlockWidgetCache(context)
-                val state = loadWidgetState(context, cache.read())
-                cache.write(state)
-                withContext(Dispatchers.Main) {
-                    renderWidgets(context, appWidgetManager, appWidgetIds, state)
+                appWidgetIds.forEach { appWidgetId ->
+                    val state = loadWidgetState(context, appWidgetId, cache.read(appWidgetId))
+                    cache.write(appWidgetId, state)
+                    withContext(Dispatchers.Main) {
+                        appWidgetManager.updateAppWidget(appWidgetId, buildRemoteViews(context, appWidgetId, state))
+                    }
                 }
             }
         }
 
-        private suspend fun loadWidgetState(context: Context, previous: SlockWidgetState): SlockWidgetState {
-            val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context))
-            val session = sessionStore.readSession()
+        private suspend fun loadWidgetState(
+            context: Context,
+            appWidgetId: Int,
+            previous: SlockWidgetState
+        ): SlockWidgetState {
+            val storedSessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context))
+            val session = storedSessionStore.readSession()
                 ?: return SlockWidgetState.SignedOut
-            val serverId = session.currentServerId?.let(::ServerId)
+            val selectedServer = SlockWidgetServerConfigStore(context).resolveServer(appWidgetId, session)
                 ?: return SlockWidgetState.Error(
                     title = "Choose a server",
-                    detail = "Open Raft to select a workspace.",
+                    detail = "Tap and hold the widget, then edit it to select a server.",
                     lastUpdatedAtMillis = previous.lastUpdatedAtMillis
                 )
+            val scopedSession = session.copy(
+                selectedServerId = selectedServer.id,
+                selectedServerSlug = selectedServer.slug
+            )
+            val sessionStore = InMemorySlockAuthSessionStore(scopedSession)
+            val serverId = ServerId(selectedServer.id)
             val networkClient = RealSlockNetworkClientFactory.create(sessionStore)
             val homeResult =
                 runCatching {
@@ -118,21 +151,25 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun renderWidgets(
+        private fun renderWidgetsFromCache(
             context: Context,
             appWidgetManager: AppWidgetManager,
             appWidgetIds: IntArray,
-            state: SlockWidgetState
+            refreshing: Boolean = false
         ) {
+            val cache = SlockWidgetCache(context)
             appWidgetIds.forEach { widgetId ->
-                appWidgetManager.updateAppWidget(widgetId, buildRemoteViews(context, state))
+                appWidgetManager.updateAppWidget(
+                    widgetId,
+                    buildRemoteViews(context, widgetId, cache.read(widgetId, refreshing = refreshing))
+                )
             }
         }
 
-        private fun buildRemoteViews(context: Context, state: SlockWidgetState): RemoteViews {
+        private fun buildRemoteViews(context: Context, appWidgetId: Int, state: SlockWidgetState): RemoteViews {
             val views = RemoteViews(context.packageName, R.layout.slock_activity_widget)
             views.setOnClickPendingIntent(R.id.slock_widget_root, launchAppIntent(context))
-            views.setOnClickPendingIntent(R.id.slock_widget_refresh, refreshIntent(context))
+            views.setOnClickPendingIntent(R.id.slock_widget_refresh, refreshIntent(context, appWidgetId))
             views.setTextViewText(R.id.slock_widget_title, state.title)
             views.setTextViewText(R.id.slock_widget_detail, state.detail)
             views.setTextViewText(R.id.slock_widget_updated, state.updatedLabel(context))
@@ -159,15 +196,29 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
             )
         }
 
-        private fun refreshIntent(context: Context): PendingIntent {
+        private fun refreshIntent(context: Context, appWidgetId: Int): PendingIntent {
             val intent = Intent(context, SlockActivityWidgetProvider::class.java)
                 .setAction(ACTION_REFRESH)
+                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             return PendingIntent.getBroadcast(
                 context,
-                1,
+                1_000 + appWidgetId,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+        }
+
+        private fun Intent.requestedWidgetIds(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            providerClass: Class<out AppWidgetProvider>
+        ): IntArray {
+            val requestedId = getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            return if (requestedId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                intArrayOf(requestedId)
+            } else {
+                appWidgetManager.getAppWidgetIds(ComponentName(context, providerClass))
+            }
         }
 
         private fun Int.displayCount(): String =

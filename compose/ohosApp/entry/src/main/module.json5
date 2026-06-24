@@ -43,6 +43,14 @@
             ]
           }
         ]
+      },
+      {
+        "name": "SlockWidgetServerConfigAbility",
+        "srcEntry": "./ets/entryability/SlockWidgetServerConfigAbility.ets",
+        "description": "$string:SlockFormAbility_desc",
+        "icon": "$media:icon",
+        "label": "$string:SlockFormAbility_label",
+        "exported": true
       }
     ],
     "extensionAbilities": [

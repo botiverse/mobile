@@ -7,6 +7,7 @@ import { SlockOhosApiEnvironmentStore } from '../kuikly/SlockOhosApiEnvironmentS
 
 const AUTH_SESSION_MMKV_NAMESPACE = 'slockAuthSession';
 const AUTH_SESSION_MMKV_STORAGE_KEY = 'slockAuthSession:session';
+const WIDGET_SERVER_CONFIG_MMKV_NAMESPACE = 'slockWidgetServerConfig';
 const REQUEST_TIMEOUT_MS = 8000;
 
 export const FORM_ACTIVITY_UNREAD = 'activityUnread';
@@ -60,6 +61,13 @@ export interface SlockWidgetSnapshot {
   empty: boolean;
 }
 
+export interface SlockWidgetServerOption {
+  id: string;
+  name: string;
+  slug: string;
+  selected: boolean;
+}
+
 export function fallbackActivityUnreadSnapshot(
   reason: string = 'Open Raft to sync',
   stateLabel: string = 'Needs app session'
@@ -96,12 +104,12 @@ export function fallbackAgentRuntimeSnapshot(
   };
 }
 
-export async function loadActivityUnreadSnapshot(context: common.Context): Promise<SlockWidgetSnapshot> {
+export async function loadActivityUnreadSnapshot(context: common.Context, formId: string = ''): Promise<SlockWidgetSnapshot> {
   const session = await readStoredAuthSession(context);
   if (session === null || session.accessToken.length === 0) {
     return fallbackActivityUnreadSnapshot();
   }
-  const server = currentServer(session);
+  const server = currentServer(session, readConfiguredServerId(context, formId));
   if (server === null) {
     return fallbackActivityUnreadSnapshot('Select a server');
   }
@@ -122,12 +130,12 @@ export async function loadActivityUnreadSnapshot(context: common.Context): Promi
   };
 }
 
-export async function loadAgentRuntimeSnapshot(context: common.Context): Promise<SlockWidgetSnapshot> {
+export async function loadAgentRuntimeSnapshot(context: common.Context, formId: string = ''): Promise<SlockWidgetSnapshot> {
   const session = await readStoredAuthSession(context);
   if (session === null || session.accessToken.length === 0) {
     return fallbackAgentRuntimeSnapshot();
   }
-  const server = currentServer(session);
+  const server = currentServer(session, readConfiguredServerId(context, formId));
   if (server === null) {
     return fallbackAgentRuntimeSnapshot('Select a server');
   }
@@ -181,6 +189,54 @@ export function snapshotRecord(snapshot: SlockWidgetSnapshot): SlockWidgetSnapsh
   };
 }
 
+export async function seedWidgetServerConfig(context: common.Context, formId: string): Promise<void> {
+  if (formId.length === 0) {
+    return;
+  }
+  const session = await readStoredAuthSession(context);
+  if (session === null) {
+    return;
+  }
+  const server = currentServer(session, readConfiguredServerId(context, formId));
+  if (server !== null) {
+    writeConfiguredServerId(context, formId, server.id);
+  }
+}
+
+export async function readWidgetServerOptions(context: common.Context, formId: string): Promise<SlockWidgetServerOption[]> {
+  const session = await readStoredAuthSession(context);
+  const servers = session?.servers ?? [];
+  const selectedId = readConfiguredServerId(context, formId) ?? session?.selectedServerId ?? servers[0]?.id ?? '';
+  return servers.map((server: StoredAuthServer): SlockWidgetServerOption => {
+    return {
+      id: server.id,
+      name: serverLabel(server),
+      slug: server.slug ?? '',
+      selected: server.id === selectedId
+    };
+  });
+}
+
+export function saveWidgetServerConfig(context: common.Context, formId: string, serverId: string): boolean {
+  if (formId.length === 0 || serverId.length === 0) {
+    return false;
+  }
+  writeConfiguredServerId(context, formId, serverId);
+  return true;
+}
+
+export function clearWidgetServerConfig(context: common.Context, formId: string): void {
+  if (formId.length === 0) {
+    return;
+  }
+  try {
+    const store = widgetServerConfigStore(context);
+    store.removeValueForKey(serverIdKey(formId));
+  } catch (_error) {
+    // Best effort cleanup only.
+  }
+}
+
 async function readStoredAuthSession(context: common.Context): Promise<StoredAuthSession | null> {
   try {
     try {
@@ -197,6 +253,39 @@ async function readStoredAuthSession(context: common.Context): Promise<StoredAut
   } catch (_error) {
     return null;
   }
+}
+
+function readConfiguredServerId(context: common.Context, formId: string): string | undefined {
+  if (formId.length === 0) {
+    return undefined;
+  }
+  try {
+    const value = widgetServerConfigStore(context).decodeString(serverIdKey(formId));
+    return value && value.length > 0 ? value : undefined;
+  } catch (_error) {
+    return undefined;
+  }
+}
+
+function writeConfiguredServerId(context: common.Context, formId: string, serverId: string): void {
+  try {
+    widgetServerConfigStore(context).encodeString(serverIdKey(formId), serverId);
+  } catch (_error) {
+    // Best effort persistence only.
+  }
+}
+
+function widgetServerConfigStore(context: common.Context): MMKV {
+  try {
+    MMKV.initialize(context.getApplicationContext());
+  } catch (_error) {
+    // MMKV may already be initialized by the app process.
+  }
+  return MMKV.mmkvWithID(WIDGET_SERVER_CONFIG_MMKV_NAMESPACE);
+}
+
+function serverIdKey(formId: string): string {
+  return `widget:${formId}:serverId`;
 }
 
 async function requestJson<T>(session: StoredAuthSession, serverId: string, path: string, context: common.Context): Promise<T> {
@@ -223,12 +312,12 @@ async function requestJson<T>(session: StoredAuthSession, serverId: string, path
   }
 }
 
-function currentServer(session: StoredAuthSession): StoredAuthServer | null {
+function currentServer(session: StoredAuthSession, configuredServerId?: string): StoredAuthServer | null {
   const servers = session.servers ?? [];
   if (servers.length === 0) {
     return null;
   }
-  const selected = session.selectedServerId;
+  const selected = configuredServerId ?? session.selectedServerId;
   return servers.find((server: StoredAuthServer) => server.id === selected) ?? servers[0];
 }
 

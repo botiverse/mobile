@@ -1,11 +1,13 @@
 import { formBindingData, FormExtensionAbility, formInfo, formProvider } from '@kit.FormKit';
 import { Want } from '@kit.AbilityKit';
 import {
+  clearWidgetServerConfig,
   fallbackActivityUnreadSnapshot,
   fallbackAgentRuntimeSnapshot,
   FORM_AGENT_RUNTIME,
   loadActivityUnreadSnapshot,
   loadAgentRuntimeSnapshot,
+  seedWidgetServerConfig,
   snapshotRecord,
   SlockWidgetSnapshot
 } from '../forms/SlockWidgetData';
@@ -20,6 +22,7 @@ export default class SlockFormAbility extends FormExtensionAbility {
       formNameById.set(formId, requestedName);
     }
     const snapshot = fallbackForName(requestedName);
+    void seedWidgetServerConfig(this.context, formId);
     void this.refreshForm(formId, requestedName);
     return formBindingData.createFormBindingData(snapshotRecord(snapshot));
   }
@@ -38,6 +41,7 @@ export default class SlockFormAbility extends FormExtensionAbility {
 
   onRemoveForm(formId: string): void {
     formNameById.delete(formId);
+    clearWidgetServerConfig(this.context, formId);
   }
 
   onAcquireFormState(_want: Want): formInfo.FormState {
@@ -48,16 +52,16 @@ export default class SlockFormAbility extends FormExtensionAbility {
     if (formId.length === 0) {
       return;
     }
-    const snapshot = await this.loadSnapshot(requestedName);
+    const snapshot = await this.loadSnapshot(formId, requestedName);
     await formProvider.updateForm(formId, formBindingData.createFormBindingData(snapshotRecord(snapshot)));
   }
 
-  private async loadSnapshot(requestedName: string): Promise<SlockWidgetSnapshot> {
+  private async loadSnapshot(formId: string, requestedName: string): Promise<SlockWidgetSnapshot> {
     try {
       if (requestedName === FORM_AGENT_RUNTIME) {
-        return await loadAgentRuntimeSnapshot(this.context);
+        return await loadAgentRuntimeSnapshot(this.context, formId);
       }
-      return await loadActivityUnreadSnapshot(this.context);
+      return await loadActivityUnreadSnapshot(this.context, formId);
     } catch (_error) {
       return requestedName === FORM_AGENT_RUNTIME
         ? fallbackAgentRuntimeSnapshot('Open Raft to sync', 'Unable to refresh')
