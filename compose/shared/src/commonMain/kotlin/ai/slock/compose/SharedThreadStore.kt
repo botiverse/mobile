@@ -2024,23 +2024,24 @@ internal class SharedThreadStore(
     }
 
     private suspend fun start(initialPayload: KuiklyThreadScreenPayload) {
+        val routeCandidatePayload = initialPayload.withoutRouteCandidateContent()
         val headerResolvedInitialPayload =
             dataSource.withKnownMarkdownChannelNames(
-                dataSource.withConversationHeaderFallback(initialPayload)
+                dataSource.withConversationHeaderFallback(routeCandidatePayload)
             ).withoutTransientLocalSendingMessages()
-        val routeIdentity = headerResolvedInitialPayload.resolveThreadRouteIdentity()
-        dataSource.cachePayload(headerResolvedInitialPayload)
+        val routeContextPayload = headerResolvedInitialPayload
+        val routeIdentity = routeContextPayload.resolveThreadRouteIdentity()
         val threadId = routeIdentity.timelineKey
         val cached =
             threadId
                 ?.let(dataSource::cachedPayload)
                 ?.takeIf { routeIdentity.canRenderTimelineCandidates }
-                ?.takeIf { it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) }
-                ?.withRouteContext(headerResolvedInitialPayload)
+                ?.takeIf { it.isUsableCachedPayloadForRoute(routeContextPayload) }
+                ?.withRouteContext(routeContextPayload)
         val current =
             if (routeIdentity.canRenderTimelineCandidates) {
                 _state.value.payload.takeIf {
-                    it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) && it.hasRenderableThreadContent()
+                    it.isUsableCachedPayloadForRoute(routeContextPayload) && it.hasRenderableThreadContent()
                 }
             } else {
                 null
@@ -2054,30 +2055,30 @@ internal class SharedThreadStore(
         val earlyPersistentCached =
             if (shouldReadEarlyPersistentCache) {
                 val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
-                val persistentCached = dataSource.readCachedPayload(headerResolvedInitialPayload)
+                val persistentCached = dataSource.readCachedPayload(routeContextPayload)
                 diagnosticsLogger?.invoke(
                     "thread_persistent_cache_result threadId=$threadId hit=${persistentCached != null} " +
                         "messages=${persistentCached?.messages?.size ?: 0} " +
                         "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds} reason=before_visible"
                 )
-                persistentCached?.withRouteContext(headerResolvedInitialPayload)
+                persistentCached?.withRouteContext(routeContextPayload)
             } else {
                 null
             }
         diagnosticsLogger?.invoke(
             "thread_start threadId=${threadId.orEmpty()} cachedMemory=${cached != null || current != null} " +
                 "cachedPersistent=${earlyPersistentCached != null} " +
-                "status=${headerResolvedInitialPayload.status} messages=${headerResolvedInitialPayload.messages.size} " +
-                headerResolvedInitialPayload.originDiagnostics()
+                "status=${routeContextPayload.status} messages=${routeContextPayload.messages.size} " +
+                routeContextPayload.originDiagnostics()
         )
         val visiblePayload =
             cached
                 ?: current
                 ?: earlyPersistentCached
                 ?: if (threadId == null) {
-                    headerResolvedInitialPayload
+                    routeContextPayload
                 } else {
-                    headerResolvedInitialPayload.copy(status = "loading", errorCode = null)
+                    routeContextPayload.copy(status = "loading", errorCode = null)
                 }
         diagnosticsLogger?.invoke(
             "thread_visible_payload threadId=${threadId.orEmpty()} status=${visiblePayload.status} " +
@@ -2104,18 +2105,18 @@ internal class SharedThreadStore(
             !visiblePayload.hasRenderableThreadContent()
         ) {
             val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
-            val persistentCached = dataSource.readCachedPayload(headerResolvedInitialPayload)
+            val persistentCached = dataSource.readCachedPayload(routeContextPayload)
             diagnosticsLogger?.invoke(
                 "thread_persistent_cache_result threadId=$threadId hit=${persistentCached != null} " +
                     "messages=${persistentCached?.messages?.size ?: 0} " +
                     "durationMs=${persistentCacheStartedAt.elapsedNow().inWholeMilliseconds}"
             )
-            if (persistentCached != null && routeStillCurrent(headerResolvedInitialPayload, "thread_persistent_cache", "after_read")) {
+            if (persistentCached != null && routeStillCurrent(routeContextPayload, "thread_persistent_cache", "after_read")) {
                 reducePayloadPatch { currentPayload ->
-                    if (!routeStillCurrent(headerResolvedInitialPayload, "thread_persistent_cache", "apply", currentPayload)) {
+                    if (!routeStillCurrent(routeContextPayload, "thread_persistent_cache", "apply", currentPayload)) {
                         return@reducePayloadPatch currentPayload
                     }
-                    val patch = persistentCached.withRouteContext(headerResolvedInitialPayload)
+                    val patch = persistentCached.withRouteContext(routeContextPayload)
                     diagnosticsLogger?.invoke(
                         "thread_persistent_cache_patch threadId=$threadId status=${patch.status} " +
                             "messages=${patch.messages.size} " + patch.originDiagnostics()
@@ -2135,7 +2136,7 @@ internal class SharedThreadStore(
                 "thread_persistent_cache_result threadId=${threadId.orEmpty()} hit=false messages=0 durationMs=0 reason=$skipReason"
             )
         }
-        refresh(headerResolvedInitialPayload)
+        refresh(routeContextPayload)
     }
 
     private suspend fun refresh(basePayload: KuiklyThreadScreenPayload) {
@@ -2834,11 +2835,8 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             todayEpochDay = base.todayEpochDay ?: todayEpochDay,
             nowEpochMillis = base.nowEpochMillis ?: nowEpochMillis,
             timeFormat = base.timeFormat,
-            canSend = base.canSend,
-            joined = base.joined,
             knownMarkdownChannelNames =
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
-            membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
             emptyTitle = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyTitle else base.emptyTitle,
             emptyDetail = if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) emptyDetail else base.emptyDetail
         )
@@ -2854,16 +2852,66 @@ private fun KuiklyThreadScreenPayload.withRouteContext(base: KuiklyThreadScreenP
             todayEpochDay = base.todayEpochDay ?: todayEpochDay,
             nowEpochMillis = base.nowEpochMillis ?: nowEpochMillis,
             timeFormat = base.timeFormat,
-            canSend = base.canSend,
-            joined = base.joined,
             knownMarkdownChannelNames =
                 base.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
-            membersCount = if (base.membersCount > 0) base.membersCount else membersCount,
             composer = base.composer.takeUnless { it.isDefaultThreadComposer() } ?: composer,
             emptyTitle = base.emptyTitle,
             emptyDetail = base.emptyDetail
         )
     }
+
+private fun KuiklyThreadScreenPayload.withoutRouteCandidateContent(): KuiklyThreadScreenPayload =
+    if (!resolveThreadRouteIdentity().canRenderTimelineCandidates) {
+        val originCandidate = validatedUnresolvedReplyOriginCandidate()
+        copy(
+            status = if (hasRenderableThreadContent() && status != "error") "loading" else status,
+            backgroundRefreshing = false,
+            messages = emptyList(),
+            originMessage = originCandidate,
+            originPreview = if (originCandidate != null) originPreview else null,
+            originStatus = if (originCandidate != null) originStatus else "none",
+            originErrorCode = null,
+            tasks = emptyList(),
+            olderMessagesStatus = "idle",
+            newerMessagesStatus = "idle",
+            filesPayload = "{}",
+            members = emptyList(),
+            memberCandidates = emptyList(),
+            settingsActions = emptyList()
+        )
+    } else {
+        copy(
+            status = "loading",
+            backgroundRefreshing = false,
+            messages = emptyList(),
+            originMessage = null,
+            originPreview = null,
+            originStatus = "none",
+            originErrorCode = null,
+            tasks = emptyList(),
+            olderMessagesStatus = "idle",
+            newerMessagesStatus = "idle",
+            errorCode = null,
+            filesPayload = "{}",
+            showComposer = true,
+            joined = true,
+            canSend = true,
+            membersCount = 0,
+            members = emptyList(),
+            memberCandidates = emptyList(),
+            settingsActions = emptyList()
+        ).withLaunchHeaderContext()
+    }
+
+private fun KuiklyThreadScreenPayload.validatedUnresolvedReplyOriginCandidate(): KuiklyThreadMessageItem? {
+    val expectedParentMessageId =
+        parentMessageId?.takeIf { it.isNotBlank() }
+            ?: originParentMessageId?.takeIf { it.isNotBlank() }
+            ?: return null
+    if (surfaceKind != KuiklyThreadSurfaceKind.ReplyThread) return null
+    if (sourceThreadId?.isNotBlank() == true || streamChannelId?.isNotBlank() == true) return null
+    return originMessage?.takeIf { message -> message.id == expectedParentMessageId }
+}
 
 private fun KuiklyThreadScreenPayload.needsReplyThreadStreamResolution(): Boolean {
     val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
