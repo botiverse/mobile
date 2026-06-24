@@ -1266,7 +1266,7 @@ class SharedSettingsStoreTest {
         val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
         assertEquals("staging", updated.environmentKey)
         assertEquals("Staging", updated.environmentLabel)
-        assertEquals("https://raft-app-staging.botiverse.dev/api/", updated.apiBaseUrl)
+        assertEquals("https://api-aws-staging.botiverse.dev/api/", updated.apiBaseUrl)
         assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "staging", inProgress = false), store.state.value.actionState)
         assertEquals(listOf("developer", "environment:staging"), capabilities.calls)
         scope.cancel()
@@ -2250,16 +2250,16 @@ class SharedSettingsStoreTest {
                     SharedSettingsApiEnvironmentOption(
                         key = "production",
                         label = "Production",
-                        apiBaseUrl = "https://api.slock.ai/api/",
-                        socketBaseUrl = "https://api.slock.ai",
+                        apiBaseUrl = "https://api.raft.build/api/",
+                        socketBaseUrl = "https://api.raft.build",
                         webUrl = "https://app.raft.build"
                     )
                 val staging =
                     SharedSettingsApiEnvironmentOption(
                         key = "staging",
                         label = "Staging",
-                        apiBaseUrl = "https://raft-app-staging.botiverse.dev/api/",
-                        socketBaseUrl = "https://raft-app-staging.botiverse.dev",
+                        apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
+                        socketBaseUrl = "https://api-aws-staging.botiverse.dev",
                         webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
                     )
                 val selected = if (environmentKey == "staging") staging else production

@@ -27,7 +27,7 @@ class AuthDiagnosticsExportTest {
                     ),
                 probe =
                     SharedSettingsNetworkProbeSnapshot(
-                        baseUrl = "https://api.slock.ai/api/",
+                        baseUrl = "https://api.raft.build/api/",
                         statusLabel = "Network error",
                         detail = "authorization: Bearer access-token-123",
                         reachable = false,
@@ -48,7 +48,7 @@ class AuthDiagnosticsExportTest {
         assertContains(text, "Raft auth diagnostics")
         assertContains(text, "Platform: HarmonyOS")
         assertContains(text, "Source: auth-bootstrap-diagnostics/e36bc138+")
-        assertContains(text, "Base URL: https://api.slock.ai/api/")
+        assertContains(text, "Base URL: https://api.raft.build/api/")
         assertContains(text, "Status: Network error")
         assertContains(text, "SlockAuthNetwork")
         assertContains(text, "[redacted]")

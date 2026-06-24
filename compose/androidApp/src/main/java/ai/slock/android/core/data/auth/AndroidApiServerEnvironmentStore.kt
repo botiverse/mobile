@@ -53,8 +53,8 @@ class AndroidApiServerEnvironmentStore(context: Context) {
             AndroidApiServerEnvironment(
                 key = "staging",
                 label = "Staging",
-                apiBaseUrl = "https://raft-app-staging.botiverse.dev/api/",
-                socketBaseUrl = "https://raft-app-staging.botiverse.dev",
+                apiBaseUrl = "https://api-aws-staging.botiverse.dev/api/",
+                socketBaseUrl = "https://api-aws-staging.botiverse.dev",
                 webUrl = "https://raft-app-staging.botiverse.dev/s/botiverse/"
             )
 
