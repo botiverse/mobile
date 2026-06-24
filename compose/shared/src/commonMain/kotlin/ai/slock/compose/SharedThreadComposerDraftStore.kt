@@ -78,7 +78,7 @@ internal class SharedThreadComposerDraftPersistence(
     }
 
     fun save(key: String, text: String, asTask: Boolean) {
-        if (text.isBlank() && !asTask) {
+        if (text.isBlank()) {
             clear(key)
             return
         }
@@ -289,12 +289,22 @@ internal class SharedThreadComposerDraftStore(
                     focusRequestNonce = intent.composer.focusRequestNonce
                 )
             is SharedThreadComposerDraftIntent.Change ->
-                current.copy(
-                    seedText = intent.seedText ?: current.seedText,
-                    seedAsTask = intent.seedAsTask ?: current.seedAsTask,
-                    sending = false,
-                    failureLabel = null
-                )
+                intent.seedText
+                    ?.takeIf { it.isBlank() }
+                    ?.let {
+                        current.copy(
+                            seedText = "",
+                            seedAsTask = false,
+                            sending = false,
+                            failureLabel = null
+                        )
+                    }
+                    ?: current.copy(
+                        seedText = intent.seedText ?: current.seedText,
+                        seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                        sending = false,
+                        failureLabel = null
+                    )
             is SharedThreadComposerDraftIntent.InsertMention ->
                 current.copy(
                     seedText = current.seedText.withInsertedThreadMention(intent.handle),
