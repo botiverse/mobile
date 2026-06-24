@@ -152,7 +152,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
         declareForegroundRealtimeRooms()
-        startRealtimeBridgeIfNeeded()
     }
 
     override fun onDestroy() {
@@ -164,6 +163,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     override fun onPause() {
         detachRealtimeConsumerIfNeeded(retainDeclaredRooms = true)
+        AndroidAppScopeRealtimeOwner.onAppHidden(source = "activity_on_pause")
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
     }
@@ -174,9 +174,12 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         applySlockInputTypeface()
         kuiklyRenderViewDelegator.onResume()
         sendAppShellLifecycleEvent("resume")
+        AndroidAppScopeRealtimeOwner.onAppShown(
+            context = applicationContext,
+            source = "activity_on_resume"
+        )
         attachRealtimeConsumerIfNeeded()
         declareForegroundRealtimeRooms()
-        foregroundRealtimeOwnerIfNeeded()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -642,27 +645,17 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun attachRealtimeConsumerIfNeeded() {
         if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.attachConsumer(realtimeSurfaceId) { serverId, eventName, rawPayload ->
+        AndroidAppScopeRealtimeOwner.attachKuiklyRawConsumer(realtimeSurfaceId) { serverId, eventName, rawPayload ->
             sendRawRealtimeEvent(serverId, eventName, rawPayload)
         }
     }
 
     private fun detachRealtimeConsumerIfNeeded(retainDeclaredRooms: Boolean) {
         if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.detachConsumer(
+        AndroidAppScopeRealtimeOwner.detachKuiklyRawConsumer(
             surfaceId = realtimeSurfaceId,
             retainDeclaredRooms = retainDeclaredRooms
         )
-    }
-
-    private fun startRealtimeBridgeIfNeeded() {
-        if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.ensureConnectedFromStoredSession(applicationContext)
-    }
-
-    private fun foregroundRealtimeOwnerIfNeeded() {
-        if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.handleForeground(applicationContext)
     }
 
     internal fun requestRealtimeConnect(
@@ -672,7 +665,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         forceReconnect: Boolean = false
     ) {
         if (serverId.isBlank() || accessToken.isBlank()) return
-        AndroidRealtimeBridgeManager.ensureConnected(
+        AndroidAppScopeRealtimeOwner.connectFromSharedRequest(
             context = applicationContext,
             serverId = ServerId(serverId),
             accessToken = accessToken,
@@ -682,17 +675,17 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     internal fun requestRealtimeDisconnect(reason: String) {
-        AndroidRealtimeBridgeManager.disconnectForSessionEnd(reason)
+        AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(reason)
     }
 
     internal fun requestRealtimeJoinChannel(channelId: String) {
         if (channelId.isBlank()) return
-        AndroidRealtimeBridgeManager.joinChannel(ChannelId(channelId))
+        AndroidAppScopeRealtimeOwner.joinChannel(ChannelId(channelId))
     }
 
     private fun declareForegroundRealtimeRooms() {
         if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.declareRooms(
+        AndroidAppScopeRealtimeOwner.declareKuiklySurfaceRooms(
             surfaceId = realtimeSurfaceId,
             rooms = foregroundThreadRealtimeChannelIds().map(::ChannelId).toSet()
         )
@@ -1914,7 +1907,7 @@ internal class SlockKuiklyBridgeModule(
             runBlocking {
                 KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()
             }
-            AndroidRealtimeBridgeManager.disconnectForSessionEnd("api_environment_changed")
+            AndroidAppScopeRealtimeOwner.disconnectForSessionEnd("api_environment_changed")
             SlockDiagnosticsLogger.record(
                     "SlockDeveloper",
                     "api_environment_changed from=${before.key} to=${after.key}"

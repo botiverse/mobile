@@ -13,25 +13,35 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class AndroidRealtimeBridgeManagerTest {
+class AndroidAppScopeRealtimeOwnerTest {
     @Test
-    fun backgroundUnreadNotificationPolicyRequiresEnabledPreferenceAndNoConsumers() {
+    fun backgroundUnreadNotificationPolicyRequiresBackgroundEnabledPreferenceAndNoConsumers() {
         assertTrue(
-            AndroidRealtimeBridgeManager.shouldPostBackgroundUnreadNotification(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
                 hasAttachedConsumers = false,
-                preferenceEnabled = true
+                preferenceEnabled = true,
+                isAppInForeground = false
             )
         )
         assertFalse(
-            AndroidRealtimeBridgeManager.shouldPostBackgroundUnreadNotification(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
                 hasAttachedConsumers = true,
-                preferenceEnabled = true
+                preferenceEnabled = true,
+                isAppInForeground = false
             )
         )
         assertFalse(
-            AndroidRealtimeBridgeManager.shouldPostBackgroundUnreadNotification(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
                 hasAttachedConsumers = false,
-                preferenceEnabled = false
+                preferenceEnabled = false,
+                isAppInForeground = false
+            )
+        )
+        assertFalse(
+            AndroidAppScopeRealtimeOwner.shouldPostBackgroundUnreadNotification(
+                hasAttachedConsumers = false,
+                preferenceEnabled = true,
+                isAppInForeground = true
             )
         )
     }
@@ -47,7 +57,7 @@ class AndroidRealtimeBridgeManagerTest {
 
         assertEquals(
             ConversationKind.Thread,
-            AndroidRealtimeBridgeManager.backgroundUnreadNotificationConversationKind(message)
+            AndroidAppScopeRealtimeOwner.backgroundUnreadNotificationConversationKind(message)
         )
     }
 
@@ -57,7 +67,7 @@ class AndroidRealtimeBridgeManagerTest {
 
         assertEquals(
             ConversationKind.Channel,
-            AndroidRealtimeBridgeManager.backgroundUnreadNotificationConversationKind(message)
+            AndroidAppScopeRealtimeOwner.backgroundUnreadNotificationConversationKind(message)
         )
     }
 

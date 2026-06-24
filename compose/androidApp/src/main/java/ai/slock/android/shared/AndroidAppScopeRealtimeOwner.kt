@@ -1,6 +1,8 @@
 package ai.slock.android.shared
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AuthTokenRefresher
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
@@ -36,11 +38,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
-internal object AndroidRealtimeBridgeManager {
+internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val consumers = linkedMapOf<String, RealtimeConsumer>()
+    private val rawConsumers = linkedMapOf<String, RealtimeConsumer>()
     private val surfaceRooms = linkedMapOf<String, Set<ChannelId>>()
     private val joinedRooms = linkedSetOf<ChannelId>()
 
@@ -53,30 +55,83 @@ internal object AndroidRealtimeBridgeManager {
     private var realtimeSessionKey: String? = null
     private var realtimeAccessToken: String? = null
     private var realtimeLastSeq: Long = 0L
+    private var appVisibility: AppVisibility = AppVisibility.Background
+    private var networkCallbackInstalled = false
 
-    fun attachConsumer(
-        surfaceId: String,
-        sink: (serverId: ServerId, eventName: String, rawPayload: Any?) -> Unit
+    fun install(context: Context) {
+        if (networkCallbackInstalled) return
+        val appContext = context.applicationContext
+        val connectivityManager =
+            appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return
+        synchronized(this) {
+            if (networkCallbackInstalled) return
+            runCatching {
+                connectivityManager.registerDefaultNetworkCallback(
+                    object : ConnectivityManager.NetworkCallback() {
+                        override fun onAvailable(network: Network) {
+                            onNetworkAvailable(appContext)
+                        }
+
+                        override fun onLost(network: Network) {
+                            onNetworkLost()
+                        }
+                    }
+                )
+                networkCallbackInstalled = true
+                SlockDiagnosticsLogger.d(LOG_TAG, "app_scope_lifecycle event=network_callback_installed")
+            }.onFailure { error ->
+                SlockDiagnosticsLogger.w(
+                    LOG_TAG,
+                    "app_scope_lifecycle event=network_callback_install_failed message=${error.message.orEmpty()}"
+                )
+            }
+        }
+    }
+
+    fun onAppShown(
+        context: Context,
+        source: String = "unknown"
     ) {
-        consumers[surfaceId] = RealtimeConsumer(surfaceId, sink)
+        appVisibility = AppVisibility.Foreground
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "consumer_attach surfaceId=$surfaceId consumer_count=${consumers.size} declared_room_surfaces=${surfaceRooms.size}"
+            "app_scope_lifecycle event=shown source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
+        )
+        healthCheckForegroundConnection(context.applicationContext)
+    }
+
+    fun onAppHidden(source: String = "unknown") {
+        appVisibility = AppVisibility.Background
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "app_scope_lifecycle event=hidden source=$source consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
-    fun detachConsumer(surfaceId: String, retainDeclaredRooms: Boolean = false) {
-        consumers.remove(surfaceId)
+    fun attachKuiklyRawConsumer(
+        surfaceId: String,
+        sink: (serverId: ServerId, eventName: String, rawPayload: Any?) -> Unit
+    ) {
+        rawConsumers[surfaceId] = RealtimeConsumer(surfaceId, sink)
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "kuikly_raw_consumer_attach surfaceId=$surfaceId consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size}"
+        )
+    }
+
+    fun detachKuiklyRawConsumer(surfaceId: String, retainDeclaredRooms: Boolean = false) {
+        rawConsumers.remove(surfaceId)
         if (!retainDeclaredRooms) {
             surfaceRooms.remove(surfaceId)
         }
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "consumer_detach surfaceId=$surfaceId consumer_count=${consumers.size} retain_declared_rooms=$retainDeclaredRooms declared_room_surfaces=${surfaceRooms.size}"
+            "kuikly_raw_consumer_detach surfaceId=$surfaceId consumer_count=${rawConsumers.size} retain_declared_rooms=$retainDeclaredRooms declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
-    fun ensureConnectedFromStoredSession(
+    fun connectFromStoredSession(
         context: Context,
         requestedLastSeq: Long = 0L
     ) {
@@ -122,7 +177,7 @@ internal object AndroidRealtimeBridgeManager {
             }
     }
 
-    fun ensureConnected(
+    fun connectFromSharedRequest(
         context: Context,
         serverId: ServerId,
         accessToken: String,
@@ -134,7 +189,7 @@ internal object AndroidRealtimeBridgeManager {
                 LOG_TAG,
                 "connect_skip reason=blank_request serverId=${serverId.value} has_access_token=${accessToken.isNotBlank()}"
             )
-            ensureConnectedFromStoredSession(context, requestedLastSeq)
+            connectFromStoredSession(context, requestedLastSeq)
             return
         }
         SlockDiagnosticsLogger.d(
@@ -163,7 +218,29 @@ internal object AndroidRealtimeBridgeManager {
             }
     }
 
-    fun handleForeground(context: Context) {
+    fun onNetworkAvailable(context: Context) {
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "app_scope_lifecycle event=network_available visibility=$appVisibility"
+        )
+        healthCheckForegroundConnection(context.applicationContext)
+    }
+
+    fun onNetworkLost() {
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "app_scope_lifecycle event=network_lost visibility=$appVisibility"
+        )
+    }
+
+    private fun healthCheckForegroundConnection(context: Context) {
+        if (appVisibility != AppVisibility.Foreground) {
+            SlockDiagnosticsLogger.d(
+                LOG_TAG,
+                "foreground_reconnect_skip reason=app_background"
+            )
+            return
+        }
         val client = realtimeClient
         val serverId = realtimeServerId
         val accessToken = realtimeAccessToken
@@ -172,7 +249,7 @@ internal object AndroidRealtimeBridgeManager {
                 LOG_TAG,
                 "foreground_reconnect_skip reason=missing_owner_session"
             )
-            ensureConnectedFromStoredSession(context, realtimeLastSeq)
+            connectFromStoredSession(context, realtimeLastSeq)
             return
         }
         if (client.checkHeartbeatSilence()) {
@@ -222,11 +299,11 @@ internal object AndroidRealtimeBridgeManager {
         joinedRooms.clear()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "disconnect_requested reason=$cleanReason"
+            "disconnect_requested reason=$cleanReason visibility=$appVisibility"
         )
     }
 
-    fun declareRooms(surfaceId: String, rooms: Set<ChannelId>) {
+    fun declareKuiklySurfaceRooms(surfaceId: String, rooms: Set<ChannelId>) {
         if (rooms.isEmpty()) {
             surfaceRooms.remove(surfaceId)
         } else {
@@ -234,7 +311,7 @@ internal object AndroidRealtimeBridgeManager {
         }
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "room_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }} consumer_count=${consumers.size}"
+            "kuikly_surface_rooms_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }} consumer_count=${rawConsumers.size}"
         )
         joinDeclaredRooms()
     }
@@ -274,13 +351,13 @@ internal object AndroidRealtimeBridgeManager {
                             ?: run {
                                 SlockDiagnosticsLogger.d(
                                     LOG_TAG,
-                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()} consumer_count=${consumers.size}"
+                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()} consumer_count=${rawConsumers.size}"
                                 )
                                 return@launch
                             }
                     SlockDiagnosticsLogger.d(
                         LOG_TAG,
-                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} consumer_count=${consumers.size} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
+                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} consumer_count=${rawConsumers.size} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
                     )
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
@@ -298,7 +375,7 @@ internal object AndroidRealtimeBridgeManager {
                         ?: run {
                             SlockDiagnosticsLogger.d(
                                 LOG_TAG,
-                                "native_raw_event_skip reason=missing_server eventName=$eventName consumer_count=${consumers.size} payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
+                                "native_raw_event_skip reason=missing_server eventName=$eventName consumer_count=${rawConsumers.size} payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
                             )
                             return@launch
                         }
@@ -426,7 +503,7 @@ internal object AndroidRealtimeBridgeManager {
             )
             return
         }
-        val snapshot = consumers.values.toList()
+        val snapshot = rawConsumers.values.toList()
         snapshot.forEach { consumer ->
             consumer.sink(serverId, eventName, rawPayload)
         }
@@ -443,15 +520,16 @@ internal object AndroidRealtimeBridgeManager {
         event: MessageNew
     ) {
         val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
-        val hasAttachedConsumers = consumers.isNotEmpty()
+        val hasAttachedConsumers = rawConsumers.isNotEmpty()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} consumer_count=${consumers.size} preference_enabled=$preferenceEnabled"
+            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} consumer_count=${rawConsumers.size} preference_enabled=$preferenceEnabled visibility=$appVisibility"
         )
-        if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled)) {
+        val isAppInForeground = appVisibility == AppVisibility.Foreground
+        if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
-                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled)} serverId=${serverId.value} messageId=${event.message.id.value}"
+                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.message.id.value}"
             )
             return
         }
@@ -465,7 +543,7 @@ internal object AndroidRealtimeBridgeManager {
                 conversationName = null,
                 conversationKind = event.message.backgroundNotificationConversationKind(),
                 currentMemberHandle = session?.user?.email,
-                isAppInForeground = false
+                isAppInForeground = isAppInForeground
             )
         if (request == null) {
             SlockDiagnosticsLogger.d(
@@ -481,8 +559,12 @@ internal object AndroidRealtimeBridgeManager {
         )
     }
 
-    internal fun shouldPostBackgroundUnreadNotification(hasAttachedConsumers: Boolean, preferenceEnabled: Boolean): Boolean =
-        !hasAttachedConsumers && preferenceEnabled
+    internal fun shouldPostBackgroundUnreadNotification(
+        hasAttachedConsumers: Boolean,
+        preferenceEnabled: Boolean,
+        isAppInForeground: Boolean
+    ): Boolean =
+        !hasAttachedConsumers && preferenceEnabled && !isAppInForeground
 
     internal fun backgroundUnreadNotificationConversationKind(message: Message): ConversationKind? =
         when {
@@ -494,9 +576,14 @@ internal object AndroidRealtimeBridgeManager {
     private fun Message.backgroundNotificationConversationKind(): ConversationKind? =
         backgroundUnreadNotificationConversationKind(this)
 
-    private fun backgroundUnreadNotificationSkipReason(hasAttachedConsumers: Boolean, preferenceEnabled: Boolean): String =
+    private fun backgroundUnreadNotificationSkipReason(
+        hasAttachedConsumers: Boolean,
+        preferenceEnabled: Boolean,
+        isAppInForeground: Boolean
+    ): String =
         when {
             hasAttachedConsumers -> "foreground_consumer"
+            isAppInForeground -> "app_foreground"
             !preferenceEnabled -> "preference_disabled"
             else -> "unknown"
         }
@@ -534,6 +621,11 @@ internal object AndroidRealtimeBridgeManager {
             "server_removed",
             "server_switch"
         )
+
+    private enum class AppVisibility {
+        Foreground,
+        Background
+    }
 
     private data class RealtimeConsumer(
         val surfaceId: String,
