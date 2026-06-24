@@ -59,16 +59,18 @@ internal object AndroidRealtimeBridgeManager {
         consumers[surfaceId] = RealtimeConsumer(surfaceId, sink)
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "consumer_attach surfaceId=$surfaceId consumer_count=${consumers.size}"
+            "consumer_attach surfaceId=$surfaceId consumer_count=${consumers.size} declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
-    fun detachConsumer(surfaceId: String) {
+    fun detachConsumer(surfaceId: String, retainDeclaredRooms: Boolean = false) {
         consumers.remove(surfaceId)
-        surfaceRooms.remove(surfaceId)
+        if (!retainDeclaredRooms) {
+            surfaceRooms.remove(surfaceId)
+        }
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "consumer_detach surfaceId=$surfaceId consumer_count=${consumers.size}"
+            "consumer_detach surfaceId=$surfaceId consumer_count=${consumers.size} retain_declared_rooms=$retainDeclaredRooms declared_room_surfaces=${surfaceRooms.size}"
         )
     }
 
@@ -254,7 +256,19 @@ internal object AndroidRealtimeBridgeManager {
         realtimeSubscription =
             repository.observeEvents { event ->
                 scope.launch {
-                    val serverId = realtimeServerId ?: return@launch
+                    val serverId =
+                        realtimeServerId
+                            ?: run {
+                                SlockDiagnosticsLogger.d(
+                                    LOG_TAG,
+                                    "native_event_skip reason=missing_server event=${event.nativeRealtimeEventName()} consumer_count=${consumers.size}"
+                                )
+                                return@launch
+                            }
+                    SlockDiagnosticsLogger.d(
+                        LOG_TAG,
+                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} consumer_count=${consumers.size} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
+                    )
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
                         joinRoom(event.channelId, reason = "direct_message_created")
@@ -266,7 +280,15 @@ internal object AndroidRealtimeBridgeManager {
             }
         client.observeRawEvents { eventName, rawPayload ->
             scope.launch {
-                val serverId = realtimeServerId ?: return@launch
+                val serverId =
+                    realtimeServerId
+                        ?: run {
+                            SlockDiagnosticsLogger.d(
+                                LOG_TAG,
+                                "native_raw_event_skip reason=missing_server eventName=$eventName consumer_count=${consumers.size} payloadType=${rawPayload?.javaClass?.simpleName.orEmpty()}"
+                            )
+                            return@launch
+                        }
                 fanOutRawRealtimeEvent(serverId, eventName, rawPayload)
             }
         }.also { realtimeRawSubscription = it }
@@ -408,10 +430,15 @@ internal object AndroidRealtimeBridgeManager {
         event: MessageNew
     ) {
         val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
-        if (!shouldPostBackgroundUnreadNotification(consumers.isNotEmpty(), preferenceEnabled)) {
+        val hasAttachedConsumers = consumers.isNotEmpty()
+        SlockDiagnosticsLogger.d(
+            LOG_TAG,
+            "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} consumer_count=${consumers.size} preference_enabled=$preferenceEnabled"
+        )
+        if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled)) {
             SlockDiagnosticsLogger.d(
                 LOG_TAG,
-                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(consumers.isNotEmpty(), preferenceEnabled)} serverId=${serverId.value}"
+                "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled)} serverId=${serverId.value} messageId=${event.message.id.value}"
             )
             return
         }
@@ -459,6 +486,13 @@ internal object AndroidRealtimeBridgeManager {
             hasAttachedConsumers -> "foreground_consumer"
             !preferenceEnabled -> "preference_disabled"
             else -> "unknown"
+        }
+
+    private fun RealtimeEvent.nativeRealtimeEventName(): String =
+        when (this) {
+            is DirectMessageCreated -> "direct_message_created"
+            is MessageNew -> "message_new"
+            else -> this::class.simpleName ?: "unknown"
         }
 
     private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =

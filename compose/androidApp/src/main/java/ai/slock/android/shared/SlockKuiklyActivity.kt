@@ -157,14 +157,14 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     override fun onDestroy() {
-        detachRealtimeConsumerIfNeeded()
+        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = false)
         removeSlockInputFontBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
     }
 
     override fun onPause() {
-        detachRealtimeConsumerIfNeeded()
+        detachRealtimeConsumerIfNeeded(retainDeclaredRooms = true)
         super.onPause()
         kuiklyRenderViewDelegator.onPause()
     }
@@ -645,9 +645,12 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         }
     }
 
-    private fun detachRealtimeConsumerIfNeeded() {
+    private fun detachRealtimeConsumerIfNeeded(retainDeclaredRooms: Boolean) {
         if (!pageName.isRealtimeBridgeConsumerPage()) return
-        AndroidRealtimeBridgeManager.detachConsumer(realtimeSurfaceId)
+        AndroidRealtimeBridgeManager.detachConsumer(
+            surfaceId = realtimeSurfaceId,
+            retainDeclaredRooms = retainDeclaredRooms
+        )
     }
 
     private fun startRealtimeBridgeIfNeeded() {
