@@ -179,17 +179,7 @@ internal fun SlockRaftPullRefreshIndicator(
     isRefreshing: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val transition = rememberInfiniteTransition(label = "slock-raft-refresh-bounce")
-    val wave by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec =
-            infiniteRepeatable(
-                animation = tween(durationMillis = 780),
-                repeatMode = RepeatMode.Restart
-            ),
-        label = "slock-raft-refresh-bounce-wave"
-    )
+    val wave = rememberRaftPullRefreshWave(isRefreshing)
     Box(
         modifier = modifier.fillMaxWidth().height(48.dp),
         contentAlignment = Alignment.Center
@@ -237,6 +227,25 @@ internal fun SlockRaftPullRefreshIndicator(
             }
         }
     }
+}
+
+@Composable
+private fun rememberRaftPullRefreshWave(isRefreshing: Boolean): Float {
+    if (!isRefreshing) {
+        return 0f
+    }
+    val transition = rememberInfiniteTransition(label = "slock-raft-refresh-bounce")
+    val wave by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec =
+            infiniteRepeatable(
+                animation = tween(durationMillis = 780),
+                repeatMode = RepeatMode.Restart
+            ),
+        label = "slock-raft-refresh-bounce-wave"
+    )
+    return wave
 }
 
 @Composable
