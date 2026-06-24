@@ -1323,7 +1323,7 @@ private fun HomeTitlebar(
             modifier =
                 Modifier
                     .padding(top = topSafeArea)
-                    .height(SlockSize.PageHeaderHeight)
+                    .height(SlockSize.PageHeaderContentHeight)
                     .padding(horizontal = SlockSpacing.Md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)

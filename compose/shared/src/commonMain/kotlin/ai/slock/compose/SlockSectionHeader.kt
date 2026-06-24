@@ -71,67 +71,74 @@ internal fun SlockTopPageHeader(
     trailingContent: (@Composable BoxScope.() -> Unit)? = null
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
-    Row(
+    Box(
         modifier =
             modifier
                 .fillMaxWidth()
                 .height(topSafeArea + SlockSize.PageHeaderHeight)
                 .background(backgroundColor)
-                .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        when {
-            leadingContent != null ->
-                Box(
-                    modifier = Modifier.size(SlockSize.HeaderIcon),
-                    contentAlignment = Alignment.Center,
-                    content = leadingContent
-                )
-            iconName != null ->
-                Box(
-                    modifier =
-                        Modifier
-                            .size(SlockSize.HeaderIcon)
-                            .background(iconBackground)
-                            .border(SlockStroke.Default, SlockColor.BorderBlack),
-                    contentAlignment = Alignment.Center
-                ) {
-                    SlockLucideIcon(iconName, modifier = Modifier.size(18.dp), color = "#FF000000")
-                }
-        }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = title,
-                style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
-                color = SlockColor.TextBlack,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            subtitle?.takeIf { it.isNotBlank() }?.let {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(topSafeArea + SlockSize.PageHeaderContentHeight)
+                    .padding(start = 20.dp, top = topSafeArea, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            when {
+                leadingContent != null ->
+                    Box(
+                        modifier = Modifier.size(SlockSize.HeaderIcon),
+                        contentAlignment = Alignment.Center,
+                        content = leadingContent
+                    )
+                iconName != null ->
+                    Box(
+                        modifier =
+                            Modifier
+                                .size(SlockSize.HeaderIcon)
+                                .background(iconBackground)
+                                .border(SlockStroke.Default, SlockColor.BorderBlack),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(iconName, modifier = Modifier.size(18.dp), color = "#FF000000")
+                    }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = it,
-                    style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                    text = title,
+                    style = SlockType.PageTitle.copy(fontSize = 18.sp, lineHeight = 22.sp),
+                    color = SlockColor.TextBlack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                subtitle?.takeIf { it.isNotBlank() }?.let {
+                    Text(
+                        text = it,
+                        style = SlockType.Caption.copy(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.55f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            if (refreshing) {
+                SlockHeaderRefreshIndicator()
+            }
+            if (trailingContent != null) {
+                Box(content = trailingContent)
             }
         }
-        if (refreshing) {
-            SlockHeaderRefreshIndicator()
-        }
-        if (trailingContent != null) {
-            Box(content = trailingContent)
-        }
-    }
-    Box(
-        modifier =
-            Modifier
+        Box(
+            modifier = Modifier
                 .fillMaxWidth()
                 .height(SlockStroke.Default)
                 .background(SlockColor.BorderBlack)
-    )
+                .align(Alignment.BottomCenter)
+        )
+    }
 }
 
 @Composable

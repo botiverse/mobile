@@ -332,13 +332,13 @@ private fun SharedActivityHeader(
     refreshing: Boolean
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().height(62.dp + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
+        modifier = Modifier.fillMaxWidth().height(SlockSize.PageHeaderHeight + topSafeAreaPadding).background(SlockColor.SurfaceWhite)
     ) {
         Row(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(60.dp + topSafeAreaPadding)
+                    .height(SlockSize.PageHeaderContentHeight + topSafeAreaPadding)
                     .padding(start = 20.dp, top = topSafeAreaPadding + 10.dp, end = 20.dp, bottom = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)

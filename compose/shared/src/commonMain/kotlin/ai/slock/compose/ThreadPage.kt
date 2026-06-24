@@ -5313,9 +5313,10 @@ private fun ThreadPageHeader(
 ) {
     val topSafeArea = slockTopSafeAreaPadding()
     val displayTitle = threadHeaderDisplayTitle(payload.title, payload.surfaceKind)
-    Column(modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite)) {
+    Column(modifier = Modifier.fillMaxWidth().height(topSafeArea + SlockSize.PageHeaderHeight).background(SlockColor.SurfaceWhite)) {
         Row(
             modifier = Modifier.fillMaxWidth()
+                .height(topSafeArea + SlockSize.PageHeaderContentHeight)
                 .padding(
                     start = SlockSpacing.Md,
                     top = topSafeArea + SlockSpacing.Sm,

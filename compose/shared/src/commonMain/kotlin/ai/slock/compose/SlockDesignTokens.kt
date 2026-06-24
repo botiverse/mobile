@@ -59,6 +59,7 @@ internal object SlockSize {
     val IconButton = 44.dp
     val HeaderIcon = 36.dp
     val PageHeaderHeight = 62.dp
+    val PageHeaderContentHeight = PageHeaderHeight - SlockStroke.Default
     val PageHeaderCompactHeight = 48.dp
     val BottomBarHeight = 53.dp
 }
