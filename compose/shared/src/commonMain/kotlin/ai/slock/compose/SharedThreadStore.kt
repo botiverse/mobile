@@ -1973,13 +1973,13 @@ internal class SharedThreadStore(
             _state.value.payload.takeIf {
                 it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) && it.hasRenderableThreadContent()
             }
-        val earlyPersistentCached =
-            if (
-                threadId != null &&
+        val shouldReadEarlyPersistentCache =
+            threadId != null &&
                 cached == null &&
                 current == null &&
                 headerResolvedInitialPayload.shouldReadPersistentCandidateBeforeFirstFrame()
-            ) {
+        val earlyPersistentCached =
+            if (shouldReadEarlyPersistentCache) {
                 val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
                 val persistentCached = dataSource.readCachedPayload(headerResolvedInitialPayload)
                 diagnosticsLogger?.invoke(
@@ -2026,6 +2026,7 @@ internal class SharedThreadStore(
             cached == null &&
             current == null &&
             earlyPersistentCached == null &&
+            !shouldReadEarlyPersistentCache &&
             !visiblePayload.hasRenderableThreadContent()
         ) {
             val persistentCacheStartedAt = TimeSource.Monotonic.markNow()
@@ -2052,6 +2053,7 @@ internal class SharedThreadStore(
             val skipReason =
                 when {
                     earlyPersistentCached != null -> "skipped_early_persistent"
+                    shouldReadEarlyPersistentCache -> "skipped_early_persistent_miss"
                     cached != null || current != null -> "skipped_memory"
                     else -> "skipped_renderable"
                 }
@@ -3094,15 +3096,7 @@ private fun KuiklyThreadScreenPayload.hasRenderableThreadContent(): Boolean =
     messages.isNotEmpty() || originMessage != null || tasks.isNotEmpty()
 
 private fun KuiklyThreadScreenPayload.shouldReadPersistentCandidateBeforeFirstFrame(): Boolean {
-    val threadId = sourceThreadId?.takeIf { it.isNotBlank() } ?: return false
-    val parentChannel = parentChannelId?.takeIf { it.isNotBlank() } ?: return false
-    val parentMessage =
-        parentMessageId?.takeIf { it.isNotBlank() }
-            ?: originParentMessageId?.takeIf { it.isNotBlank() }
-            ?: return false
-    return surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
-        threadId != parentChannel &&
-        parentMessage.isNotBlank()
+    return sourceThreadId?.isNotBlank() == true
 }
 
 private fun KuiklyThreadScreenPayload.cacheThreadId(): String? =

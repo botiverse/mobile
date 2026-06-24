@@ -1312,6 +1312,50 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun channelPersistentCachedSnapshotIsVisibleBeforeLoadingFrame() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "general"
+                    ),
+                messages =
+                    listOf(
+                        Message(
+                            id = MessageId("cached-1"),
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            author = member("u2", "Stdrc"),
+                            timestampLabel = "2026-05-19T15:00:00Z",
+                            body = "first visible cached body"
+                        )
+                    )
+            )
+        )
+        val logs = mutableListOf<String>()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope, diagnosticsLogger = logs::add)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertTrue(logs.any { it.contains("reason=before_visible") && it.contains("hit=true") })
+        assertTrue(logs.any { it.contains("thread_visible_payload") && it.contains("status=content") })
+        assertFalse(logs.any { it.contains("thread_visible_payload") && it.contains("status=loading") })
+        assertEquals("first visible cached body", store.state.value.payload.messages.single().body)
+        scope.cancel()
+    }
+
+    @Test
     fun directMessageCachedSnapshotPreservesLaunchPeerHeader() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
