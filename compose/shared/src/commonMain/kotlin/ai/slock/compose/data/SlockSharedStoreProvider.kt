@@ -8,6 +8,7 @@ import ai.slock.compose.model.AgentCreated
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
@@ -99,14 +100,15 @@ internal class SlockSharedStoreProvider private constructor(
     }
 }
 
-internal data class ThreadRealtimeProjectionSignal(
+internal data class ThreadRealtimeCacheInvalidationSignal(
     val sequence: Long,
     val serverId: String,
-    val event: RealtimeEvent
+    val threadIds: Set<String>,
+    val broadcast: Boolean = false
 )
 
 internal interface RealtimeDomainEventOwner {
-    val threadProjections: StateFlow<ThreadRealtimeProjectionSignal?>
+    val threadCacheInvalidations: StateFlow<ThreadRealtimeCacheInvalidationSignal?>
 
     fun registerSinks(sinks: RealtimeDomainEventSinks)
     fun unregisterSinks(sinks: RealtimeDomainEventSinks)
@@ -130,8 +132,9 @@ internal class SharedRealtimeDomainEventOwner(
     private var sinks: RealtimeDomainEventSinks? = null
     private val acceptedKeys = ArrayDeque<String>()
     private val acceptedKeySet = mutableSetOf<String>()
-    private val _threadProjections = MutableStateFlow<ThreadRealtimeProjectionSignal?>(null)
-    override val threadProjections: StateFlow<ThreadRealtimeProjectionSignal?> = _threadProjections
+    private val _threadCacheInvalidations = MutableStateFlow<ThreadRealtimeCacheInvalidationSignal?>(null)
+    override val threadCacheInvalidations: StateFlow<ThreadRealtimeCacheInvalidationSignal?> =
+        _threadCacheInvalidations
 
     override fun registerSinks(sinks: RealtimeDomainEventSinks) {
         this.sinks = sinks
@@ -171,18 +174,37 @@ internal class SharedRealtimeDomainEventOwner(
             activeSinks?.requestMemberDetailRefresh?.invoke()
         }
         activeSinks?.emitRouteMarker?.invoke(event)
-        if (!event.shouldProjectToThread()) {
-            activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$resolvedServerId projection=none")
+        emitThreadCacheInvalidation(resolvedServerId, event, source, activeSinks)
+    }
+
+    private fun emitThreadCacheInvalidation(
+        serverId: String,
+        event: RealtimeEvent,
+        source: String,
+        activeSinks: RealtimeDomainEventSinks?
+    ) {
+        if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) {
+            activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$serverId threadCache=none")
+            return
+        }
+        val threadIds = event.threadCacheInvalidationThreadIds()
+        val broadcast = event.broadcastsThreadCacheInvalidation()
+        if (threadIds.isEmpty() && !broadcast) {
+            activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$serverId threadCache=none")
             return
         }
         nextSequence += 1
-        _threadProjections.value =
-            ThreadRealtimeProjectionSignal(
+        _threadCacheInvalidations.value =
+            ThreadRealtimeCacheInvalidationSignal(
                 sequence = nextSequence,
-                serverId = resolvedServerId,
-                event = event
+                serverId = serverId,
+                threadIds = threadIds,
+                broadcast = broadcast
             )
-        activeSinks?.log?.invoke("realtime_domain_accept source=$source serverId=$resolvedServerId projection=thread seq=$nextSequence")
+        activeSinks?.log?.invoke(
+            "realtime_domain_accept source=$source serverId=$serverId threadCache=invalidated " +
+                "seq=$nextSequence ids=${threadIds.joinToString(",")} broadcast=$broadcast"
+        )
     }
 
     private fun rememberAcceptedKey(key: String): Boolean {
@@ -205,8 +227,22 @@ internal class SharedRealtimeDomainEventOwner(
     }
 }
 
-private fun RealtimeEvent.shouldProjectToThread(): Boolean =
-    this is MemberPresenceUpdated || RealtimeRoutePolicy.shouldForwardToActiveThread(this)
+private fun RealtimeEvent.threadCacheInvalidationThreadIds(): Set<String> =
+    when (this) {
+        is MessageNew -> setOf(message.cacheThreadId())
+        is MessageUpdated -> setOf(message.cacheThreadId())
+        is SyncResumeResponse -> messages.mapTo(linkedSetOf()) { it.cacheThreadId() }
+        is ThreadUpdated -> setOf(threadChannelId.value, parentMessageId.value)
+        is TaskCreated -> tasks.mapNotNullTo(linkedSetOf()) { it.threadId?.value ?: it.channelId?.value }
+        is TaskUpdated -> setOfNotNull(task.threadId?.value ?: task.channelId?.value)
+        else -> emptySet()
+    }.filterTo(linkedSetOf()) { it.isNotBlank() }
+
+private fun RealtimeEvent.broadcastsThreadCacheInvalidation(): Boolean =
+    this is ThreadUpdated
+
+private fun Message.cacheThreadId(): String =
+    channelId?.value ?: threadId.value
 
 private fun RealtimeEvent.refreshesMemberDetail(): Boolean =
     this is AgentCreated ||

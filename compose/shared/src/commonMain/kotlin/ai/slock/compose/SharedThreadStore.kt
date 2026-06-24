@@ -1893,8 +1893,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
-    data class ApplyRealtimeProjection(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
-        SharedThreadIntent
+    data object ApplyRealtimeCacheSnapshot : SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -1953,15 +1952,8 @@ internal class SharedThreadStore(
                     )
                 }
             }
-            is SharedThreadIntent.ApplyRealtimeProjection -> {
-                scope.launch {
-                    applyRealtimeEvent(
-                        event = intent.event,
-                        activeReplyParentMessageId = intent.activeReplyParentMessageId,
-                        persist = false
-                    )
-                }
-            }
+            SharedThreadIntent.ApplyRealtimeCacheSnapshot ->
+                scope.launch { applyRealtimeCacheSnapshot() }
             SharedThreadIntent.MarkVisibleReadAll -> {
                 scope.launch { markVisibleReadAll() }
             }
@@ -2012,12 +2004,7 @@ internal class SharedThreadStore(
                     activeReplyParentMessageId = intent.activeReplyParentMessageId,
                     persist = true
                 )
-            is SharedThreadIntent.ApplyRealtimeProjection ->
-                applyRealtimeEvent(
-                    event = intent.event,
-                    activeReplyParentMessageId = intent.activeReplyParentMessageId,
-                    persist = false
-                )
+            SharedThreadIntent.ApplyRealtimeCacheSnapshot -> applyRealtimeCacheSnapshot()
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
             SharedThreadIntent.LoadMembers -> loadMembers()
             SharedThreadIntent.LoadOlder -> loadOlder()
@@ -2361,6 +2348,27 @@ internal class SharedThreadStore(
         if (persist) {
             enqueueRealtimePersistence(event)
         }
+    }
+
+    private suspend fun applyRealtimeCacheSnapshot() {
+        val routePayload = _state.value.payload
+        val cached =
+            dataSource
+                .readCachedPayload(routePayload)
+                ?.withRouteContext(routePayload)
+                ?: return
+        val emitted =
+            reducePayloadPatch(cachePayload = true) { currentPayload ->
+                if (!routeStillCurrent(routePayload, "thread_realtime_cache", "apply", currentPayload)) {
+                    return@reducePayloadPatch currentPayload
+                }
+                currentPayload.withContentPatchFrom(cached.preserveStableTimelineFrom(currentPayload))
+            }
+        diagnosticsLogger?.invoke(
+            "thread_realtime_cache_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
+                "hit=true emitted=$emitted messages=${cached.messages.size} " +
+                cached.originDiagnostics()
+        )
     }
 
     private fun enqueueRealtimePersistence(event: RealtimeEvent) {
