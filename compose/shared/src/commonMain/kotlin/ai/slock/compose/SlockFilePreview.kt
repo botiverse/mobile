@@ -3,6 +3,8 @@ package ai.slock.compose
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockAnchorPlacement
+import ai.slock.compose.components.slockAnchoredTriggerGeometryAnchor
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.KuiklySlockNetworkClient
@@ -797,9 +799,11 @@ internal fun SlockFilePreviewOverflowMenuButton(
         modifier = modifier.onGloballyPositioned { coordinates ->
             val pos = coordinates.positionInRoot()
             menuAnchor =
-                Offset(
-                    x = pos.x + coordinates.size.width.toFloat() / 2f,
-                    y = pos.y + coordinates.size.height.toFloat() / 2f
+                slockAnchoredTriggerGeometryAnchor(
+                    root = pos,
+                    width = coordinates.size.width.toFloat(),
+                    height = coordinates.size.height.toFloat(),
+                    placement = SlockAnchorPlacement.BottomEnd
                 )
         }
     )

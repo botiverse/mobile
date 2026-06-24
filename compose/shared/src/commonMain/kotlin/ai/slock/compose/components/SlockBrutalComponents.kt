@@ -96,6 +96,13 @@ internal fun slockAnchoredChipGeometryAnchor(
         SlockAnchorPlacement.BottomEnd -> Offset(root.x + width, root.y + height)
     }
 
+internal fun slockAnchoredTriggerGeometryAnchor(
+    root: Offset,
+    width: Float,
+    height: Float,
+    placement: SlockAnchorPlacement
+): Offset = slockAnchoredChipGeometryAnchor(root, width, height, placement)
+
 @Composable
 internal fun SlockAnchoredMetaChip(
     label: String,

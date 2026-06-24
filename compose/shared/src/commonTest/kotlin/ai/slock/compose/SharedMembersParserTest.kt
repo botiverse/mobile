@@ -9,6 +9,7 @@ import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerPermissions
 import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SlockTimeFormat12Hour
+import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -316,8 +317,16 @@ class SharedMembersParserTest {
     }
 
     @Test
-    fun agentManagementMenuAnchorUsesTriggerRightEdge() {
-        assertEquals(132f, membersManagementMenuAnchorX(buttonLeftPx = 100f, buttonWidthPx = 32f))
+    fun agentManagementMenuAnchorUsesTriggerBottomEnd() {
+        assertEquals(
+            Offset(132f, 80f),
+            membersManagementMenuAnchor(
+                buttonLeftPx = 100f,
+                buttonTopPx = 48f,
+                buttonWidthPx = 32f,
+                buttonHeightPx = 32f
+            )
+        )
     }
 
     @Test

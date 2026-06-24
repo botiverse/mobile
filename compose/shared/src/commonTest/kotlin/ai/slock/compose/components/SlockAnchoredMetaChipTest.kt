@@ -30,4 +30,17 @@ class SlockAnchoredMetaChipTest {
             )
         )
     }
+
+    @Test
+    fun triggerGeometryAnchorUsesBottomEndForMenuButtons() {
+        assertEquals(
+            Offset(132f, 80f),
+            slockAnchoredTriggerGeometryAnchor(
+                root = Offset(100f, 48f),
+                width = 32f,
+                height = 32f,
+                placement = SlockAnchorPlacement.BottomEnd
+            )
+        )
+    }
 }

@@ -4,12 +4,14 @@ import ai.slock.compose.base.Utils
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
+import ai.slock.compose.components.SlockAnchorPlacement
 import ai.slock.compose.components.SlockBrutalModalLayer
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.components.SlockModalShellModel
 import ai.slock.compose.PixelAvatarDefaultKey
 import ai.slock.compose.PixelAvatarPickerKeys
 import ai.slock.compose.components.SlockBrutalCard
+import ai.slock.compose.components.slockAnchoredTriggerGeometryAnchor
 import ai.slock.compose.data.AttachmentUploadFile
 import ai.slock.compose.data.AgentActivityEntry
 import ai.slock.compose.data.AgentAppLoginItem
@@ -2508,7 +2510,7 @@ private fun MembersDetailHeader(
     onRequestManagementMenu: (Offset) -> Unit
 ) {
     val summary = detail?.summary
-    val threeDotButtonCenter = remember { SlockMutableOffsetRef() }
+    val threeDotButtonAnchor = remember { SlockMutableOffsetRef() }
     val agentStatusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
     val statusLabel =
         if (deleted) {
@@ -2594,23 +2596,17 @@ private fun MembersDetailHeader(
                 SlockBrutalIconButton(
                     iconName = SlockLucideIconName.Menu,
                     onClick = {
-                        onRequestManagementMenu(threeDotButtonCenter.value)
+                        onRequestManagementMenu(threeDotButtonAnchor.value)
                     },
                     size = MembersActionSize,
                     modifier = Modifier.onGloballyPositioned { coordinates ->
                         val pos = coordinates.positionInRoot()
-                        threeDotButtonCenter.update(
-                            Offset(
-                                // SlockAnchoredPopover treats the anchor as
-                                // the content's right edge when horizontal
-                                // auto-flip is active. Use the trigger's
-                                // right edge so the dropdown hugs the button
-                                // like React's absolute `right-0` menu.
-                                x = membersManagementMenuAnchorX(
-                                    buttonLeftPx = pos.x,
-                                    buttonWidthPx = coordinates.size.width.toFloat()
-                                ),
-                                y = pos.y + coordinates.size.height.toFloat() / 2f
+                        threeDotButtonAnchor.update(
+                            membersManagementMenuAnchor(
+                                buttonLeftPx = pos.x,
+                                buttonTopPx = pos.y,
+                                buttonWidthPx = coordinates.size.width.toFloat(),
+                                buttonHeightPx = coordinates.size.height.toFloat()
                             )
                         )
                     }
@@ -2632,8 +2628,18 @@ private fun MembersDetailHeader(
     }
 }
 
-internal fun membersManagementMenuAnchorX(buttonLeftPx: Float, buttonWidthPx: Float): Float =
-    buttonLeftPx + buttonWidthPx
+internal fun membersManagementMenuAnchor(
+    buttonLeftPx: Float,
+    buttonTopPx: Float,
+    buttonWidthPx: Float,
+    buttonHeightPx: Float
+): Offset =
+    slockAnchoredTriggerGeometryAnchor(
+        root = Offset(buttonLeftPx, buttonTopPx),
+        width = buttonWidthPx,
+        height = buttonHeightPx,
+        placement = SlockAnchorPlacement.BottomEnd
+    )
 
 @Composable
 private fun MembersDetailSummary(
