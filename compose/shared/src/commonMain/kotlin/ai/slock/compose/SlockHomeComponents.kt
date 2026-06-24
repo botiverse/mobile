@@ -373,10 +373,25 @@ private fun openThreadPageFromConversationId(
     payload: SlockHomePayload,
     conversationId: String
 ) {
+    val launchPayload =
+        buildHomeConversationThreadLaunchPayload(payload, conversationId)
+            ?: return
+    val pageData =
+        JSONObject().apply {
+            put("payload", threadPageJson.encodeToString(launchPayload))
+            put("instanceId", launchPayload.instanceId)
+        }
+    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
+}
+
+internal fun buildHomeConversationThreadLaunchPayload(
+    payload: SlockHomePayload,
+    conversationId: String
+): WireThreadLaunchPayload? {
     val conversation =
         payload.channels.firstOrNull { it.id == conversationId }
             ?: payload.directMessages.firstOrNull { it.id == conversationId }
-            ?: return
+            ?: return null
     val surfaceKind =
         when (conversation.kind) {
             "dm", "direct_message", "direct-message" ->
@@ -384,23 +399,20 @@ private fun openThreadPageFromConversationId(
             "thread" -> KuiklyThreadSurfaceKind.ReplyThread
             else -> KuiklyThreadSurfaceKind.Channel
         }
-    val threadChannelId = conversationId.takeIf { surfaceKind != KuiklyThreadSurfaceKind.Channel }
-    val launchPayload =
-        WireThreadLaunchPayload(
-            instanceId = "${payload.instanceId}:$conversationId",
-            surfaceKind = surfaceKind,
-            threadId = threadChannelId,
-            sourceThreadId = if (surfaceKind == KuiklyThreadSurfaceKind.Channel) conversationId else null,
-            streamChannelId = threadChannelId,
-            parentChannelId = if (surfaceKind != KuiklyThreadSurfaceKind.Channel) conversationId else null,
-            parentMessageId = null
-        )
-    val pageData =
-        JSONObject().apply {
-            put("payload", threadPageJson.encodeToString(launchPayload))
-            put("instanceId", launchPayload.instanceId)
-        }
-    pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).openPage("compose_thread", pageData)
+    return WireThreadLaunchPayload(
+        instanceId = "${payload.instanceId}:$conversationId",
+        surfaceKind = surfaceKind,
+        threadId =
+            when (surfaceKind) {
+                KuiklyThreadSurfaceKind.ReplyThread,
+                KuiklyThreadSurfaceKind.DirectMessage -> conversationId
+                else -> null
+            },
+        sourceThreadId = conversationId,
+        streamChannelId = conversationId,
+        parentChannelId = null,
+        parentMessageId = null
+    )
 }
 
 private val threadPageJson = Json { ignoreUnknownKeys = true }

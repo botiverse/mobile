@@ -2110,6 +2110,7 @@ private fun SlockAppShellContent() {
                         return
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
+                    sharedStores.realtimeDomainEventOwner.accept(serverId, event)
                     if (event is DirectMessageCreated) {
                         bridge.realtimeJoinChannel(event.channelId.value)
                     }

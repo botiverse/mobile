@@ -1807,6 +1807,8 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class ApplyRealtimeEvent(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
         SharedThreadIntent
+    data class ApplyRealtimeProjection(val event: RealtimeEvent, val activeReplyParentMessageId: MessageId? = null) :
+        SharedThreadIntent
     data object MarkVisibleReadAll : SharedThreadIntent
     data object LoadMembers : SharedThreadIntent
     data object LoadOlder : SharedThreadIntent
@@ -1860,7 +1862,17 @@ internal class SharedThreadStore(
                 scope.launch {
                     applyRealtimeEvent(
                         event = intent.event,
-                        activeReplyParentMessageId = intent.activeReplyParentMessageId
+                        activeReplyParentMessageId = intent.activeReplyParentMessageId,
+                        persist = true
+                    )
+                }
+            }
+            is SharedThreadIntent.ApplyRealtimeProjection -> {
+                scope.launch {
+                    applyRealtimeEvent(
+                        event = intent.event,
+                        activeReplyParentMessageId = intent.activeReplyParentMessageId,
+                        persist = false
                     )
                 }
             }
@@ -1910,7 +1922,14 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyRealtimeEvent ->
                 applyRealtimeEvent(
                     event = intent.event,
-                    activeReplyParentMessageId = intent.activeReplyParentMessageId
+                    activeReplyParentMessageId = intent.activeReplyParentMessageId,
+                    persist = true
+                )
+            is SharedThreadIntent.ApplyRealtimeProjection ->
+                applyRealtimeEvent(
+                    event = intent.event,
+                    activeReplyParentMessageId = intent.activeReplyParentMessageId,
+                    persist = false
                 )
             SharedThreadIntent.MarkVisibleReadAll -> markVisibleReadAll()
             SharedThreadIntent.LoadMembers -> loadMembers()
@@ -2214,7 +2233,8 @@ internal class SharedThreadStore(
 
     private suspend fun applyRealtimeEvent(
         event: RealtimeEvent,
-        activeReplyParentMessageId: MessageId? = null
+        activeReplyParentMessageId: MessageId? = null,
+        persist: Boolean = true
     ) {
         val existing = _state.value.payload
         val rawMerged =
@@ -2234,10 +2254,12 @@ internal class SharedThreadStore(
             reducePayloadPatch(cachePayload = true) { currentPayload ->
                 currentPayload.withContentPatchFrom(stableMerged)
             }
-        if (emitted) {
+        if (emitted && persist) {
             writeCachedPayloadAfterFrame(_state.value.payload)
         }
-        enqueueRealtimePersistence(event)
+        if (persist) {
+            enqueueRealtimePersistence(event)
+        }
     }
 
     private fun enqueueRealtimePersistence(event: RealtimeEvent) {

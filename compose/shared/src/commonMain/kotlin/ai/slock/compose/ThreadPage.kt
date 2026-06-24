@@ -1397,7 +1397,8 @@ internal fun shouldShowThreadComposerForReadyContent(
 
 internal data class SharedThreadRealtimeEventSignal(
     val sequence: Long,
-    val event: RealtimeEvent
+    val event: RealtimeEvent,
+    val persist: Boolean = true
 )
 
 internal data class ThreadRouteUiState(
@@ -1467,6 +1468,23 @@ private fun ThreadPageScreen() {
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
     val authStore = sharedStores.authStore
+    val sharedRealtimeEventSignal by sharedStores.realtimeDomainEventOwner.threadProjections.collectAsState(null)
+    LaunchedEffect(sharedRealtimeEventSignal?.sequence, authStore) {
+        val signal = sharedRealtimeEventSignal ?: return@LaunchedEffect
+        val currentServerId =
+            authStore.readSession()
+                ?.currentServerId
+                ?.takeIf { it.isNotBlank() }
+                ?: return@LaunchedEffect
+        if (currentServerId != signal.serverId) return@LaunchedEffect
+        threadRealtimeEventSequence += 1
+        threadRealtimeEventSignal =
+            SharedThreadRealtimeEventSignal(
+                sequence = threadRealtimeEventSequence,
+                event = signal.event,
+                persist = false
+            )
+    }
     val threadLocalStore =
         remember(sharedStores, authStore) {
             sharedStores.createThreadLocalDataStore(
@@ -2244,12 +2262,19 @@ internal fun SharedThreadRouteContent(
             initialPayload.originParentMessageId
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::MessageId)
-        threadViewModel.dispatch(
-            SharedThreadIntent.ApplyRealtimeEvent(
-                event = signal.event,
-                activeReplyParentMessageId = activeReplyParentMessageId
-            )
-        )
+        val realtimeIntent =
+            if (signal.persist) {
+                SharedThreadIntent.ApplyRealtimeEvent(
+                    event = signal.event,
+                    activeReplyParentMessageId = activeReplyParentMessageId
+                )
+            } else {
+                SharedThreadIntent.ApplyRealtimeProjection(
+                    event = signal.event,
+                    activeReplyParentMessageId = activeReplyParentMessageId
+                )
+            }
+        threadViewModel.dispatch(realtimeIntent)
         if (signal.event is MemberPresenceUpdated) {
             membersStore?.dispatch(SharedMembersIntent.ApplyPresence(signal.event))
         }

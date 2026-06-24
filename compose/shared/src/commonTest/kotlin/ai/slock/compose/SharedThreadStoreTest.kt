@@ -2958,6 +2958,44 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeProjectionMergesIntoVisiblePayloadWithoutPersistentSnapshotWrite() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeProjection(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "projection body"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("cached body", "projection body"), store.state.value.payload.messages.map { it.body })
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
+        assertEquals(
+            null,
+            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageNewUsesCachedHomeDirectMessageAvatar() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

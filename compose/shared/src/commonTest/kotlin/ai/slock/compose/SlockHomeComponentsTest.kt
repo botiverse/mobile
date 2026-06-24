@@ -354,6 +354,65 @@ class SlockHomeComponentsTest {
         )
     }
 
+    @Test
+    fun homeConversationLaunchCarriesOnlyConversationIdentity() {
+        val payload =
+            SlockHomePayload(
+                instanceId = "home-page",
+                channels =
+                    listOf(
+                        SlockHomeConversationItem(
+                            id = "thread-1",
+                            name = "Display title must stay out",
+                            kind = "thread",
+                            avatarWireValue = "pixel:tree",
+                            gravatarUrl = "https://www.gravatar.com/avatar/thread",
+                            agentStatus = AgentStatus.Working.name
+                        )
+                    )
+            )
+
+        val launch = buildHomeConversationThreadLaunchPayload(payload, "thread-1")
+
+        assertEquals("home-page:thread-1", launch?.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch?.surfaceKind)
+        assertEquals("thread-1", launch?.threadId)
+        assertEquals("thread-1", launch?.sourceThreadId)
+        assertEquals("thread-1", launch?.streamChannelId)
+        assertEquals(null, launch?.parentChannelId)
+        assertEquals(null, launch?.parentMessageId)
+        assertEquals(null, launch?.originParentMessageId)
+    }
+
+    @Test
+    fun homeDirectMessageLaunchDoesNotInventParentPair() {
+        val payload =
+            SlockHomePayload(
+                instanceId = "home-page",
+                directMessages =
+                    listOf(
+                        SlockHomeConversationItem(
+                            id = "dm-agent-1",
+                            name = "Product-UX-Designer",
+                            kind = "dm",
+                            avatarWireValue = "pixel:tree",
+                            gravatarUrl = "https://www.gravatar.com/avatar/agent",
+                            agentStatus = AgentStatus.Working.name
+                        )
+                    )
+            )
+
+        val launch = buildHomeConversationThreadLaunchPayload(payload, "dm-agent-1")
+
+        assertEquals("home-page:dm-agent-1", launch?.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, launch?.surfaceKind)
+        assertEquals("dm-agent-1", launch?.threadId)
+        assertEquals("dm-agent-1", launch?.sourceThreadId)
+        assertEquals("dm-agent-1", launch?.streamChannelId)
+        assertEquals(null, launch?.parentChannelId)
+        assertEquals(null, launch?.parentMessageId)
+    }
+
     private fun testMember(
         id: String,
         kind: MemberKind,
