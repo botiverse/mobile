@@ -3,6 +3,7 @@ import { http } from '@kit.NetworkKit';
 import util from '@ohos.util';
 import { MMKV } from '@tencent/mmkv';
 import { SLOCK_API_BASE_URL } from '../kuikly/SlockOhosApiConfig';
+import { SlockOhosApiEnvironmentStore } from '../kuikly/SlockOhosApiEnvironmentStore';
 
 const AUTH_SESSION_MMKV_NAMESPACE = 'slockAuthSession';
 const AUTH_SESSION_MMKV_STORAGE_KEY = 'slockAuthSession:session';
@@ -91,7 +92,7 @@ export async function loadActivityUnreadSnapshot(context: common.Context): Promi
   if (server === null) {
     return fallbackActivityUnreadSnapshot('Select a server');
   }
-  const summaries = await requestJson<ServerUnreadSummary[]>(session, server.id, 'servers/unread-summary');
+  const summaries = await requestJson<ServerUnreadSummary[]>(session, server.id, 'servers/unread-summary', context);
   const match = summaries.find((summary: ServerUnreadSummary) => summary.serverId === server.id);
   const unread = Math.max(0, Number(match?.unreadCount ?? 0));
   return {
@@ -117,7 +118,7 @@ export async function loadAgentRuntimeSnapshot(context: common.Context): Promise
   if (server === null) {
     return fallbackAgentRuntimeSnapshot('Select a server');
   }
-  const agents = await requestJson<AgentWire[]>(session, server.id, 'agents');
+  const agents = await requestJson<AgentWire[]>(session, server.id, 'agents', context);
   const running = agents.filter((agent: AgentWire) => isAgentRunning(agent));
   const total = agents.length;
   const headline = runningHeadline(running);
@@ -168,10 +169,10 @@ async function readStoredAuthSession(context: common.Context): Promise<StoredAut
   }
 }
 
-async function requestJson<T>(session: StoredAuthSession, serverId: string, path: string): Promise<T> {
+async function requestJson<T>(session: StoredAuthSession, serverId: string, path: string, context: common.Context): Promise<T> {
   const client = http.createHttp();
   try {
-    const response = await client.request(`${SLOCK_API_BASE_URL}${path}`, {
+    const response = await client.request(SlockOhosApiEnvironmentStore.rewriteApiUrlForContext(`${SLOCK_API_BASE_URL}${path}`, context), {
       method: http.RequestMethod.GET,
       header: {
         'Authorization': `Bearer ${session.accessToken}`,

@@ -16,7 +16,7 @@ import slockOhosMotionBridge from '../SlockOhosMotionBridge';
 import slockOhosRealtimeBridge from '../SlockOhosRealtimeBridge';
 import { SlockOhosClipboard } from '../SlockOhosClipboard';
 import { SlockOhosDiagnostics } from '../SlockOhosDiagnostics';
-import { SLOCK_API_BASE_URL } from '../SlockOhosApiConfig';
+import { SlockOhosApiEnvironment, SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 
 interface OhosPickedThreadAttachment {
   fileName: string;
@@ -77,7 +77,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   static readonly MOTION_CAPABILITY = "motionCapability";
   static readonly SETTINGS_CAPABILITY = "settingsCapability";
   static readonly THREAD_ATTACHMENT_UPLOAD = "threadAttachmentUpload";
-  static readonly AUTH_BASE_URL = SLOCK_API_BASE_URL;
   static readonly AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+";
   static readonly ATTACHMENT_CACHE_MAX_FILES = 80;
   static readonly ATTACHMENT_CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
@@ -461,6 +460,14 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback(await this.loadAboutCapability());
           return;
         }
+        case "loadDeveloper": {
+          callback(this.loadDeveloperCapability());
+          return;
+        }
+        case "setApiEnvironment": {
+          callback(this.setApiEnvironmentCapability(records));
+          return;
+        }
         case "loadDiagnostics": {
           callback(this.loadDiagnosticsCapability());
           return;
@@ -590,11 +597,64 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       "notificationStatusLabel": notificationsEnabled ? "Enabled" : "Disabled",
       "deviceLabel": `${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim(),
       "platformLabel": `${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
-      "baseUrl": KRBridgeModule.AUTH_BASE_URL,
+      "baseUrl": SlockOhosApiEnvironmentStore.current(this).apiBaseUrl,
       "filesDir": context.filesDir,
       "buildTime": new Date().toISOString(),
       "gitCommit": "unknown"
     };
+  }
+
+  private loadDeveloperCapability(feedback: string = ""): Record<string, Object> {
+    const current = SlockOhosApiEnvironmentStore.current(this);
+    const options = SlockOhosApiEnvironmentStore.PREDEFINED.map((environment) => {
+      return this.apiEnvironmentPayload(environment);
+    });
+    return {
+      "status": "ok",
+      "environmentKey": current.key,
+      "environmentLabel": current.label,
+      "apiBaseUrl": current.apiBaseUrl,
+      "socketBaseUrl": current.socketBaseUrl,
+      "webUrl": current.webUrl,
+      "options": options,
+      "feedback": feedback
+    };
+  }
+
+  private setApiEnvironmentCapability(records: Record<string, Object>): Record<string, Object> {
+    const environmentKey = (records["environmentKey"] as string) ?? "";
+    const before = SlockOhosApiEnvironmentStore.current(this);
+    const after =
+      environmentKey === SlockOhosApiEnvironmentStore.CUSTOM_KEY
+        ? SlockOhosApiEnvironmentStore.save({
+            key: environmentKey,
+            label: (records["environmentLabel"] as string) ?? "Custom",
+            apiBaseUrl: (records["apiBaseUrl"] as string) ?? "",
+            socketBaseUrl: (records["socketBaseUrl"] as string) ?? "",
+            webUrl: (records["webUrl"] as string) ?? ""
+          }, this)
+        : SlockOhosApiEnvironmentStore.select(environmentKey, this);
+    if (after === null) {
+      return {
+        "status": "error",
+        "code": "settings_developer_environment_unknown"
+      };
+    }
+    const changed =
+      before.key !== after.key ||
+        before.apiBaseUrl !== after.apiBaseUrl ||
+        before.socketBaseUrl !== after.socketBaseUrl ||
+        before.webUrl !== after.webUrl;
+    if (changed) {
+      SlockOhosApiEnvironmentStore.clearAuthSession(this);
+      slockOhosRealtimeBridge.disconnectForSessionEnd("api_environment_changed");
+      SlockOhosDiagnostics.record("SlockDeveloper", `api_environment_changed from=${before.key} to=${after.key}`);
+    }
+    return this.loadDeveloperCapability(
+      changed
+        ? `API server switched to ${after.label}. Sign in again to use this environment.`
+        : `${after.label} is already selected.`
+    );
   }
 
   private loadDiagnosticsCapability(): Record<string, Object> {
@@ -611,8 +671,9 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
   private async probeNetworkCapability(): Promise<Record<string, Object>> {
     const request = http.createHttp();
     const startedAt = Date.now();
+    const baseUrl = SlockOhosApiEnvironmentStore.current(this).apiBaseUrl;
     try {
-      const response = await request.request(KRBridgeModule.AUTH_BASE_URL, {
+      const response = await request.request(baseUrl, {
         method: http.RequestMethod.GET,
         header: {
           "Accept": "application/json"
@@ -624,11 +685,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const duration = Date.now() - startedAt;
       SlockOhosDiagnostics.record(
         "SlockNetworkProbe",
-        `baseUrl=${this.safeUrlForDiagnostics(KRBridgeModule.AUTH_BASE_URL)} code=${responseCode} durationMs=${duration}`
+        `baseUrl=${this.safeUrlForDiagnostics(baseUrl)} code=${responseCode} durationMs=${duration}`
       );
       return {
         "status": "ok",
-        "baseUrl": KRBridgeModule.AUTH_BASE_URL,
+        "baseUrl": baseUrl,
         "reachable": responseCode > 0,
         "code": responseCode,
         "durationMillis": duration,
@@ -640,11 +701,11 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       const duration = Date.now() - startedAt;
       SlockOhosDiagnostics.record(
         "SlockNetworkProbe",
-        `baseUrl=${this.safeUrlForDiagnostics(KRBridgeModule.AUTH_BASE_URL)} failed=${businessError.code ?? "unknown"} durationMs=${duration}`
+        `baseUrl=${this.safeUrlForDiagnostics(baseUrl)} failed=${businessError.code ?? "unknown"} durationMs=${duration}`
       );
       return {
         "status": "ok",
-        "baseUrl": KRBridgeModule.AUTH_BASE_URL,
+        "baseUrl": baseUrl,
         "reachable": false,
         "code": 0,
         "durationMillis": duration,
@@ -1230,6 +1291,16 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const queryIndex = rawUrl.indexOf("?");
     const withoutQuery = queryIndex >= 0 ? rawUrl.slice(0, queryIndex) : rawUrl;
     return withoutQuery.slice(0, 160);
+  }
+
+  private apiEnvironmentPayload(environment: SlockOhosApiEnvironment): Record<string, Object> {
+    return {
+      "key": environment.key,
+      "label": environment.label,
+      "apiBaseUrl": environment.apiBaseUrl,
+      "socketBaseUrl": environment.socketBaseUrl,
+      "webUrl": environment.webUrl
+    };
   }
 
   private parseRecord(params: KRAny): Record<string, Object> {

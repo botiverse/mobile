@@ -5,6 +5,7 @@ import { KuiklyRenderBaseModule } from '@kuikly-open/render';
 import { KuiklyRenderCallback } from '@kuikly-open/render';
 import util from '@ohos.util';
 import fs from '@ohos.file.fs';
+import { SlockOhosApiEnvironmentStore } from '../SlockOhosApiEnvironmentStore';
 
 export class SlockNetworkModule extends KuiklyRenderBaseModule {
   static readonly MODULE_NAME = 'HRSlockNetworkModule';
@@ -44,7 +45,7 @@ export class SlockNetworkModule extends KuiklyRenderBaseModule {
       this.activeRequests.set(requestId, client);
     }
     try {
-      const response = await client.request(command['url'] as string, {
+      const response = await client.request(SlockOhosApiEnvironmentStore.rewriteApiUrl(command['url'] as string, this), {
         method: this.requestMethod(((command['method'] as string) ?? 'GET').toUpperCase()),
         header: this.stringRecord(command['headers']),
         extraData: this.requestBody(command),

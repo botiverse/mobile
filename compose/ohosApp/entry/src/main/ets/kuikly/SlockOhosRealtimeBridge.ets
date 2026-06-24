@@ -1,6 +1,7 @@
 import { KRAny, KRNativeRenderController, KRRecord } from '@kuikly-open/render';
 import { OhosSocketIoClient } from './OhosSocketIoClient';
 import { SLOCK_SOCKET_BASE_URL } from './SlockOhosApiConfig';
+import { SlockOhosApiEnvironmentStore } from './SlockOhosApiEnvironmentStore';
 
 const REALTIME_EVENT_NAME = 'slockRealtimeEvent';
 const DEFAULT_SOCKET_URL = SLOCK_SOCKET_BASE_URL;
@@ -88,6 +89,10 @@ export class SlockOhosRealtimeBridge {
     this.socketIo.suspend('background');
   }
 
+  disconnectForSessionEnd(reason: string): void {
+    this.disconnect(reason);
+  }
+
   private connect(params: RealtimeConnectParams, forceReconnect: boolean = false): void {
     if (params.serverId.length === 0 || params.accessToken.length === 0) {
       console.warn('[SlockOhosRealtime] connect skipped: missing server/token');
@@ -106,7 +111,7 @@ export class SlockOhosRealtimeBridge {
     }
     this.disconnect('reconnect');
     this.socketIo.connect({
-      socketUrl: params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL,
+      socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this),
       auth: {
         token: params.accessToken,
         serverId: params.serverId,
@@ -230,7 +235,7 @@ export class SlockOhosRealtimeBridge {
       return;
     }
     this.socketIo.connect({
-      socketUrl: params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL,
+      socketUrl: SlockOhosApiEnvironmentStore.resolveSocketUrl(params.socketUrl.length > 0 ? params.socketUrl : DEFAULT_SOCKET_URL, this),
       auth: {
         token: params.accessToken,
         serverId: params.serverId,
