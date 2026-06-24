@@ -9798,26 +9798,22 @@ private fun String.threadTaskAssigneeKey(): String =
 
 @Composable
 private fun ThreadJoinFooter(label: String, onJoin: () -> Unit) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack)
             .background(SlockColor.SurfaceWhite)
             .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                text = "You need to join before sending.",
-                style = SlockType.Body.withSlockFontWeight(FontWeight.W600).copy(color = SlockColor.TextBlack),
-                color = SlockColor.TextBlack
-            )
-            Text(
-                text = "This thread is visible, but sending is currently disabled.",
-                style = SlockType.Input.copy(fontSize = 12.sp, lineHeight = 16.sp, color = SlockColor.TextMutedGray),
-                color = SlockColor.TextMutedGray
-            )
-        }
-        ThreadHeaderAction(label = label, onClick = onJoin)
+        SlockBrutalActionButton(
+            label = label,
+            onClick = onJoin,
+            modifier = Modifier.fillMaxWidth(),
+            backgroundColor = SlockColor.AccentPink,
+            minWidth = 0.dp,
+            minHeight = 40.dp,
+            leadingIcon = SlockLucideIconName.LogIn,
+            textStyle = SlockType.Button.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack)
+        )
     }
 }
 
