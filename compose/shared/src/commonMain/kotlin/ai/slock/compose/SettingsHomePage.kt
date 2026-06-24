@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalInputField
 import ai.slock.compose.components.SlockBrutalListRow
@@ -4916,7 +4917,12 @@ private fun SettingsServerProfileFormCard(
                 onClick = onSubmit,
                 enabled = enabled,
                 leadingIcon = SlockLucideIconName.Save,
-                backgroundColor = SlockColor.AccentPink
+                backgroundColor = SlockColor.AccentPink,
+                disabledBackgroundColor = SlockColor.AccentPink.copy(alpha = 0.5f),
+                minWidth = 0.dp,
+                minHeight = 34.dp,
+                shadowOffset = 3.dp,
+                textStyle = SlockType.ButtonBold.copy(fontSize = 12.sp, lineHeight = 14.sp, color = SlockColor.TextBlack)
             )
         }
     }
@@ -5101,21 +5107,28 @@ private fun SettingsServerDeleteConfirmationDialog(
                         )
                     }
                     SettingsServerDeleteWarningBanner(serverName = resolvedName)
-                    Text(
-                        "Type ",
-                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
-                    )
-                    Text(
-                        resolvedSlug,
-                        style = SlockType.Body.withSlockFontWeight(com.tencent.kuikly.compose.ui.text.font.FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
-                        color = SlockColor.TextBlack
-                    )
-                    Text(
-                        " to confirm:",
-                        style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
-                        color = SlockColor.TextMutedGray
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Type ",
+                            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray
+                        )
+                        Text(
+                            resolvedSlug,
+                            style = SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextBlack),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            " to confirm:",
+                            style = SlockType.Body.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+                            color = SlockColor.TextMutedGray
+                        )
+                    }
                     SettingsServerSlugInput(
                         value = confirmationSlug,
                         placeholder = resolvedSlug,
@@ -5147,7 +5160,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                             enabled = deleteEnabled,
                             modifier = Modifier.width(112.dp),
                             backgroundColor = SlockColor.AccentRed,
-                            disabledBackgroundColor = SlockColor.AccentRed.copy(alpha = 0.28f),
+                            disabledBackgroundColor = Color(0xFFFDBDB7),
                             minWidth = 0.dp,
                             minHeight = 34.dp,
                             shadowOffset = 3.dp,
@@ -5196,17 +5209,29 @@ private fun SettingsServerSlugInput(
     enabled: Boolean,
     onValueChange: (String) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        SlockBrutalSectionLabel(label = "Server slug")
+    val shadowOffset = 3.dp
+    Box(modifier = Modifier.fillMaxWidth().padding(end = shadowOffset, bottom = shadowOffset)) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .offset(x = shadowOffset, y = shadowOffset)
+                .background(SlockColor.ShadowBlack)
+        )
         Row(
-            modifier = Modifier.fillMaxWidth().border(SlockStroke.Default, SlockColor.BorderBlack),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .background(SlockColor.SurfaceWhite)
+                    .border(SlockStroke.Default, SlockColor.BorderBlack),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
-                modifier = Modifier
-                    .height(42.dp)
-                    .background(SlockColor.SurfaceCream)
-                    .padding(horizontal = 12.dp),
+                modifier =
+                    Modifier
+                        .height(42.dp)
+                        .background(SlockColor.SurfaceCream)
+                        .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -5239,8 +5264,8 @@ private fun SettingsFormSectionCard(
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         SettingsServerSectionHeader(iconName = iconName, title = title)
-        Column(
-            modifier = Modifier.fillMaxWidth().background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack).padding(14.dp),
+        SlockBrutalCard(
+            contentPadding = 14.dp,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             content()
