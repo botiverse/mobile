@@ -86,6 +86,8 @@ internal fun SlockAnchoredMetaChip(
     onClick: ((com.tencent.kuikly.compose.ui.geometry.Offset) -> Unit)?,
     modifier: Modifier = Modifier,
     iconSize: Dp = 10.dp,
+    trailingIconName: SlockLucideIconName? = null,
+    trailingIconSize: Dp = iconSize,
     pressFeedback: Boolean = onClick != null
 ) {
     SlockAnchorButton(
@@ -113,6 +115,9 @@ internal fun SlockAnchoredMetaChip(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            trailingIconName?.let {
+                SlockLucideIcon(it, modifier = Modifier.size(trailingIconSize), color = SlockColor.TextMutedGrayArgb)
+            }
         }
     }
 }

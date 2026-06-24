@@ -26,6 +26,22 @@ internal data class SharedThreadComposerPersistedDraft(
     val asTask: Boolean = false
 )
 
+internal data class SharedThreadComposerDraftRecord(
+    val key: String,
+    val sendChannelId: String,
+    val parentMessageId: String? = null,
+    val mentionChannelId: String? = null
+) {
+    val isRootComposer: Boolean
+        get() = parentMessageId.isNullOrBlank()
+
+    fun matchesRootConversation(conversationId: String): Boolean =
+        isRootComposer && sendChannelId == conversationId
+
+    fun matchesReplyThread(parentMessageId: String): Boolean =
+        !isRootComposer && this.parentMessageId == parentMessageId
+}
+
 internal class SharedThreadComposerDraftRepository(
     private val store: SharedPreferenceStore
 ) {
@@ -44,15 +60,69 @@ internal class SharedThreadComposerDraftRepository(
         }
         store.putString(textKey(key), text)
         store.putString(asTaskKey(key), asTask.toString())
+        addActiveKey(key)
     }
 
     fun clear(key: String) {
         store.putString(textKey(key), null)
         store.putString(asTaskKey(key), null)
+        removeActiveKey(key)
     }
+
+    fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> =
+        activeKeys()
+            .mapNotNull { key -> key.toSharedThreadComposerDraftRecord() }
+            .toSet()
 
     private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
     private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
+
+    private fun activeKeys(): Set<String> =
+        store.getString(ActiveIndexKey)
+            ?.lineSequence()
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.toSet()
+            .orEmpty()
+
+    private fun addActiveKey(key: String) {
+        writeActiveKeys(activeKeys() + key)
+    }
+
+    private fun removeActiveKey(key: String) {
+        writeActiveKeys(activeKeys() - key)
+    }
+
+    private fun writeActiveKeys(keys: Set<String>) {
+        store.putString(ActiveIndexKey, keys.sorted().joinToString(separator = "\n").takeIf { it.isNotBlank() })
+    }
+
+    private fun String.toSharedThreadComposerDraftRecord(): SharedThreadComposerDraftRecord? {
+        val values =
+            split('|')
+                .mapNotNull { part ->
+                    val separator = part.indexOf('=')
+                    if (separator <= 0) return@mapNotNull null
+                    part.substring(0, separator) to part.substring(separator + 1).threadComposerDraftKeyDecodePart()
+                }
+                .toMap()
+        val sendChannelId = values["send"]?.takeIf { it.isNotBlank() } ?: return null
+        return SharedThreadComposerDraftRecord(
+            key = this,
+            sendChannelId = sendChannelId,
+            parentMessageId = values["parent"]?.takeIf { it.isNotBlank() && it != "_" },
+            mentionChannelId = values["mention"]?.takeIf { it.isNotBlank() && it != "_" }
+        )
+    }
+
+    private fun String.threadComposerDraftKeyDecodePart(): String =
+        replace("%3D", "=")
+            .replace("%7C", "|")
+            .replace("%25", "%")
+
+    private companion object {
+        const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"
+    }
 }
 
 internal sealed interface SharedThreadComposerDraftIntent {
