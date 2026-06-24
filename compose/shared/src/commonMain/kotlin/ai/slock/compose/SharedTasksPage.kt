@@ -1061,9 +1061,10 @@ private fun SharedTaskCard(
                 // status pill reliably wins the tap instead of the parent card gesture.
                 SlockAnchoredMetaChip(
                     label = if (updating) "Updating" else task.status.label.uppercase(),
-                    iconName = task.status.iconName,
+                    iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
+                    borderWidth = SlockStroke.Default,
                     anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
             }
@@ -1081,12 +1082,11 @@ private fun SharedTasksStatusLabel(
         modifier = Modifier
             .then(modifier)
             .background(status.color)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .border(SlockStroke.Default, SlockColor.BorderBlack)
             .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        SlockLucideIcon(status.iconName, modifier = Modifier.size(10.dp), color = "#FF000000")
         Text(
             text = label.uppercase(),
             style = SlockType.TabLabel,

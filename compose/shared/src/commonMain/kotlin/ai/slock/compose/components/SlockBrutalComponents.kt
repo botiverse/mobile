@@ -113,6 +113,7 @@ internal fun SlockAnchoredMetaChip(
     iconSize: Dp = 10.dp,
     trailingIconName: SlockLucideIconName? = null,
     trailingIconSize: Dp = iconSize,
+    borderWidth: Dp = SlockStroke.Thin,
     pressFeedback: Boolean = onClick != null,
     anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap
 ) {
@@ -120,7 +121,7 @@ internal fun SlockAnchoredMetaChip(
     val chipModifier =
         modifier
             .heightIn(min = 20.dp)
-            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .border(borderWidth, SlockColor.BorderBlack)
             .background(color)
             .padding(horizontal = 6.dp, vertical = 2.dp)
             .let { base ->
