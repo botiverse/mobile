@@ -85,18 +85,19 @@ internal class SqlDelightComposeLocalDataStore(
 
     override suspend fun readThread(threadId: ThreadId): ThreadSnapshot? {
         val queries = database.queries
-        val serverId =
-            queries.selectChannelServerId(threadId.value).executeAsOneOrNull()?.let(::ServerId)
-                ?: currentServerId()
-                ?: return fallback.readThread(threadId)
-        val channel =
-            queries.selectChannel(serverId.value, threadId.value).executeAsOneOrNull()
-                ?: threadId.parentMessageIdOrNull()
-                    ?.let { parentMessageId ->
-                        queries.selectThreadForParentMessage(serverId.value, parentMessageId.value)
-                            .executeAsOneOrNull()
+        val preferredServerId = currentServerId()
+        val resolved =
+            preferredServerId?.let { serverId ->
+                queries.readThreadChannel(serverId, threadId)?.let { channel -> serverId to channel }
+            }
+                ?: queries.selectChannelServerId(threadId.value).executeAsOneOrNull()
+                    ?.let(::ServerId)
+                    ?.let { serverId ->
+                        queries.readThreadChannel(serverId, threadId)?.let { channel -> serverId to channel }
                     }
                 ?: return fallback.readThread(threadId)
+        val serverId = resolved.first
+        val channel = resolved.second
         val messages =
             queries.selectMessagesForChannel(serverId.value, channel.channelId)
                 .executeAsList()
@@ -121,6 +122,17 @@ internal class SqlDelightComposeLocalDataStore(
             lastSeq = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L
         )
     }
+
+    private fun SlockDatabaseQueries.readThreadChannel(
+        serverId: ServerId,
+        threadId: ThreadId
+    ): ChannelEntity? =
+        selectChannel(serverId.value, threadId.value).executeAsOneOrNull()
+            ?: threadId.parentMessageIdOrNull()
+                ?.let { parentMessageId ->
+                    selectThreadForParentMessage(serverId.value, parentMessageId.value)
+                        .executeAsOneOrNull()
+                }
 
     override suspend fun writeThread(snapshot: ThreadSnapshot) {
         val serverId = currentServerId() ?: return fallback.writeThread(snapshot)

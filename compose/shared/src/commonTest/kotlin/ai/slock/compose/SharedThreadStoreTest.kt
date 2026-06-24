@@ -3181,7 +3181,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun realtimeProjectionMergesIntoVisiblePayloadWithoutPersistentSnapshotWrite() = runBlocking {
+    fun realtimeCacheSnapshotReadsPersistentThreadStateWithoutEventProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         val dataSource =
@@ -3194,27 +3194,18 @@ class SharedThreadStoreTest {
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
 
-        store.accept(
-            SharedThreadIntent.ApplyRealtimeProjection(
-                MessageNew(
-                    Message(
-                        id = MessageId("m2"),
-                        threadId = ThreadId("channel-1"),
-                        channelId = ChannelId("channel-1"),
-                        author = member("u2", "Stdrc"),
-                        timestampLabel = "2026-05-19T16:01:00Z",
-                        body = "projection body"
-                    )
-                )
+        dataSource.writeCachedPayload(
+            contentPayloadForRoute(
+                base = basePayload(),
+                body = "cache body",
+                id = "m2"
             )
         )
 
-        assertEquals(listOf("cached body", "projection body"), store.state.value.payload.messages.map { it.body })
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
-        assertEquals(
-            null,
-            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
-        )
+        store.accept(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
+
+        assertEquals(listOf("cache body"), store.state.value.payload.messages.map { it.body })
+        assertEquals("cache body", localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.body)
         scope.cancel()
     }
 

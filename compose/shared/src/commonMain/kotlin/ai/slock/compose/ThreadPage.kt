@@ -38,6 +38,8 @@ import ai.slock.compose.data.ThreadAttachmentCommentsPage
 import ai.slock.compose.data.SlockIntegrationsActionsPushApiClient
 import ai.slock.compose.data.SlockIntegrationsActionsPushNetworkApi
 import ai.slock.compose.data.ThreadActionCard
+import ai.slock.compose.data.realtime.RealtimeEventMapper
+import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
@@ -61,6 +63,7 @@ import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.PendingMentionActionExecuteResult
 import ai.slock.compose.data.TaskSnapshot
 import ai.slock.compose.data.TasksUiState
+import ai.slock.compose.data.ThreadRealtimeCacheInvalidationSignal
 import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
@@ -198,6 +201,7 @@ private const val CHANNEL_MEMBERS_PANEL_VISUAL_PAGE = "compose_channel_members_p
 private const val CHANNEL_SETTINGS_PANEL_VISUAL_PAGE = "compose_channel_settings_panel_visual"
 private const val CHANNEL_ADD_MEMBER_PANEL_VISUAL_PAGE = "compose_channel_add_member_panel_visual"
 private const val THREAD_PAGE_DATA_EVENT = "slockPageData"
+private const val THREAD_REALTIME_EVENT = "slockRealtimeEvent"
 private const val ThreadMessagesMaxBeyondBoundsItemCount = 2
 private const val ThreadPerformanceSlowThresholdMs = 4L
 private const val ThreadFirstContentExtrasDelayMs = 96L
@@ -1416,6 +1420,25 @@ internal data class SharedThreadRealtimeEventSignal(
     val event: RealtimeEvent
 )
 
+private fun ThreadRealtimeCacheInvalidationSignal.matchesThreadRoute(
+    payload: KuiklyThreadScreenPayload
+): Boolean {
+    if (broadcast) return true
+    val routeIds = payload.realtimeCacheCandidateIds()
+    return threadIds.any { id -> id in routeIds }
+}
+
+private fun KuiklyThreadScreenPayload.realtimeCacheCandidateIds(): Set<String> =
+    listOfNotNull(
+        sourceThreadId,
+        streamChannelId,
+        parentChannelId,
+        parentMessageId,
+        originParentMessageId
+    )
+        .filter { it.isNotBlank() }
+        .toSet()
+
 internal data class ThreadRouteUiState(
     val thread: KuiklyThreadScreenPayload,
     val membersLoadStatus: LoadMembersStatus
@@ -1456,23 +1479,52 @@ private fun ThreadPageScreen() {
     }
     val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
+    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val threadPageCoroutineScope = rememberCoroutineScope()
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
-    val sharedRealtimeEventSignal by sharedStores.realtimeDomainEventOwner.threadProjections.collectAsState(null)
-    LaunchedEffect(sharedRealtimeEventSignal?.sequence, authStore) {
-        val signal = sharedRealtimeEventSignal ?: return@LaunchedEffect
+    var threadRealtimeCacheInvalidationSequence by remember { mutableStateOf(0L) }
+    DisposableEffect(pager, realtimeEventMapper, authStore, threadPageCoroutineScope) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != THREAD_REALTIME_EVENT) return
+                    threadPageCoroutineScope.launch {
+                        val event = decodeSharedShellRealtimeEvent(eventData, realtimeEventMapper, bridge::log) ?: return@launch
+                        if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return@launch
+                        val session = authStore.readSession()
+                        val serverId = resolveSharedShellRealtimeServerId(eventData, event, session) ?: return@launch
+                        val currentServerId =
+                            session
+                                ?.currentServerId
+                                ?.takeIf { it.isNotBlank() }
+                                ?: return@launch
+                        if (currentServerId != serverId) return@launch
+                        threadRealtimeEventSequence += 1
+                        threadRealtimeEventSignal =
+                            SharedThreadRealtimeEventSignal(
+                                sequence = threadRealtimeEventSequence,
+                                event = event
+                            )
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
+    }
+    val sharedThreadCacheInvalidation by
+        sharedStores.realtimeDomainEventOwner.threadCacheInvalidations.collectAsState(null)
+    LaunchedEffect(sharedThreadCacheInvalidation?.sequence, authStore, payload) {
+        val signal = sharedThreadCacheInvalidation ?: return@LaunchedEffect
         val currentServerId =
             authStore.readSession()
                 ?.currentServerId
                 ?.takeIf { it.isNotBlank() }
                 ?: return@LaunchedEffect
         if (currentServerId != signal.serverId) return@LaunchedEffect
-        threadRealtimeEventSequence += 1
-        threadRealtimeEventSignal =
-            SharedThreadRealtimeEventSignal(
-                sequence = threadRealtimeEventSequence,
-                event = signal.event
-            )
+        if (!signal.matchesThreadRoute(payload)) return@LaunchedEffect
+        delay(SharedThreadRealtimePersistenceBatchDelayMillis)
+        threadRealtimeCacheInvalidationSequence += 1
     }
     val threadLocalStore =
         remember(sharedStores, authStore) {
@@ -1599,7 +1651,6 @@ private fun ThreadPageScreen() {
     val routerModule = remember(pager) {
         pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME)
     }
-    val threadPageCoroutineScope = rememberCoroutineScope()
     fun openStandaloneThreadPayload(nextPayload: KuiklyThreadScreenPayload) {
         val launchPayload = nextPayload.toWireThreadLaunchPayload()
         if (!launchPayload.hasRouteIdentity()) {
@@ -1667,6 +1718,7 @@ private fun ThreadPageScreen() {
             routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
         realtimeEventSignal = threadRealtimeEventSignal,
+        realtimeCacheInvalidationSequence = threadRealtimeCacheInvalidationSequence,
         onOpenMemberProfile = { currentPayload, memberId ->
             val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
             if (pageData == null) {
@@ -2002,6 +2054,7 @@ internal fun SharedThreadRouteContent(
     onOpenParentThread: () -> Boolean = { false },
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
+    realtimeCacheInvalidationSequence: Long = 0L,
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
     onOpenMemberProfile: (KuiklyThreadScreenPayload, String) -> Unit = { _, _ -> }
@@ -2300,7 +2353,7 @@ internal fun SharedThreadRouteContent(
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::MessageId)
         threadViewModel.dispatch(
-            SharedThreadIntent.ApplyRealtimeProjection(
+            SharedThreadIntent.ApplyRealtimeEvent(
                 event = signal.event,
                 activeReplyParentMessageId = activeReplyParentMessageId
             )
@@ -2316,6 +2369,10 @@ internal fun SharedThreadRouteContent(
                 )
             )
         }
+    }
+    LaunchedEffect(realtimeCacheInvalidationSequence, initialPayload.instanceId) {
+        if (realtimeCacheInvalidationSequence <= 0L) return@LaunchedEffect
+        threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
     }
     LaunchedEffect(payload.sourceThreadId, payload.tasks) {
         if (tasksViewModel != null && payload.tasks.isNotEmpty()) {

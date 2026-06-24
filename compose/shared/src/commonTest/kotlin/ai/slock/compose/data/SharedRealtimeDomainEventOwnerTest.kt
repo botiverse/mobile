@@ -1,6 +1,5 @@
 package ai.slock.compose.data
 
-import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.Heartbeat
@@ -9,21 +8,19 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
-import ai.slock.compose.model.MemberPresenceUpdated
 import ai.slock.compose.model.MemberProfile
-import ai.slock.compose.model.Presence
 import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskId
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.ThreadUpdated
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 
 class SharedRealtimeDomainEventOwnerTest {
     @Test
@@ -31,39 +28,50 @@ class SharedRealtimeDomainEventOwnerTest {
         val owner = SharedRealtimeDomainEventOwner()
 
         owner.accept("", DirectMessageCreated(ChannelId("dm-1")))
-        assertNull(owner.threadProjections.value)
+        assertNull(owner.threadCacheInvalidations.value)
 
         owner.accept("server-1", Heartbeat(seq = 10L))
-        assertNull(owner.threadProjections.value)
+        assertNull(owner.threadCacheInvalidations.value)
     }
 
     @Test
-    fun projectsThreadRelevantAndPresenceEventsWithSequence() {
+    fun invalidatesThreadCacheWithSequence() {
         val owner = SharedRealtimeDomainEventOwner()
-        val messageRouteEvent = DirectMessageCreated(ChannelId("dm-1"))
-        val presenceEvent =
-            MemberPresenceUpdated(
-                memberId = MemberId("agent-1"),
-                presence = Presence.Active,
-                kind = MemberKind.Agent,
-                agentStatus = AgentStatus.Working,
-                statusLabel = "Running tests",
-                serverSeq = 7L
+        val messageEvent =
+            MessageNew(
+                Message(
+                    id = MessageId("m1"),
+                    threadId = ThreadId("channel-1"),
+                    channelId = ChannelId("channel-1"),
+                    author = MemberProfile(MemberId("u1"), "Artin", "artin", MemberKind.Human),
+                    timestampLabel = "now",
+                    body = "hello"
+                )
+            )
+        val threadEvent =
+            ThreadUpdated(
+                parentMessageId = MessageId("m1"),
+                threadChannelId = ChannelId("thread-1"),
+                replyCount = 2,
+                lastReplyAt = null,
+                participantIds = emptyList()
             )
 
-        owner.accept("server-1", messageRouteEvent)
+        owner.accept("server-1", messageEvent)
 
-        val first = owner.threadProjections.value
+        val first = owner.threadCacheInvalidations.value
         assertEquals(1L, first?.sequence)
         assertEquals("server-1", first?.serverId)
-        assertSame(messageRouteEvent, first?.event)
+        assertEquals(setOf("channel-1"), first?.threadIds)
+        assertEquals(false, first?.broadcast)
 
-        owner.accept("server-1", presenceEvent)
+        owner.accept("server-1", threadEvent)
 
-        val second = owner.threadProjections.value
+        val second = owner.threadCacheInvalidations.value
         assertEquals(2L, second?.sequence)
         assertEquals("server-1", second?.serverId)
-        assertSame(presenceEvent, second?.event)
+        assertEquals(setOf("thread-1", "m1"), second?.threadIds)
+        assertEquals(true, second?.broadcast)
     }
 
     @Test
@@ -89,7 +97,7 @@ class SharedRealtimeDomainEventOwnerTest {
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), homeEvents)
         assertEquals(listOf(RealtimeEventRecord("server-1", event)), settingsEvents)
         assertEquals(listOf("dm-1"), joinedChannels)
-        assertEquals(1L, owner.threadProjections.value?.sequence)
+        assertNull(owner.threadCacheInvalidations.value)
         assertEquals(true, logs.any { it.contains("reason=duplicate") })
     }
 
@@ -109,7 +117,7 @@ class SharedRealtimeDomainEventOwnerTest {
 
         assertEquals(0, homeEvents)
         assertEquals(0, settingsEvents)
-        assertNull(owner.threadProjections.value)
+        assertNull(owner.threadCacheInvalidations.value)
     }
 
     @Test
@@ -163,8 +171,8 @@ class SharedRealtimeDomainEventOwnerTest {
         owner.accept("server-1", event, source = "app_shell")
         owner.accept("server-1", event, source = "app_shell")
 
-        assertEquals(1L, owner.threadProjections.value?.sequence)
-        assertSame(event, owner.threadProjections.value?.event)
+        assertEquals(1L, owner.threadCacheInvalidations.value?.sequence)
+        assertEquals(setOf("channel-1"), owner.threadCacheInvalidations.value?.threadIds)
     }
 
     private data class RealtimeEventRecord(
