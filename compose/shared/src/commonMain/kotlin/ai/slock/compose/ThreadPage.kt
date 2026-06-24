@@ -2944,6 +2944,7 @@ internal fun SharedThreadRouteContent(
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
             composerDraftViewModel = composerDraftViewModel,
+            composerDraftRepository = composerDraftRepository,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             tasksDataStore = tasksDataStore,
@@ -5058,6 +5059,7 @@ private fun ThreadPageContent(
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
+    composerDraftRepository: SharedThreadComposerDraftRepository,
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
     tasksDataStore: SharedTasksDataStore?,
@@ -5083,6 +5085,8 @@ private fun ThreadPageContent(
     onComposerEvent: (action: String, value: String?, asTask: Boolean?, attachmentId: String?) -> Unit
 ) {
     val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell()
+    val composerDraftState by composerDraftViewModel.state.collectAsState()
+    val activeDraftRecords = composerDraftRepository.activeDraftRecords()
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
@@ -5185,6 +5189,7 @@ private fun ThreadPageContent(
                     KuiklyThreadTab.Chat ->
                         ThreadChatTabWithLinkedTasksProjection(
                             payload = payload,
+                            activeDraftRecords = activeDraftRecords,
                             tasksViewModel = tasksViewModel,
                             tasksDataStore = tasksDataStore,
                             currentServerId = currentServerId,
@@ -5603,6 +5608,7 @@ private fun ThreadPageTabs(
 @Composable
 private fun ThreadChatTabWithLinkedTasksProjection(
     payload: KuiklyThreadScreenPayload,
+    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     tasksViewModel: SharedTasksViewModel?,
     tasksDataStore: SharedTasksDataStore?,
     currentServerId: String?,
@@ -5656,6 +5662,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
 
     ThreadChatTab(
         payload = payload,
+        activeDraftRecords = activeDraftRecords,
         composerKeyboardInsetDp = composerKeyboardInsetDp,
         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
         highlightedMentions = highlightedMentions,
@@ -5676,6 +5683,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
 @Composable
 private fun ThreadChatTab(
     payload: KuiklyThreadScreenPayload,
+    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
@@ -5696,6 +5704,7 @@ private fun ThreadChatTab(
             if (payload.originStatus != "none") {
                 ThreadMessagesList(
                     payload = payload,
+                    activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
@@ -5726,6 +5735,7 @@ private fun ThreadChatTab(
             if (payload.originStatus != "none") {
                 ThreadMessagesList(
                     payload = payload,
+                    activeDraftRecords = activeDraftRecords,
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
@@ -5750,6 +5760,7 @@ private fun ThreadChatTab(
         else ->
             ThreadMessagesList(
                 payload = payload,
+                activeDraftRecords = activeDraftRecords,
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                 highlightedMentions = highlightedMentions,
@@ -5771,6 +5782,7 @@ private fun ThreadChatTab(
 @Composable
 private fun ThreadMessagesList(
     payload: KuiklyThreadScreenPayload,
+    activeDraftRecords: Set<SharedThreadComposerDraftRecord>,
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
@@ -6303,6 +6315,7 @@ private fun ThreadMessagesList(
                     if (isSystemMessage && actionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayMessage,
+                            hasReplyDraft = activeDraftRecords.hasReplyComposerDraft(message.id),
                             highlightedMentions = highlightedMentions,
                             showReplyAction = payload.showReplyActions && contentExtrasVisible,
                             timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
@@ -6322,6 +6335,7 @@ private fun ThreadMessagesList(
                     } else {
                         ThreadMessageCard(
                             message = displayMessage,
+                            hasReplyDraft = activeDraftRecords.hasReplyComposerDraft(message.id),
                             actionCard = actionCard,
                             messageIndex = index,
                             diagnosticsLogger = diagnosticsLogger,
@@ -7167,6 +7181,7 @@ private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
+    hasReplyDraft: Boolean,
     highlightedMentions: Set<String>,
     showReplyAction: Boolean,
     timestampLabel: String,
@@ -7219,6 +7234,7 @@ private fun ThreadSystemMessageRow(
         }
         ThreadMessageFooterMeta(
             message = message,
+            hasReplyDraft = hasReplyDraft,
             showReplyAction = showReplyAction,
             taskOpenEnabled = taskOpenEnabled,
             taskStatusActionsEnabled = taskStatusActionsEnabled,
@@ -7286,6 +7302,7 @@ private fun ThreadHistoryStatusRow(
 @Composable
 private fun ThreadMessageCard(
     message: KuiklyThreadMessageItem,
+    hasReplyDraft: Boolean = false,
     actionCard: ThreadActionCard? = message.threadActionCard(),
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
@@ -7493,6 +7510,7 @@ private fun ThreadMessageCard(
                                 if (!message.hasLocalSendState()) {
                                     ThreadMessageFooterMeta(
                                         message = message,
+                                        hasReplyDraft = hasReplyDraft,
                                         showReplyAction = showReplyAction,
                                         taskOpenEnabled = taskOpenEnabled,
                                         taskStatusActionsEnabled = taskStatusActionsEnabled,
@@ -8036,6 +8054,7 @@ private fun KuiklyThreadMessageItem.isThreadAgentAuthor(): Boolean =
 @Composable
 private fun ThreadMessageFooterMeta(
     message: KuiklyThreadMessageItem,
+    hasReplyDraft: Boolean = false,
     showReplyAction: Boolean,
     taskOpenEnabled: Boolean,
     taskStatusActionsEnabled: Boolean,
@@ -8052,7 +8071,7 @@ private fun ThreadMessageFooterMeta(
             message.taskNumber != null ||
             !message.taskStatus.isNullOrBlank() ||
             !message.taskAssigneeName.isNullOrBlank()
-    val hasReplies = message.replyCount > 0
+    val hasReplies = message.replyCount > 0 || hasReplyDraft
     val visibleReactions = message.reactions.filter { it.count > 0 }
     val hasReactions = visibleReactions.isNotEmpty()
     if (!hasTask && !hasReplies && !hasReactions) return
@@ -8087,6 +8106,8 @@ private fun ThreadMessageFooterMeta(
                 label = replyLabel,
                 iconName = SlockLucideIconName.MessageSquare,
                 iconSize = 12.dp,
+                trailingIconName = SlockLucideIconName.Pencil.takeIf { hasReplyDraft },
+                trailingIconSize = 12.dp,
                 color = SlockColor.SurfaceWhite,
                 modifier = Modifier.widthIn(max = 220.dp),
                 pressFeedback = false,
@@ -8157,6 +8178,9 @@ internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): St
             append(" new")
         }
     }
+
+internal fun Set<SharedThreadComposerDraftRecord>.hasReplyComposerDraft(parentMessageId: String): Boolean =
+    any { record -> record.matchesReplyThread(parentMessageId) }
 
 internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
     val replyCount = originMessage?.replyCount ?: return null
@@ -8790,6 +8814,7 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
+                            hasReplyDraft = false,
                             highlightedMentions = highlightedMentions,
                             showReplyAction = false,
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
@@ -8811,6 +8836,7 @@ private fun ThreadOriginCard(
                     } else {
                         ThreadMessageCard(
                             message = displayOrigin,
+                            hasReplyDraft = false,
                             actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
                             showReplyAction = false,

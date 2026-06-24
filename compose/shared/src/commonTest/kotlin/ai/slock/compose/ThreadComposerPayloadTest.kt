@@ -385,6 +385,22 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun activeDraftRecordsIdentifyReplyMessageFooterDrafts() {
+        val records =
+            setOf(
+                SharedThreadComposerDraftRecord(
+                    key = "send=reply-thread-1|parent=parent-message-1|mention=parent-channel-1",
+                    sendChannelId = "reply-thread-1",
+                    parentMessageId = "parent-message-1",
+                    mentionChannelId = "parent-channel-1"
+                )
+            )
+
+        assertTrue(records.hasReplyComposerDraft("parent-message-1"))
+        assertFalse(records.hasReplyComposerDraft("other-message"))
+    }
+
+    @Test
     fun pendingMentionActionsExposeActionSupportAndTargetLabel() {
         val action =
             KuiklyPendingMentionActionItem(

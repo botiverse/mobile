@@ -67,6 +67,38 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun activeDraftRecordsTrackRootAndReplyComposerKeys() {
+        val repository = SharedThreadComposerDraftRepository(InMemorySlockKeyValueStore())
+        repository.save(
+            key = "send=channel-1|parent=_|mention=channel-1",
+            text = "channel draft",
+            asTask = false
+        )
+        repository.save(
+            key = "send=reply-thread-1|parent=message-1|mention=channel-1",
+            text = "reply draft",
+            asTask = false
+        )
+
+        val records = repository.activeDraftRecords()
+
+        assertTrue(records.any { it.matchesRootConversation("channel-1") })
+        assertTrue(records.any { it.matchesReplyThread("message-1") })
+        assertFalse(records.any { it.matchesRootConversation("reply-thread-1") })
+    }
+
+    @Test
+    fun clearingBlankDraftRemovesActiveDraftRecord() {
+        val repository = SharedThreadComposerDraftRepository(InMemorySlockKeyValueStore())
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+
+        repository.save(draftKey, "channel draft", asTask = false)
+        repository.save(draftKey, "", asTask = false)
+
+        assertTrue(repository.activeDraftRecords().isEmpty())
+    }
+
+    @Test
     fun sendFailureRestoresDraftTextAndMode() {
         val store = SharedThreadComposerDraftStore()
 

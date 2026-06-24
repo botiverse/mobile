@@ -1312,6 +1312,10 @@ private fun SlockAppShellContent() {
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
+    val composerDraftRepository =
+        remember(sharedPreferenceStore) {
+            SharedThreadComposerDraftRepository(sharedPreferenceStore)
+        }
     val localeRepository =
         remember(sharedPreferenceStore) {
             PersistentLocaleRepository(KeyValueLocalePreferenceStore(sharedPreferenceStore))
@@ -2228,6 +2232,7 @@ private fun SlockAppShellContent() {
                             bridge = bridge,
                             state = homeState,
                             active = active,
+                            draftRepository = composerDraftRepository,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
@@ -8757,6 +8762,7 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
+    draftRepository: SharedThreadComposerDraftRepository? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     activityUnreadLoaded: Boolean = false,
@@ -8828,6 +8834,7 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
+            val activeDraftRecords = draftRepository?.activeDraftRecords().orEmpty()
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
@@ -8841,12 +8848,16 @@ private fun SharedHomeScreen(
                     }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
-                remember(snapshot.channels) {
-                    snapshot.channels.map { it.toSharedHomeConversationItem() }
+                remember(snapshot.channels, activeDraftRecords) {
+                    snapshot.channels
+                        .map { it.toSharedHomeConversationItem() }
+                        .withLocalComposerDrafts(activeDraftRecords)
                 }
             val directMessageItems =
-                remember(snapshot.directMessages) {
-                    snapshot.directMessages.map { it.toSharedHomeConversationItem() }
+                remember(snapshot.directMessages, activeDraftRecords) {
+                    snapshot.directMessages
+                        .map { it.toSharedHomeConversationItem() }
+                        .withLocalComposerDrafts(activeDraftRecords)
                 }
             val notificationItems =
                 remember(state.notifications) {
@@ -11437,6 +11448,19 @@ private fun ConversationSummary.toSharedHomeConversationItem(): SlockHomeConvers
         joined = joined && permissions.canRead,
         archived = archived
     )
+
+private fun List<SlockHomeConversationItem>.withLocalComposerDrafts(
+    records: Set<SharedThreadComposerDraftRecord>
+): List<SlockHomeConversationItem> {
+    if (records.isEmpty()) return this
+    return map { item ->
+        if (records.any { record -> record.matchesRootConversation(item.id) }) {
+            item.copy(hasDraft = true)
+        } else {
+            item
+        }
+    }
+}
 
 private fun Presence?.toSharedPresence(): SlockPresence? =
     when (this) {
