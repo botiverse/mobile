@@ -3132,6 +3132,8 @@ private fun SettingsAppShellContent(
                     state = settingsState.mobile,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
+                    notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+                    preferenceBusy = settingsState.actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && settingsState.actionState.inProgress,
                     onNotificationPreferenceChange = { enabled ->
                         onSettingsIntent(SharedSettingsIntent.SetNotificationPreference(enabled))
                         if (enabled) {
@@ -3985,6 +3987,8 @@ private fun SettingsNotificationsContent(
     state: ScreenLoadState<SettingsMobileSnapshot>,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp,
+    notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
+    preferenceBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onServerMuteChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
@@ -4019,6 +4023,8 @@ private fun SettingsNotificationsContent(
                     SettingsPushStatusCard(
                         snapshot = snapshot,
                         actionState = actionState,
+                        notificationPreferenceSnapshot = notificationPreferenceSnapshot,
+                        preferenceBusy = preferenceBusy,
                         onNotificationPreferenceChange = onNotificationPreferenceChange,
                         onPermission = onPermission,
                         onSettings = onSettings,
@@ -4050,23 +4056,26 @@ private fun SettingsPwaInstallCard() {
 private fun SettingsPushStatusCard(
     snapshot: SettingsMobileSnapshot,
     actionState: SharedSettingsActionState?,
+    notificationPreferenceSnapshot: NotificationPreferenceSnapshot,
+    preferenceBusy: Boolean,
     onNotificationPreferenceChange: (Boolean) -> Unit,
     onPermission: () -> Unit,
     onSettings: () -> Unit,
     onTest: () -> Unit
 ) {
-    val preferenceBusy = actionState?.action == MOBILE_ACTION_NOTIFICATION_PREFERENCE && actionState.inProgress
-    SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Push status") {
-        SettingsFormDetailText(snapshot.pushNotifications.detail)
+    SettingsFormSectionCard(iconName = SlockLucideIconName.BellRing, title = "Show system notifications") {
+        SettingsFormDetailText(
+            "Show a system tray notification for each new unread message when the app is in the background. Server-side push is not enabled in this build."
+        )
         SegmentedControl(
-            selectedValue = if (snapshot.pushNotifications.enabled) "enabled" else "disabled",
+            selectedValue = if (notificationPreferenceSnapshot.enabled) "enabled" else "disabled",
             options =
                 listOf(
                     SegmentedControlOption("enabled", "Enabled", SlockLucideIconName.BellRing),
                     SegmentedControlOption("disabled", "Disabled", SlockLucideIconName.Bell)
                 ),
             onValueSelected = { onNotificationPreferenceChange(it == "enabled") },
-            enabled = snapshot.pushNotifications.available && !preferenceBusy
+            enabled = !preferenceBusy
         )
         SettingsFormDivider()
         SlockBrutalActionButton(
@@ -12794,6 +12803,8 @@ private fun SettingsVisualNotificationsContent() {
         state = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
         bottomContentPadding = SlockSpacing.Lg,
+        notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = false),
+        preferenceBusy = false,
         onNotificationPreferenceChange = {},
         onServerMuteChange = {},
         onPermission = {},
