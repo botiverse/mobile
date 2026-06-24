@@ -1128,6 +1128,9 @@ internal fun appShellBottomTabsVisible(
 internal fun sharedHomeShouldStartOnActive(active: Boolean, state: SharedHomeState): Boolean =
     active && (state.content !is SharedHomeContentState.Content || state.homeRealtimeDirty)
 
+internal fun sharedHomeHeaderRefreshing(state: SharedHomeState): Boolean =
+    (state.content as? SharedHomeContentState.Content)?.contentRefreshing == true
+
 internal fun homeSurfaceVisibilityDispatchDelayMs(visible: Boolean): Long =
     if (visible) HomeSurfaceVisibleResumeDelayMs else 0L
 
@@ -8891,6 +8894,7 @@ private fun SharedHomeScreen(
                 searchSelected = state.selectedTopAction == SharedHomeTopAction.Search,
                 savedSelected = state.selectedTopAction == SharedHomeTopAction.Saved,
                 notifications = notificationItems,
+                contentRefreshing = sharedHomeHeaderRefreshing(state),
                 pinnedChannelIds = snapshot.sidebarOrder?.pinnedChannelIds.orEmpty(),
                 pinnedOrder = snapshot.sidebarOrder?.pinnedOrder.orEmpty(),
                 pinnedSortMode = snapshot.sidebarOrder?.pinnedSortMode ?: "manual",

@@ -1,10 +1,17 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.HomeSnapshot
+import ai.slock.compose.data.SharedHomeContentState
+import ai.slock.compose.data.SharedHomeState
+import ai.slock.compose.data.StoredAuthSession
+import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -289,6 +296,32 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun sharedHomeHeaderRefreshingTracksLoadedContentRefreshState() {
+        val refreshing =
+            SharedHomeState(
+                content =
+                    SharedHomeContentState.Content(
+                        snapshot = testHomeSnapshot(),
+                        session = testAuthSession(),
+                        contentRefreshing = true
+                    )
+            )
+        val idle =
+            SharedHomeState(
+                content =
+                    SharedHomeContentState.Content(
+                        snapshot = testHomeSnapshot(),
+                        session = testAuthSession(),
+                        contentRefreshing = false
+                    )
+            )
+
+        assertTrue(sharedHomeHeaderRefreshing(refreshing))
+        assertFalse(sharedHomeHeaderRefreshing(idle))
+        assertFalse(sharedHomeHeaderRefreshing(SharedHomeState(content = SharedHomeContentState.Loading())))
+    }
+
+    @Test
     fun sidebarSortModesMatchReactOrdering() {
         val manual =
             listOf(
@@ -426,5 +459,28 @@ class SlockHomeComponentsTest {
             kind = kind,
             roleDescription = roleDescription,
             permissionBadges = permissionBadges
+        )
+
+    private fun testHomeSnapshot(): HomeSnapshot =
+        HomeSnapshot(
+            server = ServerSummary(ServerId("server-1"), "Slock Community"),
+            currentMember =
+                MemberProfile(
+                    id = MemberId("user-1"),
+                    displayName = "Artin",
+                    handle = "artin",
+                    kind = MemberKind.Human
+                ),
+            channels = emptyList(),
+            directMessages = emptyList(),
+            unreadTotal = 0
+        )
+
+    private fun testAuthSession(): StoredAuthSession =
+        StoredAuthSession(
+            user = StoredAuthUser(id = "user-1", email = "artin@example.com", displayName = "Artin"),
+            accessToken = "token",
+            refreshToken = "refresh",
+            selectedServerId = "server-1"
         )
 }
