@@ -1803,6 +1803,17 @@ private fun ChannelAddMemberPanelVisualScreen() {
     val members = remember { channelPanelVisualMembers() }
     val candidates = remember { channelPanelVisualCandidates() }
     Box(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
+        ThreadMembersModal(
+            members = members,
+            membersCount = members.size,
+            canAddMembers = true,
+            removeMemberStatus = "idle",
+            removingMemberId = null,
+            removeMemberErrorCode = null,
+            onDismiss = {},
+            onAddMember = {},
+            onRemoveMember = {}
+        )
         ThreadAddMemberModal(
             members = members,
             candidates = candidates,
@@ -1810,6 +1821,7 @@ private fun ChannelAddMemberPanelVisualScreen() {
             addMemberStatus = "idle",
             addMemberErrorCode = null,
             initialSelectedId = "user_designer",
+            showSelectedCheckmark = false,
             onDismiss = {},
             onSubmit = {}
         )
@@ -1843,19 +1855,20 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
 private fun channelPanelVisualCandidates(): List<KuiklyThreadMemberItem> =
     listOf(
         KuiklyThreadMemberItem(
-            id = "agent_reviewer",
-            displayName = "Review Agent",
-            handle = "Review-Agent",
-            roleLabel = "online",
-            avatarLabel = "RA",
-            kind = "agent"
+            id = "agent_product_ux",
+            displayName = "Product UX Designer",
+            handle = "Product-UX-Designer",
+            roleLabel = "",
+            avatarLabel = "PU",
+            kind = "agent",
+            agentStatus = AgentStatus.Online
         ),
         KuiklyThreadMemberItem(
             id = "user_designer",
-            displayName = "Product UX Designer",
-            handle = "Product-UX-Designer",
-            roleLabel = "Admin",
-            avatarLabel = "PU",
+            displayName = "Designer",
+            handle = "designer",
+            roleLabel = "",
+            avatarLabel = "D",
             kind = "human"
         )
     )
@@ -5387,6 +5400,23 @@ private fun ThreadPageContent(
                     }
                 }
             }
+        }
+        if (activeModal == "addMember") {
+            ThreadMembersModal(
+                members = payload.members,
+                membersCount = payload.membersCount,
+                canAddMembers = payload.canAddMembers,
+                onDismiss = { activeModal = null },
+                onAddMember = {
+                    activeModal = "addMember"
+                },
+                removeMemberStatus = payload.removeMemberStatus,
+                removingMemberId = payload.removingMemberId,
+                removeMemberErrorCode = payload.removeMemberErrorCode,
+                onRemoveMember = { memberId ->
+                    onThreadEvent("removeMember", memberId, null, null)
+                }
+            )
         }
         when (activeModal) {
             "members" ->
@@ -10029,6 +10059,7 @@ private fun ThreadAddMemberModal(
     addMemberStatus: String,
     addMemberErrorCode: String?,
     initialSelectedId: String? = null,
+    showSelectedCheckmark: Boolean = true,
     onDismiss: () -> Unit,
     onSubmit: (KuiklyThreadMemberItem) -> Unit
 ) {
@@ -10061,8 +10092,8 @@ private fun ThreadAddMemberModal(
     SlockUnifiedDialog(
         title = "ADD MEMBER",
         onDismiss = onDismiss,
-        minWidth = 300.dp,
-        maxWidth = 332.dp,
+        minWidth = 356.dp,
+        maxWidth = 356.dp,
         contentPadding = 24.dp,
         titleFontSize = 18,
         titleLineHeight = 22
@@ -10075,6 +10106,11 @@ private fun ThreadAddMemberModal(
                     color = SlockColor.AccentRed
                 )
             }
+            Text(
+                text = "SEARCH",
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack
+            )
             SlockBrutalSearchField(
                 value = query,
                 placeholder = "NAME",
@@ -10112,7 +10148,7 @@ private fun ThreadAddMemberModal(
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (member.id == selectedId) SlockLucideIconName.Check else null,
+                                trailingIcon = if (showSelectedCheckmark && member.id == selectedId) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
@@ -10137,7 +10173,7 @@ private fun ThreadAddMemberModal(
                                 selected = member.id == selectedId,
                                 enabled = !blocked && !adding && !alreadyJoined,
                                 avatarSize = 26.dp,
-                                trailingIcon = if (member.id == selectedId) SlockLucideIconName.Check else null,
+                                trailingIcon = if (showSelectedCheckmark && member.id == selectedId) SlockLucideIconName.Check else null,
                                 trailingText = if (alreadyJoined) "JOINED" else "",
                                 onClick = {
                                     selectedId = member.id
