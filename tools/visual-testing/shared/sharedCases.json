@@ -4967,6 +4967,50 @@
       ]
     },
     {
+      "id": "screens.members.human.profile",
+      "title": "Members Human Detail Profile Screen",
+      "captureType": "real-screen",
+      "surface": "members",
+      "category": "members",
+      "group": "screens-members",
+      "status": "pending",
+      "notes": "Pending: needs real Members route/provider capture for human member detail profile. React uses MainLayout at /s/visual/members/human/...; Android uses compose_members pageData with selectedMemberId=<human-user-id>. Mirrors screens.members.agent-detail.profile contract.",
+      "providers": [
+        {
+          "id": "react",
+          "status": "pending",
+          "path": "packages/web/src/components/layout/MainLayout.tsx#HumanRoute",
+          "fixture": "fixtures/screens.members.human.profile.json",
+          "components": [
+            "MainLayout",
+            "HumanRoute",
+            "HumanDetailPanel"
+          ]
+        },
+        {
+          "id": "android",
+          "status": "pending",
+          "source": "kmp-shared",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "fixture": "KmpVisualScreenshotCaptureTest.captureMembersHumanDetailProfileScreen",
+          "route": "compose_members:selectedMemberId=<human-user-id>,initialHumanTab=profile",
+          "components": [
+            "MembersPageContent",
+            "MembersRouteContent",
+            "MembersHumanDetailContent",
+            "MembersHumanProfileTab"
+          ]
+        },
+        {
+          "id": "harmony",
+          "status": "pending",
+          "source": "ohos-real-screen",
+          "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/MembersPage.kt",
+          "reason": "Needs Harmony provider capture after React and Android contracts are defined."
+        }
+      ]
+    },
+    {
       "id": "components.members.agent-lifecycle-actions",
       "title": "Members Agent Lifecycle Actions",
       "captureType": "component-fixture",
