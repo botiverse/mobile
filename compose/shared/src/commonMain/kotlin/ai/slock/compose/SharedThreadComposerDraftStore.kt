@@ -1,10 +1,15 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.MviPersistSlice
+import ai.slock.compose.data.MviStoreRuntime
 import ai.slock.compose.data.SharedPreferenceStore
 import com.tencent.kuikly.lifecycle.ViewModel
+import com.tencent.kuikly.lifecycle.viewModelScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlin.coroutines.EmptyCoroutineContext
 
 internal data class SharedThreadComposerDraftState(
     val instanceId: String = "",
@@ -45,13 +50,6 @@ internal data class SharedThreadComposerDraftRecord(
 internal class SharedThreadComposerDraftPersistence(
     private val store: SharedPreferenceStore
 ) {
-    val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
-        SharedActiveDraftRecordsState.asStateFlow()
-
-    init {
-        refreshActiveDraftRecords()
-    }
-
     fun read(key: String): SharedThreadComposerPersistedDraft? {
         val text = store.getString(textKey(key)) ?: return null
         return SharedThreadComposerPersistedDraft(
@@ -68,24 +66,18 @@ internal class SharedThreadComposerDraftPersistence(
         store.putString(textKey(key), text)
         store.putString(asTaskKey(key), asTask.toString())
         addActiveKey(key)
-        refreshActiveDraftRecords()
     }
 
     fun clear(key: String) {
         store.putString(textKey(key), null)
         store.putString(asTaskKey(key), null)
         removeActiveKey(key)
-        refreshActiveDraftRecords()
     }
 
     fun activeDraftRecords(): Set<SharedThreadComposerDraftRecord> =
         activeKeys()
             .mapNotNull { key -> key.toSharedThreadComposerDraftRecord() }
             .toSet()
-
-    private fun refreshActiveDraftRecords() {
-        SharedActiveDraftRecordsState.value = activeDraftRecords()
-    }
 
     private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
     private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
@@ -135,6 +127,70 @@ internal class SharedThreadComposerDraftPersistence(
 
     private companion object {
         const val ActiveIndexKey = "threadComposerDraft:v1:activeKeys"
+    }
+}
+
+internal class SharedThreadComposerDraftPersistSlice(
+    private val persistence: SharedThreadComposerDraftPersistence
+) : MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent> {
+    val activeDraftRecordsState: StateFlow<Set<SharedThreadComposerDraftRecord>> =
+        SharedActiveDraftRecordsState.asStateFlow()
+
+    init {
+        refreshActiveDraftRecords()
+    }
+
+    override fun reduce(
+        previous: SharedThreadComposerDraftState,
+        intent: SharedThreadComposerDraftIntent,
+        reduced: SharedThreadComposerDraftState
+    ): SharedThreadComposerDraftState =
+        when (intent) {
+            is SharedThreadComposerDraftIntent.Start -> {
+                val persistedDraft =
+                    intent.draftKey
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let(persistence::read)
+                if (persistedDraft == null) {
+                    reduced
+                } else {
+                    reduced.copy(
+                        seedText = persistedDraft.text,
+                        seedAsTask = persistedDraft.asTask
+                    )
+                }
+            }
+            else -> reduced
+        }
+
+    override fun onTransition(
+        previous: SharedThreadComposerDraftState,
+        intent: SharedThreadComposerDraftIntent,
+        next: SharedThreadComposerDraftState
+    ) {
+        when (intent) {
+            is SharedThreadComposerDraftIntent.Change,
+            is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
+                next.draftKey?.let { key ->
+                    persistence.save(key, next.seedText, next.seedAsTask)
+                    refreshActiveDraftRecords()
+                }
+            is SharedThreadComposerDraftIntent.CompleteSend ->
+                if (previous.sending) {
+                    next.draftKey?.let { key ->
+                        persistence.clear(key)
+                        refreshActiveDraftRecords()
+                    }
+                }
+            else -> Unit
+        }
+    }
+
+    private fun refreshActiveDraftRecords() {
+        SharedActiveDraftRecordsState.value = persistence.activeDraftRecords()
+    }
+
+    private companion object {
         val SharedActiveDraftRecordsState = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
     }
 }
@@ -181,183 +237,176 @@ internal sealed interface SharedThreadComposerDraftIntent {
 }
 
 internal class SharedThreadComposerDraftStore(
-    private val draftPersistence: SharedThreadComposerDraftPersistence? = null
+    persistSlices: List<MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent>> = emptyList(),
+    scope: CoroutineScope = CoroutineScope(EmptyCoroutineContext)
 ) {
-    private val _state = MutableStateFlow(SharedThreadComposerDraftState())
-    val state: StateFlow<SharedThreadComposerDraftState> = _state.asStateFlow()
+    private val runtime =
+        MviStoreRuntime(
+            initialState = SharedThreadComposerDraftState(),
+            scope = scope,
+            reduce = ::reduce,
+            persistSlices = persistSlices
+        )
+    val state: StateFlow<SharedThreadComposerDraftState> = runtime.state
 
     fun dispatch(intent: SharedThreadComposerDraftIntent) {
-        val current = _state.value
-        _state.value =
-            when (intent) {
-                is SharedThreadComposerDraftIntent.Start -> {
-                    val persistedDraft =
-                        intent.draftKey
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { key -> draftPersistence?.read(key) }
-                    SharedThreadComposerDraftState(
-                        instanceId = intent.composer.instanceId,
-                        draftKey = intent.draftKey,
-                        seedText = persistedDraft?.text ?: intent.composer.seedText,
-                        seedAsTask = persistedDraft?.asTask ?: intent.composer.seedAsTask,
-                        syncNonce = intent.composer.syncNonce
-                    )
-                }
-                is SharedThreadComposerDraftIntent.Change -> {
-                    current.copy(
-                        seedText = intent.seedText ?: current.seedText,
-                        seedAsTask = intent.seedAsTask ?: current.seedAsTask,
-                        sending = false,
-                        failureLabel = null
-                    ).also { next ->
-                        next.draftKey?.let { key ->
-                            draftPersistence?.save(key, next.seedText, next.seedAsTask)
-                        }
-                    }
-                }
-                SharedThreadComposerDraftIntent.BeginSend ->
-                    current.copy(
-                        seedText = "",
-                        seedAsTask = false,
-                        syncNonce = current.syncNonce + 1,
-                        sending = true,
-                        failureLabel = null,
-                        removedAttachmentIds = emptySet(),
-                        uploadedAttachments = emptyList(),
-                        mentionActionNotice = null,
-                        executingMentionActionIds = emptySet()
-                    )
-                is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
-                    current.copy(
-                        seedText = intent.seedText,
-                        seedAsTask = intent.seedAsTask,
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        failureLabel = intent.failureLabel
-                    ).also { next ->
-                        next.draftKey?.let { key ->
-                            draftPersistence?.save(key, next.seedText, next.seedAsTask)
-                        }
-                    }
-                SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> {
-                    val shouldClearComposer = current.sending
-                    current.copy(
-                        seedText = if (shouldClearComposer) "" else current.seedText,
-                        seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        failureLabel = null,
-                        removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
-                        uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
-                        mentionActionNotice = null,
-                        executingMentionActionIds = emptySet()
-                    )
-                }
-                is SharedThreadComposerDraftIntent.CompleteSend -> {
-                    val shouldClearComposer = current.sending
-                    current.copy(
-                        seedText = if (shouldClearComposer) "" else current.seedText,
-                        seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        failureLabel = null,
-                        removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
-                        uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
-                        pendingMentionActions = intent.pendingMentionActions,
-                        mentionActionNotice = null,
-                        executingMentionActionIds = emptySet()
-                    ).also { next ->
-                        if (shouldClearComposer) {
-                            next.draftKey?.let { key -> draftPersistence?.clear(key) }
-                        }
-                    }
-                }
-                is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        pendingMentionActions = intent.pendingMentionActions,
-                        mentionActionNotice = null,
-                        executingMentionActionIds = emptySet()
-                    )
-                is SharedThreadComposerDraftIntent.DismissMentionAction ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
-                        mentionActionNotice = null,
-                        executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
-                    )
-                is SharedThreadComposerDraftIntent.BeginMentionAction ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        mentionActionNotice = null,
-                        executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId
-                    )
-                is SharedThreadComposerDraftIntent.FinishMentionAction ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        pendingMentionActions =
-                            if (intent.delivered) {
-                                current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId }
-                            } else {
-                                current.pendingMentionActions
-                            },
-                        mentionActionNotice = intent.notice,
-                        executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
-                    )
-                is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
-                    val uploadedIds = intent.attachments.map { attachment -> attachment.id }.toSet()
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        failureLabel = null,
-                        removedAttachmentIds = (current.removedAttachmentIds + intent.replacedAttachmentIds) - uploadedIds,
-                        uploadedAttachments =
-                            (current.uploadedAttachments + intent.attachments)
-                                .distinctBy { attachment -> attachment.id }
-                    )
-                }
-                is SharedThreadComposerDraftIntent.AddLocalAttachments ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        failureLabel = null,
-                        uploadedAttachments =
-                            (current.uploadedAttachments + intent.attachments)
-                                .distinctBy { attachment -> attachment.id }
-                    )
-                is SharedThreadComposerDraftIntent.MarkAttachmentsFailed ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        failureLabel = null,
-                        uploadedAttachments =
-                            current.uploadedAttachments.map { attachment ->
-                                if (attachment.id in intent.attachmentIds) {
-                                    attachment.copy(status = "failed", errorCode = intent.errorCode)
-                                } else {
-                                    attachment
-                                }
-                            }
-                    )
-                is SharedThreadComposerDraftIntent.RemoveAttachment ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        removedAttachmentIds = current.removedAttachmentIds + intent.id
-                    )
-                is SharedThreadComposerDraftIntent.RetryAttachment ->
-                    current.copy(
-                        syncNonce = current.syncNonce + 1,
-                        sending = false,
-                        removedAttachmentIds = current.removedAttachmentIds - intent.id
-                    )
-            }
+        runtime.accept(intent)
     }
+
+    private fun reduce(
+        current: SharedThreadComposerDraftState,
+        intent: SharedThreadComposerDraftIntent
+    ): SharedThreadComposerDraftState =
+        when (intent) {
+            is SharedThreadComposerDraftIntent.Start ->
+                SharedThreadComposerDraftState(
+                    instanceId = intent.composer.instanceId,
+                    draftKey = intent.draftKey,
+                    seedText = intent.composer.seedText,
+                    seedAsTask = intent.composer.seedAsTask,
+                    syncNonce = intent.composer.syncNonce
+                )
+            is SharedThreadComposerDraftIntent.Change ->
+                current.copy(
+                    seedText = intent.seedText ?: current.seedText,
+                    seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                    sending = false,
+                    failureLabel = null
+                )
+            SharedThreadComposerDraftIntent.BeginSend ->
+                current.copy(
+                    seedText = "",
+                    seedAsTask = false,
+                    syncNonce = current.syncNonce + 1,
+                    sending = true,
+                    failureLabel = null,
+                    removedAttachmentIds = emptySet(),
+                    uploadedAttachments = emptyList(),
+                    mentionActionNotice = null,
+                    executingMentionActionIds = emptySet()
+                )
+            is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
+                current.copy(
+                    seedText = intent.seedText,
+                    seedAsTask = intent.seedAsTask,
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    failureLabel = intent.failureLabel
+                )
+            SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> {
+                val shouldClearComposer = current.sending
+                current.copy(
+                    seedText = if (shouldClearComposer) "" else current.seedText,
+                    seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    failureLabel = null,
+                    removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
+                    uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
+                    mentionActionNotice = null,
+                    executingMentionActionIds = emptySet()
+                )
+            }
+            is SharedThreadComposerDraftIntent.CompleteSend -> {
+                val shouldClearComposer = current.sending
+                current.copy(
+                    seedText = if (shouldClearComposer) "" else current.seedText,
+                    seedAsTask = if (shouldClearComposer) false else current.seedAsTask,
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    failureLabel = null,
+                    removedAttachmentIds = if (shouldClearComposer) emptySet() else current.removedAttachmentIds,
+                    uploadedAttachments = if (shouldClearComposer) emptyList() else current.uploadedAttachments,
+                    pendingMentionActions = intent.pendingMentionActions,
+                    mentionActionNotice = null,
+                    executingMentionActionIds = emptySet()
+                )
+            }
+            is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    pendingMentionActions = intent.pendingMentionActions,
+                    mentionActionNotice = null,
+                    executingMentionActionIds = emptySet()
+                )
+            is SharedThreadComposerDraftIntent.DismissMentionAction ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    pendingMentionActions = current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId },
+                    mentionActionNotice = null,
+                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
+                )
+            is SharedThreadComposerDraftIntent.BeginMentionAction ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    mentionActionNotice = null,
+                    executingMentionActionIds = current.executingMentionActionIds + intent.resolutionId
+                )
+            is SharedThreadComposerDraftIntent.FinishMentionAction ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    pendingMentionActions =
+                        if (intent.delivered) {
+                            current.pendingMentionActions.filterNot { it.resolutionId == intent.resolutionId }
+                        } else {
+                            current.pendingMentionActions
+                        },
+                    mentionActionNotice = intent.notice,
+                    executingMentionActionIds = current.executingMentionActionIds - intent.resolutionId
+                )
+            is SharedThreadComposerDraftIntent.AddUploadedAttachments -> {
+                val uploadedIds = intent.attachments.map { attachment -> attachment.id }.toSet()
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    failureLabel = null,
+                    removedAttachmentIds = (current.removedAttachmentIds + intent.replacedAttachmentIds) - uploadedIds,
+                    uploadedAttachments =
+                        (current.uploadedAttachments + intent.attachments)
+                            .distinctBy { attachment -> attachment.id }
+                )
+            }
+            is SharedThreadComposerDraftIntent.AddLocalAttachments ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    failureLabel = null,
+                    uploadedAttachments =
+                        (current.uploadedAttachments + intent.attachments)
+                            .distinctBy { attachment -> attachment.id }
+                )
+            is SharedThreadComposerDraftIntent.MarkAttachmentsFailed ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    failureLabel = null,
+                    uploadedAttachments =
+                        current.uploadedAttachments.map { attachment ->
+                            if (attachment.id in intent.attachmentIds) {
+                                attachment.copy(status = "failed", errorCode = intent.errorCode)
+                            } else {
+                                attachment
+                            }
+                        }
+                )
+            is SharedThreadComposerDraftIntent.RemoveAttachment ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    removedAttachmentIds = current.removedAttachmentIds + intent.id
+                )
+            is SharedThreadComposerDraftIntent.RetryAttachment ->
+                current.copy(
+                    syncNonce = current.syncNonce + 1,
+                    sending = false,
+                    removedAttachmentIds = current.removedAttachmentIds - intent.id
+                )
+        }
 }
 
 internal class SharedThreadComposerDraftViewModel(
-    draftPersistence: SharedThreadComposerDraftPersistence? = null
+    persistSlices: List<MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent>> = emptyList()
 ) : ViewModel() {
-    private val store = SharedThreadComposerDraftStore(draftPersistence)
+    private val store = SharedThreadComposerDraftStore(persistSlices = persistSlices, scope = viewModelScope)
     val state: StateFlow<SharedThreadComposerDraftState> = store.state
 
     fun dispatch(intent: SharedThreadComposerDraftIntent) {

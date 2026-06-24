@@ -10,7 +10,8 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun persistedDraftRestoresByComposerKey() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
-        val firstStore = SharedThreadComposerDraftStore(persistence)
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         val composer =
             KuiklyThreadComposerPayload(
                 instanceId = "composer-1",
@@ -26,7 +27,7 @@ class SharedThreadComposerDraftStoreTest {
         )
         firstStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "remember me", seedAsTask = true))
 
-        val secondStore = SharedThreadComposerDraftStore(persistence)
+        val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         secondStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer = composer.copy(seedText = "", seedAsTask = false),
@@ -41,8 +42,9 @@ class SharedThreadComposerDraftStoreTest {
     @Test
     fun successfulSendClearsPersistedDraftForComposerKey() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
         val draftKey = "send=thread-1|parent=message-1"
-        val store = SharedThreadComposerDraftStore(persistence)
+        val store = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
 
         store.dispatch(
             SharedThreadComposerDraftIntent.Start(
@@ -54,7 +56,7 @@ class SharedThreadComposerDraftStoreTest {
         store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
         store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
 
-        val nextStore = SharedThreadComposerDraftStore(persistence)
+        val nextStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
         nextStore.dispatch(
             SharedThreadComposerDraftIntent.Start(
                 composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
@@ -99,21 +101,57 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
-    fun activeDraftRecordsStateUpdatesAcrossPersistenceInstances() {
+    fun activeDraftRecordsStateUpdatesAcrossPersistSliceInstances() {
         val storage = InMemorySlockKeyValueStore()
-        val homePersistence = SharedThreadComposerDraftPersistence(storage)
-        val threadPersistence = SharedThreadComposerDraftPersistence(storage)
+        val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
+        val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
+        val threadStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
         val draftKey = "send=channel-1|parent=_|mention=channel-1"
 
-        assertTrue(homePersistence.activeDraftRecordsState.value.isEmpty())
+        assertTrue(homePersistSlice.activeDraftRecordsState.value.isEmpty())
 
-        threadPersistence.save(draftKey, "channel draft", asTask = false)
+        threadStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        threadStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "channel draft", seedAsTask = false))
 
-        assertTrue(homePersistence.activeDraftRecordsState.value.any { it.matchesRootConversation("channel-1") })
+        assertTrue(homePersistSlice.activeDraftRecordsState.value.any { it.matchesRootConversation("channel-1") })
 
-        threadPersistence.clear(draftKey)
+        threadStore.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        threadStore.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
 
-        assertTrue(homePersistence.activeDraftRecordsState.value.isEmpty())
+        assertTrue(homePersistSlice.activeDraftRecordsState.value.isEmpty())
+    }
+
+    @Test
+    fun draftPersistenceIsOptInToMviStore() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val storeWithoutSlice = SharedThreadComposerDraftStore()
+
+        storeWithoutSlice.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        storeWithoutSlice.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "not persisted", seedAsTask = false))
+
+        assertTrue(persistSlice.activeDraftRecordsState.value.isEmpty())
+
+        val storeWithSlice = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        storeWithSlice.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals("", storeWithSlice.state.value.seedText)
     }
 
     @Test
