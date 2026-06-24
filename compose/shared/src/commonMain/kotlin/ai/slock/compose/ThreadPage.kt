@@ -2184,13 +2184,13 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
-    val composerDraftRepository =
+    val composerDraftPersistence =
         remember(pager) {
-            SharedThreadComposerDraftRepository(kuiklySharedPreferenceStore(pager))
+            SharedThreadComposerDraftPersistence(kuiklySharedPreferenceStore(pager))
         }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {
-            SharedThreadComposerDraftViewModel(composerDraftRepository)
+            SharedThreadComposerDraftViewModel(composerDraftPersistence)
         }
     val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
     val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
@@ -2964,7 +2964,7 @@ internal fun SharedThreadRouteContent(
             composerSurface = composerSurface,
             baseComposerState = scopedBaseComposerState,
             composerDraftViewModel = composerDraftViewModel,
-            composerDraftRepository = composerDraftRepository,
+            composerDraftPersistence = composerDraftPersistence,
             resolvedAuxiliaryThreadId = resolvedAuxiliaryThreadId,
             tasksViewModel = tasksViewModel,
             tasksDataStore = tasksDataStore,
@@ -5079,7 +5079,7 @@ private fun ThreadPageContent(
     composerSurface: ThreadComposerSurface,
     baseComposerState: KuiklyThreadComposerPayload,
     composerDraftViewModel: SharedThreadComposerDraftViewModel,
-    composerDraftRepository: SharedThreadComposerDraftRepository,
+    composerDraftPersistence: SharedThreadComposerDraftPersistence,
     resolvedAuxiliaryThreadId: String?,
     tasksViewModel: SharedTasksViewModel?,
     tasksDataStore: SharedTasksDataStore?,
@@ -5106,7 +5106,7 @@ private fun ThreadPageContent(
 ) {
     val renderEarlyLoadingShell = payload.shouldRenderThreadEarlyLoadingShell()
     val composerDraftState by composerDraftViewModel.state.collectAsState()
-    val activeDraftRecords = composerDraftRepository.activeDraftRecords()
+    val activeDraftRecords by composerDraftPersistence.activeDraftRecordsState.collectAsState(emptySet())
     var selectedTab by remember(payload.selectedTab) {
         mutableStateOf(KuiklyThreadTab.fromWireValue(payload.selectedTab))
     }
