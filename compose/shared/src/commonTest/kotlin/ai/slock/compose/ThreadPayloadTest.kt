@@ -28,6 +28,7 @@ import ai.slock.compose.data.InboxItem
 import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
+import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.data.TasksUiState
 import ai.slock.compose.data.ThreadMessagesPage
 import ai.slock.compose.data.WireActionCardAction
@@ -735,6 +736,77 @@ class ThreadPayloadTest {
         assertEquals(null, renderedPayload.dmPeerName)
         assertEquals(null, renderedPayload.dmPeerAvatarUrl)
         assertEquals("Message #首页专修", renderedPayload.resolveThreadComposer().placeholder)
+    }
+
+    @Test
+    fun directoryProjectionUpdatesThreadHeaderWithoutChangingRouteIdentity() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "thread-channel-1",
+                title = "Channel",
+                sourceThreadId = "channel-1",
+                streamChannelId = "channel-1",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            )
+        val headerState =
+            sharedConversationHeaderStateFromDirectory(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "channel-1",
+                        aliases = setOf("channel-1", "stream-channel-1"),
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "private",
+                        title = "ops-room",
+                        subtitle = "Operations"
+                    )
+                )
+            )
+
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals("ops-room", renderedPayload.title)
+        assertEquals("Operations", renderedPayload.subtitle)
+        assertEquals("private", renderedPayload.channelKind)
+        assertEquals("channel-1", renderedPayload.sourceThreadId)
+        assertEquals("channel-1", renderedPayload.streamChannelId)
+        assertEquals(payload.parentChannelId, renderedPayload.parentChannelId)
+        assertEquals(payload.parentMessageId, renderedPayload.parentMessageId)
+    }
+
+    @Test
+    fun directoryProjectionDoesNotChangeReplyThreadRequestIdentity() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "reply-message-1",
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "reply-thread-1",
+                streamChannelId = "reply-thread-1",
+                parentChannelId = "channel-1",
+                parentMessageId = "message-1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread
+            )
+        val headerState =
+            sharedConversationHeaderStateFromDirectory(
+                listOf(
+                    SharedConversationDirectoryProjection(
+                        serverId = "server-1",
+                        canonicalChannelId = "channel-1",
+                        aliases = setOf("channel-1"),
+                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                        channelKind = "channel",
+                        title = "general"
+                    )
+                )
+            )
+
+        val renderedPayload = payload.withConversationHeader(headerState.entryFor(payload))
+
+        assertEquals(ThreadReplyPageTitle, renderedPayload.title)
+        assertEquals("reply-thread-1", renderedPayload.sourceThreadId)
+        assertEquals("reply-thread-1", renderedPayload.streamChannelId)
+        assertEquals("channel-1", renderedPayload.parentChannelId)
+        assertEquals("message-1", renderedPayload.parentMessageId)
     }
 
     @Test

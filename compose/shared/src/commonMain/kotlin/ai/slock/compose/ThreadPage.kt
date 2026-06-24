@@ -43,6 +43,7 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
@@ -1635,6 +1636,7 @@ private fun ThreadPageScreen() {
         tasksDataStore = sharedStores.tasksDataStore,
         computersStore = computersStore,
         membersStore = membersStore,
+        conversationDirectoryStore = sharedStores.conversationDirectoryStore,
         onBack = {
             routerModule.closePage()
         },
@@ -1974,6 +1976,7 @@ internal fun SharedThreadRouteContent(
     tasksDataStore: SharedTasksDataStore? = null,
     computersStore: SharedComputersStore? = null,
     membersStore: SharedMembersStore? = null,
+    conversationDirectoryStore: SharedConversationDirectoryStore? = null,
     conversationHeaderState: SharedConversationHeaderState = SharedConversationHeaderState(),
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
@@ -1993,10 +1996,45 @@ internal fun SharedThreadRouteContent(
         }
     val threadState by threadViewModel.state.collectAsState()
     val payload = threadState.payload
-    val renderedPayload = remember(payload, conversationHeaderState) {
+    var currentSession by remember(initialPayload.instanceId) {
+        mutableStateOf<StoredAuthSession?>(null)
+    }
+    var currentServerSlug by remember(initialPayload.instanceId) {
+        mutableStateOf<String?>(null)
+    }
+    val conversationDirectoryLookupIds =
+        remember(payload.sourceThreadId, payload.streamChannelId, payload.parentChannelId) {
+            payload.conversationHeaderLookupIds()
+        }
+    val emptyConversationHeaderStateFlow = remember { MutableStateFlow(SharedConversationHeaderState()) }
+    val directoryConversationHeaderState by remember(
+        conversationDirectoryStore,
+        currentSession?.currentServerId,
+        payload.surfaceKind,
+        conversationDirectoryLookupIds
+    ) {
+        val serverId = currentSession?.currentServerId?.takeIf { it.isNotBlank() }?.let(::ServerId)
+        if (
+            conversationDirectoryStore != null &&
+            serverId != null &&
+            payload.surfaceKind != KuiklyThreadSurfaceKind.ReplyThread &&
+            conversationDirectoryLookupIds.isNotEmpty()
+        ) {
+            conversationDirectoryStore
+                .projectionFlow(serverId, conversationDirectoryLookupIds)
+                .map { projections -> sharedConversationHeaderStateFromDirectory(projections.values) }
+        } else {
+            emptyConversationHeaderStateFlow
+        }
+    }.collectAsState(SharedConversationHeaderState())
+    val effectiveConversationHeaderState =
+        remember(conversationHeaderState, directoryConversationHeaderState) {
+            conversationHeaderState.withDirectoryOverride(directoryConversationHeaderState)
+        }
+    val renderedPayload = remember(payload, effectiveConversationHeaderState) {
         payload
             .withSharedShellEventCapabilities()
-            .withConversationHeader(conversationHeaderState.entryFor(payload))
+            .withConversationHeader(effectiveConversationHeaderState.entryFor(payload))
     }
     val resolvedAuxiliaryThreadId = payload.resolvedAuxiliaryThreadId()
     val auxiliaryRouteKey = resolvedAuxiliaryThreadId ?: "pending-${initialPayload.instanceId}"
@@ -2015,12 +2053,6 @@ internal fun SharedThreadRouteContent(
     }
     var attachmentCommentsDialogState by remember(initialPayload.instanceId) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
-    }
-    var currentSession by remember(initialPayload.instanceId) {
-        mutableStateOf<StoredAuthSession?>(null)
-    }
-    var currentServerSlug by remember(initialPayload.instanceId) {
-        mutableStateOf<String?>(null)
     }
     var firstRenderLoggedThreadId by remember { mutableStateOf<String?>(null) }
     var firstContentLoggedThreadId by remember { mutableStateOf<String?>(null) }

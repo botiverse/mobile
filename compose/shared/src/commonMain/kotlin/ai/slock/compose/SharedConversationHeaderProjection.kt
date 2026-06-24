@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.avatarSlotResolution
@@ -39,6 +40,26 @@ internal fun sharedConversationHeaderState(
                 .flatMap { entry -> entry.ids.map { id -> id to entry } }
                 .toMap()
     )
+
+internal fun sharedConversationHeaderStateFromDirectory(
+    projections: Collection<SharedConversationDirectoryProjection>
+): SharedConversationHeaderState =
+    SharedConversationHeaderState(
+        entriesById =
+            projections
+                .map { projection -> projection.toConversationHeaderEntry() }
+                .flatMap { entry -> entry.ids.map { id -> id to entry } }
+                .toMap()
+    )
+
+internal fun SharedConversationHeaderState.withDirectoryOverride(
+    directory: SharedConversationHeaderState
+): SharedConversationHeaderState =
+    if (directory.entriesById.isEmpty()) {
+        this
+    } else {
+        SharedConversationHeaderState(entriesById = entriesById + directory.entriesById)
+    }
 
 internal fun KuiklyThreadScreenPayload.withConversationHeader(
     entry: SharedConversationHeaderEntry?
@@ -98,12 +119,23 @@ internal fun KuiklyThreadScreenPayload.withReplyThreadHeaderFallback(
     return if (fallbackSubtitle == subtitle) this else copy(subtitle = fallbackSubtitle)
 }
 
-private fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
+internal fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =
     listOfNotNull(
         parentChannelId,
         streamChannelId,
         sourceThreadId
     ).mapNotNull { id -> id.takeIf { it.isNotBlank() } }
+
+private fun SharedConversationDirectoryProjection.toConversationHeaderEntry(): SharedConversationHeaderEntry =
+    SharedConversationHeaderEntry(
+        ids = (aliases + canonicalChannelId).filter { it.isNotBlank() }.toSet(),
+        surfaceKind = surfaceKind,
+        channelKind = channelKind,
+        title = title,
+        subtitle = subtitle?.takeIf { it.isNotBlank() },
+        avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() },
+        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(2).uppercase()
+    )
 
 private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationHeaderEntry? {
     val surfaceKind =
