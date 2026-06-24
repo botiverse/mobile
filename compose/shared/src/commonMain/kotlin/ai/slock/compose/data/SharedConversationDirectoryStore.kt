@@ -27,14 +27,14 @@ internal enum class SharedConversationDirectorySource(val rank: Int) {
     RealtimeMutation(4)
 }
 
-internal enum class SharedConversationAliasKind {
-    Channel,
-    Thread,
-    Stream,
-    ParentChannel,
-    ParentMessage,
-    PresenceMember,
-    Member
+internal enum class SharedConversationAliasKind(val resolvesUniqueConversation: Boolean) {
+    Channel(true),
+    Thread(true),
+    Stream(true),
+    ParentChannel(false),
+    ParentMessage(false),
+    PresenceMember(true),
+    Member(true)
 }
 
 internal data class SharedConversationDirectoryProjection(
@@ -191,9 +191,13 @@ internal class SharedConversationDirectoryStore(
             buildMap<String, MutableSet<String>> {
                 projections.values.forEach { projection ->
                     putAlias(projection.canonicalChannelId, projection.canonicalChannelId)
-                    projection.aliases.forEach { alias -> putAlias(alias, projection.canonicalChannelId) }
                 }
-                aliases.forEach { alias -> putAlias(alias.aliasId, alias.canonicalChannelId) }
+                aliases.forEach { alias ->
+                    val aliasKind = alias.aliasKind.toConversationAliasKindOrNull()
+                    if (aliasKind?.resolvesUniqueConversation == true) {
+                        putAlias(alias.aliasId, alias.canonicalChannelId)
+                    }
+                }
             }.mapValues { (_, values) -> values.toSet() }
         val duplicateAliases = aliasesById.filterValues { it.size > 1 }
         duplicateAliases.forEach { (alias, canonicalIds) ->
@@ -383,6 +387,9 @@ private fun String.toDirectoryConversationKind(): ConversationKind =
         "dm" -> ConversationKind.DirectMessage
         else -> ConversationKind.Channel
     }
+
+private fun String.toConversationAliasKindOrNull(): SharedConversationAliasKind? =
+    runCatching { SharedConversationAliasKind.valueOf(this) }.getOrNull()
 
 private fun ConversationPermissions.toDirectoryCapabilityMask(): Long =
     (if (canRead) 1L else 0L) or

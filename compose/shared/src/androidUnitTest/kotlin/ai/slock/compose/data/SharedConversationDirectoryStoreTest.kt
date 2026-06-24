@@ -4,7 +4,9 @@ import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import kotlinx.coroutines.async
@@ -14,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class SharedConversationDirectoryStoreTest {
     @Test
@@ -58,6 +61,35 @@ class SharedConversationDirectoryStoreTest {
     }
 
     @Test
+    fun parentChannelAliasesDoNotConflictOrResolveToChildThreads() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = createStore(logger = logs::add)
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = channelSummary(id = "parent-channel", name = "all"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = replyThreadSummary(id = "reply-stream-1", parentChannelId = "parent-channel", name = "Thread one"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = replyThreadSummary(id = "reply-stream-2", parentChannelId = "parent-channel", name = "Thread two"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        val state = store.observeServer(serverId).first()
+        assertEquals(emptyMap(), state.duplicateAliases)
+        assertTrue(logs.none { it.contains("conversation_directory_alias_conflict") })
+        assertEquals("all", assertNotNull(store.resolveProjection(serverId, "parent-channel")).title)
+        assertEquals("Thread one", assertNotNull(store.resolveProjection(serverId, "reply-stream-1")).title)
+        assertEquals("Thread two", assertNotNull(store.resolveProjection(serverId, "reply-stream-2")).title)
+    }
+
+    @Test
     fun projectionFlowEmitsWhenChannelEntityChanges() = runBlocking {
         val store = createStore()
         store.upsertConversation(
@@ -82,10 +114,10 @@ class SharedConversationDirectoryStoreTest {
         assertEquals("renamed", updated.await()["channel-1"]?.title)
     }
 
-    private fun createStore(): SharedConversationDirectoryStore {
+    private fun createStore(logger: (String) -> Unit = {}): SharedConversationDirectoryStore {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         SlockSqlDatabase.Schema.create(driver).value
-        return SharedConversationDirectoryStore(SlockSqlDatabase(driver), clock = { 1234L })
+        return SharedConversationDirectoryStore(SlockSqlDatabase(driver), clock = { 1234L }, logger = logger)
     }
 
     private fun channelSummary(id: String, name: String): ConversationSummary =
@@ -93,6 +125,20 @@ class SharedConversationDirectoryStoreTest {
             threadId = ThreadId(id),
             channelId = ChannelId(id),
             kind = ConversationKind.Channel,
+            name = name
+        )
+
+    private fun replyThreadSummary(id: String, parentChannelId: String, name: String): ConversationSummary =
+        ConversationSummary(
+            threadId = ThreadId(id),
+            channelId = ChannelId(id),
+            thread =
+                ThreadConversation(
+                    parentChannelId = ChannelId(parentChannelId),
+                    parentMessageId = MessageId("message-$id"),
+                    streamChannelId = ChannelId(id)
+                ),
+            kind = ConversationKind.Thread,
             name = name
         )
 
