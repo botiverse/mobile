@@ -6451,20 +6451,12 @@ private fun ThreadMessagesList(
                     if (isSystemMessage && actionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayMessage,
-                            hasReplyDraft = activeDraftRecords.hasReplyComposerDraft(message.id),
                             highlightedMentions = highlightedMentions,
-                            showReplyAction = payload.showReplyActions && contentExtrasVisible,
                             timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                            resolvedTaskAssigneeName = linkedTaskAssigneeName,
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
-                            onOpenThread = { onThreadEvent("openMessageThread", message.id, null, null) },
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onOpenTaskStatusMenu = { anchor ->
-                                taskStatusMenuMessageId = message.id
-                                taskStatusMenuAnchor = anchor
-                            },
+                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
+                            performanceKey = threadMessagePerformanceKey(message.id, index),
+                            diagnosticsLogger = diagnosticsLogger,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl
                         )
@@ -6951,10 +6943,6 @@ private fun KuiklyThreadScreenPayload.threadInitialMessageMinHeightsPx(density: 
 }
 
 private fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
-    if (isSystemMessage()) {
-        val bodyLines = body.threadInitialMarkdownLineEstimate().coerceAtMost(3)
-        return (32f + bodyLines * 16f).dp
-    }
     val bodyLines = body.threadInitialMarkdownLineEstimate()
     val bodyHeight = if (bodyLines > 0) bodyLines * 16f else 0f
     val attachmentHeight = attachments.size.coerceAtMost(2) * 44f
@@ -7322,39 +7310,25 @@ private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
-    hasReplyDraft: Boolean,
     highlightedMentions: Set<String>,
-    showReplyAction: Boolean,
     timestampLabel: String,
-    resolvedTaskAssigneeName: String?,
     resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
-    taskOpenEnabled: Boolean,
-    taskStatusActionsEnabled: Boolean,
-    onOpenThread: () -> Unit,
-    onOpenTask: (String) -> Unit,
-    onOpenTaskStatusMenu: (Offset) -> Unit,
+    knownMarkdownChannelNames: Set<String>?,
+    performanceKey: String? = null,
+    diagnosticsLogger: (String) -> Unit = {},
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
-    var expanded by remember(message.id) { mutableStateOf(false) }
-    val systemBody =
-        if (expanded) {
-            message.expandedSystemContent()
-        } else {
-            message.systemContentSummary()
-        }
+    val systemBody = remember(message.body) { message.systemContentSummary() }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
-                .clickable { expanded = !expanded }
-                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
-        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.Top
         ) {
             Text(
@@ -7362,30 +7336,27 @@ private fun ThreadSystemMessageRow(
                 style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor),
                 color = ThreadSystemMessageTimeColor,
                 maxLines = 1,
-                overflow = TextOverflow.Clip
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.width(138.dp)
             )
-            Text(
-                text = systemBody,
-                style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
-                color = ThreadSystemMessageBodyColor,
-                maxLines = if (expanded) Int.MAX_VALUE else 1,
-                overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+            SlockMarkdownBody(
+                body = systemBody,
+                modifier = Modifier.weight(1f),
+                textStyle =
+                    SlockType.Body.copy(
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
+                        color = ThreadSystemMessageBodyColor
+                    ),
+                highlightedMentions = highlightedMentions,
+                knownChannelNames = knownMarkdownChannelNames,
+                resolveTagLabel = resolveMarkdownTagLabel,
+                onOpenTag = onOpenMarkdownTag,
+                onOpenUrl = onOpenMarkdownUrl,
+                performanceKey = performanceKey,
+                performanceLogger = diagnosticsLogger
             )
         }
-        ThreadMessageFooterMeta(
-            message = message,
-            hasReplyDraft = hasReplyDraft,
-            showReplyAction = showReplyAction,
-            taskOpenEnabled = taskOpenEnabled,
-            taskStatusActionsEnabled = taskStatusActionsEnabled,
-            resolvedTaskAssigneeName = resolvedTaskAssigneeName,
-            alignEnd = false,
-            onOpenThread = onOpenThread,
-            onOpenTask = onOpenTask,
-            onShowActions = {},
-            onOpenTaskStatusMenu = onOpenTaskStatusMenu
-        )
     }
 }
 
@@ -8961,22 +8932,12 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            hasReplyDraft = false,
                             highlightedMentions = highlightedMentions,
-                            showReplyAction = false,
                             timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
-                            resolvedTaskAssigneeName =
-                                linkedTaskAssigneeName
-                                    ?: payload.resolveTaskAssigneeDisplayName(
-                                        value = displayOrigin.taskAssigneeName,
-                                        id = displayOrigin.taskAssigneeId
-                                    ),
                             resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
-                            taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
-                            onOpenThread = { onThreadEvent("openMessageThread", origin.id, null, null) },
-                            onOpenTask = { onThreadEvent("openTask", it, null, null) },
-                            onOpenTaskStatusMenu = { anchor -> onOpenTaskStatusMenu(origin, anchor) },
+                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
+                            performanceKey = threadMessagePerformanceKey(origin.id, -1),
+                            diagnosticsLogger = diagnosticsLogger,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl
                         )
