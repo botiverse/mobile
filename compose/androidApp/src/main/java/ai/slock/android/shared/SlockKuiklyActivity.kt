@@ -2356,7 +2356,15 @@ internal class SlockKuiklyBridgeModule(
                 throw IllegalStateException("Attachment download failed: HTTP $code")
             }
             val totalBytes = connection.contentLengthLong.takeIf { it > 0L }
-            progressCallback?.invoke(attachmentDownloadProgress(0L, totalBytes, percent = totalBytes?.let { 0 }))
+            val downloadStartedAt = System.currentTimeMillis()
+            progressCallback?.invoke(
+                    attachmentDownloadProgress(
+                            downloadedBytes = 0L,
+                            totalBytes = totalBytes,
+                            percent = totalBytes?.let { 0 },
+                            bytesPerSecond = null
+                    )
+            )
             connection.inputStream.use { input ->
                 tempFile.outputStream().use { output ->
                     val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
@@ -2387,7 +2395,8 @@ internal class SlockKuiklyBridgeModule(
                                     attachmentDownloadProgress(
                                             downloadedBytes = downloadedBytes,
                                             totalBytes = totalBytes,
-                                            percent = percent
+                                            percent = percent,
+                                            bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, now)
                                     )
                             )
                             lastPercent = percent ?: lastPercent
@@ -2398,7 +2407,8 @@ internal class SlockKuiklyBridgeModule(
                             attachmentDownloadProgress(
                                     downloadedBytes = downloadedBytes,
                                     totalBytes = totalBytes,
-                                    percent = totalBytes?.let { 100 }
+                                    percent = totalBytes?.let { 100 },
+                                    bytesPerSecond = downloadedBytes.downloadBytesPerSecondSince(downloadStartedAt, System.currentTimeMillis())
                             )
                     )
                 }
@@ -2420,14 +2430,21 @@ internal class SlockKuiklyBridgeModule(
     private fun attachmentDownloadProgress(
             downloadedBytes: Long,
             totalBytes: Long?,
-            percent: Int?
+            percent: Int?,
+            bytesPerSecond: Long?
     ): Map<String, Any> =
             buildMap {
                 put("status", "progress")
                 put("downloadedBytes", downloadedBytes)
                 totalBytes?.let { put("totalBytes", it) }
                 percent?.let { put("percent", it.coerceIn(0, 100)) }
+                bytesPerSecond?.takeIf { it > 0L }?.let { put("bytesPerSecond", it) }
             }
+
+    private fun Long.downloadBytesPerSecondSince(startedAt: Long, now: Long): Long? {
+        val elapsedMs = (now - startedAt).coerceAtLeast(1L)
+        return ((this * 1_000L) / elapsedMs).takeIf { it > 0L }
+    }
 
     private fun cleanupAttachmentCache(cacheDir: File) {
         cacheDir.listFiles()

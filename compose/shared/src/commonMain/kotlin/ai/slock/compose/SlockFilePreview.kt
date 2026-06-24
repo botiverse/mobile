@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.BridgeAttachmentDownloadProgress
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
@@ -151,7 +152,7 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     var downloadStatus by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("idle") }
     var downloadMessage by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf("") }
-    var downloadProgressPercent by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<Int?>(null) }
+    var downloadProgress by remember(payload.source, payload.attachmentId, payload.path) { mutableStateOf<BridgeAttachmentDownloadProgress?>(null) }
     LaunchedEffect(payload.source, payload.attachmentId, payload.agentId, payload.path, payload.kind) {
         val nextPayload =
             when (payload.source) {
@@ -181,7 +182,7 @@ private fun SlockFilePreviewStandalonePageContent() {
                         .ifBlank { "attachment" },
                 mimeType = currentPayload.externalMimeType,
                 onProgress = { progress ->
-                    downloadProgressPercent = progress.percent
+                    downloadProgress = progress
                 }
             )
         return when (result?.optString("status").orEmpty()) {
@@ -198,17 +199,17 @@ private fun SlockFilePreviewStandalonePageContent() {
         if (!canOpenWith || downloadStatus == "downloading") return
         downloadStatus = "downloading"
         downloadMessage = ""
-        downloadProgressPercent = null
+        downloadProgress = null
         coroutineScope.launch {
             val error = openPayloadExternally(payload)
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
-                downloadProgressPercent = null
+                downloadProgress = null
             } else {
                 downloadStatus = "failed"
                 downloadMessage = error
-                downloadProgressPercent = null
+                downloadProgress = null
                 bridge.toast(error)
             }
         }
@@ -241,12 +242,12 @@ private fun SlockFilePreviewStandalonePageContent() {
             onOpenUrl = {},
             downloadStatusLabel =
                 when (downloadStatus) {
-                    "downloading" -> downloadProgressPercent?.let { "Downloading $it%" } ?: "Downloading..."
+                    "downloading" -> slockFilePreviewDownloadStatusLabel(downloadProgress)
                     "failed" -> downloadMessage.ifBlank { "Download failed" }
                     else -> null
                 },
             downloadInProgress = downloadStatus == "downloading",
-            downloadProgressPercent = downloadProgressPercent,
+            downloadProgressPercent = downloadProgress?.percent,
             onDownload = if (canOpenWith) ::requestExternalOpen else null,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
@@ -664,36 +665,57 @@ internal fun SlockFilePreviewPayloadContent(
 ) {
     when (payload.kind) {
         "markdown" ->
-            SlockFilePreviewMarkdownPanel(
-                name = payload.name.ifBlank { payload.path },
-                meta = payload.meta,
-                statusLabel = null,
-                status = "content",
-                body = payload.content,
-                error = null,
-                onOpenUrl = onOpenUrl,
-                modifier = modifier.fillMaxSize(),
-                performanceKey = "preview:${payload.path}",
-                textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
-                showChrome = false
-            )
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewMarkdownPanel(
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    statusLabel = null,
+                    status = "content",
+                    body = payload.content,
+                    error = null,
+                    onOpenUrl = onOpenUrl,
+                    modifier = Modifier.fillMaxSize(),
+                    performanceKey = "preview:${payload.path}",
+                    textStyle = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 18.sp),
+                    showChrome = false
+                )
+            }
         "text" ->
-            SlockFilePreviewTextPanel(
-                name = payload.name.ifBlank { payload.path },
-                meta = payload.meta,
-                content = payload.content,
-                modifier = modifier.fillMaxSize(),
-                showChrome = false
-            )
+            SlockFilePreviewDownloadStatusOverlay(
+                statusLabel = downloadStatusLabel,
+                showProgress = downloadInProgress,
+                progressPercent = downloadProgressPercent,
+                modifier = modifier.fillMaxSize()
+            ) {
+                SlockFilePreviewTextPanel(
+                    name = payload.name.ifBlank { payload.path },
+                    meta = payload.meta,
+                    content = payload.content,
+                    modifier = Modifier.fillMaxSize(),
+                    showChrome = false
+                )
+            }
         "image" ->
             if (payload.imageUrl != null) {
-                SlockFilePreviewImagePanel(
-                    source = payload.imageUrl,
-                    contentDescription = payload.name.ifBlank { payload.path },
-                    modifier = modifier.fillMaxSize(),
-                    backgroundColor = SlockColor.SurfaceWhite,
-                    borderWidth = 0.dp
-                )
+                SlockFilePreviewDownloadStatusOverlay(
+                    statusLabel = downloadStatusLabel,
+                    showProgress = downloadInProgress,
+                    progressPercent = downloadProgressPercent,
+                    modifier = modifier.fillMaxSize()
+                ) {
+                    SlockFilePreviewImagePanel(
+                        source = payload.imageUrl,
+                        contentDescription = payload.name.ifBlank { payload.path },
+                        modifier = Modifier.fillMaxSize(),
+                        backgroundColor = SlockColor.SurfaceWhite,
+                        borderWidth = 0.dp
+                    )
+                }
             } else {
                 SlockFilePreviewGenericCard(
                     iconName = SlockLucideIconName.Image,
@@ -837,6 +859,24 @@ private fun Long?.slockFilePreviewSizeLabel(): String? {
         bytes < 1024 * 1024 -> "${bytes / 1024} KB"
         else -> "${bytes / (1024 * 1024)} MB"
     }
+}
+
+internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownloadProgress?): String {
+    val percent = progress?.percent
+    val speedLabel = progress?.bytesPerSecond.slockFilePreviewSpeedLabel()
+    val downloadedLabel = progress?.downloadedBytes?.takeIf { it > 0L }.slockFilePreviewSizeLabel()
+    val primary =
+        when {
+            percent != null -> "Downloading $percent%"
+            downloadedLabel != null -> "Downloading $downloadedLabel"
+            else -> "Downloading..."
+        }
+    return listOfNotNull(primary, speedLabel).joinToString(" · ")
+}
+
+private fun Long?.slockFilePreviewSpeedLabel(): String? {
+    val bytesPerSecond = this?.takeIf { it > 0L } ?: return null
+    return "${bytesPerSecond.slockFilePreviewSizeLabel()}/s"
 }
 
 @Composable
@@ -1020,6 +1060,56 @@ private fun SlockFilePreviewProgressBar(progressPercent: Int?) {
                         .weight((100 - percent).toFloat())
                         .fillMaxSize()
             )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadStatusOverlay(
+    statusLabel: String?,
+    showProgress: Boolean,
+    progressPercent: Int?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    Box(modifier = modifier.fillMaxSize()) {
+        content()
+        if (statusLabel != null || showProgress) {
+            SlockFilePreviewDownloadStatusBar(
+                statusLabel = statusLabel ?: "Downloading...",
+                showProgress = showProgress,
+                progressPercent = progressPercent,
+                modifier = Modifier.align(Alignment.BottomCenter)
+            )
+        }
+    }
+}
+
+@Composable
+private fun SlockFilePreviewDownloadStatusBar(
+    statusLabel: String,
+    showProgress: Boolean,
+    progressPercent: Int?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .padding(SlockSpacing.Md),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+    ) {
+        Text(
+            text = statusLabel,
+            style = SlockType.Caption,
+            color = SlockColor.TextBlack,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (showProgress) {
+            SlockFilePreviewProgressBar(progressPercent = progressPercent)
         }
     }
 }

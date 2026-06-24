@@ -758,12 +758,14 @@ internal class BridgeModule : Module() {
 internal data class BridgeAttachmentDownloadProgress(
     val percent: Int?,
     val downloadedBytes: Long,
-    val totalBytes: Long?
+    val totalBytes: Long?,
+    val bytesPerSecond: Long? = null
 )
 
 private fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDownloadProgress {
     val totalBytes = optString("totalBytes").toLongOrNull()?.takeIf { it > 0L }
     val downloadedBytes = optString("downloadedBytes").toLongOrNull() ?: 0L
+    val bytesPerSecond = optString("bytesPerSecond").toLongOrNull()?.takeIf { it > 0L }
     val percent =
         optString("percent").toIntOrNull()
             ?.coerceIn(0, 100)
@@ -773,6 +775,7 @@ private fun JSONObject.toBridgeAttachmentDownloadProgress(): BridgeAttachmentDow
     return BridgeAttachmentDownloadProgress(
         percent = percent,
         downloadedBytes = downloadedBytes,
-        totalBytes = totalBytes
+        totalBytes = totalBytes,
+        bytesPerSecond = bytesPerSecond
     )
 }
