@@ -339,9 +339,8 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadOriginContentInitializesAtTop() {
-        assertEquals(0, threadInitialFirstVisibleItemIndex(latestItemIndex = 8, topAnchoredContent = true))
-        assertEquals(8, threadInitialFirstVisibleItemIndex(latestItemIndex = 8, topAnchoredContent = false))
+    fun threadOriginContentInitializesAtLatestItem() {
+        assertEquals(8, threadInitialFirstVisibleItemIndex(latestItemIndex = 8))
     }
 
     @Test

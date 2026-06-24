@@ -5946,7 +5946,6 @@ private fun ThreadMessagesList(
     // list reference) which invalidated the cache on any list
     // replacement, even when the content was equivalent. Now the cache
     // is keyed on the content fields the underlying functions read.
-    val topAnchoredOriginContent = payload.hasThreadOriginItem()
     val latestItemIndex = remember(
         payload.originStatus,
         payload.messages.size
@@ -5955,10 +5954,7 @@ private fun ThreadMessagesList(
     }
     val listState = rememberLazyListState(
         initialFirstVisibleItemIndex =
-            threadInitialFirstVisibleItemIndex(
-                latestItemIndex = latestItemIndex,
-                topAnchoredContent = topAnchoredOriginContent
-            )
+            threadInitialFirstVisibleItemIndex(latestItemIndex = latestItemIndex)
     )
     val coroutineScope = rememberCoroutineScope()
     // Phase 1 (#172) instrumentation: per-Thread session marker that
@@ -5976,11 +5972,11 @@ private fun ThreadMessagesList(
     var actionMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
-    var allowBottomAutoAnchor by remember(payload.instanceId, topAnchoredOriginContent) {
+    var allowBottomAutoAnchor by remember(payload.instanceId) {
         mutableStateOf(true)
     }
-    var initialBottomAnchorReady by remember(payload.instanceId, topAnchoredOriginContent) {
-        mutableStateOf(topAnchoredOriginContent)
+    var initialBottomAnchorReady by remember(payload.instanceId) {
+        mutableStateOf(false)
     }
     LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
         if (initialBottomAnchorReady || latestItemIndex < 0) {
@@ -6103,7 +6099,7 @@ private fun ThreadMessagesList(
             }
     }
     LaunchedEffect(payload.instanceId, latestItemIndex, initialBottomAnchorReady) {
-        if (topAnchoredOriginContent || latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
+        if (latestItemIndex < 0 || !initialBottomAnchorReady) return@LaunchedEffect
         snapshotFlow {
             ThreadBottomAnchorCorrectionState(
                 allowBottomAutoAnchor = allowBottomAutoAnchor,
@@ -6228,10 +6224,6 @@ private fun ThreadMessagesList(
         }
     }
     LaunchedEffect(payload.instanceId, payload.focusedMessageId, latestMessageLayoutKey, latestItemIndex) {
-        if (topAnchoredOriginContent) {
-            initialBottomAnchorReady = true
-            return@LaunchedEffect
-        }
         if (latestItemIndex < 0) return@LaunchedEffect
         val focusedMessageTargetIndex =
             payload.focusedMessageId
@@ -6320,7 +6312,7 @@ private fun ThreadMessagesList(
                     }
                     .alpha(if (initialBottomAnchorReady || latestItemIndex < 0) 1f else 0f)
                     .bouncesEnable(false),
-                verticalArrangement = if (topAnchoredOriginContent) Arrangement.Top else Arrangement.Bottom,
+                verticalArrangement = Arrangement.Bottom,
                 beyondBoundsItemCount = threadMessagesBeyondBoundsItemCount(lazyItemCount)
             ) {
             if (payload.hasThreadOriginItem()) {
@@ -6530,7 +6522,6 @@ private fun ThreadMessagesList(
         }
         if (shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    topAnchoredOriginContent = topAnchoredOriginContent,
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
                     canScrollTowardBottom = listState.canScrollForward,
@@ -6688,11 +6679,8 @@ private fun ThreadLazyWindowStats.toDiagnosticsString(result: String): String =
         "visibleMessageRange=$firstVisibleMessage..$lastVisibleMessage " +
         "visibleMessages=$visibleMessages"
 
-internal fun threadInitialFirstVisibleItemIndex(
-    latestItemIndex: Int,
-    topAnchoredContent: Boolean = false
-): Int =
-    if (topAnchoredContent) 0 else latestItemIndex.coerceAtLeast(0)
+internal fun threadInitialFirstVisibleItemIndex(latestItemIndex: Int): Int =
+    latestItemIndex.coerceAtLeast(0)
 
 private fun KuiklyThreadMessageItem.messageListItemKey(): String =
     "thread-page:message:$id"
@@ -6844,7 +6832,6 @@ internal fun shouldAnchorThreadKeyboardBottomOnInsetChange(state: ThreadKeyboard
         state.allowBottomAutoAnchor
 
 internal data class ThreadBackToBottomButtonState(
-    val topAnchoredOriginContent: Boolean,
     val initialBottomAnchorReady: Boolean,
     val pendingKeyboardBottomAnchor: Boolean,
     val canScrollTowardBottom: Boolean = true,

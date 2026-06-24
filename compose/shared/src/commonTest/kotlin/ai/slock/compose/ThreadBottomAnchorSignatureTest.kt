@@ -190,7 +190,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun latestLocalSendBottomAnchor_allowsReplyThreadOriginList() {
+    fun latestLocalSendBottomAnchor_defaultsReplyThreadOriginListToLatestItem() {
         val pendingContext =
             KuiklyThreadPendingSendContext(
                 channelId = "parent-channel",
@@ -214,8 +214,8 @@ class ThreadBottomAnchorSignatureTest {
             )
         val latestIndex = replyThreadPayload.latestMessageListItemIndexPublic()
 
-        assertEquals(0, threadInitialFirstVisibleItemIndex(latestIndex, topAnchoredContent = true))
         assertEquals(3, latestIndex)
+        assertEquals(3, threadInitialFirstVisibleItemIndex(latestIndex))
         assertEquals(
             true,
             shouldAnchorLatestLocalSendToBottom(
@@ -451,12 +451,11 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun backToBottomButton_allowsTopAnchoredOriginContent() {
+    fun backToBottomButton_dependsOnBottomReadinessAndKeyboardAnchor() {
         assertEquals(
             true,
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    topAnchoredOriginContent = true,
                     initialBottomAnchorReady = true,
                     pendingKeyboardBottomAnchor = false,
                     latestItemOffBottom = true
@@ -467,7 +466,6 @@ class ThreadBottomAnchorSignatureTest {
             true,
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    topAnchoredOriginContent = false,
                     initialBottomAnchorReady = true,
                     pendingKeyboardBottomAnchor = false,
                     latestItemOffBottom = true
@@ -478,7 +476,6 @@ class ThreadBottomAnchorSignatureTest {
             false,
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    topAnchoredOriginContent = true,
                     initialBottomAnchorReady = true,
                     pendingKeyboardBottomAnchor = true,
                     latestItemOffBottom = true
@@ -493,7 +490,6 @@ class ThreadBottomAnchorSignatureTest {
             false,
             shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
-                    topAnchoredOriginContent = false,
                     initialBottomAnchorReady = true,
                     pendingKeyboardBottomAnchor = false,
                     canScrollTowardBottom = false,
