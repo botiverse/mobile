@@ -2234,14 +2234,18 @@ private fun MembersDetailContent(
                     verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
                     beyondBoundsItemCount = sharedListBeyondBoundsItemCount(12)
                 ) {
-                    item { Spacer(Modifier.height(SlockSpacing.Sm)) }
+                    if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                        item { Spacer(Modifier.height(SlockSpacing.Sm)) }
+                    }
                     if (member.kind == MemberKind.Agent) {
-                        item {
-                            MembersAgentDetailStateNotice(
-                                state = agentDetailState,
-                                canViewPrivate = canViewPrivate,
-                                modifier = Modifier.padding(horizontal = MembersPageInset)
-                            )
+                        if (initialVisualMode != MembersAgentDetailVisualMode.AvatarManagement) {
+                            item {
+                                MembersAgentDetailStateNotice(
+                                    state = agentDetailState,
+                                    canViewPrivate = canViewPrivate,
+                                    modifier = Modifier.padding(horizontal = MembersPageInset)
+                                )
+                            }
                         }
                         item {
                             when (selectedTab) {
@@ -2250,6 +2254,31 @@ private fun MembersDetailContent(
                                         member = member,
                                         detail = detail,
                                         canManage = canManage,
+                                        showAvatarPicker = showAvatarPicker && canManage && !deleted,
+                                        onToggleAvatarPicker = {
+                                            showAvatarPicker = !showAvatarPicker
+                                        },
+                                        onSelectAvatar = { key ->
+                                            saveAvatar("pixel:$key")
+                                        },
+                                        onClearAvatar = {
+                                            saveAvatar(null)
+                                        },
+                                        onUploadAvatar = {
+                                            val uploadCallback = onUploadAgentAvatar
+                                            if (uploadCallback == null) {
+                                                DataResult.Empty(EmptyReason.NoMembers)
+                                            } else {
+                                                val picked = onPickAgentAvatarFile()
+                                                when (picked) {
+                                                    is DataResult.Content ->
+                                                        uploadCallback(member.id, picked.data)
+                                                    is DataResult.Empty -> DataResult.Empty(picked.reason)
+                                                    is DataResult.Error -> DataResult.Error(picked.error)
+                                                    is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
+                                                }
+                                            }
+                                        },
                                         sharedAgentDetailStore = sharedAgentDetailStore,
                                         storeState = storeState.takeIf { sharedAgentDetailStore != null },
                                         agentDetailActions = agentDetailActions,
@@ -2308,34 +2337,6 @@ private fun MembersDetailContent(
                     item { Spacer(Modifier.height(180.dp)) }
                 }
             }
-        }
-        if (showAvatarPicker && canManage && !deleted) {
-            MembersAgentAvatarPicker(
-                member = member,
-                onSelect = { key ->
-                    saveAvatar("pixel:$key")
-                },
-                onClear = {
-                    saveAvatar(null)
-                },
-                onUpload = {
-                    val uploadCallback = onUploadAgentAvatar
-                    if (uploadCallback == null) {
-                        DataResult.Empty(EmptyReason.NoMembers)
-                    } else {
-                        val picked = onPickAgentAvatarFile()
-                        when (picked) {
-                            is DataResult.Content ->
-                                uploadCallback(member.id, picked.data)
-                            is DataResult.Empty -> DataResult.Empty(picked.reason)
-                            is DataResult.Error -> DataResult.Error(picked.error)
-                            is DataResult.NoPermission -> DataResult.NoPermission(picked.blocker)
-                        }
-                    }
-                },
-                onUnavailableAction = onUnavailableAction,
-                onDismiss = { showAvatarPicker = false }
-            )
         }
         val dropdownAnchor: Offset = managementMenuAnchor
             ?: Offset(100f, 100f)
@@ -3124,101 +3125,104 @@ private fun MembersAgentAvatarPicker(
                     .withSlockFontWeight(FontWeight.Bold),
                 color = SlockColor.TextBlack,
             )
-            // React parity: each cell renders the actual pixel art (or upload icon
-            // for the first cell) inside a 40dp cell with a 2dp border, mirroring
-            // `AgentDetailPanel.tsx:2331-2391`. Active selection gets a pink border
-            // + pink tint background (React `border-brutal-pink bg-brutal-pink/20`).
-            val activeCustomAvatar = member.avatarUrl != null
-            val activePixelKey = if (activeCustomAvatar) {
-                null
-            } else {
-                (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarDefaultKey)
-            }
-            @OptIn(ExperimentalLayoutApi::class)
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
-            ) {
-                // Cell 1: Upload custom image (mirrors React label/input combo;
-                // here we route through the existing onUpload callback path since
-                // file picking is owned by Android-App-Integrator via
-                // onPickAgentAvatarFile — out of scope for #57).
-                Box(
-                    modifier = Modifier
-                        .size(MembersAgentAvatarPickerCellSize)
-                        .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
-                        .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
-                        .clickable(enabled = !uploading) {
-                            if (!uploading) {
-                                uploading = true
-                                scope.launch {
-                                    when (val result = onUpload()) {
-                                        is DataResult.Content -> onDismiss()
-                                        is DataResult.Empty -> {
-                                            uploading = false
-                                            onUnavailableAction("Avatar upload cancelled.")
-                                        }
-                                        is DataResult.Error -> {
-                                            uploading = false
-                                            onUnavailableAction("Avatar upload failed: ${result.error.code}")
-                                        }
-                                        is DataResult.NoPermission -> {
-                                            uploading = false
-                                            onUnavailableAction("No permission: ${result.blocker.code}")
-                                        }
-                                    }
+            MembersAgentAvatarChoiceGrid(
+                member = member,
+                uploading = uploading,
+                onUploadClick = {
+                    if (!uploading) {
+                        uploading = true
+                        scope.launch {
+                            when (val result = onUpload()) {
+                                is DataResult.Content -> onDismiss()
+                                is DataResult.Empty -> {
+                                    uploading = false
+                                    onUnavailableAction("Avatar upload cancelled.")
+                                }
+                                is DataResult.Error -> {
+                                    uploading = false
+                                    onUnavailableAction("Avatar upload failed: ${result.error.code}")
+                                }
+                                is DataResult.NoPermission -> {
+                                    uploading = false
+                                    onUnavailableAction("No permission: ${result.blocker.code}")
                                 }
                             }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (activeCustomAvatar) {
-                        // Show the currently uploaded image (mirrors React's
-                        // `<img src={agent.avatarUrl!} />` inside the Upload cell).
-                        // `SlockAvatar` handles the HTTP path internally with the
-                        // existing lavender fallback background + http image overlay.
-                        SlockAvatar(
-                            avatarWireValue = member.avatarUrl,
-                            label = "Custom avatar",
-                            avatarSize = MembersAgentAvatarPickerAvatarSize,
-                            borderWidth = 0.dp
-                        )
-                    } else {
-                        SlockLucideIcon(
-                            if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
-                            modifier = Modifier.size(16.dp),
-                            color = "#99000000"
-                        )
+                        }
                     }
-                }
-                // Cell 2: Default (robot) — mirrors React `title="Default (robot)"`.
-                // Click calls onClear which sets avatar to null → renderer falls back
-                // to robot pixel art, same as React `handleClearAvatar`.
-                MembersAgentAvatarPickerCell(
-                    wireValue = "pixel:$PixelAvatarDefaultKey",
-                    fallbackLabel = PixelAvatarDefaultKey,
-                    active = activePixelKey == PixelAvatarDefaultKey,
-                    onClick = onClear
-                )
-                // Cells 3..N: remaining pixel keys (PixelAvatarPickerKeys now
-                // includes "robot" since #57; see SlockHomeComponents.kt
-                // PixelAvatarPickerKeys comment).
-                PixelAvatarPickerKeys.filter { it != PixelAvatarDefaultKey }.forEach { key ->
-                    MembersAgentAvatarPickerCell(
-                        wireValue = "pixel:$key",
-                        fallbackLabel = key,
-                        active = activePixelKey == key,
-                        onClick = { onSelect(key) }
-                    )
-                }
-            }
+                },
+                onClear = onClear,
+                onSelect = onSelect
+            )
         }
     }
 }
 
 private val MembersAgentAvatarPickerCellSize = 40.dp
 private val MembersAgentAvatarPickerAvatarSize = 36.dp
+
+@Composable
+private fun MembersAgentAvatarChoiceGrid(
+    member: MemberProfile,
+    uploading: Boolean,
+    onUploadClick: () -> Unit,
+    onClear: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    // React parity: each cell renders the actual pixel art (or upload icon
+    // for the first cell) inside a 40dp cell with a 2dp border, mirroring
+    // `AgentDetailPanel.tsx`. Active selection gets a pink border
+    // + pink tint background (React `border-brutal-pink bg-brutal-pink/20`).
+    val activeCustomAvatar = member.avatarUrl != null
+    val activePixelKey = if (activeCustomAvatar) {
+        null
+    } else {
+        (member.avatar?.wireValue?.removePrefix("pixel:") ?: PixelAvatarDefaultKey)
+    }
+    @OptIn(ExperimentalLayoutApi::class)
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(MembersAgentAvatarPickerCellSize)
+                .border(SlockStroke.Default, if (activeCustomAvatar) SlockColor.AccentPink else SlockColor.BorderBlack)
+                .background(if (activeCustomAvatar) SlockColor.AccentPink.copy(alpha = 0.2f) else Color.Transparent)
+                .clickable(enabled = !uploading) { onUploadClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            if (activeCustomAvatar) {
+                SlockAvatar(
+                    avatarWireValue = member.avatarUrl,
+                    label = "Custom avatar",
+                    avatarSize = MembersAgentAvatarPickerAvatarSize,
+                    borderWidth = 0.dp
+                )
+            } else {
+                SlockLucideIcon(
+                    if (uploading) SlockLucideIconName.Loader else SlockLucideIconName.Upload,
+                    modifier = Modifier.size(16.dp),
+                    color = "#99000000"
+                )
+            }
+        }
+        MembersAgentAvatarPickerCell(
+            wireValue = "pixel:$PixelAvatarDefaultKey",
+            fallbackLabel = PixelAvatarDefaultKey,
+            active = activePixelKey == PixelAvatarDefaultKey,
+            onClick = onClear
+        )
+        PixelAvatarPickerKeys.filter { it != PixelAvatarDefaultKey }.forEach { key ->
+            MembersAgentAvatarPickerCell(
+                wireValue = "pixel:$key",
+                fallbackLabel = key,
+                active = activePixelKey == key,
+                onClick = { onSelect(key) }
+            )
+        }
+    }
+}
 
 @Composable
 private fun MembersAgentAvatarPickerCell(
@@ -3248,10 +3252,163 @@ private fun MembersAgentAvatarPickerCell(
 private const val MembersAgentProfileDescriptionMaxLength = 3000
 
 @Composable
+private fun MembersAgentProfileHeader(
+    member: MemberProfile,
+    summary: AgentDetailSummary?,
+    canEdit: Boolean,
+    showAvatarPicker: Boolean,
+    onToggleAvatarPicker: () -> Unit,
+    onSelectAvatar: (String) -> Unit,
+    onClearAvatar: () -> Unit,
+    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
+    onUnavailableAction: (String) -> Unit
+) {
+    val statusDisplayState = member.membersAgentStatusDisplayState(summary?.status, summary?.activity)
+    val statusLabel = summary?.activity?.takeIf { it.isNotBlank() }
+        ?: statusDisplayState.status?.label
+        ?: member.detailStatusLabel
+    val scope = rememberCoroutineScope()
+    var uploading by remember(member.id.value) { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = SlockSpacing.Sm),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Md)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Md),
+            verticalAlignment = Alignment.Top
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .then(
+                        if (canEdit) {
+                            Modifier.clickable { onToggleAvatarPicker() }
+                        } else {
+                            Modifier
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                MembersAvatar(
+                    member = member,
+                    avatarSize = 64.dp,
+                    showStatusOverlay = false
+                )
+                if (canEdit) {
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        SlockLucideIcon(
+                            SlockLucideIconName.Pencil,
+                            modifier = Modifier.size(18.dp),
+                            color = "#FFFFFFFF"
+                        )
+                    }
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = member.displayName,
+                        style = SlockType.Body.copy(fontSize = 18.sp, lineHeight = 22.sp)
+                            .withSlockFontWeight(FontWeight.Bold),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    SlockStatusIndicator(
+                        color = statusDisplayState.color,
+                        pulsing = statusDisplayState.pulsing
+                    )
+                }
+                Text(
+                    text = member.detailHandle,
+                    style = SlockType.Caption.copy(fontSize = 14.sp, lineHeight = 18.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = statusLabel,
+                    style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        if (canEdit && showAvatarPicker) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = SlockSpacing.Sm),
+                verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
+            ) {
+                MembersDetailSectionDivider()
+                Text(
+                    text = "CHOOSE AVATAR",
+                    style = SlockType.SectionLabel.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                    color = SlockColor.TextMutedGray
+                )
+                MembersAgentAvatarChoiceGrid(
+                    member = member,
+                    uploading = uploading,
+                    onUploadClick = {
+                        if (!uploading) {
+                            uploading = true
+                            scope.launch {
+                                when (val result = onUploadAvatar()) {
+                                    is DataResult.Content -> uploading = false
+                                    is DataResult.Empty -> {
+                                        uploading = false
+                                        onUnavailableAction("Avatar upload cancelled.")
+                                    }
+                                    is DataResult.Error -> {
+                                        uploading = false
+                                        onUnavailableAction("Avatar upload failed: ${result.error.code}")
+                                    }
+                                    is DataResult.NoPermission -> {
+                                        uploading = false
+                                        onUnavailableAction("No permission: ${result.blocker.code}")
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onClear = onClearAvatar,
+                    onSelect = onSelectAvatar
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun MembersAgentProfileTab(
     member: MemberProfile,
     detail: AgentDetailSnapshot?,
     canManage: Boolean,
+    showAvatarPicker: Boolean,
+    onToggleAvatarPicker: () -> Unit,
+    onSelectAvatar: (String) -> Unit,
+    onClearAvatar: () -> Unit,
+    onUploadAvatar: suspend () -> DataResult<MemberProfile>,
     sharedAgentDetailStore: SharedAgentDetailStore? = null,
     storeState: SharedAgentDetailState? = null,
     agentDetailActions: SharedAgentDetailActions? = null,
@@ -3528,6 +3685,18 @@ private fun MembersAgentProfileTab(
                 MembersDetailField("Deleted at", summary.deletedAt.orDash())
             }
         }
+
+        MembersAgentProfileHeader(
+            member = member,
+            summary = summary,
+            canEdit = canEdit,
+            showAvatarPicker = showAvatarPicker,
+            onToggleAvatarPicker = onToggleAvatarPicker,
+            onSelectAvatar = onSelectAvatar,
+            onClearAvatar = onClearAvatar,
+            onUploadAvatar = onUploadAvatar,
+            onUnavailableAction = onUnavailableAction
+        )
 
         // PROFILE section — light divider style (no box border) per React parity.
         // Each field is its own column with eyebrow label + content, mirroring React's

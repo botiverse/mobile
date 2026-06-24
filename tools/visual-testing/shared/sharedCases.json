@@ -2264,7 +2264,7 @@
         "layoutDp": 1,
         "ignoreAntialiasing": true
       },
-      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentAvatarPicker unified dialog, covering current avatar, generated/default choices, upload action, and active selection states."
+      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states."
     },
     {
       "id": "screens.settings.computers",
@@ -5016,7 +5016,7 @@
       "category": "members",
       "group": "components-members",
       "status": "baseline",
-      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentAvatarPicker unified dialog, covering current avatar, generated/default choices, upload action, and active selection states.",
+      "notes": "Real React AgentDetailPanel avatar picker and KMP MembersAgentProfileTab inline avatar picker, covering generated/default choices, upload action, and active selection states.",
       "providers": [
         {
           "id": "react",
@@ -5037,7 +5037,7 @@
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAvatarManagement",
           "components": [
             "MembersDetailContent",
-            "MembersAgentAvatarPicker",
+            "MembersAgentProfileTab",
             "MembersAvatar"
           ]
         },
