@@ -1523,7 +1523,7 @@ private fun ThreadPageScreen() {
                 ?: return@LaunchedEffect
         if (currentServerId != signal.serverId) return@LaunchedEffect
         if (!signal.matchesThreadRoute(payload)) return@LaunchedEffect
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis)
+        delay(ThreadRealtimeCacheInvalidationDelayMillis)
         threadRealtimeCacheInvalidationSequence += 1
     }
     val threadLocalStore =
@@ -7361,6 +7361,7 @@ private const val ThreadBottomAnchorMinimumAttempts = 2
 private const val ThreadInitialBottomAnchorAttempts = 12
 private const val ThreadInitialBottomAnchorRetryDelayMs = 80L
 private const val ThreadLayoutStabilityFrameDelayMs = 16L
+private const val ThreadRealtimeCacheInvalidationDelayMillis = 64L
 private const val ThreadFirstContentTaskJoinDelayMs = 96L
 private const val ThreadLayoutStabilityMaxFrames = 30
 private const val ThreadLayoutStabilityRequiredFrames = 3
