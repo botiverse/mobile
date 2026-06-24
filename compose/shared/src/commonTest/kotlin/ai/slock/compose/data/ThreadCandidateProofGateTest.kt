@@ -62,11 +62,7 @@ class ThreadCandidateProofGateTest {
     }
 
     @Test
-    fun rejectsReplyCandidateWithMatchingParentPairEvenWhenStreamsDiffer() {
-        // Parent pair match takes precedence over stream comparison. ReplyThread sealed
-        // construction guarantees (parentChannelId, parentMessageId) are non-null; matching
-        // parent pair is sufficient proof even if the stream hint differs (e.g. a cached
-        // stream is stale but the parent pair is correct).
+    fun rejectsReplyCandidateWithMatchingParentPairWhenResolvedStreamsDiffer() {
         val proof =
             ThreadCandidateProofGate.prove(
                 route =
@@ -80,6 +76,33 @@ class ThreadCandidateProofGateTest {
                         parentChannelId = ChannelId("channel-1"),
                         parentMessageId = MessageId("message-1"),
                         threadChannelId = ChannelId("other-thread")
+                    )
+            )
+
+        assertEquals(
+            ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.StreamMismatch),
+            proof
+        )
+    }
+
+    @Test
+    fun acceptsReplyCandidateWithMatchingParentPairWhenRouteStreamIsUnresolved() {
+        // Reply routes may temporarily synthesize stream id from parentChannelId before
+        // create/open resolves the real reply-thread channel. Parent identity is still the
+        // strongest proof in that unresolved state.
+        val proof =
+            ThreadCandidateProofGate.prove(
+                route =
+                    ThreadRouteId.ReplyThread(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        threadChannelId = ChannelId("channel-1")
+                    ),
+                candidate =
+                    ThreadRouteId.ReplyThread(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("message-1"),
+                        threadChannelId = ChannelId("thread-1")
                     )
             )
 

@@ -109,7 +109,14 @@ internal object ThreadCandidateProofGate {
         val candidateParentPair = candidate.parentPair()
         val routeStream = route.streamChannelIdOrNull()
         val candidateStream = candidate.streamChannelIdOrNull()
+        val routeResolvedStream = route.resolvedReplyThreadStreamOrNull()
+        val candidateResolvedStream = candidate.resolvedReplyThreadStreamOrNull()
         return when {
+            routeParentPair != null && routeParentPair == candidateParentPair &&
+                routeResolvedStream != null &&
+                candidateResolvedStream != null &&
+                routeResolvedStream != candidateResolvedStream ->
+                ThreadIdentityProof.Rejected(ThreadIdentityError.ReplyIdentityMismatch.StreamMismatch)
             routeParentPair != null && routeParentPair == candidateParentPair ->
                 ThreadIdentityProof.Accepted(route)
             routeParentPair == null && candidateParentPair == null &&
@@ -161,6 +168,12 @@ private fun ThreadRouteId.parentPair(): Pair<ChannelId, MessageId>? =
 private fun ThreadRouteId.streamChannelIdOrNull(): ChannelId? =
     when (this) {
         is ThreadRouteId.ReplyThread -> threadChannelId
+        else -> null
+    }
+
+private fun ThreadRouteId.resolvedReplyThreadStreamOrNull(): ChannelId? =
+    when (this) {
+        is ThreadRouteId.ReplyThread -> threadChannelId.takeUnless { it == parentChannelId }
         else -> null
     }
 
