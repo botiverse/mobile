@@ -140,6 +140,15 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun longInlineCodeAddsInvisibleSoftBreaksForWrapping() {
+        val longCode = "very-long-inline-code-value-that-should-wrap-normally"
+        val wrapped = longCode.withSlockMarkdownInlineCodeSoftBreaks()
+
+        assertTrue(wrapped.contains('\u200B'))
+        assertEquals(longCode, wrapped.replace("\u200B", ""))
+    }
+
+    @Test
     fun userMentionsRenderAsClickableInlineContent() {
         val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
 

@@ -579,6 +579,10 @@ internal fun slockMarkdownAnnotator(
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
     val inlineCodeChipById = tokenPlan.inlineCodeTokens().associateBy { it.id }
+    val wrappingInlineCodeById =
+        content.threadInlineCodeMatches()
+            .filterNot { it.code.shouldRenderThreadInlineCodeAsChip() }
+            .associateBy { it.id }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
             inlineTagTokens.size,
@@ -595,6 +599,17 @@ internal fun slockMarkdownAnnotator(
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
                     appendInlineContent(codeToken.id, code)
+                    return@markdownAnnotator true
+                }
+                val wrappingCode =
+                    wrappingInlineCodeById["slock-code:${child.startOffset}"]
+                        ?: wrappingInlineCodeById.values.firstOrNull { child.startOffset in it.range }
+                if (wrappingCode != null) {
+                    pushStyle(slockMarkdownInlineCodeWrappingSpanStyle(inlineCodeTextStyle))
+                    append(' ')
+                    append(wrappingCode.code.withSlockMarkdownInlineCodeSoftBreaks())
+                    append(' ')
+                    pop()
                     return@markdownAnnotator true
                 }
             }
@@ -1365,10 +1380,40 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
+private fun slockMarkdownInlineCodeWrappingSpanStyle(textStyle: TextStyle): SpanStyle =
+    textStyle
+        .copy(color = SlockColor.TextBlack, background = SlockColor.BrandYellow.copy(alpha = 0.4f))
+        .toSpanStyle()
+
+internal fun String.withSlockMarkdownInlineCodeSoftBreaks(): String {
+    if (isEmpty()) return this
+    val builder = StringBuilder(length + length / SlockMarkdownInlineCodeSoftBreakEveryUnits)
+    var unitsSinceBreak = 0
+    forEachIndexed { index, char ->
+        builder.append(char)
+        unitsSinceBreak += if (char.code > 0x7F) 2 else 1
+        val isLast = index == lastIndex
+        val isNaturalBreak = char in SlockMarkdownInlineCodeNaturalBreakChars
+        val shouldBreak =
+            !isLast &&
+                (unitsSinceBreak >= SlockMarkdownInlineCodeSoftBreakEveryUnits ||
+                    (isNaturalBreak && unitsSinceBreak >= SlockMarkdownInlineCodeMinNaturalBreakUnits))
+        if (shouldBreak) {
+            builder.append(SlockMarkdownInlineCodeSoftBreak)
+            unitsSinceBreak = 0
+        }
+    }
+    return builder.toString()
+}
+
 internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
     slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
 
 private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
+private const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
+private const val SlockMarkdownInlineCodeSoftBreakEveryUnits = 16
+private const val SlockMarkdownInlineCodeMinNaturalBreakUnits = 4
+private val SlockMarkdownInlineCodeNaturalBreakChars = setOf('.', '/', '-', '_', ':', '=', '?', '&')
 private const val SlockMarkdownInlineChipHorizontalChromeSp = 18f
 private const val SlockMarkdownInlineCodeHorizontalChromeSp = 14f
 private const val SlockMarkdownInlineCodeMinWidthSp = 24f
