@@ -206,6 +206,75 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun startDoesNotRenderOrCacheContentFromRoutePayload() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val routePayload =
+            contentPayload("stale route body").copy(
+                status = "content",
+                members = listOf(KuiklyThreadMemberItem(id = "route-member", displayName = "Route member")),
+                settingsActions = listOf(KuiklyThreadSettingsAction(id = "route-action"))
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        val observedPayloads = mutableListOf<KuiklyThreadScreenPayload>()
+        val observer = scope.launch {
+            store.state.collect { state -> observedPayloads += state.payload }
+        }
+
+        store.accept(SharedThreadIntent.Start(routePayload))
+
+        val payload = store.state.value.payload
+        assertFalse(observedPayloads.any { state -> state.messages.any { it.body == "stale route body" } })
+        assertFalse(observedPayloads.any { state -> state.members.any { it.id == "route-member" } })
+        assertFalse(observedPayloads.any { state -> state.settingsActions.any { it.id == "route-action" } })
+        assertEquals("network body", payload.messages.single().body)
+        api.failChannelMessages = true
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        assertEquals("network body", store.state.value.payload.messages.single().body)
+        observer.cancel()
+        scope.cancel()
+    }
+
+    @Test
+    fun routeContextDoesNotOverrideCanonicalCacheMembershipState() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        dataSource.cachePayload(
+            contentPayload("cached body").copy(
+                joined = false,
+                canSend = false,
+                membersCount = 7
+            )
+        )
+        val routePayload =
+            basePayload().copy(
+                joined = true,
+                canSend = true,
+                membersCount = 99
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(routePayload))
+
+        val payload = store.state.value.payload
+        assertEquals("cached body", payload.messages.single().body)
+        assertEquals(false, payload.joined)
+        assertEquals(false, payload.canSend)
+        assertEquals(7, payload.membersCount)
+        scope.cancel()
+    }
+
+    @Test
     fun successfulFetchWritesPayloadCacheForNextStart() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
@@ -3176,6 +3245,19 @@ class SharedThreadStoreTest {
         assertEquals(
             "realtime body",
             localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
+        )
+        val freshDataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val freshStore = SharedThreadStore(dataSource = freshDataSource, scope = scope)
+        freshStore.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertEquals(
+            listOf("cached body", "realtime body"),
+            freshStore.state.value.payload.messages.map { it.body }
         )
         scope.cancel()
     }
