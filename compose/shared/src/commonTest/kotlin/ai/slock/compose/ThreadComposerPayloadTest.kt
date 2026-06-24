@@ -254,6 +254,28 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun mentionTriggerMatchesReactWhenAtFollowsText() {
+        val chineseTrigger = detectKuiklyComposerSuggestionTrigger("你好@")
+        assertTrue(chineseTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger)
+        assertEquals("", chineseTrigger.query)
+        assertEquals(2, chineseTrigger.triggerStart)
+
+        val latinTrigger = detectKuiklyComposerSuggestionTrigger("hello@cind")
+        assertTrue(latinTrigger is KuiklyComposerSuggestionTrigger.MemberTrigger)
+        assertEquals("cind", latinTrigger.query)
+        assertEquals(5, latinTrigger.triggerStart)
+    }
+
+    @Test
+    fun channelTriggerMatchesReactWhenHashFollowsText() {
+        val trigger = detectKuiklyComposerSuggestionTrigger("发到#product")
+
+        assertTrue(trigger is KuiklyComposerSuggestionTrigger.ChannelTrigger)
+        assertEquals("product", trigger.query)
+        assertEquals(2, trigger.triggerStart)
+    }
+
+    @Test
     fun sendAttachmentIdsExcludeLocalPickedAttachmentsUntilUploadFinishes() {
         val attachments =
             listOf(

@@ -300,7 +300,7 @@ data class SharedThreadComposerChannelSuggestion(
     val subtitle: String? = null
 )
 
-private sealed class KuiklyComposerSuggestionTrigger {
+internal sealed class KuiklyComposerSuggestionTrigger {
     data class MemberTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
     data class ChannelTrigger(val query: String, val triggerStart: Int) : KuiklyComposerSuggestionTrigger()
     object None : KuiklyComposerSuggestionTrigger()
@@ -1718,7 +1718,7 @@ internal fun applyKuiklyComposerSuggestionEdit(
     )
 }
 
-private fun detectKuiklyComposerSuggestionTrigger(
+internal fun detectKuiklyComposerSuggestionTrigger(
     text: String,
     cursor: Int = text.length
 ): KuiklyComposerSuggestionTrigger {
@@ -1734,10 +1734,8 @@ private fun detectKuiklyComposerSuggestionTrigger(
             break
         }
         if (current == '@' || current == '#') {
-            if (i == 0 || beforeCursor[i - 1].isComposerSuggestionBoundary()) {
-                triggerIndex = i
-                triggerChar = current
-            }
+            triggerIndex = i
+            triggerChar = current
             break
         }
     }
@@ -1751,5 +1749,3 @@ private fun detectKuiklyComposerSuggestionTrigger(
         else -> KuiklyComposerSuggestionTrigger.None
     }
 }
-
-private fun Char.isComposerSuggestionBoundary(): Boolean = !isLetterOrDigit()
