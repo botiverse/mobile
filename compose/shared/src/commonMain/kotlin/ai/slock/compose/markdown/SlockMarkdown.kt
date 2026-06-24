@@ -603,16 +603,11 @@ internal fun slockMarkdownAnnotator(
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    val segments = codeToken.toSlockMarkdownInlineCodeChipSegments()
-                    if (segments.isNotEmpty()) {
-                        appendInlineContent(segments.single().id, segments.single().code)
-                    } else {
-                        pushStyle(annotatorSettings.codeSpanStyle)
-                        append(' ')
-                        append(code.slockMarkdownInlineCodeWithSoftBreaks())
-                        append(' ')
-                        pop()
-                    }
+                    pushStyle(annotatorSettings.codeSpanStyle)
+                    append(' ')
+                    append(code.slockMarkdownInlineCodeWithSoftBreaks())
+                    append(' ')
+                    pop()
                     return@markdownAnnotator true
                 }
             }
@@ -956,7 +951,9 @@ private fun SlockMarkdownMeasuredInlineCodeBox(
     measuredInlineCodeWidths: MutableMap<String, TextUnit>,
     content: @Composable (Modifier) -> Unit
 ) {
-    val inlineCodeTokens = tokenPlan.inlineCodeTokens()
+    val inlineCodeTokens =
+        tokenPlan.inlineCodeTokens()
+            .filter { it.toSlockMarkdownInlineCodeChipSegments().isNotEmpty() }
     if (inlineCodeTokens.isEmpty()) {
         content(modifier)
         return
@@ -1384,16 +1381,11 @@ internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
 internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
-    val code = code.orEmpty()
-    if (code.isEmpty()) return listOf(ThreadInlineCodeChipSegment(id, code))
-    if (code.slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxUnits) {
-        return listOf(ThreadInlineCodeChipSegment(id, code))
-    }
     return emptyList()
 }
 
 internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
-    if (isEmpty() || slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxUnits) return this
+    if (isEmpty()) return this
     val pieces = mutableListOf<String>()
     val current = StringBuilder()
     var unitsSinceBreak = 0
@@ -1419,7 +1411,6 @@ internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
 }
 
 internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
-private const val SlockMarkdownInlineCodeChipMaxUnits = 28
 private const val SlockMarkdownInlineCodeSoftBreakEveryUnits = 16
 private const val SlockMarkdownInlineCodeMinNaturalBreakUnits = 4
 private val SlockMarkdownInlineCodeNaturalBreakChars = setOf('.', '/', '-', '_', ':', '=', '?', '&')
