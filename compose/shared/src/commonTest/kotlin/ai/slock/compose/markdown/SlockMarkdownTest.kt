@@ -126,7 +126,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun longInlineCodeUsesWrappingMarkdownSpanInsteadOfInlineChip() {
+    fun onlyShortInlineCodeUsesSingleLineInlineChip() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
 
