@@ -471,6 +471,7 @@ private val membersAgentDetailVisualSnapshot = AgentDetailSnapshot(
         id = membersAgentDetailVisualMember.id.value,
         name = "Product-UX-Designer",
         displayName = membersAgentDetailVisualMember.displayName,
+        createdAt = "2026-06-01T09:15:00Z",
         status = "working",
         runtime = "codex",
         model = "gpt-5-codex",
@@ -2254,6 +2255,7 @@ private fun MembersDetailContent(
                                         agentDetailActions = agentDetailActions,
                                         onUpdateAgentProfile = onUpdateAgentProfile,
                                         onUnavailableAction = onUnavailableAction,
+                                        timeContext = timeContext,
                                         modifier = Modifier.padding(horizontal = MembersPageInset)
                                     )
                                 MembersAgentDetailTab.Permissions ->
@@ -3255,6 +3257,7 @@ private fun MembersAgentProfileTab(
     agentDetailActions: SharedAgentDetailActions? = null,
     onUpdateAgentProfile: (suspend (AgentProfileUpdateRequest) -> DataResult<MemberProfile>)?,
     onUnavailableAction: (String) -> Unit,
+    timeContext: SlockTimeContext,
     modifier: Modifier = Modifier
 ) {
     val summary = detail?.summary
@@ -3739,10 +3742,7 @@ private fun MembersAgentProfileTab(
             }
         }
 
-        // INFO section — mirrors React L1170-1238. Shows Computer (machine name + status
-        // dot + Connected/Offline + daemon v?), Creator (button + avatar + name + @handle,
-        // clickable). Created row is omitted because AgentDetailSummary doesn't carry a
-        // createdAt field (React Agent type does); tracked as follow-up.
+        // INFO section — mirrors React AgentDetailPanel's Computer / Created / Creator rows.
         Column(
             modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
             verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
@@ -3781,6 +3781,27 @@ private fun MembersAgentProfileTab(
                         text = " · daemon v${summary.daemonVersion}",
                         style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 14.sp),
                         color = SlockColor.TextMutedGray
+                    )
+                }
+            }
+            summary?.createdAt?.membersAgentCreatedDate(timeContext)?.takeIf { it.isNotBlank() }?.let { createdDate ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Created",
+                        style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
+                        color = SlockColor.TextMutedGray,
+                        modifier = Modifier.width(86.dp)
+                    )
+                    Text(
+                        text = createdDate,
+                        style = SlockType.Body.copy(fontSize = 13.sp, lineHeight = 18.sp),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
@@ -5854,6 +5875,17 @@ private fun String?.membersReminderShortDateTime(timeContext: SlockTimeContext):
     val hour = (millisOfDay / MembersReminderMillisPerHour).toInt()
     val minute = ((millisOfDay % MembersReminderMillisPerHour) / MembersReminderMillisPerMinute).toInt()
     return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${membersReminderClock(hour, minute, timeContext.timeFormat)}"
+}
+
+private fun String.membersAgentCreatedDate(timeContext: SlockTimeContext): String {
+    val trimmed = trim()
+    if (trimmed.isEmpty()) return ""
+    val epochMillis =
+        parseSlockTimestampEpochMillisOrNull(trimmed, timeContext.localOffsetMinutes) ?: return trimmed
+    val localMillis = epochMillis + timeContext.localOffsetMinutes.toLong() * MembersReminderMillisPerMinute
+    val epochDay = membersReminderFloorDiv(localMillis, MembersReminderMillisPerDay)
+    val date = membersReminderCivilDateFromEpochDay(epochDay)
+    return "${MembersReminderMonthNames[date.month - 1]} ${date.day}, ${date.year}"
 }
 
 private fun membersReminderClock(hour: Int, minute: Int, timeFormat: String): String {

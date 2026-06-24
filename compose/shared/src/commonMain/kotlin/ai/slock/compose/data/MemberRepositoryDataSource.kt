@@ -876,6 +876,7 @@ private fun AgentSummary.toAgentDetailSummary(): AgentDetailSummary =
         creatorId = creatorId,
         creatorType = creatorType,
         creator = creator,
+        createdAt = createdAt,
         envVarNames = envVarNames,
         envVars = envVars,
         createdAgents = createdAgents,
