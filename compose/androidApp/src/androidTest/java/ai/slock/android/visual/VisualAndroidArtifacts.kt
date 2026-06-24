@@ -89,15 +89,8 @@ internal object VisualAndroidArtifacts {
         resolver: android.content.ContentResolver,
         displayName: String
     ) {
-        val selection =
-            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND " +
-                "${MediaStore.Downloads.RELATIVE_PATH} IN (?, ?)"
-        val selectionArgs =
-            arrayOf(
-                displayName,
-                "Download/slock-visual-testing/android",
-                "Download/slock-visual-testing/android/"
-            )
+        val selection = "${MediaStore.Downloads.DISPLAY_NAME} = ?"
+        val selectionArgs = arrayOf(displayName)
         deleteMatchingMediaStoreDownloads(resolver, selection, selectionArgs)
     }
 
@@ -106,15 +99,8 @@ internal object VisualAndroidArtifacts {
             return
         }
         val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
-        val selection =
-            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND " +
-                "${MediaStore.Downloads.RELATIVE_PATH} IN (?, ?)"
-        val selectionArgs =
-            arrayOf(
-                "$caseId%",
-                "Download/slock-visual-testing/android",
-                "Download/slock-visual-testing/android/"
-            )
+        val selection = "${MediaStore.Downloads.DISPLAY_NAME} LIKE ?"
+        val selectionArgs = arrayOf("$caseId%")
         deleteMatchingMediaStoreDownloads(resolver, selection, selectionArgs)
     }
 
