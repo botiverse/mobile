@@ -8158,7 +8158,8 @@ internal fun threadMessageRepliesMetaLabel(message: KuiklyThreadMessageItem): St
     }
 
 internal fun KuiklyThreadScreenPayload.threadBeginningReplyCountLabel(): String? {
-    val replyCount = originMessage?.replyCount ?: return null
+    val originReplyCount = originMessage?.replyCount ?: return null
+    val replyCount = maxOf(originReplyCount, messages.size)
     return buildString {
         append(replyCount.coerceAtLeast(0))
         append(if (replyCount == 1) " reply" else " replies")

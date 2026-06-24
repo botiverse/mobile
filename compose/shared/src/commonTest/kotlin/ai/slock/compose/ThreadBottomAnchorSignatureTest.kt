@@ -404,7 +404,7 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
-    fun beginningReplyCountLabel_usesOriginMessageReplyCountOnly() {
+    fun beginningReplyCountLabel_usesLiveReplyListWhenItExceedsOriginCount() {
         assertEquals(
             "3 replies",
             payload(originMessage = message("origin", replyCount = 3))
@@ -414,6 +414,13 @@ class ThreadBottomAnchorSignatureTest {
             "1 reply",
             payload(originMessage = message("origin", replyCount = 1))
                 .threadBeginningReplyCountLabel()
+        )
+        assertEquals(
+            "2 replies",
+            payload(
+                originMessage = message("origin", replyCount = 0),
+                messages = listOf(message("reply-1"), message("reply-2"))
+            ).threadBeginningReplyCountLabel()
         )
         assertEquals(
             null,
