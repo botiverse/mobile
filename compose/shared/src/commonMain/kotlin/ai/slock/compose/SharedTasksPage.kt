@@ -1064,6 +1064,7 @@ private fun SharedTaskCard(
                     iconName = null,
                     color = task.status.color,
                     onClick = if (updating) null else onStatusBadgeClick,
+                    modifier = Modifier.widthIn(min = SharedTaskCardStatusChipMinWidth),
                     borderWidth = SlockStroke.Default,
                     anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
@@ -1233,6 +1234,8 @@ private val TaskStatus.color: com.tencent.kuikly.compose.ui.graphics.Color
             TaskStatus.Done -> SlockColor.AccentLime
             TaskStatus.Closed -> SlockColor.EmptyStateGray
         }
+
+private val SharedTaskCardStatusChipMinWidth = 78.dp
 
 private val TaskStatus.iconName: SlockLucideIconName
     get() =
