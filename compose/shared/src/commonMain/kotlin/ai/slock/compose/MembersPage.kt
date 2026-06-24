@@ -3713,27 +3713,21 @@ private fun MembersAgentProfileTab(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Display Name",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.weight(1f)
-                )
-                if (canEdit && !editingDisplayName) {
-                    MembersProfilePencilButton(
-                        onClick = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
-                                )
-                            } else {
-                                localDraftDisplayName = member.displayName
-                                localDisplayNameError = null
-                                localEditingDisplayName = true
-                            }
+                MembersEditableSectionTitleRow(
+                    title = "DISPLAY NAME",
+                    showEdit = canEdit && !editingDisplayName,
+                    onEditClick = {
+                        if (storeBackedProfileEdit) {
+                            profileStore.dispatch(
+                                SharedAgentDetailIntent.BeginEditDisplayName(member.displayName)
+                            )
+                        } else {
+                            localDraftDisplayName = member.displayName
+                            localDisplayNameError = null
+                            localEditingDisplayName = true
                         }
-                    )
-                }
+                    }
+                )
             }
             if (editingDisplayName) {
                 Column(
@@ -3804,27 +3798,21 @@ private fun MembersAgentProfileTab(
                 modifier = Modifier.fillMaxWidth().padding(top = SlockSpacing.Sm),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Description",
-                    style = SlockType.Caption.copy(fontSize = 11.sp, lineHeight = 16.sp),
-                    color = SlockColor.TextMutedGray,
-                    modifier = Modifier.weight(1f)
-                )
-                if (canEdit && !editingRole) {
-                    MembersProfilePencilButton(
-                        onClick = {
-                            if (storeBackedProfileEdit) {
-                                profileStore.dispatch(
-                                    SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
-                                )
-                            } else {
-                                localDraftRole = member.description.orEmpty()
-                                localRoleError = null
-                                localEditingRole = true
-                            }
+                MembersEditableSectionTitleRow(
+                    title = "DESCRIPTION",
+                    showEdit = canEdit && !editingRole,
+                    onEditClick = {
+                        if (storeBackedProfileEdit) {
+                            profileStore.dispatch(
+                                SharedAgentDetailIntent.BeginEditRole(member.description.orEmpty())
+                            )
+                        } else {
+                            localDraftRole = member.description.orEmpty()
+                            localRoleError = null
+                            localEditingRole = true
                         }
-                    )
-                }
+                    }
+                )
             }
             if (editingRole) {
                 Column(
@@ -4042,15 +4030,14 @@ private fun MembersAgentProfileTab(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
             ) {
-                MembersDetailSectionTitle("RUNTIME CONFIG", modifier = Modifier.weight(1f))
-                if (canEdit && !editingRuntimeConfig) {
-                    MembersProfilePencilButton(
-                        onClick = {
-                            runtimeConfigError = null
-                            editingRuntimeConfig = true
-                        }
-                    )
-                }
+                MembersEditableSectionTitleRow(
+                    title = "RUNTIME CONFIG",
+                    showEdit = canEdit && !editingRuntimeConfig,
+                    onEditClick = {
+                        runtimeConfigError = null
+                        editingRuntimeConfig = true
+                    }
+                )
             }
             MembersAgentRuntimeConfigRows(summary = summary, member = member)
             MembersAgentRuntimeEnvVars(summary)
@@ -5533,7 +5520,7 @@ private fun MembersProfilePencilButton(
 ) {
     Box(
         modifier = modifier
-            .size(24.dp)
+            .size(18.dp)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -5542,6 +5529,26 @@ private fun MembersProfilePencilButton(
             modifier = Modifier.size(14.dp),
             color = SlockColor.TextMutedGrayArgb
         )
+    }
+}
+
+@Composable
+private fun MembersEditableSectionTitleRow(
+    title: String,
+    showEdit: Boolean,
+    onEditClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(SlockSpacing.Xs)
+    ) {
+        MembersDetailSectionTitle(title)
+        if (showEdit) {
+            MembersProfilePencilButton(onClick = onEditClick)
+        }
+        Spacer(Modifier.weight(1f))
     }
 }
 
