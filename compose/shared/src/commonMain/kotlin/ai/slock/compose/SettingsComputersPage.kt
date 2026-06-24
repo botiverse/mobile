@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.base.Utils
 import ai.slock.compose.components.SlockBrutalActionButton
+import ai.slock.compose.components.SlockBrutalCard
 import ai.slock.compose.components.SlockBrutalIconButton
 import ai.slock.compose.components.SlockBrutalTextField
 import ai.slock.compose.data.ScreenLoadState
@@ -333,7 +334,20 @@ internal fun SettingsComputersContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         if (payload.canAddComputer) {
-            item { SettingsPrimaryButton("Add computer") { onEvent("addComputer", null) } }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Plus,
+                        onClick = { onEvent("addComputer", null) },
+                        size = 36.dp,
+                        shadowOffset = 3.dp
+                    )
+                }
+            }
         }
         payload.latestDaemonVersion?.takeIf { it.isNotBlank() }?.let { version ->
             item { SettingsInfoStrip("Latest daemon", version) }
@@ -784,34 +798,38 @@ private fun SettingsComputerCard(item: KuiklySettingsComputerItem, onClick: (() 
     // `cf01a0a4`) and `MachineDetailPanel.tsx` Info / Detected Runtimes
     // sections. This matches the user's "align to React" + "do not fabricate
     // server-side fields" guard rails.
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .background(SlockColor.SurfaceWhite)
-            .border(SlockStroke.Default, SlockColor.BorderBlack)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    SlockBrutalCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+        shadowOffset = 4.dp,
+        contentPadding = 14.dp,
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        IconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                OnlineDot(item.online)
-            }
-            val daemonVersion = item.daemonVersion.takeIf { it.isNotBlank() }
-            Text(
-                text = if (daemonVersion != null) "daemon v$daemonVersion" else "daemon offline",
-                style = SlockType.Input.copy(
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            IconBox(SlockLucideIconName.Monitor, SlockColor.BrandYellow)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(item.name, style = SlockType.Body.copy(color = SlockColor.TextBlack), color = SlockColor.TextBlack, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                    OnlineDot(item.online)
+                }
+                val daemonVersion = item.daemonVersion.takeIf { it.isNotBlank() }
+                Text(
+                    text = if (daemonVersion != null) "daemon v$daemonVersion" else "daemon offline",
+                    style = SlockType.Input.copy(
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp,
+                        color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
+                        fontStyle = if (daemonVersion != null) null else FontStyle.Italic
+                    ),
                     color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
-                    fontStyle = if (daemonVersion != null) null else FontStyle.Italic
-                ),
-                color = if (daemonVersion != null) SlockColor.TextMutedGray else SlockColor.EmptyStateGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
