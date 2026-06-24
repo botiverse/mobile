@@ -57,8 +57,10 @@ import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.foundation.layout.width
 import com.tencent.kuikly.compose.foundation.layout.widthIn
 import com.tencent.kuikly.compose.foundation.lazy.LazyColumn
+import com.tencent.kuikly.compose.foundation.lazy.LazyListState
 import com.tencent.kuikly.compose.foundation.lazy.LazyRow
 import com.tencent.kuikly.compose.foundation.lazy.items
+import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.material3.Text
 import com.tencent.kuikly.compose.ui.Alignment
@@ -397,6 +399,8 @@ private fun SharedTasksLoadedBodyContent(
     // a state change in the trigger composable.
     var statusMenuTask by remember { mutableStateOf<TaskSummary?>(null) }
     var statusMenuAnchor by remember { mutableStateOf(Offset.Zero) }
+    val listModeListState = rememberLazyListState()
+    var listModeListRoot by remember { mutableStateOf(Offset.Zero) }
 
     // Filter popover anchors. Captured via onGloballyPositioned on the chip
     // so the popover floats just below it.
@@ -540,8 +544,13 @@ private fun SharedTasksLoadedBodyContent(
                                 iconName = SlockLucideIconName.SquareCheckBig
                             )
                         } else {
+                            var nextListItemIndex = 0
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
+                                state = listModeListState,
+                                modifier =
+                                    Modifier
+                                        .fillMaxSize()
+                                        .onGloballyPositioned { listModeListRoot = it.positionInRoot() },
                                 contentPadding =
                                     PaddingValues(
                                         start = SlockSpacing.Md,
@@ -553,6 +562,7 @@ private fun SharedTasksLoadedBodyContent(
                                 beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(visibleContent.filteredTasks.size)
                             ) {
                                 listColumns.forEach { column ->
+                                    nextListItemIndex += 1
                                     item(key = "list-header-${column.status.name}") {
                                         BoardSectionHeader(
                                             status = column.status,
@@ -567,22 +577,32 @@ private fun SharedTasksLoadedBodyContent(
                                         )
                                     }
                                     if (column.status !in collapsedStatuses) {
+                                        val firstTaskListItemIndex = nextListItemIndex
+                                        nextListItemIndex += column.tasks.size
                                         items(
                                             column.tasks.size,
                                             key = { index -> "list-card-${column.status.name}-${column.tasks[index].id.value}" }
                                         ) { index ->
                                             val task = column.tasks[index]
+                                            val taskListItemIndex = firstTaskListItemIndex + index
+                                            val taskMenuAnchor: (Offset) -> Offset = { anchor ->
+                                                listModeListState.sharedTasksVisibleLazyItemBottomAnchor(
+                                                    rawAnchor = anchor,
+                                                    lazyListRoot = listModeListRoot,
+                                                    itemIndex = taskListItemIndex
+                                                )
+                                            }
                                             SharedTaskCard(
                                                 task = task,
                                                 updating = state.statusUpdatingTaskId == task.id.value,
                                                 onClick = { onOpenTask?.invoke(task) },
                                                 onStatusBadgeClick = { anchor ->
                                                     statusMenuTask = task
-                                                    statusMenuAnchor = anchor
+                                                    statusMenuAnchor = taskMenuAnchor(anchor)
                                                 },
                                                 onLongPress = { anchor ->
                                                     statusMenuTask = task
-                                                    statusMenuAnchor = anchor
+                                                    statusMenuAnchor = taskMenuAnchor(anchor)
                                                 }
                                             )
                                         }
@@ -701,6 +721,44 @@ internal fun sharedTasksBeyondBoundsItemCount(itemCount: Int): Int =
         minimumValue = TasksListDefaultBeyondBoundsItemCount,
         maximumValue = TasksListMaxBeyondBoundsItemCount
     )
+
+internal data class SharedTasksLazyItemAnchorInfo(
+    val index: Int,
+    val offset: Int,
+    val size: Int
+)
+
+private fun LazyListState.sharedTasksVisibleLazyItemBottomAnchor(
+    rawAnchor: Offset,
+    lazyListRoot: Offset,
+    itemIndex: Int
+): Offset =
+    sharedTasksVisibleLazyItemBottomAnchor(
+        rawAnchor = rawAnchor,
+        lazyListRoot = lazyListRoot,
+        itemIndex = itemIndex,
+        visibleItems =
+            layoutInfo.visibleItemsInfo.map { item ->
+                SharedTasksLazyItemAnchorInfo(
+                    index = item.index,
+                    offset = item.offset,
+                    size = item.size
+                )
+            }
+    )
+
+internal fun sharedTasksVisibleLazyItemBottomAnchor(
+    rawAnchor: Offset,
+    lazyListRoot: Offset,
+    itemIndex: Int,
+    visibleItems: List<SharedTasksLazyItemAnchorInfo>
+): Offset {
+    val visibleItem = visibleItems.firstOrNull { it.index == itemIndex } ?: return rawAnchor
+    return Offset(
+        x = rawAnchor.x,
+        y = lazyListRoot.y + visibleItem.offset + visibleItem.size
+    )
+}
 
 private fun defaultTasksViewMode(maxWidth: Dp): TasksViewMode =
     if (maxWidth < 768.dp) TasksViewMode.List else TasksViewMode.Board
@@ -880,6 +938,8 @@ private fun SharedTasksBoardColumn(
     onLongPressTask: (TaskSummary, Offset) -> Unit,
     bottomContentPadding: Dp
 ) {
+    val columnListState = rememberLazyListState()
+    var columnListRoot by remember { mutableStateOf(Offset.Zero) }
     // fillMaxHeight pins each board column to the LazyRow's height, giving the inner
     // LazyColumn a bounded constraint to scroll within. Without this, the inner list
     // tries to take infinite height and silently drops scrollability.
@@ -910,19 +970,30 @@ private fun SharedTasksBoardColumn(
                 // Nested LazyColumn inside the outer LazyRow lets each column scroll its
                 // own cards independently — mirrors the React board's per-column overflow.
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
+                    state = columnListState,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .onGloballyPositioned { columnListRoot = it.positionInRoot() },
                     contentPadding = PaddingValues(bottom = bottomContentPadding),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                     beyondBoundsItemCount = sharedTasksBeyondBoundsItemCount(tasks.size)
                 ) {
                     items(tasks.size, key = { i -> "board-task-${tasks[i].id.value}" }) { index ->
                         val task = tasks[index]
+                        val taskMenuAnchor: (Offset) -> Offset = { anchor ->
+                            columnListState.sharedTasksVisibleLazyItemBottomAnchor(
+                                rawAnchor = anchor,
+                                lazyListRoot = columnListRoot,
+                                itemIndex = index
+                            )
+                        }
                         SharedTaskCard(
                             task = task,
                             updating = updatingTaskId == task.id.value,
                             onClick = { onOpenTask?.invoke(task) },
-                            onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, anchor) },
-                            onLongPress = { anchor -> onLongPressTask(task, anchor) }
+                            onStatusBadgeClick = { anchor -> onStatusBadgeClick(task, taskMenuAnchor(anchor)) },
+                            onLongPress = { anchor -> onLongPressTask(task, taskMenuAnchor(anchor)) }
                         )
                     }
                 }
