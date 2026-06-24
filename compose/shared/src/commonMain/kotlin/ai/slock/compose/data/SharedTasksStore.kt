@@ -87,6 +87,7 @@ sealed interface SharedTasksIntent {
     data class SetResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class MergeRefreshResult(val result: DataResult<TaskSnapshot>, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class SetContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
+    data class SeedContent(val snapshot: TaskSnapshot, val selectedFilter: TaskStatus? = null) : SharedTasksIntent
     data class StartLoading(val filter: TaskStatus? = null) : SharedTasksIntent
     data class RefreshFailed(val errorCode: String) : SharedTasksIntent
     data class UpdateTaskStatus(val taskId: String, val nextStatus: TaskStatus) : SharedTasksIntent
@@ -198,9 +199,10 @@ internal class SharedTasksViewModel(
             SharedTasksRouteIntent.ClearNavigationError ->
                 store.dispatch(SharedTasksIntent.NavigationFailed(null))
             is SharedTasksRouteIntent.SeedContent -> {
-                store.dispatch(SharedTasksIntent.SetContent(action.snapshot, state.value.selectedFilter))
-                viewModelScope.launch {
-                    publishSharedTasksSnapshot(TaskFilter(), action.snapshot, "seed")
+                if (store.accept(SharedTasksIntent.SeedContent(action.snapshot, state.value.selectedFilter))) {
+                    viewModelScope.launch {
+                        publishSharedTasksSnapshot(TaskFilter(), action.snapshot, "seed")
+                    }
                 }
             }
         }
@@ -499,6 +501,16 @@ fun TasksUiState.reduce(intent: SharedTasksIntent): TasksUiState =
                 selectedFilter = intent.selectedFilter,
                 refreshing = false
             )
+        is SharedTasksIntent.SeedContent ->
+            if (hasCompletedTasksSnapshot()) {
+                this
+            } else {
+                TasksUiState(
+                    loadState = ScreenLoadState.Content(intent.snapshot.toTasksContent()),
+                    selectedFilter = intent.selectedFilter,
+                    refreshing = false
+                )
+            }
         is SharedTasksIntent.StartLoading -> withLoading(intent.filter ?: selectedFilter)
         is SharedTasksIntent.RefreshFailed -> withRefreshFailure(intent.errorCode)
         is SharedTasksIntent.UpdateTaskStatus -> withTaskStatusUpdating(intent.taskId, intent.nextStatus)

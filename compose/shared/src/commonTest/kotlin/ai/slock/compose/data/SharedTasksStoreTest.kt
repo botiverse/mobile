@@ -454,6 +454,44 @@ class SharedTasksStoreTest {
     }
 
     @Test
+    fun seedContentFillsLoadingStateButDoesNotReplaceCompletedSnapshot() {
+        val assigned = member("KMP-专家")
+        val canonicalTask = task("task-1", TaskStatus.InProgress, assignee = assigned)
+        val staleThreadPayloadTask = task("task-1", TaskStatus.Todo, assignee = null)
+        val seedSnapshot =
+            TaskSnapshot(
+                tasks = listOf(staleThreadPayloadTask),
+                summaryCounts = mapOf(TaskStatus.Todo to 1)
+            )
+        val loading = TasksUiState(ScreenLoadState.Loading)
+
+        val seeded = loading.reduce(SharedTasksIntent.SeedContent(seedSnapshot, selectedFilter = TaskStatus.Todo))
+        val seededContent = assertIs<ScreenLoadState.Content<TasksContent>>(seeded.loadState).data
+        assertEquals(TaskStatus.Todo, seeded.selectedFilter)
+        assertEquals(listOf(staleThreadPayloadTask), seededContent.tasks)
+
+        val canonical =
+            TasksUiState(
+                loadState =
+                    ScreenLoadState.Content(
+                        TasksContent(
+                            summaryCounts = mapOf(TaskStatus.InProgress to 1),
+                            tasks = listOf(canonicalTask)
+                        )
+                    ),
+                selectedFilter = TaskStatus.InProgress,
+                refreshing = true
+            )
+
+        val preserved = canonical.reduce(SharedTasksIntent.SeedContent(seedSnapshot, selectedFilter = TaskStatus.Todo))
+        val preservedContent = assertIs<ScreenLoadState.Content<TasksContent>>(preserved.loadState).data
+        assertEquals(TaskStatus.InProgress, preserved.selectedFilter)
+        assertEquals(true, preserved.refreshing)
+        assertEquals(listOf(canonicalTask), preservedContent.tasks)
+        assertEquals(assigned, preservedContent.tasks.single().assignee)
+    }
+
+    @Test
     fun presentationReducerPrunesChannelsAndFiltersVisibleTasks() {
         val content =
             TasksContent(
