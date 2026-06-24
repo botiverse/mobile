@@ -1925,7 +1925,7 @@ private fun MembersDetailContent(
         mutableStateOf<MembersAgentLifecycleAction?>(null)
     }
     var restartResetDialogOpen by remember(member.id.value, initialVisualMode) {
-        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
+        mutableStateOf(false)
     }
     var restartResetSelection by remember(member.id.value) {
         mutableStateOf(MembersAgentLifecycleAction.Restart)
@@ -1933,7 +1933,9 @@ private fun MembersDetailContent(
     var selectedTab by remember(member.id.value, initialAgentTab) {
         mutableStateOf(initialAgentTab ?: MembersAgentDetailTab.Profile)
     }
-    var managementMenuOpen by remember(member.id.value) { mutableStateOf(false) }
+    var managementMenuOpen by remember(member.id.value, initialVisualMode) {
+        mutableStateOf(initialVisualMode == MembersAgentDetailVisualMode.LifecycleActions)
+    }
     val storeLifecycleInFlight: String? = storeState.lifecycleActionInFlight
     val storeDiagnosticInFlight: String? = storeState.diagnosticActionInFlight
     val lifecycleInFlight: String? = if (sharedAgentDetailStore != null) {

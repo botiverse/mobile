@@ -5018,7 +5018,7 @@
       "category": "members",
       "group": "components-members",
       "status": "baseline",
-      "notes": "Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent lifecycle confirmation modal. The KMP fixture opens the restart confirmation with the same action in-flight so pending/disabled button states are visible.",
+      "notes": "Real React AgentDetailPanel mobile action menu and KMP MembersDetailContent management dropdown. The Android fixture opens the same lifecycle action menu state so Stop Agent and Restart / Reset are visible.",
       "providers": [
         {
           "id": "react",
@@ -5039,8 +5039,8 @@
           "fixture": "KmpVisualScreenshotCaptureTest.captureMembersAgentLifecycleActions",
           "components": [
             "MembersDetailContent",
-            "MembersLifecycleConfirmation",
-            "SlockBrutalModalLayer"
+            "MembersDetailHeader",
+            "SlockBrutalDropdownMenu"
           ]
         },
         {
