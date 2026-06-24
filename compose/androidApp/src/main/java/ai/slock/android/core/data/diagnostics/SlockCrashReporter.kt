@@ -13,8 +13,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object SlockCrashReporter {
     private const val Tag = "SlockCrashReporter"
     private const val CrashLogMaxChars = 180_000
-    private const val RecentDiagnosticsMaxEntries = 500
-    private const val RecentDiagnosticsMaxChars = 80_000
     private val installed = AtomicBoolean(false)
 
     fun install(context: Context) {
@@ -70,12 +68,9 @@ object SlockCrashReporter {
             appendLine("Stack trace:")
             appendLine(Log.getStackTraceString(throwable))
 
-            val diagnostics = recentDiagnosticsText()
-            if (diagnostics.isNotBlank()) {
-                appendLine()
-                appendLine("Recent diagnostics:")
-                appendLine(diagnostics)
-            }
+            appendLine()
+            appendLine("Recent diagnostics:")
+            appendLine("Bugly TDLog records app diagnostics when Bugly Diagnose is initialized.")
         }
 
     private fun buildFallbackCrashLog(
@@ -96,19 +91,6 @@ object SlockCrashReporter {
             appendLine("Crash log build error:")
             appendLine(Log.getStackTraceString(buildError))
         }
-
-    private fun recentDiagnosticsText(): String {
-        val entries = SanitizedDiagnosticsLogBuffer.recent().takeLast(RecentDiagnosticsMaxEntries)
-        val text =
-            entries.joinToString(separator = "\n") { entry ->
-                "${entry.timestampMillis} ${entry.tag}: ${entry.message}"
-            }
-        return if (text.length > RecentDiagnosticsMaxChars) {
-            text.takeLast(RecentDiagnosticsMaxChars)
-        } else {
-            text
-        }
-    }
 
     private fun writeCrashLog(context: Context, crashLog: String) {
         val crashDir = context.getExternalFilesDir(null)?.resolve("crashes") ?: return

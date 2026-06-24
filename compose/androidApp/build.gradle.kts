@@ -165,6 +165,8 @@ dependencies {
     implementation(libs.bugly.pro) {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-android-extensions-runtime")
     }
+    implementation(libs.bugly.diagnose.logger)
+    implementation(libs.bugly.diagnose)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

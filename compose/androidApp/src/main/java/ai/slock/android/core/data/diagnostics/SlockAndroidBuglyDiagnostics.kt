@@ -10,7 +10,17 @@ import com.tencent.bugly.library.BuglyCustomLog
 import com.tencent.bugly.library.BuglyConstants
 import com.tencent.bugly.library.BuglyLogLevel
 import com.tencent.bugly.launch.AppLaunchProxy
+import com.tencent.tddiag.TDDiag
+import com.tencent.tddiag.TDDiagConfig
+import com.tencent.tddiag.UploadParam
+import com.tencent.tddiag.logger.TDLog
+import com.tencent.tddiag.logger.TDLogConfig
+import com.tencent.tddiag.protocol.LogLevel
+import com.tencent.tddiag.protocol.UploadListener
 import java.io.File
+import java.nio.charset.StandardCharsets
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import org.json.JSONObject
 
@@ -22,8 +32,17 @@ object SlockAndroidBuglyDiagnostics {
     private const val LooperMetricMonitor = "looper_metric"
     private const val LooperStackMonitor = "looper_stack"
     private const val MaxBuglyValueLength = 512
+    private const val TdLogDirName = "bugly_tdlog"
+    private const val FeedbackDirName = "slock-feedback"
+    private const val FeedbackFilePrefix = "slock-feedback-"
+    private const val FeedbackZipExtension = ".zip"
+    private const val FeedbackSnapshotName = "slock-diagnostics-summary.txt"
+    private const val TdLogMaxFileSize = 50L * 1024L * 1024L
+    private const val TdLogMaxAliveDay = 7
+    private const val DiagnoseUploadTimeWindowMillis = 7L * 24L * 60L * 60L * 1000L
 
     private val initialized = AtomicBoolean(false)
+    private val diagnoseInitialized = AtomicBoolean(false)
     private val initAttempted = AtomicBoolean(false)
     private val fullLaunchReported = AtomicBoolean(false)
 
@@ -70,9 +89,10 @@ object SlockAndroidBuglyDiagnostics {
                 Bugly.setPerformanceMonitorAble(LooperMetricMonitor, true)
                 Bugly.setPerformanceMonitorAble(LooperStackMonitor, true)
                 Bugly.updateDeviceModel(appContext, deviceModel)
+                initializeDiagnose(appContext, appId, appKey)
                 SlockDiagnosticsLogger.d(
                     Tag,
-                    "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG}"
+                    "initialized appVersion=${BuildConfig.VERSION_NAME} debug=${BuildConfig.DEBUG} diagnose=${diagnoseInitialized.get()}"
                 )
             } else {
                 SlockDiagnosticsLogger.w(Tag, "init_returned_false")
@@ -84,10 +104,24 @@ object SlockAndroidBuglyDiagnostics {
 
     fun isInitialized(): Boolean = initialized.get()
 
+    fun isDiagnoseInitialized(): Boolean = diagnoseInitialized.get()
+
     fun recordLog(level: String, tag: String, message: String) {
-        if (!initialized.get()) return
         val cleanTag = tag.buglyValueOrNull() ?: return
         val cleanMessage = SanitizedDiagnosticsLogBuffer.sanitize(message).buglyValueOrNull() ?: return
+        if (diagnoseInitialized.get()) {
+            runCatching {
+                when (level.lowercase()) {
+                    "verbose" -> TDLog.v(cleanTag, cleanMessage)
+                    "debug" -> TDLog.d(cleanTag, cleanMessage)
+                    "info" -> TDLog.i(cleanTag, cleanMessage)
+                    "warn" -> TDLog.w(cleanTag, cleanMessage)
+                    "error" -> TDLog.e(cleanTag, cleanMessage)
+                    else -> TDLog.i(cleanTag, cleanMessage)
+                }
+            }
+        }
+        if (!initialized.get()) return
         runCatching {
             when (level.lowercase()) {
                 "verbose" -> BuglyCustomLog.v(cleanTag, cleanMessage)
@@ -98,6 +132,107 @@ object SlockAndroidBuglyDiagnostics {
                 else -> BuglyCustomLog.i(cleanTag, cleanMessage)
             }
         }
+    }
+
+    fun prepareDiagnosticsFeedbackArchive(context: Context, summaryText: String): File {
+        val appContext = context.applicationContext
+        flushDiagnoseLogs()
+        val feedbackDir = feedbackDir(appContext).apply { mkdirs() }
+        pruneFeedbackArchives(feedbackDir)
+        val archive = File(feedbackDir, "$FeedbackFilePrefix${System.currentTimeMillis()}$FeedbackZipExtension")
+        ZipOutputStream(archive.outputStream().buffered()).use { zip ->
+            zip.putNextEntry(ZipEntry(FeedbackSnapshotName))
+            zip.write(summaryText.toByteArray(StandardCharsets.UTF_8))
+            zip.closeEntry()
+
+            val files = diagnoseLogFiles(appContext)
+            val seenNames = mutableSetOf<String>()
+            files.forEach { file ->
+                if (file.isFile && file.length() > 0L) {
+                    val entryName = "bugly_tdlog/${file.name}".uniqueZipEntryName(seenNames)
+                    zip.putNextEntry(ZipEntry(entryName))
+                    file.inputStream().buffered().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
+        }
+        recordLog(
+            "info",
+            Tag,
+            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} tdlog_files=${diagnoseLogFiles(appContext).size}"
+        )
+        return archive
+    }
+
+    fun uploadDiagnostics(context: Context, attachment: File, summary: String): Boolean {
+        if (!diagnoseInitialized.get()) {
+            recordLog("debug", Tag, "diagnostics_upload diagnose=disabled")
+            return false
+        }
+        flushDiagnoseLogs()
+        val appContext = context.applicationContext
+        val uploadPaths =
+            buildList {
+                val logDir = tdLogDir(appContext)
+                if (logDir.exists()) add(logDir.absolutePath)
+                if (attachment.isFile && attachment.length() > 0L) add(attachment.absolutePath)
+            }
+        if (uploadPaths.isEmpty()) {
+            recordLog("warn", Tag, "diagnostics_upload diagnose=skipped reason=no_files")
+            return false
+        }
+        val queryKey = "slock-${System.currentTimeMillis()}"
+        return runCatching {
+            val now = System.currentTimeMillis()
+            val param =
+                UploadParam(queryKey)
+                    .setTimestamp(now - DiagnoseUploadTimeWindowMillis, now)
+                    .setExtraPaths(uploadPaths)
+                    .setExtraInfo("summary", summary.take(MaxBuglyValueLength))
+                    .setExtraInfo("platform", "android")
+                    .setListener(
+                        object : UploadListener {
+                            override fun onStart() {
+                                recordLog("info", Tag, "diagnostics_upload started key=$queryKey files=${uploadPaths.size}")
+                            }
+
+                            override fun onProgress(percent: Int) {
+                                if (percent >= 100) {
+                                    recordLog("debug", Tag, "diagnostics_upload progress=$percent key=$queryKey")
+                                }
+                            }
+
+                            override fun onSuccess() {
+                                recordLog("info", Tag, "diagnostics_upload success key=$queryKey")
+                            }
+
+                            override fun onFailure(reason: Int) {
+                                recordLog("warn", Tag, "diagnostics_upload failed key=$queryKey reason=$reason")
+                            }
+                        },
+                        false
+                    )
+            TDDiag.upload(param)
+            true
+        }.onFailure { error ->
+            recordLog("warn", Tag, "diagnostics_upload failed ${error.javaClass.simpleName}:${error.message.orEmpty()}")
+        }.getOrDefault(false)
+    }
+
+    fun clearLocalDiagnosticsFiles(context: Context) {
+        val appContext = context.applicationContext
+        flushDiagnoseLogs()
+        runCatching {
+            feedbackDir(appContext).listFiles()
+                ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) }
+                ?.forEach { it.delete() }
+        }
+        runCatching {
+            tdLogDir(appContext).walkBottomUp()
+                .filter { it.isFile }
+                .forEach { it.delete() }
+        }
+        recordLog("info", Tag, "diagnostics_local_files_clear_requested")
     }
 
     fun registerDiagnosticsAttachment(file: File): Boolean {
@@ -166,6 +301,9 @@ object SlockAndroidBuglyDiagnostics {
         runCatching {
             val cleanUserId = userId.buglyValueOrNull()
             Bugly.updateUserId(appContext, cleanUserId.orEmpty())
+            if (diagnoseInitialized.get()) {
+                TDDiag.setUserId(cleanUserId.orEmpty())
+            }
             putOrRemoveUserData(appContext, "slock_user_id", cleanUserId)
             putOrRemoveUserData(appContext, "slock_server_id", selectedServerId.buglyValueOrNull())
             putOrRemoveUserData(appContext, "slock_server_slug", selectedServerSlug.buglyValueOrNull())
@@ -369,6 +507,88 @@ object SlockAndroidBuglyDiagnostics {
             Bugly.removeUserData(context, key)
         } else {
             Bugly.putUserData(context, key, value)
+        }
+    }
+
+    private fun initializeDiagnose(context: Context, appId: String, appKey: String) {
+        runCatching {
+            val logDir = tdLogDir(context).apply { mkdirs() }
+            val logConfig =
+                TDLogConfig.Builder(context)
+                    .setLogPath(logDir.absolutePath)
+                    .setLogLevel(LogLevel.VERBOSE)
+                    .setConsoleLog(BuildConfig.DEBUG)
+                    .setMaxFileSize(TdLogMaxFileSize)
+                    .setMaxAliveDay(TdLogMaxAliveDay)
+                    .build()
+            TDLog.initialize(context, logConfig)
+            val diagConfig =
+                TDDiagConfig.Builder()
+                    .setAppId(appId)
+                    .setAppKey(appKey)
+                    .setLoggerAdapter(TDLog.getLogImpl())
+                    .setAppVersion(BuildConfig.VERSION_NAME)
+                    .setImportantLabels("android", "slock", if (BuildConfig.DEBUG) "debug" else "release")
+                    .build()
+            TDDiag.initialize(context, diagConfig)
+            diagnoseInitialized.set(true)
+            TDLog.i(Tag, "bugly diagnose initialized path=${logDir.absolutePath}")
+        }.onFailure { error ->
+            diagnoseInitialized.set(false)
+            SlockDiagnosticsLogger.w(Tag, "diagnose_init_failed ${error.javaClass.simpleName}:${error.message.orEmpty()}")
+        }
+    }
+
+    private fun flushDiagnoseLogs() {
+        if (!diagnoseInitialized.get()) return
+        runCatching { TDLog.flushLog() }
+    }
+
+    private fun diagnoseLogFiles(context: Context): List<File> {
+        val fromAdapter =
+            if (diagnoseInitialized.get()) {
+                runCatching {
+                    val now = System.currentTimeMillis()
+                    TDLog.getLogImpl().getLogFiles(now - DiagnoseUploadTimeWindowMillis, now)
+                }.getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+        val fromDir =
+            tdLogDir(context)
+                .walkTopDown()
+                .filter { it.isFile && it.length() > 0L }
+                .toList()
+        return (fromAdapter + fromDir)
+            .distinctBy { it.absolutePath }
+            .sortedByDescending { it.lastModified() }
+    }
+
+    private fun pruneFeedbackArchives(feedbackDir: File) {
+        feedbackDir.listFiles()
+            ?.filter { it.isFile && it.name.startsWith(FeedbackFilePrefix) && it.name.endsWith(FeedbackZipExtension) }
+            ?.sortedByDescending { it.lastModified() }
+            ?.drop(5)
+            ?.forEach { it.delete() }
+    }
+
+    private fun tdLogDir(context: Context): File = File(context.filesDir, TdLogDirName)
+
+    private fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
+
+    private fun String.uniqueZipEntryName(seenNames: MutableSet<String>): String {
+        if (seenNames.add(this)) return this
+        val slash = lastIndexOf('/')
+        val directory = if (slash >= 0) substring(0, slash + 1) else ""
+        val name = if (slash >= 0) substring(slash + 1) else this
+        val dot = name.lastIndexOf('.')
+        val base = if (dot > 0) name.substring(0, dot) else name
+        val extension = if (dot > 0) name.substring(dot) else ""
+        var index = 2
+        while (true) {
+            val candidate = "$directory$base-$index$extension"
+            if (seenNames.add(candidate)) return candidate
+            index += 1
         }
     }
 }

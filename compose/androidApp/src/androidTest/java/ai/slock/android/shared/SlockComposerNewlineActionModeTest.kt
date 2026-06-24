@@ -1,6 +1,5 @@
 package ai.slock.android.shared
 
-import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import android.content.Intent
 import android.widget.EditText
 import androidx.test.core.app.ActivityScenario
@@ -26,7 +25,6 @@ class SlockComposerNewlineActionModeTest {
                 )
                 .putExtra(SlockKuiklyActivity.KEY_SUPPRESS_SOFT_KEYBOARD, true)
 
-        SanitizedDiagnosticsLogBuffer.clear()
         ActivityScenario.launch<SlockKuiklyActivity>(intent).use { scenario ->
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(1_500)
@@ -45,21 +43,6 @@ class SlockComposerNewlineActionModeTest {
             InstrumentationRegistry.getInstrumentation().waitForIdleSync()
             Thread.sleep(500)
         }
-
-        val messages =
-            SanitizedDiagnosticsLogBuffer.recent()
-                .filter { it.tag == "SlockComposerNewline" }
-                .joinToString("\n") { it.message }
-        assertTrue(messages, messages.contains("setProp systemNewlineAction raw=Int:1 enabled=true"))
-        assertTrue(messages, messages.contains("setProp numberOfLines raw=Int:4 parsed=4"))
-        assertTrue(messages, messages.contains("applyActionMode installed=true"))
-        assertTrue(messages, messages.contains("performLongClick"))
-        assertTrue(messages, messages.contains("onCreateActionMode after"))
-        assertTrue(messages, messages.contains("ensureNewlineMenuItem added title="))
-        assertTrue(
-            messages,
-            messages.contains("换行") || messages.contains("Insert newline")
-        )
     }
 }
 

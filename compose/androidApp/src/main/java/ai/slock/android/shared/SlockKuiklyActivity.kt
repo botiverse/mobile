@@ -56,7 +56,6 @@ import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironment
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
-import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
@@ -1341,7 +1340,7 @@ internal class SlockKuiklyBridgeModule(
                 val payload = JSONObject(params ?: "{}")
                 val content = payload.optString("content")
                 val level = SlockBridgeLogLevel.fromWire(payload.optString("level"))
-                SanitizedDiagnosticsLogBuffer.record("SlockKuikly", content)
+                SlockAndroidBuglyDiagnostics.recordLog(level.name.lowercase(), "SlockKuikly", content)
                 when (level) {
                     SlockBridgeLogLevel.DEBUG -> Unit
                     SlockBridgeLogLevel.INFO -> Log.i("SlockKuikly", content)
@@ -1617,7 +1616,7 @@ internal class SlockKuiklyBridgeModule(
                             mapOf("status" to "ok")
                         }
                         "clearDiagnostics" -> {
-                            SanitizedDiagnosticsLogBuffer.clear()
+                            SlockAndroidBuglyDiagnostics.clearLocalDiagnosticsFiles(appContext)
                             SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_logs_cleared")
                             mapOf("status" to "ok")
                         }
@@ -1697,7 +1696,7 @@ internal class SlockKuiklyBridgeModule(
         val repository = StorageManagementRepository(appContext)
         val snapshot = repository.clear(clearTarget)
         if (clearTarget == StorageClearTarget.TemporaryAndLogs) {
-            SanitizedDiagnosticsLogBuffer.clear()
+            SlockAndroidBuglyDiagnostics.clearLocalDiagnosticsFiles(appContext)
         }
         val feedback =
                 when (clearTarget) {
@@ -1964,14 +1963,19 @@ internal class SlockKuiklyBridgeModule(
     private fun loadSettingsDiagnostics(): Map<String, Any> {
         val entries =
                 JSONArray().also { array ->
-                    SanitizedDiagnosticsLogBuffer.recent().takeLast(80).forEach { entry ->
-                        array.put(
-                                JSONObject()
-                                        .put("timestampLabel", entry.timestampMillis.toString())
-                                        .put("tag", entry.tag)
-                                        .put("message", entry.message)
-                        )
-                    }
+                    array.put(
+                            JSONObject()
+                                    .put("timestampLabel", System.currentTimeMillis().toString())
+                                    .put("tag", "SlockDiagnostics")
+                                    .put(
+                                            "message",
+                                            if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) {
+                                                "Bugly TDLog is enabled. Send diagnostics exports the current TDLog files."
+                                            } else {
+                                                "Bugly TDLog is disabled. Send diagnostics exports the environment summary only."
+                                            }
+                                    )
+                    )
                 }
         return mapOf("status" to "ok", "entries" to entries)
     }
@@ -2047,7 +2051,7 @@ internal class SlockKuiklyBridgeModule(
                 subject = "Raft feedback",
                 text = buildFeedbackText(diagnosticsFile.name),
                 attachment = diagnosticsFile,
-                attachmentMimeType = "text/plain"
+                attachmentMimeType = diagnosticsFeedbackMimeType(diagnosticsFile)
         )
     }
 
@@ -2065,23 +2069,28 @@ internal class SlockKuiklyBridgeModule(
                 "status" to "ok",
                 "message" to buildFeedbackText(diagnosticsFile.name),
                 "fileName" to diagnosticsFile.name,
-                "mimeType" to "text/plain",
+                "mimeType" to diagnosticsFeedbackMimeType(diagnosticsFile),
                 "sizeBytes" to bytes.size.toLong(),
                 "bodyBase64" to Base64.encodeToString(bytes, Base64.NO_WRAP)
         )
     }
 
     private fun writeDiagnosticsFeedbackFile(): File {
-        val feedbackDir = File(appContext.cacheDir, "slock-feedback").apply { mkdirs() }
-        feedbackDir.listFiles()
-                ?.filter { it.isFile && it.name.startsWith("slock-feedback-") && it.name.endsWith(".txt") }
-                ?.sortedByDescending { it.lastModified() }
-                ?.drop(5)
-                ?.forEach { it.delete() }
-        val file = File(feedbackDir, "slock-feedback-${System.currentTimeMillis()}.txt")
-        file.writeText(buildMergedSettingsDiagnosticsExportText(), StandardCharsets.UTF_8)
-        return file
+        val summaryText = buildMergedSettingsDiagnosticsExportText()
+        val archive = SlockAndroidBuglyDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
+        SlockAndroidBuglyDiagnostics.uploadDiagnostics(
+                context = appContext,
+                attachment = archive,
+                summary = "settings_feedback"
+        )
+        return archive
     }
+
+    private fun diagnosticsFeedbackMimeType(file: File): String =
+            when (file.extension.lowercase()) {
+                "zip" -> "application/zip"
+                else -> "text/plain"
+            }
 
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
@@ -2110,8 +2119,9 @@ internal class SlockKuiklyBridgeModule(
             appendDiagnosticsLine("Duration", probe["durationMillis"]?.takeIf { it != 0L }?.let { "${it}ms" })
             appendDiagnosticsLine("Detail", probe.stringValue("detail"))
             appendLine()
-            appendLine("Recent logs")
-            append(SanitizedDiagnosticsLogBuffer.exportText())
+            appendLine("Bugly diagnostics")
+            appendDiagnosticsLine("TDLog", if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) "enabled" else "disabled")
+            appendDiagnosticsLine("Attachment", "Bugly TDLog files are included in this zip when available.")
         }
     }
 
