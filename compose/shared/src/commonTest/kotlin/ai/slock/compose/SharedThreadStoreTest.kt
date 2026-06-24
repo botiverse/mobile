@@ -2396,6 +2396,54 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun resolvedParentPairSeedsReplyThreadResolveCache() = runBlocking {
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            body = "reply body",
+                            id = "reply-1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val parent = contentPayload("parent body").messages.single()
+        val unresolvedBase =
+            unresolvedReplyPayload(parentMessageId = "m1").copy(originMessage = parent)
+
+        val firstPayload = (dataSource.fetchThreadPayload(unresolvedBase, persistResult = false) as DataResult.Content).data
+        val openedPayload = (dataSource.createOrOpenReplyThread(contentPayload("parent body"), parent) as DataResult.Content).data
+
+        assertEquals("thread-m1", firstPayload.streamChannelId)
+        assertEquals("thread-m1", openedPayload.streamChannelId)
+        assertEquals(emptyList(), repository.createOrOpenRequests)
+        assertEquals(
+            listOf(ChannelId("channel-1") to MessageId("m1"), ChannelId("channel-1") to MessageId("m1")),
+            repository.getReplyThreadRequests
+        )
+    }
+
+    @Test
     fun fetchReplyThreadPayloadFiltersParentChannelMessagesFromSnapshot() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =

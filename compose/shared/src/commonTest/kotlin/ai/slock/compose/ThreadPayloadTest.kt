@@ -1860,6 +1860,49 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneUnresolvedReplyLaunchCarriesOnlyParentPairUntilResolved() {
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                ConversationSummary(
+                    threadId = ThreadId("thread-summary-id"),
+                    channelId = null,
+                    channelType = "channel",
+                    kind = ConversationKind.Thread,
+                    name = "parent reply",
+                    thread =
+                        ThreadConversation(
+                            parentChannelId = ChannelId("channel-1"),
+                            parentMessageId = MessageId("m1"),
+                            streamChannelId = null
+                        )
+                ),
+                timeContext = null
+            )
+
+        assertEquals("shared-shell-thread-thread-summary-id", launch.instanceId)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, launch.surfaceKind)
+        assertEquals(null, launch.threadId)
+        assertEquals(null, launch.sourceThreadId)
+        assertEquals(null, launch.streamChannelId)
+        assertEquals("channel-1", launch.parentChannelId)
+        assertEquals("m1", launch.parentMessageId)
+        assertEquals("m1", launch.originParentMessageId)
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, initialPayload.surfaceKind)
+        assertEquals(null, initialPayload.sourceThreadId)
+        assertEquals(null, initialPayload.streamChannelId)
+        assertEquals("channel-1", initialPayload.parentChannelId)
+        assertEquals("m1", initialPayload.parentMessageId)
+        assertEquals(null, initialPayload.resolveThreadRouteIdentity().timelineKey)
+    }
+
+    @Test
     fun standaloneThreadRoutePageDataCarriesHostPageName() {
         val launch =
             WireThreadLaunchPayload(

@@ -4168,9 +4168,9 @@ private fun KuiklyThreadScreenPayload.commentHostLoadingPayload(
             source.parentMessageId?.takeIf { it.isNotBlank() }
                 ?: rootThreadId?.let { hostMessageId }
                 ?: return null
-        val streamId = threadStreamId ?: return null
+        val streamId = threadStreamId
         return copy(
-            instanceId = "shared-shell-thread-$streamId",
+            instanceId = streamId?.let { "shared-shell-thread-$it" } ?: "shared-shell-thread-pending-$parentMessageId",
             title = ThreadReplyPageTitle,
             subtitle = replyThreadHeaderSubtitle(),
             status = "loading",
