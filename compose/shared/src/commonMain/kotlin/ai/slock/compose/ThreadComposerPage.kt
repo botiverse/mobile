@@ -1083,6 +1083,7 @@ private fun ComposerMemberSuggestionPanel(
     val itemCount = inChannel.size + notInChannel.size + if (notInChannel.isNotEmpty()) 1 else 0
     ComposerSuggestionPanel(
         title = title,
+        showTitleDivider = false,
         itemCount = itemCount,
         itemKey = { index ->
             when {
@@ -1484,6 +1485,7 @@ private fun ComposerAttachmentTile(
 @Composable
 private fun ComposerSuggestionPanel(
     title: String,
+    showTitleDivider: Boolean = true,
     itemCount: Int,
     itemKey: (Int) -> Any,
     itemContent: @Composable (Int) -> Unit
@@ -1498,7 +1500,9 @@ private fun ComposerSuggestionPanel(
             color = SlockColor.TextMutedGray,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
-        ComposerSuggestionDivider()
+        if (showTitleDivider) {
+            ComposerSuggestionDivider()
+        }
         LazyColumn(
             modifier = Modifier.fillMaxWidth().heightIn(max = ComposerSuggestionPanelMaxHeight)
         ) {
