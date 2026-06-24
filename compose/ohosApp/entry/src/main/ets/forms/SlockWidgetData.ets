@@ -40,6 +40,13 @@ interface AgentWire {
   running?: boolean;
 }
 
+interface AgentListWire {
+  agents?: AgentWire[];
+  items?: AgentWire[];
+  results?: AgentWire[];
+  data?: AgentWire[] | AgentListWire;
+}
+
 export interface SlockWidgetSnapshot {
   kind: string;
   title: string;
@@ -53,7 +60,10 @@ export interface SlockWidgetSnapshot {
   empty: boolean;
 }
 
-export function fallbackActivityUnreadSnapshot(reason: string = 'Open Raft to sync'): SlockWidgetSnapshot {
+export function fallbackActivityUnreadSnapshot(
+  reason: string = 'Open Raft to sync',
+  stateLabel: string = 'Needs app session'
+): SlockWidgetSnapshot {
   return {
     kind: FORM_ACTIVITY_UNREAD,
     title: 'Activity',
@@ -61,22 +71,25 @@ export function fallbackActivityUnreadSnapshot(reason: string = 'Open Raft to sy
     primaryLabel: 'Unread',
     secondaryLabel: reason,
     accentLabel: 'RAFT',
-    stateLabel: 'Needs app session',
+    stateLabel,
     footerLabel: 'Tap to open',
     updatedAtLabel: nowLabel(),
     empty: true
   };
 }
 
-export function fallbackAgentRuntimeSnapshot(reason: string = 'Open Raft to sync'): SlockWidgetSnapshot {
+export function fallbackAgentRuntimeSnapshot(
+  reason: string = 'Open Raft to sync',
+  stateLabel: string = 'Needs app session'
+): SlockWidgetSnapshot {
   return {
     kind: FORM_AGENT_RUNTIME,
-    title: 'Agents',
+    title: 'Live Agents',
     countText: '--',
     primaryLabel: 'Running',
     secondaryLabel: reason,
     accentLabel: 'LIVE',
-    stateLabel: 'Needs app session',
+    stateLabel,
     footerLabel: 'Tap to open',
     updatedAtLabel: nowLabel(),
     empty: true
@@ -118,13 +131,13 @@ export async function loadAgentRuntimeSnapshot(context: common.Context): Promise
   if (server === null) {
     return fallbackAgentRuntimeSnapshot('Select a server');
   }
-  const agents = await requestJson<AgentWire[]>(session, server.id, 'agents', context);
+  const agents = parseAgentList(await requestJson<AgentWire[] | AgentListWire>(session, server.id, 'agents', context));
   const running = agents.filter((agent: AgentWire) => isAgentRunning(agent));
   const total = agents.length;
   const headline = runningHeadline(running);
   return {
     kind: FORM_AGENT_RUNTIME,
-    title: 'Agents',
+    title: 'Live Agents',
     countText: running.length.toString(),
     primaryLabel: 'Running',
     secondaryLabel: total > 0 ? `${headline} / ${total} total` : serverLabel(server),
@@ -134,6 +147,23 @@ export async function loadAgentRuntimeSnapshot(context: common.Context): Promise
     updatedAtLabel: nowLabel(),
     empty: running.length === 0
   };
+}
+
+function parseAgentList(wire: AgentWire[] | AgentListWire): AgentWire[] {
+  if (Array.isArray(wire)) {
+    return wire;
+  }
+  const data = wire.data;
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (data !== undefined && !Array.isArray(data)) {
+    const nested = parseAgentList(data);
+    if (nested.length > 0) {
+      return nested;
+    }
+  }
+  return wire.agents ?? wire.items ?? wire.results ?? [];
 }
 
 export function snapshotRecord(snapshot: SlockWidgetSnapshot): SlockWidgetSnapshot {

@@ -60,8 +60,8 @@ export default class SlockFormAbility extends FormExtensionAbility {
       return await loadActivityUnreadSnapshot(this.context);
     } catch (_error) {
       return requestedName === FORM_AGENT_RUNTIME
-        ? fallbackAgentRuntimeSnapshot('Unable to refresh')
-        : fallbackActivityUnreadSnapshot('Unable to refresh');
+        ? fallbackAgentRuntimeSnapshot('Open Raft to sync', 'Unable to refresh')
+        : fallbackActivityUnreadSnapshot('Open Raft to sync', 'Unable to refresh');
     }
   }
 }

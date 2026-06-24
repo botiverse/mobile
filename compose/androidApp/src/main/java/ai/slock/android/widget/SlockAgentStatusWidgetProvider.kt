@@ -90,7 +90,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
             }
             val selected = members.filter { it.kind == MemberKind.Agent }.maxByOrNull { it.agentWidgetRank() }
                 ?: return SlockAgentWidgetState(
-                    title = "Agent Status",
+                    title = "Live Agents",
                     agentName = "No agents yet",
                     avatarLabel = "A",
                     statusLabel = "Create an agent in Raft",
@@ -123,7 +123,7 @@ class SlockAgentStatusWidgetProvider : AppWidgetProvider() {
                         if (presence == Presence.Active) SlockAgentWidgetTone.Active else SlockAgentWidgetTone.Offline
                 }
             return SlockAgentWidgetState(
-                title = "Agent Status",
+                title = "Live Agents",
                 agentName = displayName.ifBlank { handle },
                 avatarLabel = avatarLabel.ifBlank { displayName.take(1).uppercase().ifBlank { "A" } },
                 statusLabel = label,

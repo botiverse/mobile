@@ -30,11 +30,11 @@
     },
     {
       "name": "agent_runtime_form_display_name",
-      "value": "Agents"
+      "value": "Live Agents"
     },
     {
       "name": "agent_runtime_form_desc",
-      "value": "Raft agent runtime widget"
+      "value": "Raft live agent activity widget"
     }
   ]
 }

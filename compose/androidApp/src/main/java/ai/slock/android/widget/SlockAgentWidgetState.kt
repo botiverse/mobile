@@ -6,7 +6,7 @@ import ai.slock.compose.data.SlockKeyValueStore
 import org.json.JSONObject
 
 data class SlockAgentWidgetState(
-    val title: String = "Agent Status",
+    val title: String = "Live Agents",
     val agentName: String = "No active agent",
     val avatarLabel: String = "A",
     val statusLabel: String = "Offline",
@@ -38,7 +38,7 @@ class SlockAgentWidgetCache(context: Context) {
         return runCatching {
             val json = JSONObject(encoded)
             SlockAgentWidgetState(
-                title = json.optString("title", "Agent Status"),
+                title = json.optString("title", "Live Agents"),
                 agentName = json.optString("agentName", "No active agent"),
                 avatarLabel = json.optString("avatarLabel", "A"),
                 statusLabel = json.optString("statusLabel", "Offline"),
