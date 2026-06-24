@@ -80,7 +80,7 @@ internal class SlockSharedStoreProvider private constructor(
                 composerDraftPersistSlice =
                     SharedThreadComposerDraftPersistSlice(
                         SharedThreadComposerDraftPersistence(
-                            sharedPreferenceStore.withReadYourWritesCache(),
+                            sharedPreferenceStore,
                             diagnosticsLogger = { message -> bridge.log(message) }
                         ),
                         diagnosticsLogger = { message -> bridge.log(message) }

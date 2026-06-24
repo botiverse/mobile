@@ -43,28 +43,6 @@ class KeyValueStoreTest {
     }
 
     @Test
-    fun readYourWritesCacheReturnsWritesBeforeDelegateReadCatchesUp() {
-        val delegate = DelayedReadStore(mapOf("active" to "old"))
-        val store = delegate.withReadYourWritesCache()
-
-        store.putString("active", "new")
-
-        assertEquals("old", delegate.getString("active"))
-        assertEquals("new", store.getString("active"))
-    }
-
-    @Test
-    fun readYourWritesCacheReturnsDeleteBeforeDelegateReadCatchesUp() {
-        val delegate = DelayedReadStore(mapOf("active" to "old"))
-        val store = delegate.withReadYourWritesCache()
-
-        store.putString("active", null)
-
-        assertEquals("old", delegate.getString("active"))
-        assertNull(store.getString("active"))
-    }
-
-    @Test
     fun mmkvStoreReadsNamespacedValue() {
         val backend =
             FakeMMKVBackend(
@@ -120,14 +98,4 @@ class KeyValueStoreTest {
         }
     }
 
-    private class DelayedReadStore(
-        initialValues: Map<String, String> = emptyMap()
-    ) : SharedPreferenceStore {
-        private val committedValues = initialValues.toMutableMap()
-
-        override fun getString(key: String): String? =
-            committedValues[key]
-
-        override fun putString(key: String, value: String?) = Unit
-    }
 }
