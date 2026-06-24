@@ -102,6 +102,11 @@ data class ThreadInlineCodeMatch(
     val range: IntRange
 )
 
+data class ThreadInlineCodeChipSegment(
+    val id: String,
+    val code: String
+)
+
 internal enum class MarkdownInlineTokenKind {
     ChannelThread,
     Channel,
@@ -162,7 +167,6 @@ internal object SlockMarkdownInlineTokenRegistry {
                 }
         val inlineCodeTokens =
             content.threadInlineCodeMatches()
-                .filter { it.code.shouldRenderThreadInlineCodeAsChip() }
                 .map { match ->
                     MarkdownInlineToken(
                         id = match.id,
@@ -579,9 +583,9 @@ internal fun slockMarkdownAnnotator(
     val inlineTagById = inlineTagTokens.associateBy { it.id }
     val highlightedMentionById = inlineTagTokens.filter { it.highlighted }.associateBy { it.id }
     val inlineCodeChipById = tokenPlan.inlineCodeTokens().associateBy { it.id }
-    val wrappingInlineCodeById =
-        content.threadInlineCodeMatches()
-            .filterNot { it.code.shouldRenderThreadInlineCodeAsChip() }
+    val inlineCodeChipSegmentsById =
+        inlineCodeChipById.values
+            .flatMap { it.toSlockMarkdownInlineCodeChipSegments() }
             .associateBy { it.id }
     if (diagnosticsStartedAt != null) {
         onDiagnostics.invoke(
@@ -598,18 +602,12 @@ internal fun slockMarkdownAnnotator(
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    appendInlineContent(codeToken.id, code)
-                    return@markdownAnnotator true
-                }
-                val wrappingCode =
-                    wrappingInlineCodeById["slock-code:${child.startOffset}"]
-                        ?: wrappingInlineCodeById.values.firstOrNull { child.startOffset in it.range }
-                if (wrappingCode != null) {
-                    pushStyle(slockMarkdownInlineCodeWrappingSpanStyle(inlineCodeTextStyle))
-                    append(' ')
-                    append(wrappingCode.code.withSlockMarkdownInlineCodeSoftBreaks())
-                    append(' ')
-                    pop()
+                    codeToken.toSlockMarkdownInlineCodeChipSegments().forEachIndexed { index, segment ->
+                        if (index > 0) {
+                            append(SlockMarkdownInlineCodeSoftBreak)
+                        }
+                        appendInlineContent(segment.id, segment.code)
+                    }
                     return@markdownAnnotator true
                 }
             }
@@ -674,11 +672,11 @@ internal fun slockMarkdownAnnotator(
                         }
                     }
                 }
-            } + inlineCodeChipById.mapValues { (_, token) ->
-                val code = token.code.orEmpty()
+            } + inlineCodeChipSegmentsById.mapValues { (_, segment) ->
+                val code = segment.code
                 InlineTextContent(
                     Placeholder(
-                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[token.id]),
+                        width = slockMarkdownInlineCodePlaceholderWidthSp(code, inlineCodeWidths[segment.id]),
                         height = slockMarkdownInlineCodeChipHeightSp(inlineCodeTextStyle)
                     )
                 ) {
@@ -1380,36 +1378,42 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
-private fun slockMarkdownInlineCodeWrappingSpanStyle(textStyle: TextStyle): SpanStyle =
-    textStyle
-        .copy(color = SlockColor.TextBlack, background = SlockColor.BrandYellow.copy(alpha = 0.4f))
-        .toSpanStyle()
-
-internal fun String.withSlockMarkdownInlineCodeSoftBreaks(): String {
-    if (isEmpty()) return this
-    val builder = StringBuilder(length + length / SlockMarkdownInlineCodeSoftBreakEveryUnits)
+internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
+    val code = code.orEmpty()
+    if (code.isEmpty()) return listOf(ThreadInlineCodeChipSegment(id, code))
+    if (code.slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeSoftBreakEveryUnits) {
+        return listOf(ThreadInlineCodeChipSegment(id, code))
+    }
+    val pieces = mutableListOf<String>()
+    val current = StringBuilder()
     var unitsSinceBreak = 0
-    forEachIndexed { index, char ->
-        builder.append(char)
+    code.forEachIndexed { index, char ->
+        current.append(char)
         unitsSinceBreak += if (char.code > 0x7F) 2 else 1
-        val isLast = index == lastIndex
+        val isLast = index == code.lastIndex
         val isNaturalBreak = char in SlockMarkdownInlineCodeNaturalBreakChars
         val shouldBreak =
             !isLast &&
                 (unitsSinceBreak >= SlockMarkdownInlineCodeSoftBreakEveryUnits ||
                     (isNaturalBreak && unitsSinceBreak >= SlockMarkdownInlineCodeMinNaturalBreakUnits))
         if (shouldBreak) {
-            builder.append(SlockMarkdownInlineCodeSoftBreak)
+            pieces += current.toString()
+            current.clear()
             unitsSinceBreak = 0
         }
     }
-    return builder.toString()
+    if (current.isNotEmpty()) {
+        pieces += current.toString()
+    }
+    return if (pieces.size == 1) {
+        listOf(ThreadInlineCodeChipSegment(id, pieces.single()))
+    } else {
+        pieces.mapIndexed { index, piece ->
+            ThreadInlineCodeChipSegment(id = "$id:$index", code = piece)
+        }
+    }
 }
 
-internal fun String.shouldRenderThreadInlineCodeAsChip(): Boolean =
-    slockInlineTextWidthUnits() <= SlockMarkdownInlineCodeChipMaxWidthUnits
-
-private const val SlockMarkdownInlineCodeChipMaxWidthUnits = 28
 private const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
 private const val SlockMarkdownInlineCodeSoftBreakEveryUnits = 16
 private const val SlockMarkdownInlineCodeMinNaturalBreakUnits = 4

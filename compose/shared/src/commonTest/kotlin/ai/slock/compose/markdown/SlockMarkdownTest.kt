@@ -126,26 +126,29 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun longInlineCodeUsesWrappingMarkdownSpanInsteadOfInlineChip() {
+    fun longInlineCodeIsNotDroppedFromInlineCodeTokens() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
-
-        assertTrue(shortCode.shouldRenderThreadInlineCodeAsChip())
-        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
 
         val inlineContent = slockMarkdownAnnotator("short `$shortCode` long `$longCode`").inlineContent?.invoke().orEmpty()
 
         assertTrue(inlineContent.containsKey("slock-code:6"))
+        assertTrue(inlineContent.keys.any { it.startsWith("slock-code:25:") })
         assertFalse(inlineContent.containsKey("slock-code:25"))
     }
 
     @Test
-    fun longInlineCodeAddsInvisibleSoftBreaksForWrapping() {
+    fun longInlineCodeSegmentsPreserveVisibleTextForWrapping() {
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
-        val wrapped = longCode.withSlockMarkdownInlineCodeSoftBreaks()
+        val token =
+            SlockMarkdownInlineTokenRegistry.plan("Use `$longCode`")
+                .inlineCodeTokens()
+                .single()
+        val segments = token.toSlockMarkdownInlineCodeChipSegments()
 
-        assertTrue(wrapped.contains('\u200B'))
-        assertEquals(longCode, wrapped.replace("\u200B", ""))
+        assertTrue(segments.size > 1)
+        assertEquals(longCode, segments.joinToString(separator = "") { it.code })
+        assertTrue(segments.all { it.code.length < longCode.length })
     }
 
     @Test
@@ -424,10 +427,10 @@ class SlockMarkdownTest {
 
     @Test
     fun inlineCodeMeasuredWidthCannotShrinkBelowFallbackWidth() {
-        val fallbackWidth = slockMarkdownInlineCodeWidthSp("SlockColor.BorderBlack")
+        val fallbackWidth = slockMarkdownInlineCodeWidthSp("MIMOAPIKEY")
         val inlineContent =
             slockMarkdownAnnotator(
-                content = "Use `SlockColor.BorderBlack`",
+                content = "Use `MIMOAPIKEY`",
                 inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
             ).inlineContent?.invoke().orEmpty()
 
@@ -455,9 +458,11 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         plan.inlineCodeTokens().forEach { token ->
-            val placeholder = inlineContent.getValue(token.id).placeholder
-            assertEquals(slockMarkdownInlineCodeWidthSp(token.code!!), placeholder.width)
-            assertEquals(slockMarkdownInlineCodeChipHeightSp(SlockType.Body), placeholder.height)
+            token.toSlockMarkdownInlineCodeChipSegments().forEach { segment ->
+                val placeholder = inlineContent.getValue(segment.id).placeholder
+                assertEquals(slockMarkdownInlineCodeWidthSp(segment.code), placeholder.width)
+                assertEquals(slockMarkdownInlineCodeChipHeightSp(SlockType.Body), placeholder.height)
+            }
         }
     }
 
