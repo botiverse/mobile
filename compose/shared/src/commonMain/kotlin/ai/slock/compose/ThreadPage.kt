@@ -7203,8 +7203,8 @@ private fun ThreadSystemMessageRow(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.Top
         ) {
             Text(
                 text = timestampLabel,
@@ -7219,7 +7219,7 @@ private fun ThreadSystemMessageRow(
                 color = ThreadSystemMessageBodyColor,
                 maxLines = if (expanded) Int.MAX_VALUE else 1,
                 overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier.weight(1f)
             )
         }
         ThreadMessageFooterMeta(
