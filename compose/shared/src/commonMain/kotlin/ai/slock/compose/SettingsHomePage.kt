@@ -2824,125 +2824,20 @@ private fun SettingsAppShellContent(
                         actionState = settingsState.actionState,
                         timeContext = timeContext
                     ),
-                    inviteEmail = serverInviteEmail,
-                    onInviteEmailChange = { serverInviteEmail = it },
-                    joinLinkMaxUses = serverJoinLinkMaxUses,
-                    onJoinLinkMaxUsesChange = { serverJoinLinkMaxUses = it },
-                    joinLinkExpiresAt = serverJoinLinkExpiresAt,
-                    onJoinLinkExpiresAtChange = { serverJoinLinkExpiresAt = it },
                     profileName = serverProfileName,
                     onProfileNameChange = { serverProfileName = it },
-                    agreementEnabled = serverAgreementEnabled,
-                    onAgreementEnabledChange = { serverAgreementEnabled = it },
-                    agreementTitle = serverAgreementTitle,
-                    onAgreementTitleChange = { serverAgreementTitle = it },
-                    agreementBody = serverAgreementBody,
-                    onAgreementBodyChange = { serverAgreementBody = it },
-                    hideHumansFromMembers = serverHideHumansFromMembers,
-                    onHideHumansFromMembersChange = { serverHideHumansFromMembers = it },
-                    onboardingAgentId = serverOnboardingAgentId,
-                    onOnboardingAgentIdChange = { serverOnboardingAgentId = it },
-                    onboardingGreetingEnabled = serverOnboardingGreetingEnabled,
-                    onOnboardingGreetingEnabledChange = { serverOnboardingGreetingEnabled = it },
                     serverSnapshot = currentServerSnapshot,
-                    timeContext = timeContext,
                     serverRole = session?.currentServerSummary()?.role.orEmpty(),
-                    expectedServerSlug = currentServerSlug,
-                    deleteConfirmationName = serverDeleteConfirmation,
-                    onDeleteConfirmationNameChange = { serverDeleteConfirmation = it },
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
-                    onCreateJoinLink = { request ->
-                        onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(request))
-                    },
                 ) { action, itemId ->
                     when (action) {
                         SERVER_ACTION_PROFILE_SAVE ->
                             itemId?.trim()?.takeIf { it.isNotBlank() }?.let {
                                 onSettingsIntent(SharedSettingsIntent.UpdateServerProfile(SettingsServerProfileUpdateRequest(name = it)))
                             }
-                        SERVER_ACTION_AGREEMENT_SAVE ->
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateServerAgreement(
-                                    SettingsServerAgreementUpdateRequest(
-                                        enabled = serverAgreementEnabled,
-                                        title = serverAgreementTitle.trim(),
-                                        bodyMarkdown = serverAgreementBody
-                                    )
-                                )
-                            )
-                        SERVER_ACTION_MEMBER_PERMISSIONS_SAVE ->
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateServerProfile(
-                                    SettingsServerProfileUpdateRequest(hideHumansFromMembers = serverHideHumansFromMembers)
-                                )
-                            )
-                        SERVER_ACTION_INVITE_CREATE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(SharedSettingsIntent.CreateServerInvite(SettingsServerInviteCreateRequest(it)))
-                            }
-                        SERVER_ACTION_INVITE_REVOKE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_INVITE_REVOKE, it)) {
-                                    onSettingsIntent(SharedSettingsIntent.RevokeServerInvite(it))
-                                } else {
-                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_INVITE_REVOKE, it))
-                                }
-                            }
-                        SERVER_ACTION_JOIN_LINK_CREATE ->
-                            onSettingsIntent(SharedSettingsIntent.CreateServerJoinLink(SettingsServerJoinLinkCreateRequest()))
-                        SERVER_ACTION_JOIN_LINK_REVOKE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it)) {
-                                    onSettingsIntent(SharedSettingsIntent.RevokeServerJoinLink(it))
-                                } else {
-                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_JOIN_LINK_REVOKE, it))
-                                }
-                            }
-                        SERVER_ACTION_ONBOARDING_SAVE ->
-                            onSettingsIntent(
-                                SharedSettingsIntent.UpdateServerOnboarding(
-                                    SettingsServerOnboardingUpdateRequest(
-                                        onboardingAgentId = serverOnboardingAgentId.trim().takeIf { it.isNotBlank() },
-                                        clearOnboardingAgent = serverOnboardingAgentId.trim().isBlank(),
-                                        agentAllChannelGreetingEnabled = serverOnboardingGreetingEnabled
-                                    )
-                                )
-                            )
-                        SERVER_ACTION_ONBOARDING_TOGGLE ->
-                            itemId?.toBooleanStrictOrNull()?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerOnboarding(SettingsServerOnboardingUpdateRequest(setupModalReminderOptOut = it)))
-                            }
-                        SERVER_ACTION_TRANSLATION_TOGGLE ->
-                            itemId?.toBooleanStrictOrNull()?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerTranslation(SettingsServerTranslationUpdateRequest(it)))
-                            }
-                        SERVER_ACTION_SIDEBAR_ORDER ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerSidebarOrder(SettingsServerSidebarOrderUpdateRequest(channelSortMode = it)))
-                            }
-                        SERVER_ACTION_MEMBER_ROLE ->
-                            itemId?.split(":", limit = 2)?.takeIf { it.size == 2 }?.let {
-                                onSettingsIntent(SharedSettingsIntent.UpdateServerMemberRole(SettingsServerMemberRoleUpdateRequest(it[0], it[1])))
-                            }
-                        SERVER_ACTION_MEMBER_REMOVE ->
-                            itemId?.takeIf { it.isNotBlank() }?.let {
-                                if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it)) {
-                                    onSettingsIntent(SharedSettingsIntent.RemoveServerMember(it))
-                                } else {
-                                    onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_MEMBER_REMOVE, it))
-                                }
-                            }
-                        SERVER_ACTION_LEAVE ->
-                            if (settingsState.actionState.isServerConfirmation(SERVER_ACTION_LEAVE)) {
-                                onSettingsIntent(SharedSettingsIntent.LeaveServer)
-                            } else {
-                                onSettingsIntent(SharedSettingsIntent.RequestServerConfirmation(SERVER_ACTION_LEAVE))
-                            }
-                        SERVER_ACTION_DELETE ->
-                            itemId?.trim()?.takeIf { it == currentServerSlug && it.isNotBlank() }?.let {
-                                onSettingsIntent(SharedSettingsIntent.DeleteServer(SettingsServerDeleteRequest(it)))
-                            }
+                        "openAdministration" ->
+                            onDestinationChange(SettingsDestinationAdministration)
                         else -> onSettingsAction(action, itemId)
                     }
                 }
@@ -3277,35 +3172,35 @@ private fun SharedSettingsSectionContent(
 @Composable
 private fun SharedSettingsServerContent(
     payload: KuiklySharedSettingsPayload,
-    inviteEmail: String,
-    onInviteEmailChange: (String) -> Unit,
-    joinLinkMaxUses: String,
-    onJoinLinkMaxUsesChange: (String) -> Unit,
-    joinLinkExpiresAt: String,
-    onJoinLinkExpiresAtChange: (String) -> Unit,
     profileName: String,
     onProfileNameChange: (String) -> Unit,
-    agreementEnabled: Boolean,
-    onAgreementEnabledChange: (Boolean) -> Unit,
-    agreementTitle: String,
-    onAgreementTitleChange: (String) -> Unit,
-    agreementBody: String,
-    onAgreementBodyChange: (String) -> Unit,
-    hideHumansFromMembers: Boolean,
-    onHideHumansFromMembersChange: (Boolean) -> Unit,
-    onboardingAgentId: String,
-    onOnboardingAgentIdChange: (String) -> Unit,
-    onboardingGreetingEnabled: Boolean,
-    onOnboardingGreetingEnabledChange: (Boolean) -> Unit,
     serverSnapshot: SettingsServerSnapshot?,
-    timeContext: SlockTimeContext?,
     serverRole: String,
-    expectedServerSlug: String,
-    deleteConfirmationName: String,
-    onDeleteConfirmationNameChange: (String) -> Unit,
     actionState: ai.slock.compose.data.SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit,
+    inviteEmail: String = "",
+    onInviteEmailChange: (String) -> Unit = {},
+    joinLinkMaxUses: String = "",
+    onJoinLinkMaxUsesChange: (String) -> Unit = {},
+    joinLinkExpiresAt: String = "",
+    onJoinLinkExpiresAtChange: (String) -> Unit = {},
+    agreementEnabled: Boolean = false,
+    onAgreementEnabledChange: (Boolean) -> Unit = {},
+    agreementTitle: String = "",
+    onAgreementTitleChange: (String) -> Unit = {},
+    agreementBody: String = "",
+    onAgreementBodyChange: (String) -> Unit = {},
+    hideHumansFromMembers: Boolean = false,
+    onHideHumansFromMembersChange: (Boolean) -> Unit = {},
+    onboardingAgentId: String = "",
+    onOnboardingAgentIdChange: (String) -> Unit = {},
+    onboardingGreetingEnabled: Boolean = true,
+    onOnboardingGreetingEnabledChange: (Boolean) -> Unit = {},
+    timeContext: SlockTimeContext? = null,
+    expectedServerSlug: String = "",
+    deleteConfirmationName: String = "",
+    onDeleteConfirmationNameChange: (String) -> Unit = {},
+    onCreateJoinLink: (SettingsServerJoinLinkCreateRequest) -> Unit = {},
     onAction: (String, String?) -> Unit
 ) {
     LazyColumn(
@@ -6383,20 +6278,18 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
     val server = session?.currentServerSummary()
     val snapshot = (this as? ScreenLoadState.Content<SettingsServerSnapshot>)?.data
     val role = server?.role?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Member"
-    val plan = server?.plan?.takeIf { it.isNotBlank() }?.replaceFirstChar { it.uppercase() } ?: "Unknown"
     val detail =
         when (this) {
             ScreenLoadState.Loading -> if (refreshing) "Refreshing workspace settings..." else "Loading workspace settings..."
             is ScreenLoadState.Error -> "Workspace settings failed to load: ${error.code}"
             is ScreenLoadState.NoPermission -> "Workspace settings unavailable: ${blocker.code}"
             is ScreenLoadState.Empty -> "Workspace settings unavailable: ${reason.name}"
-            is ScreenLoadState.Content -> "Manage this workspace's profile, members, invites, and permissions."
+            is ScreenLoadState.Content -> "Manage this workspace's profile. Admin actions live under Administration."
         }
-    val sectionsByKey = snapshot?.sections.orEmpty().associateBy { it.key }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-server",
-        title = "Server",
-        heroIconName = SlockLucideIconName.Users,
+        title = "Server Profile",
+        heroIconName = SlockLucideIconName.Building2,
         heroLabel = snapshot?.profile?.name ?: server?.name ?: "Workspace settings",
         detail = detail,
         sections =
@@ -6410,50 +6303,21 @@ private fun ScreenLoadState<SettingsServerSnapshot>.toServerPayload(
                                 SERVER_ACTION_PROFILE_SAVE,
                                 SlockLucideIconName.Save,
                                 "Save workspace profile",
-                                "Save changes to the workspace name and profile.",
+                                "Save changes to the workspace name.",
                                 status = actionState.serverStatusFor(SERVER_ACTION_PROFILE_SAVE, if (snapshot?.profile?.canSave == true) "Ready" else "Read only"),
                                 enabled = snapshot?.profile?.canSave == true && actionState?.inProgress != true
                             ),
                             KuiklySharedSettingsRow("serverSlug", SlockLucideIconName.Link, "Slug", snapshot?.profile?.slug?.let { "/$it" } ?: server?.slug?.let { "/$it" } ?: "Not provided", status = if (snapshot?.profile?.canSave == true) "Editable" else "Read only"),
-                            KuiklySharedSettingsRow("serverRole", SlockLucideIconName.ShieldCheck, "Your role", "Permission scope for workspace settings.", status = role)
+                            KuiklySharedSettingsRow("serverRole", SlockLucideIconName.ShieldCheck, "Your role", "Permission scope for workspace settings.", status = role),
+                            KuiklySharedSettingsRow(
+                                "openAdministration",
+                                SlockLucideIconName.Shield,
+                                "Administration",
+                                "Manage admins, invites, join links, pre-join agreement, onboarding, member permissions, translation, and sidebar order.",
+                                status = "Open",
+                                enabled = true
+                            )
                         )
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Admins",
-                    rows = snapshot?.admins.toAdminRows(sectionsByKey["admins"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pending Invites",
-                    rows = snapshot?.pendingInvites.toInviteRows(sectionsByKey["pending_invites"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Join Links",
-                    rows = snapshot?.joinLinks.toJoinLinkRows(sectionsByKey["join_links"], actionState, timeContext)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Pre-join Agreement",
-                    rows = snapshot?.agreement.toAgreementRows(sectionsByKey["pre_join_agreement"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Onboarding",
-                    rows = snapshot?.onboarding.toOnboardingRows(sectionsByKey["onboarding_agent"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Member Permissions",
-                    rows = snapshot?.profile.toMemberPermissionsRows(sectionsByKey["member_permissions"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Translation",
-                    rows = snapshot?.translation.toTranslationRows(sectionsByKey["translation"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Sidebar Order",
-                    rows = snapshot?.sidebarOrder.toSidebarOrderRows(sectionsByKey["sidebar_order"], actionState)
-                ),
-                KuiklySharedSettingsSection(
-                    title = "Plan",
-                    rows =
-                        snapshot.toPlanRows(sectionsByKey["billing"], plan)
                 )
             )
     )
