@@ -166,6 +166,27 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineCodeTextFlowAddsYellowBackgroundWithoutRelyingOnMarkdownCodeSpanStyle() {
+        val code = "very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes"
+        val annotated = buildSlockMarkdownParagraphAnnotatedString("Use `$code` now")
+        val visibleText = annotated.text.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
+        val codeStart = annotated.text.indexOf("very")
+        val codeIndexes =
+            annotated.text.withIndex()
+                .filter { (_, char) -> char != SlockMarkdownInlineCodeSoftBreak }
+                .dropWhile { (_, char) -> char != 'v' }
+                .take(code.length)
+                .map { it.index }
+        val yellow = SlockColor.BrandYellow.copy(alpha = 0.4f)
+        val yellowRanges =
+            annotated.spanStyles.filter { span -> span.item.background == yellow }
+
+        assertEquals("Use $code now", visibleText)
+        assertTrue(codeStart >= 0)
+        assertTrue(codeIndexes.all { index -> yellowRanges.any { range -> index in range.start until range.end } })
+    }
+
+    @Test
     fun userMentionsRenderAsClickableInlineContent() {
         val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
 

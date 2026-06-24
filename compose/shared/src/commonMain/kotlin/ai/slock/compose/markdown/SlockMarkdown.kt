@@ -596,16 +596,17 @@ internal fun slockMarkdownAnnotator(
         )
     }
     return markdownAnnotator(
-        annotate = { markdownContent, child, annotatorSettings ->
+        annotate = { markdownContent, child, _ ->
             if (child.type == MarkdownElementTypes.CODE_SPAN) {
                 val codeToken =
                     inlineCodeChipById["slock-code:${child.startOffset}"]
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    pushStyle(annotatorSettings.codeSpanStyle)
-                    append(code.slockMarkdownInlineCodeWithSoftBreaks())
-                    pop()
+                    appendSlockMarkdownInlineCodeWithBackground(
+                        code = code,
+                        style = slockMarkdownInlineCodeWrappingSpanStyle(inlineCodeTextStyle)
+                    )
                     return@markdownAnnotator true
                 }
             }
@@ -1378,12 +1379,22 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
+private fun slockMarkdownInlineCodeWrappingSpanStyle(textStyle: TextStyle): SpanStyle =
+    textStyle
+        .copy(color = SlockColor.TextBlack, background = SlockColor.BrandYellow.copy(alpha = 0.4f))
+        .toSpanStyle()
+
 internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
     return emptyList()
 }
 
 internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
-    if (isEmpty()) return this
+    return slockMarkdownInlineCodeSoftBreakPieces()
+        .joinToString(separator = SlockMarkdownInlineCodeSoftBreak.toString())
+}
+
+private fun String.slockMarkdownInlineCodeSoftBreakPieces(): List<String> {
+    if (isEmpty()) return listOf(this)
     val pieces = mutableListOf<String>()
     val current = StringBuilder()
     var unitsSinceBreak = 0
@@ -1405,7 +1416,20 @@ internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
     if (current.isNotEmpty()) {
         pieces += current.toString()
     }
-    return pieces.joinToString(separator = SlockMarkdownInlineCodeSoftBreak.toString())
+    return pieces
+}
+
+private fun AnnotatedString.Builder.appendSlockMarkdownInlineCodeWithBackground(
+    code: String,
+    style: SpanStyle
+) {
+    val pieces = code.slockMarkdownInlineCodeSoftBreakPieces()
+    pieces.forEachIndexed { index, piece ->
+        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
+        pushStyle(style)
+        append(piece)
+        pop()
+    }
 }
 
 internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
