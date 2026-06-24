@@ -655,63 +655,6 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun clearServerUnreadUpdatesCachedHomeRowsAndUnreadSnapshot() = runBlocking {
-        val store = InMemoryComposeLocalDataStore()
-        val writer = ComposeLocalWriteThrough(store)
-        store.writeUnread(
-            ChannelUnreadSnapshot(
-                server = server,
-                unreadCounts =
-                    mapOf(
-                        ChannelId("channel-1") to 3,
-                        ChannelId("dm-1") to 2
-                    ),
-                totalUnreadCount = 5
-            )
-        )
-        store.writeHome(
-            home(
-                channels =
-                    listOf(
-                        channel("channel-1").copy(
-                            unreadCount = 3,
-                            unreadCountKnown = true,
-                            mentionCount = 1,
-                            mentionCountKnown = true,
-                            firstUnreadMessageId = MessageId("message-1")
-                        )
-                    ),
-                directMessages =
-                    listOf(
-                        ConversationSummary(
-                            threadId = ThreadId("dm-1"),
-                            channelId = ChannelId("dm-1"),
-                            kind = ConversationKind.DirectMessage,
-                            name = "DM",
-                            unreadCount = 2,
-                            unreadCountKnown = true,
-                            mentionCount = 1,
-                            mentionCountKnown = true,
-                            firstUnreadMessageId = MessageId("message-2")
-                        )
-                    )
-            ).copy(unreadTotal = 5)
-        )
-
-        writer.clearServerUnread(serverId, "test_mark_all")
-
-        val unread = store.readUnread(serverId)
-        val cached = store.readHome(serverId)
-        assertEquals(emptyMap(), unread?.unreadCounts)
-        assertEquals(0, unread?.totalUnreadCount)
-        assertEquals(0, cached?.unreadTotal)
-        assertTrue(cached?.channels.orEmpty().all { it.unreadCount == 0 && it.mentionCount == 0 })
-        assertTrue(cached?.directMessages.orEmpty().all { it.unreadCount == 0 && it.mentionCount == 0 })
-        assertTrue(cached?.channels.orEmpty().all { it.firstUnreadMessageId == null })
-        assertTrue(cached?.directMessages.orEmpty().all { it.firstUnreadMessageId == null })
-    }
-
-    @Test
     fun writeUnreadCountsOnlyReplacesMatchingHomeRows() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)

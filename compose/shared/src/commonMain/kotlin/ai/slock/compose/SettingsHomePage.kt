@@ -1537,14 +1537,12 @@ private fun SlockAppShellContent() {
     var realtimeSessionKey by remember { mutableStateOf<String?>(null) }
     var membersListRefreshKey by remember { mutableStateOf(0) }
     var membersAgentDetailRefreshKey by remember { mutableStateOf(0) }
-    var membersListCachedContent by remember { mutableStateOf<SharedMembersUiState.Content?>(null) }
 
     fun resetAppShellSessionState() {
         realtimeLastSeq = 0L
         realtimeSessionKey = null
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
-        membersListCachedContent = null
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome
@@ -2255,7 +2253,6 @@ private fun SlockAppShellContent() {
                             active = active,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
-                            activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
                             savedCount = homeSearchSavedState.saved.totalCount,
                             onIntent = { intent -> homeShellStore.dispatch(SharedHomeShellIntent.Home(intent)) },
                             onNotificationDismiss = { id ->
@@ -2292,10 +2289,6 @@ private fun SlockAppShellContent() {
                             computersStore = appShellComputersStore,
                             agentDetailStore = sharedStores.agentDetailStore,
                             membersRefreshKey = membersListRefreshKey,
-                            currentServerId = readyServerId,
-                            initialContent =
-                                sharedMembersCachedContentForServer(membersListCachedContent, readyServerId),
-                            onContentLoaded = { membersListCachedContent = it },
                             timeContext = threadTimeContext,
                             bottomContentPadding = appShellBottomContentInset
                         )
@@ -8462,32 +8455,23 @@ private fun SharedMembersScreen(
     computersStore: SharedComputersStore,
     agentDetailStore: SharedAgentDetailStore,
     membersRefreshKey: Int,
-    currentServerId: String?,
-    initialContent: SharedMembersUiState.Content?,
-    onContentLoaded: (SharedMembersUiState.Content) -> Unit,
     timeContext: AppShellTimeContext?,
     bottomContentPadding: Dp = SlockSpacing.Lg
 ) {
-    var state by remember(currentServerId) {
-        mutableStateOf<SharedMembersUiState>(initialContent ?: SharedMembersUiState.Loading)
-    }
+    var state by remember { mutableStateOf<SharedMembersUiState>(SharedMembersUiState.Loading) }
     var refreshing by remember { mutableStateOf(false) }
     val pager = LocalActivity.current.getPager() as Pager
 
-    LaunchedEffect(membersRefreshKey, currentServerId) {
-        var previousContent: SharedMembersUiState.Content? = null
+    LaunchedEffect(membersRefreshKey) {
+        val previousContent = state as? SharedMembersUiState.Content
+        if (previousContent != null) {
+            refreshing = true
+        } else {
+            state = SharedMembersUiState.Loading
+        }
         try {
             val session = authStore.readSession()
             val serverId = session?.currentServerId
-            previousContent =
-                sharedMembersCachedContentForServer(state as? SharedMembersUiState.Content, serverId)
-                    ?: sharedMembersCachedContentForServer(initialContent, serverId)
-            if (previousContent != null) {
-                state = previousContent
-                refreshing = true
-            } else {
-                state = SharedMembersUiState.Loading
-            }
             val server = session?.servers?.firstOrNull { it.id == serverId }?.toServerSummary()
             if (session == null || serverId.isNullOrBlank() || server == null) {
                 state = previousContent ?: SharedMembersUiState.Error("server_required")
@@ -8496,17 +8480,10 @@ private fun SharedMembersScreen(
             val response = memberRepository.getMembers(DataRequestPriority.Visible, ServerId(serverId))
             state =
                 when (response) {
-                    is DataResult.Content -> {
-                        val content =
-                            SharedMembersUiState.Content(response.data.server, response.data.members, session.user.id)
-                        onContentLoaded(content)
-                        content
-                    }
-                    is DataResult.Empty -> {
-                        val content = SharedMembersUiState.Content(server, emptyList(), session.user.id)
-                        onContentLoaded(content)
-                        content
-                    }
+                    is DataResult.Content ->
+                        SharedMembersUiState.Content(response.data.server, response.data.members, session.user.id)
+                    is DataResult.Empty ->
+                        SharedMembersUiState.Content(server, emptyList(), session.user.id)
                     is DataResult.NoPermission ->
                         previousContent ?: SharedMembersUiState.Error(response.blocker.code)
                     is DataResult.Error ->
@@ -8634,14 +8611,12 @@ private fun SharedMembersScreen(
                         presence = Presence.Offline,
                         agentStatus = AgentStatus.Online
                     )
-                    val nextState =
+                    state =
                         when (val latest = state) {
                             is SharedMembersUiState.Content ->
                                 latest.copy(members = latest.members + profile)
                             else -> latest
                         }
-                    state = nextState
-                    (nextState as? SharedMembersUiState.Content)?.let(onContentLoaded)
                 }
                 when (result) {
                     is DataResult.Content -> DataResult.Content(Unit)
@@ -8709,7 +8684,7 @@ internal fun buildHostMembersPayload(
         canCreateAgents = server.permissions.canManageSettings
     )
 
-internal sealed interface SharedMembersUiState {
+private sealed interface SharedMembersUiState {
     data object Loading : SharedMembersUiState
     data class Error(val code: String) : SharedMembersUiState
     data class Content(
@@ -8718,14 +8693,6 @@ internal sealed interface SharedMembersUiState {
         val currentUserId: String?
     ) : SharedMembersUiState
 }
-
-internal fun sharedMembersCachedContentForServer(
-    cachedContent: SharedMembersUiState.Content?,
-    serverId: String?
-): SharedMembersUiState.Content? =
-    cachedContent?.takeIf { content ->
-        !serverId.isNullOrBlank() && content.server.id.value == serverId
-    }
 
 private fun SharedMembersUiState.withMembersLifecycleResult(
     action: MembersAgentLifecycleAction,
@@ -8920,7 +8887,6 @@ private fun SharedHomeScreen(
     active: Boolean,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
-    activityUnreadLoaded: Boolean = false,
     savedCount: Int = 0,
     onIntent: (SharedHomeIntent) -> Unit,
     onNotificationDismiss: (String) -> Unit = { id -> onIntent(SharedHomeIntent.DismissNotification(id)) },
@@ -9019,8 +8985,7 @@ private fun SharedHomeScreen(
                 }
             val homeActivityUnreadCount = homeActivitySidebarUnreadCount(
                 homeUnreadCount = snapshot.unreadTotal,
-                activityUnreadCount = activityUnreadCount,
-                activityUnreadLoaded = activityUnreadLoaded
+                activityUnreadCount = activityUnreadCount
             )
             SlockStructuralHomeShell(
                 currentServerName = snapshot.server.name,
@@ -10146,80 +10111,74 @@ private fun SharedHomeSavedPanel(
         }
         return
     }
-    Column(
+    LazyColumn(
+        state = listState,
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(SlockColor.SurfaceWhite)
+                .background(SlockColor.SurfaceWhite),
+        verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
     ) {
-        SharedHomeSavedHeader(
-            count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
-            onClose = onClose,
-            refreshing = state.refreshing && !state.pullRefreshing,
-            topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
-        )
-        LazyColumn(
-            state = listState,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .background(SlockColor.SurfaceWhite),
-            verticalArrangement = Arrangement.spacedBy(SlockSpacing.Sm)
-        ) {
-            pullToRefreshItem(
-                state = pullToRefreshState,
-                scrollState = listState,
-                onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
-                content = { pullProgress, isRefreshing, _ ->
-                    SlockRaftPullRefreshIndicator(
-                        pullProgress = pullProgress,
-                        isRefreshing = isRefreshing
-                    )
-                }
-            )
-            val hasSavedRows = state.items.isNotEmpty()
-            if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
-                item {
-                    SharedHomePanelStatus(
-                        errorCode = state.errorCode,
-                        noPermissionCode = state.noPermissionCode,
-                        empty = false,
-                        emptyTitle = "",
-                        emptyDetail = "",
-                        onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
-                    )
-                }
-            } else if (state.empty || (state.loaded && state.items.isEmpty())) {
-                item {
-                    SharedHomeSavedEmptyState()
-                }
-            }
-            items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
-                val item = state.items[index]
-                SharedHomeSavedResultCard(
-                    item = item,
-                    selected = selectedItemKey == item.key,
-                    onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
-                    onOpen = {
-                        selectedItemKey = item.key
-                        onOpenItem(item)
-                    },
-                    timeContext = timeContext
+        pullToRefreshItem(
+            state = pullToRefreshState,
+            scrollState = listState,
+            onRefresh = { onIntent(SharedHomeSearchSavedIntent.PullRefreshSaved) },
+            content = { pullProgress, isRefreshing, _ ->
+                SlockRaftPullRefreshIndicator(
+                    pullProgress = pullProgress,
+                    isRefreshing = isRefreshing
                 )
             }
-            if (state.hasMore) {
-                item {
-                    SharedHomeLoadMoreRow(
-                        loading = state.loadingMore,
-                        label = "Load More",
-                        onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
-                    )
-                }
-            }
+        )
+        item {
+            SharedHomeSavedHeader(
+                count = state.totalCount.takeIf { it > 0 } ?: state.items.size,
+                onClose = onClose,
+                refreshing = state.refreshing && !state.pullRefreshing,
+                topSafeAreaPadding = shellScope.topInset(includeTopSafeArea)
+            )
+        }
+        val hasSavedRows = state.items.isNotEmpty()
+        if (state.noPermissionCode != null || (state.errorCode != null && !hasSavedRows)) {
             item {
-                Spacer(Modifier.height(bottomContentPadding))
+                SharedHomePanelStatus(
+                    errorCode = state.errorCode,
+                    noPermissionCode = state.noPermissionCode,
+                    empty = false,
+                    emptyTitle = "",
+                    emptyDetail = "",
+                    onRetry = { onIntent(SharedHomeSearchSavedIntent.RefreshSaved) }
+                )
             }
+        } else if (state.empty || (state.loaded && state.items.isEmpty())) {
+            item {
+                SharedHomeSavedEmptyState()
+            }
+        }
+        items(state.items.size, key = { index -> "saved-${state.items[index].key}" }) { index ->
+            val item = state.items[index]
+            SharedHomeSavedResultCard(
+                item = item,
+                selected = selectedItemKey == item.key,
+                onUnsave = { onIntent(SharedHomeSearchSavedIntent.Unsave(item)) },
+                onOpen = {
+                    selectedItemKey = item.key
+                    onOpenItem(item)
+                },
+                timeContext = timeContext
+            )
+        }
+        if (state.hasMore) {
+            item {
+                SharedHomeLoadMoreRow(
+                    loading = state.loadingMore,
+                    label = "Load More",
+                    onClick = { onIntent(SharedHomeSearchSavedIntent.LoadMoreSaved) }
+                )
+            }
+        }
+        item {
+            Spacer(Modifier.height(bottomContentPadding))
         }
     }
 }

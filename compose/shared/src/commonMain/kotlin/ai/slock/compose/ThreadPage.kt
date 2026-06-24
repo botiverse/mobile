@@ -7040,8 +7040,6 @@ private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
 private const val ThreadInitialContentHeightTolerancePx = 8
 private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
 private const val ThreadInitialMarkdownMaxEstimatedLines = 8
-private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
-private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
 private fun ThreadSystemMessageRow(
@@ -7060,12 +7058,6 @@ private fun ThreadSystemMessageRow(
     onOpenMarkdownUrl: (String) -> Unit
 ) {
     var expanded by remember(message.id) { mutableStateOf(false) }
-    val systemBody =
-        if (expanded) {
-            message.expandedSystemContent()
-        } else {
-            message.systemContentSummary()
-        }
     Column(
         modifier =
             Modifier.fillMaxWidth()
@@ -7073,29 +7065,15 @@ private fun ThreadSystemMessageRow(
                 .clickable { expanded = !expanded }
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs),
         verticalArrangement = Arrangement.spacedBy(SlockSpacing.Xs),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.Start
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = timestampLabel,
-                style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor),
-                color = ThreadSystemMessageTimeColor,
-                maxLines = 1,
-                overflow = TextOverflow.Clip
-            )
-            Text(
-                text = systemBody,
-                style = SlockType.Caption.copy(color = ThreadSystemMessageBodyColor),
-                color = ThreadSystemMessageBodyColor,
-                maxLines = if (expanded) Int.MAX_VALUE else 1,
-                overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
-        }
+        Text(
+            text = if (expanded) message.expandedSystemSummary(timestampLabel) else message.collapsedSystemSummary(timestampLabel),
+            style = SlockType.Caption.withSlockFontWeight(FontWeight.Medium).copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray,
+            maxLines = if (expanded) Int.MAX_VALUE else 1,
+            overflow = if (expanded) TextOverflow.Clip else TextOverflow.Ellipsis
+        )
         ThreadMessageFooterMeta(
             message = message,
             showReplyAction = showReplyAction,
@@ -8089,14 +8067,6 @@ internal fun KuiklyThreadMessageItem.collapsedSystemSummary(timestamp: String): 
     listOf(timestamp, body.sanitizeThreadSystemText())
         .filter { it.isNotBlank() }
         .joinToString(" ")
-
-internal fun KuiklyThreadMessageItem.systemContentSummary(): String =
-    body.sanitizeThreadSystemText()
-
-internal fun KuiklyThreadMessageItem.expandedSystemContent(): String =
-    listOf(systemContentSummary(), expandedSystemDetails())
-        .filter { it.isNotBlank() }
-        .joinToString("\n")
 
 internal fun KuiklyThreadMessageItem.expandedSystemSummary(timestamp: String): String =
     listOf(collapsedSystemSummary(timestamp), expandedSystemDetails())
