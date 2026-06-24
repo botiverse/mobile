@@ -413,6 +413,7 @@ internal data class KuiklyThreadScreenPayload(
     val title: String = "Thread",
     val subtitle: String? = null,
     val status: String = "loading",
+    val backgroundRefreshing: Boolean = false,
     val surfaceKind: String = KuiklyThreadSurfaceKind.Channel,
     val channelKind: String = "channel",
     val sourceThreadId: String? = null,
@@ -5261,13 +5262,23 @@ private fun ThreadPageHeader(
                 ThreadChannelTile(payload.channelKind)
             }
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = displayTitle,
-                    style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
-                    color = SlockColor.TextBlack,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = displayTitle,
+                        style = SlockType.ButtonBold.copy(fontSize = 18.sp, lineHeight = 22.sp, color = SlockColor.TextBlack),
+                        color = SlockColor.TextBlack,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (payload.backgroundRefreshing) {
+                        SlockHeaderRefreshIndicator()
+                    }
+                }
                 payload.subtitle?.takeIf { it.isNotBlank() }?.let {
                     Text(
                         text = it,
