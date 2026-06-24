@@ -10,6 +10,8 @@ import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.BoxScope
+import com.tencent.kuikly.compose.foundation.layout.offset
+import com.tencent.kuikly.compose.foundation.layout.padding
 import com.tencent.kuikly.compose.foundation.layout.size
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
@@ -28,10 +30,18 @@ internal enum class SlockStatusIndicatorShape {
 
 internal object SlockStatusIndicatorTokens {
     val Shape: SlockStatusIndicatorShape = SlockStatusIndicatorShape.Circle
-    val AvatarSize: Dp = 9.dp
+    // #90 React parity: bump avatar overlay size 9dp → 11dp to match React
+    // `StatusDot size="lg"` (`size-[11px]`). Inline / server-unread sizes
+    // match React `size="md"` (10dp ≈ 10px) and stay unchanged.
+    val AvatarSize: Dp = 11.dp
     val InlineSize: Dp = 10.dp
     val ServerUnreadSize: Dp = 10.dp
-    val BorderWidth: Dp = SlockStroke.Thin
+    // #90 React parity: bump border from 1dp (`SlockStroke.Thin`) to 2dp
+    // (`SlockStroke.Default`). React `StatusDot` uses `border border-black`
+    // which Tailwind renders as 1px; with KMP's 1dp defaulting to 1.5-2x px
+    // density on most Android devices, 2dp gives the visibly heavier border
+    // owner wants (React screenshot vs Android screenshot comparison).
+    val BorderWidth: Dp = SlockStroke.Default
     val BorderColor: Color = SlockColor.BorderBlack
 }
 
@@ -115,16 +125,30 @@ internal fun SlockAvatarWithStatus(
     statusPulsing: Boolean = false,
     avatar: @Composable BoxScope.() -> Unit
 ) {
+    // #90 React parity: React `StatusDot` avatar overlay uses
+    // `className="absolute -bottom-0.5 -right-0.5"` — the dot is offset by
+    // -0.5 units so it overflows the avatar corner. Mirror that here by
+    // wrapping the dot in a Box that extends `statusSize / 2` past the
+    // avatar bounds and aligning the dot to its BottomEnd.
+    val statusOffset = statusSize / 2
     Box(modifier = modifier.size(avatarSize)) {
         Box(modifier = Modifier.align(Alignment.Center), content = avatar)
         statusColor?.let {
-            SlockStatusIndicator(
-                color = it,
-                size = statusSize,
-                shape = shape,
-                pulsing = statusPulsing,
-                modifier = Modifier.align(Alignment.BottomEnd)
-            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 0.dp, bottom = 0.dp)
+                    .offset(x = statusOffset / 2, y = statusOffset / 2)
+                    .size(statusSize + statusOffset)
+            ) {
+                SlockStatusIndicator(
+                    color = it,
+                    size = statusSize,
+                    shape = shape,
+                    pulsing = statusPulsing,
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                )
+            }
         }
     }
 }
