@@ -603,10 +603,10 @@ internal fun slockMarkdownAnnotator(
                         ?: inlineCodeChipById.values.firstOrNull { child.startOffset in it.range }
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
-                    appendSlockMarkdownInlineCodeWithBackground(
-                        code = code,
-                        style = slockMarkdownInlineCodeWrappingSpanStyle(inlineCodeTextStyle)
-                    )
+                    codeToken.toSlockMarkdownInlineCodeChipSegments().forEachIndexed { index, segment ->
+                        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
+                        appendInlineContent(segment.id, segment.code)
+                    }
                     return@markdownAnnotator true
                 }
             }
@@ -950,25 +950,25 @@ private fun SlockMarkdownMeasuredInlineCodeBox(
     measuredInlineCodeWidths: MutableMap<String, TextUnit>,
     content: @Composable (Modifier) -> Unit
 ) {
-    val inlineCodeTokens =
+    val inlineCodeSegments =
         tokenPlan.inlineCodeTokens()
-            .filter { it.toSlockMarkdownInlineCodeChipSegments().isNotEmpty() }
-    if (inlineCodeTokens.isEmpty()) {
+            .flatMap { it.toSlockMarkdownInlineCodeChipSegments() }
+    if (inlineCodeSegments.isEmpty()) {
         content(modifier)
         return
     }
 
     val density = LocalDensity.current
     val activeIds = remember(tokenPlan.signature) {
-        inlineCodeTokens.mapTo(mutableSetOf()) { it.id }
+        inlineCodeSegments.mapTo(mutableSetOf()) { it.id }
     }
     Box(
         modifier =
             modifier.nativeRef { viewRef ->
                 val fontScale = density.density / getPager().pagerDensity()
                 val measuredByCode = mutableMapOf<String, TextUnit>()
-                inlineCodeTokens.forEach { token ->
-                    val code = token.code.orEmpty()
+                inlineCodeSegments.forEach { segment ->
+                    val code = segment.code
                     val measuredWidth =
                         measuredByCode.getOrPut(code) {
                             measureSlockMarkdownInlineCodeWidthSp(
@@ -979,11 +979,11 @@ private fun SlockMarkdownMeasuredInlineCodeBox(
                                 fontScale = fontScale
                             )
                         }
-                    val previousWidth = measuredInlineCodeWidths[token.id]
+                    val previousWidth = measuredInlineCodeWidths[segment.id]
                     if (previousWidth == null ||
                         abs(previousWidth.value - measuredWidth.value) > SlockMarkdownMeasuredWidthEpsilonSp
                     ) {
-                        measuredInlineCodeWidths[token.id] = measuredWidth
+                        measuredInlineCodeWidths[segment.id] = measuredWidth
                     }
                 }
                 measuredInlineCodeWidths.keys
@@ -1379,13 +1379,14 @@ internal fun slockMarkdownInlineCodeChipHeightSp(textStyle: TextStyle): TextUnit
 internal fun slockMarkdownInlineCodeTextStyle(base: TextStyle): TextStyle =
     base.withResolvedSlockFontFamily()
 
-private fun slockMarkdownInlineCodeWrappingSpanStyle(textStyle: TextStyle): SpanStyle =
-    textStyle
-        .copy(color = SlockColor.TextBlack, background = SlockColor.BrandYellow.copy(alpha = 0.4f))
-        .toSpanStyle()
-
 internal fun MarkdownInlineToken.toSlockMarkdownInlineCodeChipSegments(): List<ThreadInlineCodeChipSegment> {
-    return emptyList()
+    val code = code ?: return emptyList()
+    return code.slockMarkdownInlineCodeSoftBreakPieces().mapIndexed { index, piece ->
+        ThreadInlineCodeChipSegment(
+            id = if (index == 0) id else "$id:$index",
+            code = piece
+        )
+    }
 }
 
 internal fun String.slockMarkdownInlineCodeWithSoftBreaks(): String {
@@ -1417,19 +1418,6 @@ private fun String.slockMarkdownInlineCodeSoftBreakPieces(): List<String> {
         pieces += current.toString()
     }
     return pieces
-}
-
-private fun AnnotatedString.Builder.appendSlockMarkdownInlineCodeWithBackground(
-    code: String,
-    style: SpanStyle
-) {
-    val pieces = code.slockMarkdownInlineCodeSoftBreakPieces()
-    pieces.forEachIndexed { index, piece ->
-        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
-        pushStyle(style)
-        append(piece)
-        pop()
-    }
 }
 
 internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'

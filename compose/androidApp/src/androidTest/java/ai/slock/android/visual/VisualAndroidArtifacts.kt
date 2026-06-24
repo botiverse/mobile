@@ -48,7 +48,8 @@ internal object VisualAndroidArtifacts {
     }
 
     fun deleteCaseArtifacts(caseId: String) {
-        runShell("rm -f $PublicOutputPath/${caseId}*")
+        deleteExistingMediaStoreDownloadsForCase(caseId)
+        runShell("rm -f '$PublicOutputPath'/'$caseId'*")
         publicOutputDir()
             .listFiles()
             ?.filter { file -> file.name.startsWith(caseId) }
@@ -86,10 +87,41 @@ internal object VisualAndroidArtifacts {
         resolver: android.content.ContentResolver,
         displayName: String
     ) {
-        val projection = arrayOf(MediaStore.Downloads._ID)
         val selection =
-            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND ${MediaStore.Downloads.RELATIVE_PATH} = ?"
-        val selectionArgs = arrayOf(displayName, "Download/slock-visual-testing/android")
+            "${MediaStore.Downloads.DISPLAY_NAME} = ? AND " +
+                "${MediaStore.Downloads.RELATIVE_PATH} IN (?, ?)"
+        val selectionArgs =
+            arrayOf(
+                displayName,
+                "Download/slock-visual-testing/android",
+                "Download/slock-visual-testing/android/"
+            )
+        deleteMatchingMediaStoreDownloads(resolver, selection, selectionArgs)
+    }
+
+    private fun deleteExistingMediaStoreDownloadsForCase(caseId: String) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return
+        }
+        val resolver = InstrumentationRegistry.getInstrumentation().targetContext.contentResolver
+        val selection =
+            "${MediaStore.Downloads.DISPLAY_NAME} LIKE ? AND " +
+                "${MediaStore.Downloads.RELATIVE_PATH} IN (?, ?)"
+        val selectionArgs =
+            arrayOf(
+                "$caseId%",
+                "Download/slock-visual-testing/android",
+                "Download/slock-visual-testing/android/"
+            )
+        deleteMatchingMediaStoreDownloads(resolver, selection, selectionArgs)
+    }
+
+    private fun deleteMatchingMediaStoreDownloads(
+        resolver: android.content.ContentResolver,
+        selection: String,
+        selectionArgs: Array<String>
+    ) {
+        val projection = arrayOf(MediaStore.Downloads._ID)
         resolver.query(
             MediaStore.Downloads.EXTERNAL_CONTENT_URI,
             projection,
