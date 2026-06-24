@@ -22,8 +22,8 @@ import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.explicitMessageStreamChannelId
-import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
 
@@ -905,14 +905,25 @@ private fun List<Message>.mergeRealtimeMessages(incoming: List<Message>): List<M
 private fun Message.withHomeDirectMessageAvatar(avatarWireValue: String?): Message {
     val wireValue = avatarWireValue?.takeIf { it.isNotBlank() } ?: return this
     if (author.kind != MemberKind.Agent) return this
-    val currentWireValue = author.avatar?.wireValue ?: author.avatarUrl
-    if (!currentWireValue.isNullOrBlank() && !currentWireValue.isGravatarAvatarWireValue()) return this
+    val mergedAvatar =
+        resolveMergedAvatarSlot(
+            kind = MemberKind.Agent,
+            id = author.id.value,
+            currentAvatarWireValue = author.avatar?.wireValue ?: author.avatarUrl,
+            currentGravatarHash = author.gravatarHash,
+            incomingAvatarWireValue = wireValue
+        )
+    if (mergedAvatar.effectiveAvatarWireValue == (author.avatar?.wireValue ?: author.avatarUrl) &&
+        mergedAvatar.gravatarHash == author.gravatarHash
+    ) {
+        return this
+    }
     return copy(
         author =
             author.copy(
-                avatarUrl = wireValue,
-                avatar = AvatarReference.fromWireValue(wireValue),
-                gravatarHash = null
+                avatarUrl = mergedAvatar.effectiveAvatarWireValue,
+                avatar = AvatarReference.fromWireValue(mergedAvatar.effectiveAvatarWireValue),
+                gravatarHash = mergedAvatar.gravatarHash
             )
     )
 }

@@ -94,6 +94,7 @@ import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
 import ai.slock.compose.model.resolveAvatarSlot
+import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.withPreviewMembershipFallback
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -3819,35 +3820,18 @@ private fun KuiklyThreadMessageItem.mergeAttachmentCommentMetadata(
 private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): KuiklyThreadMessageItem {
     profile ?: return this
     val isAgent = profile.kind == MemberKind.Agent || authorKind.equals("agent", ignoreCase = true)
-    val profileAvatar =
-        resolveAvatarSlot(
-            kind = if (isAgent) MemberKind.Agent else profile.kind,
-            id = profile.id.value,
-            avatarWireValue = profile.avatar?.wireValue,
-            avatarUrl = profile.avatarUrl,
-            gravatarHash = profile.gravatarHash
-        )
-    val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
-    val currentAvatar =
-        resolveAvatarSlot(
+    val avatarMerge =
+        resolveMergedAvatarSlot(
             kind = if (isAgent) MemberKind.Agent else profile.kind,
             id = authorId.ifBlank { profile.id.value },
-            avatarWireValue = currentAvatarWireValue,
-            gravatarHash = gravatarHash
+            currentAvatarWireValue = avatarWireValue,
+            currentGravatarHash = gravatarHash,
+            incomingAvatarWireValue = profile.avatar?.wireValue,
+            incomingAvatarUrl = profile.avatarUrl,
+            incomingGravatarHash = profile.gravatarHash
         )
-    val resolvedAvatarWireValue =
-        if (isAgent) {
-            if (currentAvatarWireValue == null ||
-                currentAvatarWireValue.isGravatarAvatarWireValue() ||
-                currentAvatarWireValue.isAgentFallbackAvatarWireValue()
-            ) {
-                profileAvatar.effectiveAvatarWireValue
-            } else {
-                currentAvatar.effectiveAvatarWireValue
-            }
-        } else {
-            currentAvatar.effectiveAvatarWireValue ?: profileAvatar.effectiveAvatarWireValue
-        }
+    val currentAvatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() }
+    val resolvedAvatarWireValue = avatarMerge.effectiveAvatarWireValue
     if (resolvedAvatarWireValue?.isGravatarAvatarWireValue() == true ||
         (isAgent && currentAvatarWireValue?.isGravatarAvatarWireValue() == true)
     ) {
@@ -3877,7 +3861,7 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
         },
         avatarLabel = profile.avatarLabel.ifBlank { avatarLabel },
         avatarWireValue = resolvedAvatarWireValue,
-        gravatarHash = if (isAgent) null else currentAvatar.gravatarHash ?: profileAvatar.gravatarHash,
+        gravatarHash = avatarMerge.gravatarHash,
         senderMembershipStatus = senderMembershipStatus ?: profile.membershipStatus?.takeIf { it.isNotBlank() },
         authorDeletedAt = authorDeletedAt ?: profile.agentDeletedAt?.takeIf { it.isNotBlank() }
     )
@@ -3908,9 +3892,6 @@ private fun AgentSummary.toThreadSenderProfile(serverId: ServerId): MemberProfil
     )
 }
 
-private fun String.isAgentFallbackAvatarWireValue(): Boolean =
-    equals("pixel:robot", ignoreCase = true) || startsWith("random:", ignoreCase = true)
-
 private fun KuiklyThreadScreenPayload.withSenderProfiles(
     profilesById: Map<String, MemberProfile>
 ): KuiklyThreadScreenPayload =
@@ -3935,17 +3916,17 @@ private fun KuiklyThreadMessageItem.withHomeDirectMessageAvatar(avatarWireValue:
     if (!isAgent) return this
     val currentWireValue = this.avatarWireValue?.takeIf { it.isNotBlank() }
     val nextWireValue =
-        if (currentWireValue == null || currentWireValue.isGravatarAvatarWireValue()) {
-            wireValue
-        } else if (currentWireValue.isAgentFallbackAvatarWireValue()) {
-            wireValue
-        } else {
-            currentWireValue
-        }
-    if (currentWireValue?.isGravatarAvatarWireValue() == true || nextWireValue.isGravatarAvatarWireValue()) {
+        resolveMergedAvatarSlot(
+            kind = MemberKind.Agent,
+            id = authorId,
+            currentAvatarWireValue = currentWireValue,
+            currentGravatarHash = gravatarHash,
+            incomingAvatarWireValue = wireValue
+        ).effectiveAvatarWireValue
+    if (currentWireValue?.isGravatarAvatarWireValue() == true || nextWireValue?.isGravatarAvatarWireValue() == true) {
         logThreadAvatarDiagnostic(
             reason =
-                if (nextWireValue.isGravatarAvatarWireValue()) {
+                if (nextWireValue?.isGravatarAvatarWireValue() == true) {
                     "home_dm_avatar_resolved_gravatar"
                 } else {
                     "home_dm_avatar_overrode_gravatar_candidate"
@@ -4206,14 +4187,12 @@ private fun resolveDirectMessagePeerAvatar(
     val baseAvatar = baseAvatarWireValue?.takeIf { it.isNotBlank() }
     val resolvedAvatar = conversationAvatar.effectiveAvatarWireValue
     if (!isAgentDirectMessage) return baseAvatar ?: resolvedAvatar
-    return when {
-        baseAvatar == null -> resolvedAvatar
-        baseAvatar.isGravatarAvatarWireValue() -> resolvedAvatar
-        baseAvatar.isAgentFallbackAvatarWireValue() &&
-            !resolvedAvatar.isNullOrBlank() &&
-            !resolvedAvatar.isAgentFallbackAvatarWireValue() -> resolvedAvatar
-        else -> baseAvatar
-    }
+    return resolveMergedAvatarSlot(
+        kind = MemberKind.Agent,
+        id = "dm-peer",
+        currentAvatarWireValue = baseAvatar,
+        incomingAvatarWireValue = resolvedAvatar
+    ).effectiveAvatarWireValue
 }
 
 private fun ThreadSnapshot.matchesFocusedThreadRoute(
