@@ -3477,10 +3477,17 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         patch.membersCount > 0 ||
             patch.members.isNotEmpty() ||
             patch.memberCandidates.isNotEmpty()
+    val nextSubtitle =
+        patch.subtitle
+            ?: if (patch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && !patch.showModeTabs) {
+                existingThreadChannelHeaderSubtitle(subtitle)
+            } else {
+                null
+            }
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
         title = patch.title,
-        subtitle = patch.subtitle,
+        subtitle = nextSubtitle,
         surfaceKind = patch.surfaceKind,
         channelKind = patch.channelKind,
         sourceThreadId = patch.sourceThreadId,
