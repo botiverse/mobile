@@ -17,17 +17,20 @@ val googleServerClientId =
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
+val defaultBuglyAndroidAppId = "1277318f53"
+val defaultBuglyAndroidAppKey = "a1b03176-0694-4167-ad18-05755b0b36e4"
+
 val buglyAndroidAppId =
     providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_ID")
         .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_ID"))
-        .getOrElse("")
+        .getOrElse(defaultBuglyAndroidAppId)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
 val buglyAndroidAppKey =
     providers.gradleProperty("SLOCK_BUGLY_ANDROID_APP_KEY")
         .orElse(providers.environmentVariable("SLOCK_BUGLY_ANDROID_APP_KEY"))
-        .getOrElse("")
+        .getOrElse(defaultBuglyAndroidAppKey)
         .replace("\\", "\\\\")
         .replace("\"", "\\\"")
 
