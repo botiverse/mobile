@@ -206,7 +206,7 @@ tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
 }
 
 tasks.matching { it.name == "kspKotlinOhosArm64" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main")
+    dependsOn(stageTmmCommonSources, "generateMRohosArm64Main", "generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "generateMRcommonMain" }.configureEach {

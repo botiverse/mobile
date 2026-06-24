@@ -176,7 +176,7 @@ tasks.matching { it.name == "compileReleaseKotlinAndroid" }.configureEach {
 }
 
 tasks.matching { it.name == "kspDebugKotlinAndroid" || it.name == "kspReleaseKotlinAndroid" }.configureEach {
-    dependsOn(stageTmmCommonSources, "generateMRandroidMain")
+    dependsOn(stageTmmCommonSources, "generateMRandroidMain", "generateCommonMainSlockDatabaseInterface")
 }
 
 tasks.matching { it.name == "compileKotlinOhosArm64" }.configureEach {
