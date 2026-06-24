@@ -3238,11 +3238,6 @@ class SharedThreadStoreTest {
         val payload = store.state.value.payload
         assertEquals(listOf("cached body", "realtime body"), payload.messages.map { it.body })
         assertEquals(
-            null,
-            localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
-        )
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
-        assertEquals(
             "realtime body",
             localStore.readThread(ThreadId("channel-1"))?.messages?.firstOrNull { it.id == MessageId("m2") }?.body
         )
@@ -3349,7 +3344,6 @@ class SharedThreadStoreTest {
         val message = store.state.value.payload.messages.single { it.id == "m2" }
         assertEquals("pixel:tree", message.avatarWireValue)
         assertEquals(null, message.gravatarHash)
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
         val cachedAuthor =
             localStore
                 .readThread(ThreadId("channel-1"))
@@ -3364,11 +3358,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeThreadUpdatedAppliesReplyMetadataToDirectMessageParent() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         dataSource.cachePayload(
             buildSharedThreadPayloadFromMessagesPage(
                 basePayload = directMessagePayload(),
@@ -3420,11 +3410,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeMessageNewRendersTaskLifecycleSystemRow() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -3483,9 +3469,7 @@ class SharedThreadStoreTest {
             )
         )
 
-        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 80L)
-        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
+        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
         assertTrue(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
@@ -3526,11 +3510,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeMessageUpdatedPreservesExistingAuthorMetadata() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -3559,11 +3539,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeParentOriginUpdateDoesNotAppendToReplyThreadTimeline() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         val route =
             basePayload().copy(
                 instanceId = "shared-shell-thread-thread-m1",
@@ -3628,11 +3604,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeMessageUpdatedAppliesReactionPayloadIncludingEmptyRemoval() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         dataSource.cachePayload(contentPayload("cached body"))
         val store = SharedThreadStore(dataSource = dataSource, scope = scope)
         store.accept(SharedThreadIntent.Start(basePayload()))
@@ -3689,11 +3661,7 @@ class SharedThreadStoreTest {
     @Test
     fun realtimeThreadUpdatedAndTaskUpdatedMergeIntoPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-        val dataSource =
-            SharedThreadDataSource(
-                networkApi = FakeThreadApi(failChannelMessages = true),
-                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
-            )
+        val dataSource = canonicalThreadDataSource()
         val initial =
             contentPayload("task body").copy(
                 messages =
@@ -3890,7 +3858,7 @@ class SharedThreadStoreTest {
         )
         store.dispatch(SharedThreadIntent.MarkVisibleReadAll)
 
-        delay(SharedThreadRealtimePersistenceBatchDelayMillis + 120L)
+        delay(120L)
 
         assertEquals(listOf("channel-1", "channel-1"), api.readAllChannels)
         assertEquals(1, api.maxConcurrentReadAllCalls)
@@ -5141,6 +5109,13 @@ class SharedThreadStoreTest {
                     canLoadMoreAfter = null
                 ),
             session = sampleSession()
+        )
+
+    private fun canonicalThreadDataSource(): SharedThreadDataSource =
+        SharedThreadDataSource(
+            networkApi = FakeThreadApi(failChannelMessages = true),
+            sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+            localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
         )
 
     private fun sentPage(id: String, body: String): ThreadMessagesPage =

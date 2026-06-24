@@ -7,10 +7,12 @@ import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
+import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.ServerId
@@ -203,7 +205,7 @@ class ComposeLocalWriteThrough(
             }
         }
         latestThreadUpdates(threadUpdates).forEach { event ->
-            wrote = writeThreadMetadata(serverId, event) || wrote
+            wrote = writeThreadMetadata(serverId, event, activeConversationId) || wrote
         }
         if (newMessages.isNotEmpty()) {
             wrote = writeRealtimeMessages(serverId, newMessages, incrementUnread = true, activeConversationId) || wrote
@@ -213,7 +215,7 @@ class ComposeLocalWriteThrough(
         }
         val latestTasks = latestTasks(taskPatches)
         if (latestTasks.isNotEmpty()) {
-            wrote = writeRealtimeTasks(latestTasks) || wrote
+            wrote = writeRealtimeTasks(latestTasks, activeConversationId) || wrote
         }
         return wrote
     }
@@ -377,6 +379,29 @@ class ComposeLocalWriteThrough(
                             hasParent = updated.parentMessage != null
                         ) || wroteThread
                 }
+                val activeThreadId =
+                    activeConversationId
+                        ?.takeIf { it.isNotBlank() && it != streamChannelId.value }
+                        ?.let(::ThreadId)
+                val activeExisting = activeThreadId?.let { store.readThread(it) }
+                if (activeExisting?.parentMessage != null) {
+                    val incomingById = streamMessages.associateBy { it.id }
+                    val updatedParent =
+                        incomingById[activeExisting.parentMessage.id]
+                            ?.withStableRealtimeFieldsFrom(activeExisting.parentMessage)
+                            ?: activeExisting.parentMessage
+                    if (updatedParent != activeExisting.parentMessage) {
+                        val updated = activeExisting.copy(parentMessage = updatedParent)
+                        wroteThread =
+                            writeThreadPatch(
+                                snapshot = updated,
+                                source = "realtime_active_parent_message",
+                                streamChannelId = updated.conversation.messageStreamChannelId(),
+                                rawMessageCount = streamMessages.size,
+                                hasParent = true
+                            ) || wroteThread
+                    }
+                }
                 wroteHome =
                     updateHomePreview(
                         serverId = serverId,
@@ -390,26 +415,40 @@ class ComposeLocalWriteThrough(
         return wroteHome || wroteThread
     }
 
-    private suspend fun writeThreadMetadata(serverId: ServerId, event: ThreadUpdated): Boolean {
-        val home = store.readHome(serverId) ?: return false
-        val updatedHome =
-            home.copy(
-                channels = home.channels.map { conversation -> conversation.withThreadMetadata(event) },
-                directMessages =
-                    home.directMessages.map { conversation -> conversation.withThreadMetadata(event) }
-            )
+    private suspend fun writeThreadMetadata(
+        serverId: ServerId,
+        event: ThreadUpdated,
+        activeConversationId: String?
+    ): Boolean {
+        val home = store.readHome(serverId)
         val wroteHome =
-            if (updatedHome != home) {
-                store.writeHome(updatedHome)
-                logger(
-                    "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
-                )
-                true
+            if (home != null) {
+                val updatedHome =
+                    home.copy(
+                        channels = home.channels.map { conversation -> conversation.withThreadMetadata(event) },
+                        directMessages =
+                            home.directMessages.map { conversation -> conversation.withThreadMetadata(event) }
+                    )
+                if (updatedHome != home) {
+                    store.writeHome(updatedHome)
+                    logger(
+                        "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
+                    )
+                    true
+                } else {
+                    false
+                }
             } else {
                 false
             }
+        val threadIds =
+            (
+                home?.threadIdsForMetadata(event).orEmpty() +
+                    listOfNotNull(activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId)) +
+                    ThreadId(event.threadChannelId.value)
+            ).distinct()
         var wroteThread = false
-        home.threadIdsForMetadata(event).forEach { threadId ->
+        threadIds.forEach { threadId ->
             val existing = store.readThread(threadId) ?: return@forEach
             val patched = existing.withThreadMetadata(event)
             val streamChannelId = patched.conversation.messageStreamChannelId()
@@ -422,25 +461,34 @@ class ComposeLocalWriteThrough(
                     hasParent = patched.parentMessage != null
                 ) || wroteThread
         }
+        if (wroteThread && !wroteHome) {
+            logger(
+                "write_thread_metadata parentMessageId=${event.parentMessageId.value} threadChannelId=${event.threadChannelId.value} replyCount=${event.replyCount}"
+            )
+        }
         return wroteHome || wroteThread
     }
 
-    private suspend fun writeRealtimeTasks(tasks: List<ai.slock.compose.model.TaskSummary>): Boolean {
+    private suspend fun writeRealtimeTasks(
+        tasks: List<ai.slock.compose.model.TaskSummary>,
+        activeConversationId: String?
+    ): Boolean {
         if (tasks.isEmpty()) return false
         var wroteThread = false
-        tasks.groupBy { it.threadId }.forEach { (threadId, threadTasks) ->
-            if (threadId == null) return@forEach
-            val existing = store.readThread(threadId) ?: return@forEach
-            val updated = existing.copy(tasks = existing.tasks.mergeThreadTasks(threadTasks))
-            wroteThread =
-                writeThreadPatch(
-                    snapshot = updated,
-                    source = "realtime_task",
-                    streamChannelId = updated.conversation.messageStreamChannelId(),
-                    rawMessageCount = updated.messages.size,
-                    hasParent = updated.parentMessage != null
-                ) || wroteThread
-        }
+        tasks.groupBy { task -> task.threadId ?: activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId) }
+            .forEach { (threadId, threadTasks) ->
+                if (threadId == null) return@forEach
+                val existing = store.readThread(threadId) ?: return@forEach
+                val updated = existing.withRealtimeTasks(threadTasks)
+                wroteThread =
+                    writeThreadPatch(
+                        snapshot = updated,
+                        source = "realtime_task",
+                        streamChannelId = updated.conversation.messageStreamChannelId(),
+                        rawMessageCount = updated.messages.size,
+                        hasParent = updated.parentMessage != null
+                    ) || wroteThread
+            }
         return wroteThread
     }
 
@@ -884,6 +932,27 @@ private fun List<ai.slock.compose.model.TaskSummary>.mergeThreadTasks(
     return merged.distinctBy { it.id }
 }
 
+private fun ThreadSnapshot.withRealtimeTasks(
+    incoming: List<ai.slock.compose.model.TaskSummary>
+): ThreadSnapshot {
+    val incomingByTaskId = incoming.associateBy { it.id }
+    val incomingByMessageId = incoming.mapNotNull { task -> task.messageId?.let { it to task } }.toMap()
+    fun Message.withTaskPatch(): Message {
+        val task = task
+        val updatedTask =
+            when {
+                task != null -> incomingByTaskId[task.id] ?: incomingByMessageId[id]
+                else -> incomingByMessageId[id]
+            } ?: return this
+        return copy(task = updatedTask)
+    }
+    return copy(
+        tasks = tasks.mergeThreadTasks(incoming),
+        parentMessage = parentMessage?.withTaskPatch(),
+        messages = messages.map { message -> message.withTaskPatch() }
+    )
+}
+
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(
         compareBy<Message> { it.timestampLabel.isBlank() }
@@ -894,8 +963,64 @@ private fun List<Message>.dedupeAndSortMessages(): List<Message> =
 
 private fun List<Message>.mergeRealtimeMessages(incoming: List<Message>): List<Message> {
     val byId = associateBy { it.id }.toMutableMap()
-    incoming.forEach { message -> byId[message.id] = message }
+    incoming.forEach { message ->
+        val previous = byId[message.id]
+        byId[message.id] =
+            if (previous == null) {
+                message
+            } else {
+                message.withStableRealtimeFieldsFrom(previous)
+            }
+    }
     return byId.values.toList().dedupeAndSortMessages()
+}
+
+private fun Message.withStableRealtimeFieldsFrom(previous: Message): Message =
+    copy(
+        channelId = channelId ?: previous.channelId,
+        threadChannelId = threadChannelId ?: previous.threadChannelId,
+        seq = seq ?: previous.seq,
+        author = author.withStableRealtimeFieldsFrom(previous.author),
+        timestampLabel = timestampLabel.ifBlank { previous.timestampLabel },
+        metadata = if (metadata.isEmpty()) previous.metadata else metadata,
+        attachments = if (attachments.isEmpty()) previous.attachments else attachments,
+        task = task ?: previous.task,
+        replyCount = if (replyCount == 0) previous.replyCount else replyCount,
+        unreadReplyCount = if (unreadReplyCount == 0) previous.unreadReplyCount else unreadReplyCount,
+        firstUnreadReplyMessageId = firstUnreadReplyMessageId ?: previous.firstUnreadReplyMessageId,
+        isSaved = isSaved || previous.isSaved,
+        parentMessageId = parentMessageId ?: previous.parentMessageId,
+        updatedAtLabel = updatedAtLabel ?: previous.updatedAtLabel,
+        reactions = reactions ?: previous.reactions,
+        senderMembershipStatus = senderMembershipStatus ?: previous.senderMembershipStatus,
+        commentRef = commentRef ?: previous.commentRef
+    )
+
+private fun MemberProfile.withStableRealtimeFieldsFrom(previous: MemberProfile): MemberProfile {
+    val sparseDisplayName = displayName.isBlank() || displayName == id.value
+    val resolvedDisplayName = if (sparseDisplayName) previous.displayName else displayName
+    val sparseHandle = handle.isBlank() || handle == id.value
+    val resolvedHandle = if (sparseHandle) previous.handle else handle
+    return copy(
+        displayName = resolvedDisplayName,
+        handle = resolvedHandle,
+        description = description ?: previous.description,
+        roleDescription = roleDescription ?: previous.roleDescription,
+        avatarUrl = avatarUrl ?: previous.avatarUrl,
+        gravatarHash = gravatarHash ?: previous.gravatarHash,
+        avatar = avatar ?: previous.avatar,
+        avatarLabel = if (sparseDisplayName) previous.avatarLabel else avatarLabel,
+        presence = if (presence == Presence.Offline) previous.presence else presence,
+        agentStatus = agentStatus ?: previous.agentStatus,
+        joinedAt = joinedAt ?: previous.joinedAt,
+        membershipStatus = membershipStatus ?: previous.membershipStatus,
+        agentDeletedAt = agentDeletedAt ?: previous.agentDeletedAt,
+        createdAgents = if (createdAgents.isEmpty()) previous.createdAgents else createdAgents,
+        permissionBadges = if (permissionBadges.isEmpty()) previous.permissionBadges else permissionBadges,
+        serverId = serverId ?: previous.serverId,
+        serverName = serverName ?: previous.serverName,
+        serverSlug = serverSlug ?: previous.serverSlug
+    )
 }
 
 private fun Message.withHomeDirectMessageAvatar(avatarWireValue: String?): Message {

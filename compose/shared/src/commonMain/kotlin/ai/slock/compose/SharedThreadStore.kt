@@ -193,7 +193,10 @@ internal class SharedThreadDataSource(
 
     fun cachedPayload(threadId: String): KuiklyThreadScreenPayload? = payloadCache[threadId]
 
-    suspend fun readCachedPayload(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload? {
+    suspend fun readCachedPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        trimToLatestThreadWindow: Boolean = true
+    ): KuiklyThreadScreenPayload? {
         val threadId = basePayload.cacheThreadId() ?: return null
         val snapshot = localWriteThrough?.readThreadSnapshot(ThreadId(threadId)) ?: return null
         val session = readSession()
@@ -204,13 +207,17 @@ internal class SharedThreadDataSource(
                 candidate = snapshot.toThreadRouteId(serverId)
             )
         if (proof !is ThreadIdentityProof.Accepted) return null
-        return snapshot
-            .toKuiklyThreadPayload(basePayload, session?.user?.id)
-            .trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
-            .withoutTransientLocalSendingMessages()
-            .let { payload ->
-                if (session == null) payload else payload.withKnownMarkdownChannelNames(session)
+        val payload =
+            snapshot
+                .toKuiklyThreadPayload(basePayload, session?.user?.id)
+                .withoutTransientLocalSendingMessages()
+        val windowedPayload =
+            if (trimToLatestThreadWindow) {
+                payload.trimToLatestThreadWindow(SharedThreadPaging.initialPageSize)
+            } else {
+                payload
             }
+        return if (session == null) windowedPayload else windowedPayload.withKnownMarkdownChannelNames(session)
     }
 
     suspend fun withConversationHeaderFallback(basePayload: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
@@ -263,6 +270,16 @@ internal class SharedThreadDataSource(
             fallbackHeader = snapshot.conversation,
             fallbackParentMessage = snapshot.parentMessage
         )
+    }
+
+    suspend fun writeCanonicalPayloadAndRead(
+        basePayload: KuiklyThreadScreenPayload,
+        payload: KuiklyThreadScreenPayload,
+        trimToLatestThreadWindow: Boolean = false
+    ): KuiklyThreadScreenPayload {
+        cachePayload(payload)
+        writeCachedPayload(payload)
+        return readCachedPayload(basePayload, trimToLatestThreadWindow) ?: payload
     }
 
     suspend fun commitAgentCreateActionCard(
@@ -1285,15 +1302,23 @@ internal class SharedThreadDataSource(
                         originParentMessageId = loaded.data.originParentMessageId ?: parentMessageId,
                         originStatus = if (loaded.data.originMessage != null) loaded.data.originStatus else "loaded"
                     )
-                cachePayload(payload)
-                writeCachedPayload(payload)
-                DataResult.Content(payload)
+                val selected =
+                    writeCanonicalPayloadAndRead(
+                        basePayload = replyBase,
+                        payload = payload,
+                        trimToLatestThreadWindow = false
+                    )
+                DataResult.Content(selected)
             }
             is DataResult.Empty -> {
                 val payload = replyBase.toEmptyReplyThreadPayload()
-                cachePayload(payload)
-                writeCachedPayload(payload)
-                DataResult.Content(payload)
+                val selected =
+                    writeCanonicalPayloadAndRead(
+                        basePayload = replyBase,
+                        payload = payload,
+                        trimToLatestThreadWindow = false
+                    )
+                DataResult.Content(selected)
             }
             is DataResult.Error -> loaded
             is DataResult.NoPermission -> loaded
@@ -1809,7 +1834,6 @@ internal object SharedThreadPaging {
     const val pageSize = initialPageSize
 }
 private const val SharedThreadFirstFrameDelayMillis = 16L
-internal const val SharedThreadRealtimePersistenceBatchDelayMillis = 64L
 
 internal data class SharedThreadState(
     val payload: KuiklyThreadScreenPayload = KuiklyThreadScreenPayload(),
@@ -1908,8 +1932,6 @@ internal class SharedThreadStore(
     private val _state = MutableStateFlow(SharedThreadState())
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     private var loadJob: Job? = null
-    private var realtimePersistenceJob: Job? = null
-    private val pendingRealtimePersistenceEvents = mutableListOf<RealtimeEvent>()
     private var readAllInFlightMarker: ThreadReadAllMarker? = null
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
@@ -2015,9 +2037,6 @@ internal class SharedThreadStore(
     fun clear() {
         loadJob?.cancel()
         loadJob = null
-        realtimePersistenceJob?.cancel()
-        realtimePersistenceJob = null
-        pendingRealtimePersistenceEvents.clear()
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
@@ -2170,7 +2189,7 @@ internal class SharedThreadStore(
         if (!hasRenderableContent) {
             delay(SharedThreadFirstFrameDelayMillis)
         }
-        val result = dataSource.fetchThreadPayload(basePayload, persistResult = false)
+        val result = dataSource.fetchThreadPayload(basePayload, persistResult = true)
         val latest = _state.value.payload
         if (!routeStillCurrent(basePayload, "thread_refresh", "after_fetch", latest)) {
             diagnosticsLogger?.invoke(
@@ -2182,7 +2201,11 @@ internal class SharedThreadStore(
         }
         val visiblePayload =
             (result as? DataResult.Content)
-                ?.data
+                ?.let {
+                    dataSource
+                        .readCachedPayload(basePayload)
+                        ?: it.data
+                }
                 ?.withRouteContext(basePayload)
                 ?.preserveStableTimelineFrom(latest)
         val nextPayload =
@@ -2214,7 +2237,6 @@ internal class SharedThreadStore(
                 nextPayload.originDiagnostics()
         )
         if (emitted && visiblePayload != null) {
-            writeCachedPayloadAfterFrame(_state.value.payload)
             // Explicit Refresh must always re-fetch members, even if
             // the thread is already in Loaded state.
             loadMembers(force = true)
@@ -2313,49 +2335,56 @@ internal class SharedThreadStore(
         }
     }
 
-    private fun writeCachedPayloadAfterFrame(payload: KuiklyThreadScreenPayload) {
-        scope.launch {
-            delay(SharedThreadFirstFrameDelayMillis)
-            dataSource.writeCachedPayload(payload)
-        }
-    }
-
     private suspend fun applyRealtimeEvent(
         event: RealtimeEvent,
         activeReplyParentMessageId: MessageId? = null,
         persist: Boolean = true
     ) {
         val existing = _state.value.payload
-        val rawMerged =
-            existing.applyRealtimeEvent(
-                event = event,
-                currentUserId = dataSource.readSession()?.user?.id,
-                activeReplyParentMessageId = activeReplyParentMessageId
-            )
-        val merged =
-            if (rawMerged === existing) {
-                rawMerged
-            } else {
-                dataSource.enrichCachedSenderProfiles(rawMerged)
+        if (persist) {
+            runCatching {
+                if (existing.hasRenderableThreadContent()) {
+                    dataSource.writeCanonicalPayloadAndRead(
+                        basePayload = existing,
+                        payload = existing,
+                        trimToLatestThreadWindow = false
+                    )
+                }
+                dataSource.writeRealtimeEvents(
+                    events = listOf(event),
+                    activeConversationId = existing.sourceThreadId ?: existing.streamChannelId
+                )
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) throw throwable
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_persist_failed events=1 type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
+                )
             }
-        val stableMerged = merged.preserveStableTimelineFrom(existing)
-        val emitted =
+            applyRealtimeCacheSnapshot(existing)
+        } else {
+            val rawMerged =
+                existing.applyRealtimeEvent(
+                    event = event,
+                    currentUserId = dataSource.readSession()?.user?.id,
+                    activeReplyParentMessageId = activeReplyParentMessageId
+                )
+            val merged =
+                if (rawMerged === existing) {
+                    rawMerged
+                } else {
+                    dataSource.enrichCachedSenderProfiles(rawMerged)
+                }
+            val stableMerged = merged.preserveStableTimelineFrom(existing)
             reducePayloadPatch(cachePayload = true) { currentPayload ->
                 currentPayload.withContentPatchFrom(stableMerged)
             }
-        if (emitted && persist) {
-            writeCachedPayloadAfterFrame(_state.value.payload)
-        }
-        if (persist) {
-            enqueueRealtimePersistence(event)
         }
     }
 
-    private suspend fun applyRealtimeCacheSnapshot() {
-        val routePayload = _state.value.payload
+    private suspend fun applyRealtimeCacheSnapshot(routePayload: KuiklyThreadScreenPayload = _state.value.payload) {
         val cached =
             dataSource
-                .readCachedPayload(routePayload)
+                .readCachedPayload(routePayload, trimToLatestThreadWindow = false)
                 ?.withRouteContext(routePayload)
                 ?: return
         val emitted =
@@ -2370,40 +2399,6 @@ internal class SharedThreadStore(
                 "hit=true emitted=$emitted messages=${cached.messages.size} " +
                 cached.originDiagnostics()
         )
-    }
-
-    private fun enqueueRealtimePersistence(event: RealtimeEvent) {
-        pendingRealtimePersistenceEvents += event
-        if (realtimePersistenceJob?.isActive == true) return
-        startRealtimePersistenceJob()
-    }
-
-    private fun startRealtimePersistenceJob() {
-        realtimePersistenceJob =
-            scope.launch {
-                delay(SharedThreadRealtimePersistenceBatchDelayMillis)
-                val events = pendingRealtimePersistenceEvents.toList()
-                pendingRealtimePersistenceEvents.clear()
-                try {
-                    runCatching {
-                        dataSource.writeRealtimeEvents(
-                            events,
-                            activeConversationId = _state.value.payload.sourceThreadId
-                                ?: _state.value.payload.streamChannelId
-                        )
-                    }.onFailure { throwable ->
-                        if (throwable is CancellationException) throw throwable
-                        diagnosticsLogger?.invoke(
-                            "thread_realtime_persist_failed events=${events.size} type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
-                        )
-                    }
-                } finally {
-                    realtimePersistenceJob = null
-                    if (pendingRealtimePersistenceEvents.isNotEmpty()) {
-                        startRealtimePersistenceJob()
-                    }
-                }
-            }
     }
 
     private suspend fun markVisibleReadAll() {
@@ -2473,8 +2468,17 @@ internal class SharedThreadStore(
         val nextPayload =
             when (result) {
                 is DataResult.Content -> {
-                    latest
+                    val merged =
+                        latest
                         .mergePagedMessages(result.data.messages, before = true)
+                        .preserveStableTimelineFrom(latest)
+                    dataSource
+                        .writeCanonicalPayloadAndRead(
+                            basePayload = existing,
+                            payload = merged,
+                            trimToLatestThreadWindow = false
+                        )
+                        .withRouteContext(existing)
                         .preserveStableTimelineFrom(latest)
                 }
                 is DataResult.Empty ->
@@ -2484,12 +2488,9 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     latest.copy(olderMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { currentPayload ->
+        reducePayloadPatch { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "older_apply", currentPayload)) {
-                return@reducePayloadPatchAndWriteCache currentPayload
+                return@reducePayloadPatch currentPayload
             }
             currentPayload.withContentPatchFrom(nextPayload)
         }
@@ -2514,8 +2515,17 @@ internal class SharedThreadStore(
         val nextPayload =
             when (result) {
                 is DataResult.Content -> {
-                    latest
+                    val merged =
+                        latest
                         .mergePagedMessages(result.data.messages, before = false)
+                        .preserveStableTimelineFrom(latest)
+                    dataSource
+                        .writeCanonicalPayloadAndRead(
+                            basePayload = existing,
+                            payload = merged,
+                            trimToLatestThreadWindow = false
+                        )
+                        .withRouteContext(existing)
                         .preserveStableTimelineFrom(latest)
                 }
                 is DataResult.Empty ->
@@ -2525,12 +2535,9 @@ internal class SharedThreadStore(
                 is DataResult.NoPermission ->
                     latest.copy(newerMessagesStatus = "error", errorCode = result.blocker.code)
             }
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { currentPayload ->
+        reducePayloadPatch { currentPayload ->
             if (!routeStillCurrent(existing, "thread_page", "newer_apply", currentPayload)) {
-                return@reducePayloadPatchAndWriteCache currentPayload
+                return@reducePayloadPatch currentPayload
             }
             currentPayload.withContentPatchFrom(nextPayload)
         }
@@ -2545,10 +2552,21 @@ internal class SharedThreadStore(
                 page = page,
                 session = dataSource.readSession()
             ).preserveStableTimelineFrom(currentPayload)
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { payload -> payload.withContentPatchFrom(appended) }
+        val selected =
+            dataSource
+                .writeCanonicalPayloadAndRead(
+                    basePayload = currentPayload,
+                    payload = appended,
+                    trimToLatestThreadWindow = false
+                )
+                .withRouteContext(currentPayload)
+                .preserveStableTimelineFrom(currentPayload)
+        reducePayloadPatch { payload ->
+            if (!routeStillCurrent(currentPayload, "thread_send", "append_apply", payload)) {
+                return@reducePayloadPatch payload
+            }
+            payload.withContentPatchFrom(selected)
+        }
     }
 
     private fun applyLocalSendStarted(message: KuiklyThreadMessageItem) {
@@ -2588,10 +2606,21 @@ internal class SharedThreadStore(
             appended
                 .withoutLocalSendMessage(messageId)
                 .preserveStableTimelineFrom(currentPayload)
-        reducePayloadPatchAndWriteCache(
-            cachePayload = true,
-            writeCachedPayload = true
-        ) { payload -> payload.withContentPatchFrom(replaced) }
+        val selected =
+            dataSource
+                .writeCanonicalPayloadAndRead(
+                    basePayload = currentPayload,
+                    payload = replaced,
+                    trimToLatestThreadWindow = false
+                )
+                .withRouteContext(currentPayload)
+                .preserveStableTimelineFrom(currentPayload)
+        reducePayloadPatch { payload ->
+            if (!routeStillCurrent(currentPayload, "thread_send", "replace_apply", payload)) {
+                return@reducePayloadPatch payload
+            }
+            payload.withContentPatchFrom(selected)
+        }
     }
 
     private fun applyMessageReactionSelection(messageId: String, emoji: String, selected: Boolean) {
