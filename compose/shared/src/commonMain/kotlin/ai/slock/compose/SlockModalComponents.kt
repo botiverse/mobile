@@ -338,22 +338,28 @@ internal fun SlockModalCompactMemberRow(
                     color = if (enabled) SlockColor.TextBlack else SlockColor.TextMutedGray,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f, fill = false)
                 )
                 val badge = sourceBadgeLabel?.takeIf { it.isNotBlank() }
                 if (badge != null) {
-                    Text(
-                        text = badge.uppercase(),
-                        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 12.sp),
-                        color = SlockColor.TextBlack,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    Box(
                         modifier =
                             Modifier
+                                .height(16.dp)
+                                .widthIn(max = 88.dp)
                                 .background(SlockColor.AccentCyan.copy(alpha = 0.24f))
                                 .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                    )
+                                .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = badge.uppercase(),
+                            style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 9.sp, lineHeight = 16.sp),
+                            color = SlockColor.TextBlack,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
             if (subtitle.isNotBlank()) {

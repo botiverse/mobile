@@ -1800,7 +1800,9 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
             handle = "Android-Developer",
             roleLabel = "Online",
             avatarLabel = "AD",
-            kind = "agent"
+            kind = "agent",
+            sourceServerLabel = "Botiverse",
+            canRemove = false
         ),
         KuiklyThreadMemberItem(
             id = "user_artin",
@@ -1808,7 +1810,9 @@ private fun channelPanelVisualMembers(): List<KuiklyThreadMemberItem> =
             handle = "artin",
             roleLabel = "Project owner",
             avatarLabel = "A",
-            kind = "human"
+            kind = "human",
+            sourceServerLabel = "Botiverse",
+            canRemove = false
         )
     )
 
