@@ -16,14 +16,14 @@ import kotlin.test.assertTrue
 
 class SystemNotificationsTest {
     @Test
-    fun notificationPreferenceDefaultsToDisabledWhenNoPreferenceExists() = runBlocking {
+    fun notificationPreferenceDefaultsToEnabledWhenNoPreferenceExists() = runBlocking {
         val repository = PersistentNotificationPreferenceRepository(
             KeyValueNotificationPreferenceStore(InMemorySlockKeyValueStore())
         )
 
         val snapshot = repository.getNotificationPreference()
 
-        assertFalse(snapshot.enabled)
+        assertTrue(snapshot.enabled)
     }
 
     @Test

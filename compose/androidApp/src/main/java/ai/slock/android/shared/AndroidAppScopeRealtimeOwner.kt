@@ -668,7 +668,7 @@ internal object AndroidAppScopeRealtimeOwner {
         runCatching {
             SlockKuiklyMMKVModule.ensureInitialized(context.applicationContext)
             MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
-                .decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "false") == "true"
+                .decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true") == "true"
         }.getOrElse { error ->
             SlockDiagnosticsLogger.w(
                 LOG_TAG,

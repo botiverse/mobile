@@ -19,7 +19,7 @@ class KeyValueNotificationPreferenceStore(
     private val store: SharedPreferenceStore
 ) : NotificationPreferenceStore {
     override fun readNotificationEnabledSync(): Boolean =
-        store.getBoolean(KEY_NOTIFICATION_ENABLED, false)
+        store.getBoolean(KEY_NOTIFICATION_ENABLED, defaultValue = true)
 
     override suspend fun readNotificationEnabled(): Boolean =
         readNotificationEnabledSync()
