@@ -1,6 +1,7 @@
 package ai.slock.compose.data
 
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.TaskId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -84,6 +85,22 @@ internal class SharedTasksDataStore {
             )
     }
 
+    fun removeTask(serverId: String, taskId: TaskId) {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        val current = state.value
+        state.value =
+            current.copy(
+                serverSnapshots =
+                    current.serverSnapshots.mapValues { (snapshotServerId, snapshot) ->
+                        if (snapshotServerId == normalizedServerId) snapshot.remove(taskId) else snapshot
+                    },
+                channelSnapshots =
+                    current.channelSnapshots.mapValues { (key, snapshot) ->
+                        if (key.serverId == normalizedServerId) snapshot.remove(taskId) else snapshot
+                    }
+            )
+    }
+
     fun channelProjectionFlow(
         serverId: String?,
         channelId: String?,
@@ -139,5 +156,11 @@ private fun TaskSnapshot.upsert(task: TaskSummary): TaskSnapshot {
         } else {
             tasks + task
         }
+    return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
+
+private fun TaskSnapshot.remove(taskId: TaskId): TaskSnapshot {
+    val nextTasks = tasks.filterNot { task -> task.id == taskId }
+    if (nextTasks.size == tasks.size) return this
     return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
 }

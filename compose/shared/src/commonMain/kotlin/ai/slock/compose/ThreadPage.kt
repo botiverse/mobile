@@ -57,7 +57,6 @@ import ai.slock.compose.data.SharedTasksViewModel
 import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.realtime.RealtimeEventMapper
-import ai.slock.compose.data.realtime.RealtimeRoutePolicy
 import ai.slock.compose.data.PendingMentionAction
 import ai.slock.compose.data.PendingMentionActionExecuteResult
 import ai.slock.compose.data.TaskSnapshot
@@ -1397,8 +1396,7 @@ internal fun shouldShowThreadComposerForReadyContent(
 
 internal data class SharedThreadRealtimeEventSignal(
     val sequence: Long,
-    val event: RealtimeEvent,
-    val persist: Boolean = true
+    val event: RealtimeEvent
 )
 
 internal data class ThreadRouteUiState(
@@ -1440,9 +1438,18 @@ private fun ThreadPageScreen() {
         )
     }
     val realtimeEventMapper = remember { RealtimeEventMapper() }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val authStore = sharedStores.authStore
+    var threadRealtimeServerId by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(authStore) {
+        threadRealtimeServerId =
+            authStore.readSession()
+                ?.currentServerId
+                ?.takeIf { it.isNotBlank() }
+    }
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
-    DisposableEffect(pager, realtimeEventMapper) {
+    DisposableEffect(pager, realtimeEventMapper, sharedStores.realtimeDomainEventOwner, threadRealtimeServerId) {
         val observer =
             object : IPagerEventObserver {
                 override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
@@ -1454,20 +1461,16 @@ private fun ThreadPageScreen() {
                             mapper = realtimeEventMapper,
                             log = { message -> bridge.log("thread_$message") }
                         ) ?: return
-                    if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return
-                    threadRealtimeEventSequence += 1
-                    threadRealtimeEventSignal =
-                        SharedThreadRealtimeEventSignal(
-                            sequence = threadRealtimeEventSequence,
-                            event = event
-                        )
+                    val serverId =
+                        resolveSharedShellRealtimeServerId(eventData, event, session = null)
+                            ?: threadRealtimeServerId
+                            ?: return
+                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "thread_page")
                 }
             }
         pager.addPagerEventObserver(observer)
         onDispose { pager.removePagerEventObserver(observer) }
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
-    val authStore = sharedStores.authStore
     val sharedRealtimeEventSignal by sharedStores.realtimeDomainEventOwner.threadProjections.collectAsState(null)
     LaunchedEffect(sharedRealtimeEventSignal?.sequence, authStore) {
         val signal = sharedRealtimeEventSignal ?: return@LaunchedEffect
@@ -1481,8 +1484,7 @@ private fun ThreadPageScreen() {
         threadRealtimeEventSignal =
             SharedThreadRealtimeEventSignal(
                 sequence = threadRealtimeEventSequence,
-                event = signal.event,
-                persist = false
+                event = signal.event
             )
     }
     val threadLocalStore =
@@ -2262,19 +2264,12 @@ internal fun SharedThreadRouteContent(
             initialPayload.originParentMessageId
                 ?.takeIf { it.isNotBlank() }
                 ?.let(::MessageId)
-        val realtimeIntent =
-            if (signal.persist) {
-                SharedThreadIntent.ApplyRealtimeEvent(
-                    event = signal.event,
-                    activeReplyParentMessageId = activeReplyParentMessageId
-                )
-            } else {
-                SharedThreadIntent.ApplyRealtimeProjection(
-                    event = signal.event,
-                    activeReplyParentMessageId = activeReplyParentMessageId
-                )
-            }
-        threadViewModel.dispatch(realtimeIntent)
+        threadViewModel.dispatch(
+            SharedThreadIntent.ApplyRealtimeProjection(
+                event = signal.event,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
+        )
         if (signal.event is MemberPresenceUpdated) {
             membersStore?.dispatch(SharedMembersIntent.ApplyPresence(signal.event))
         }

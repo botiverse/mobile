@@ -107,6 +107,7 @@ import ai.slock.compose.data.SharedHomeShellDestinationSaved
 import ai.slock.compose.data.SharedHomeShellDestinationSearch
 import ai.slock.compose.data.SharedHomeShellIntent
 import ai.slock.compose.data.SharedHomeShellStore
+import ai.slock.compose.data.RealtimeDomainEventSinks
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDestination
@@ -2040,6 +2041,45 @@ private fun SlockAppShellContent() {
         { eventData -> handleRealtimeAuthRefreshRequest(eventData) }
     )
     val latestResetAppShellSessionState by rememberUpdatedState<() -> Unit>({ resetAppShellSessionState() })
+    DisposableEffect(sharedStores.realtimeDomainEventOwner, homeShellStore, settingsViewModel, bridge) {
+        val sinks =
+            RealtimeDomainEventSinks(
+                applyHomeShell = { serverId, event ->
+                    homeShellStore.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(serverId, event))
+                },
+                applySettings = { serverId, event ->
+                    settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
+                },
+                applyAgentActivity = { event ->
+                    sharedStores.agentDetailStore.dispatch(
+                        SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
+                    )
+                },
+                requestMemberDetailRefresh = {
+                    membersAgentDetailRefreshKey += 1
+                },
+                joinChannel = { channelId ->
+                    bridge.realtimeJoinChannel(channelId)
+                },
+                emitRouteMarker = { event ->
+                    if (event.shouldEmitAppShellRouteMarker()) {
+                        bridge.performanceMarker(
+                            phase = "realtime_batch_apply",
+                            routeName = "kuikly_home",
+                            event = "instant",
+                            metadata =
+                                mapOf(
+                                    "type" to event.performanceMarkerName(),
+                                    "activeThread" to "false"
+                                )
+                        )
+                    }
+                },
+                log = { message -> bridge.log(message) }
+            )
+        sharedStores.realtimeDomainEventOwner.registerSinks(sinks)
+        onDispose { sharedStores.realtimeDomainEventOwner.unregisterSinks(sinks) }
+    }
 
     DisposableEffect(
         pager,
@@ -2113,58 +2153,7 @@ private fun SlockAppShellContent() {
                         return
                     }
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
-                    sharedStores.realtimeDomainEventOwner.accept(serverId, event)
-                    if (event is DirectMessageCreated) {
-                        bridge.realtimeJoinChannel(event.channelId.value)
-                    }
-                    if (event is ServerPlanUpdated) {
-                        bridge.log("shared_realtime_server_plan_updated serverId=${event.serverId.value} plan=${event.plan}")
-                        membersAgentDetailRefreshKey += 1
-                    }
-                    val shouldRefreshMemberDetail =
-                        when (event) {
-                            is MemberPresenceUpdated -> {
-                                if (event.kind == MemberKind.Agent) {
-                                    sharedStores.agentDetailStore.dispatch(
-                                        SharedAgentDetailIntent.ApplyAgentActivityUpdate(event)
-                                    )
-                                    true
-                                } else {
-                                    false
-                                }
-                            }
-                            is AgentCreated -> true
-                            is RealtimeRefreshRequired ->
-                                (
-                                    event.scope == RealtimeRefreshScope.ServerMembers ||
-                                        event.scope == RealtimeRefreshScope.Agents ||
-                                        event.scope == RealtimeRefreshScope.Machines
-                                )
-                            else -> false
-                        }
-                    if (shouldRefreshMemberDetail) {
-                        membersAgentDetailRefreshKey += 1
-                    }
-                    if (event.shouldEmitAppShellRouteMarker()) {
-                        bridge.performanceMarker(
-                            phase = "realtime_batch_apply",
-                            routeName = "kuikly_home",
-                            event = "instant",
-                            metadata =
-                                mapOf(
-                                    "type" to event.performanceMarkerName(),
-                                    "activeThread" to "false"
-                                )
-                        )
-                    }
-                    homeShellStore.dispatch(SharedHomeShellIntent.ApplyRealtimeEvent(serverId, event))
-                    // #79: forward machine-scope realtime events to the
-                    // settings store so the ComputerDetail page refreshes
-                    // status / daemonVersion / runtimes / lastHeartbeat
-                    // without a full app reload. The settings store
-                    // itself filters to RealtimeRefreshScope.Machines and
-                    // the active route.
-                    settingsViewModel.dispatch(SharedSettingsIntent.ApplyRealtimeEvent(serverId, event))
+                    sharedStores.realtimeDomainEventOwner.accept(serverId, event, source = "app_shell")
                 }
             }
         pager.addPagerEventObserver(observer)
