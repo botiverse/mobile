@@ -29,6 +29,7 @@ internal object VisualAndroidArtifacts {
     fun mirrorFile(file: File) {
         runShell("mkdir -p $PublicOutputPath && rm -f $PublicOutputPath/${file.name}")
         if (mirrorWithMediaStore(file)) {
+            normalizePublicOutputFile(file.name)
             return
         }
         val outputDir = publicOutputDir()
@@ -45,6 +46,7 @@ internal object VisualAndroidArtifacts {
             // test package. The authoritative artifact remains in app-internal
             // storage and can be pulled with run-as; mirroring is best-effort.
         }
+        normalizePublicOutputFile(file.name)
     }
 
     fun deleteCaseArtifacts(caseId: String) {
@@ -138,6 +140,28 @@ internal object VisualAndroidArtifacts {
         }
     }
 
+    private fun normalizePublicOutputFile(fileName: String) {
+        val (stem, extension) =
+            when {
+                fileName.endsWith(".metadata.json") -> fileName.removeSuffix(".json") to ".json"
+                fileName.endsWith(".png") -> fileName.removeSuffix(".png") to ".png"
+                else -> return
+            }
+        runShell(
+            """
+            dir=${PublicOutputPath.shellSingleQuoted()}
+            stem=${stem.shellSingleQuoted()}
+            extension=${extension.shellSingleQuoted()}
+            base=${fileName.shellSingleQuoted()}
+            latest=$(ls -t "${'$'}dir"/"${'$'}stem"*${'$'}extension 2>/dev/null | head -n 1)
+            if [ -n "${'$'}latest" ]; then
+              cp "${'$'}latest" "${'$'}dir/${'$'}base"
+              find "${'$'}dir" -maxdepth 1 -name "${'$'}stem*${'$'}extension" ! -name "${'$'}base" -delete
+            fi
+            """.trimIndent()
+        )
+    }
+
     private fun runShell(command: String): String {
         val descriptor =
             InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)
@@ -145,4 +169,7 @@ internal object VisualAndroidArtifacts {
             FileInputStream(it.fileDescriptor).bufferedReader().use { reader -> reader.readText() }
         }
     }
+
+    private fun String.shellSingleQuoted(): String =
+        "'" + replace("'", "'\"'\"'") + "'"
 }
