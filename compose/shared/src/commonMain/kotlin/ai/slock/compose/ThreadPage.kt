@@ -6334,6 +6334,7 @@ private fun ThreadMessagesList(
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
+                        diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
                         onShowActions = { message, anchor ->
@@ -8883,6 +8884,7 @@ private fun ThreadOriginCard(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
