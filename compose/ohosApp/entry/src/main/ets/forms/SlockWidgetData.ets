@@ -98,7 +98,7 @@ export async function loadActivityUnreadSnapshot(context: common.Context): Promi
     kind: FORM_ACTIVITY_UNREAD,
     title: 'Activity',
     countText: unread.toString(),
-    primaryLabel: unread === 1 ? 'Unread item' : 'Unread items',
+    primaryLabel: 'Unread',
     secondaryLabel: serverLabel(server),
     accentLabel: unread > 0 ? 'NEW' : 'CLEAR',
     stateLabel: unread > 0 ? 'Needs attention' : 'All caught up',
@@ -120,12 +120,12 @@ export async function loadAgentRuntimeSnapshot(context: common.Context): Promise
   const agents = await requestJson<AgentWire[]>(session, server.id, 'agents');
   const running = agents.filter((agent: AgentWire) => isAgentRunning(agent));
   const total = agents.length;
-  const headline = running[0]?.displayName || running[0]?.name || (running.length > 0 ? 'Agent running' : 'No active agents');
+  const headline = runningHeadline(running);
   return {
     kind: FORM_AGENT_RUNTIME,
     title: 'Agents',
     countText: running.length.toString(),
-    primaryLabel: running.length === 1 ? 'Running agent' : 'Running agents',
+    primaryLabel: 'Running',
     secondaryLabel: total > 0 ? `${headline} / ${total} total` : serverLabel(server),
     accentLabel: running.length > 0 ? 'LIVE' : 'IDLE',
     stateLabel: running.length > 0 ? 'Runtime active' : 'All idle',
@@ -215,6 +215,17 @@ function isAgentRunning(agent: AgentWire): boolean {
 
 function serverLabel(server: StoredAuthServer): string {
   return server.name || server.slug || 'Current server';
+}
+
+function runningHeadline(running: AgentWire[]): string {
+  if (running.length === 0) {
+    return 'No active agents';
+  }
+  const names = running.slice(0, 2)
+    .map((agent: AgentWire) => agent.displayName || agent.name || 'Agent')
+    .join(', ');
+  const remaining = running.length - 2;
+  return remaining > 0 ? `${names} +${remaining}` : names;
 }
 
 function nowLabel(): string {
