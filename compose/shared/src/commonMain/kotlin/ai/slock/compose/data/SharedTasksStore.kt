@@ -183,6 +183,15 @@ internal class SharedTasksViewModel(
             is SharedTasksRouteIntent.SelectFilter ->
                 load(action)
             is SharedTasksRouteIntent.UpdateStatus -> {
+                val skipReason = state.value.taskStatusUpdateSkipReason(action.task, action.status)
+                if (skipReason != null) {
+                    diagnosticsLogger(
+                        "tasks_status_update_skip reason=${skipReason.logValue} " +
+                            "taskId=${action.task.id.value} taskStatus=${action.task.status.name} " +
+                            "requestedStatus=${action.status.name}"
+                    )
+                    return
+                }
                 statusJob?.cancel()
                 statusJob =
                     viewModelScope.launch {
@@ -353,6 +362,17 @@ internal class SharedTasksViewModel(
     }
 
     private suspend fun updateStatus(task: TaskSummary, status: TaskStatus) {
+        val skipReason = state.value.taskStatusUpdateSkipReason(task, status)
+        if (skipReason != null) {
+            state.value.currentTaskSummary(task.id.value)?.let { currentTask ->
+                store.accept(SharedTasksIntent.TaskStatusUpdateSucceeded(currentTask))
+            }
+            diagnosticsLogger(
+                "tasks_status_update_skip reason=${skipReason.logValue} " +
+                    "taskId=${task.id.value} taskStatus=${task.status.name} requestedStatus=${status.name}"
+            )
+            return
+        }
         store.accept(SharedTasksIntent.UpdateTaskStatus(task.id.value, status))
         try {
             when (val result = useCase.updateTaskStatus(TasksStatusUpdateRequest(task.id, status))) {
@@ -829,6 +849,29 @@ private fun MemberKind.tasksIdentityFilterPrefix(): String =
         MemberKind.Human -> "user"
         MemberKind.System -> "system"
     }
+
+internal enum class TaskStatusUpdateSkipReason(val logValue: String) {
+    AlreadyCurrent("already_current"),
+    StaleTaskStatus("stale_task_status")
+}
+
+internal fun TasksUiState.taskStatusUpdateSkipReason(
+    task: TaskSummary,
+    requestedStatus: TaskStatus
+): TaskStatusUpdateSkipReason? {
+    val currentTask = currentTaskSummary(task.id.value) ?: return null
+    return when {
+        currentTask.status == requestedStatus -> TaskStatusUpdateSkipReason.AlreadyCurrent
+        currentTask.status != task.status -> TaskStatusUpdateSkipReason.StaleTaskStatus
+        else -> null
+    }
+}
+
+internal fun TasksUiState.currentTaskSummary(taskId: String): TaskSummary? =
+    (loadState as? ScreenLoadState.Content)
+        ?.data
+        ?.tasks
+        ?.firstOrNull { it.id.value == taskId }
 
 fun TasksUiState.withLoading(filter: TaskStatus? = selectedFilter): TasksUiState =
     if (loadState is ScreenLoadState.Content) {
