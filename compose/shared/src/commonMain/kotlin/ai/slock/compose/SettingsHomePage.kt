@@ -1467,7 +1467,7 @@ private fun SlockAppShellContent() {
             )
         }
     var notificationPreferenceSnapshot by remember {
-        mutableStateOf(NotificationPreferenceSnapshot(enabled = false))
+        mutableStateOf(NotificationPreferenceSnapshot(enabled = true))
     }
     val settingsRepository =
         remember(appShellNetworkClient) {
@@ -12815,7 +12815,7 @@ private fun SettingsVisualNotificationsContent() {
         state = ScreenLoadState.Content(settingsVisualMobileSnapshot()),
         actionState = null,
         bottomContentPadding = SlockSpacing.Lg,
-        notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = false),
+        notificationPreferenceSnapshot = NotificationPreferenceSnapshot(enabled = true),
         preferenceBusy = false,
         onNotificationPreferenceChange = {},
         onServerMuteChange = {},
