@@ -256,10 +256,10 @@ class SlockHomeComponentsTest {
             ).toSharedThreadComposerDraftProjection()
 
         val item =
-            seed.toSharedHomeConversationItem(
-                draftProjection = draftProjection,
-                directoryProjection = directoryProjection
-            )
+            SharedHomeConversationRowProjector(
+                directoryProjections = mapOf("channel-1" to directoryProjection),
+                draftProjection = draftProjection
+            ).project(seed)
 
         assertEquals("fresh-name", item.name)
         assertEquals("private", item.channelType)

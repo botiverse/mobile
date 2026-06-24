@@ -9011,6 +9011,13 @@ private fun SharedHomeScreen(
                         ?: EmptyConversationDirectoryProjectionFlow
                 }
             val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
+            val conversationRowProjector =
+                remember(conversationDirectoryProjections, draftProjection) {
+                    SharedHomeConversationRowProjector(
+                        directoryProjections = conversationDirectoryProjections,
+                        draftProjection = draftProjection
+                    )
+                }
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
@@ -9024,21 +9031,15 @@ private fun SharedHomeScreen(
                     }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
-                remember(snapshot.channels, draftProjection, conversationDirectoryProjections) {
+                remember(snapshot.channels, conversationRowProjector) {
                     snapshot.channels.map { conversation ->
-                        conversation.toSharedHomeConversationRowSeed().toSharedHomeConversationItem(
-                            draftProjection = draftProjection,
-                            directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
-                        )
+                        conversationRowProjector.project(conversation)
                     }
                 }
             val directMessageItems =
-                remember(snapshot.directMessages, draftProjection, conversationDirectoryProjections) {
+                remember(snapshot.directMessages, conversationRowProjector) {
                     snapshot.directMessages.map { conversation ->
-                        conversation.toSharedHomeConversationRowSeed().toSharedHomeConversationItem(
-                            draftProjection = draftProjection,
-                            directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
-                        )
+                        conversationRowProjector.project(conversation)
                     }
                 }
             val notificationItems =
@@ -11769,6 +11770,20 @@ internal data class SharedHomeConversationRowSeed(
     val fallbackArchived: Boolean = false
 )
 
+internal data class SharedHomeConversationRowProjector(
+    val directoryProjections: Map<String, SharedConversationDirectoryProjection> = emptyMap(),
+    val draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty
+) {
+    fun project(conversation: ConversationSummary): SlockHomeConversationItem =
+        project(conversation.toSharedHomeConversationRowSeed())
+
+    fun project(seed: SharedHomeConversationRowSeed): SlockHomeConversationItem =
+        seed.toSharedHomeConversationItem(
+            directoryProjection = directoryProjections[seed.id],
+            draftProjection = draftProjection
+        )
+}
+
 private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeConversationRowSeed =
     SharedHomeConversationRowSeed(
         id = threadId.value,
@@ -11788,7 +11803,7 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackArchived = archived
     )
 
-internal fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
+private fun SharedHomeConversationRowSeed.toSharedHomeConversationItem(
     draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
     directoryProjection: SharedConversationDirectoryProjection? = null
 ): SlockHomeConversationItem =
