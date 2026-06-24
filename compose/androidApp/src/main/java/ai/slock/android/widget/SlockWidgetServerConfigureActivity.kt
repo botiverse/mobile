@@ -120,9 +120,9 @@ class SlockWidgetServerConfigureActivity : Activity() {
             )
             finish()
         })
-        root.addView(actionButton("Open Raft") {
+        root.addView(actionButton("Open Raft", topDp = 10) {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }, topDp = 10))
+        })
 
         setContentView(ScrollView(this).apply { addView(root) })
     }
@@ -132,9 +132,9 @@ class SlockWidgetServerConfigureActivity : Activity() {
         root.gravity = Gravity.CENTER
         root.addView(label("Sign in first", sizeSp = 24f, bold = true))
         root.addView(label("Open Raft and sign in before adding a server-specific widget.", sizeSp = 14f, topDp = 8))
-        root.addView(actionButton("Open Raft") {
+        root.addView(actionButton("Open Raft", topDp = 24) {
             startActivity(Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }, topDp = 24))
+        })
         setContentView(root)
     }
 
