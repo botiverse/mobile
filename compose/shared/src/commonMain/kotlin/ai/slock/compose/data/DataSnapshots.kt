@@ -949,6 +949,8 @@ enum class SettingsSectionAvailability {
 data class PendingMentionAction(
     val resolutionId: String,
     val messageId: MessageId? = null,
+    val channelId: ChannelId? = null,
+    val channelName: String? = null,
     val targetType: String = "unknown",
     val targetHandle: String = "",
     val reason: String = "",

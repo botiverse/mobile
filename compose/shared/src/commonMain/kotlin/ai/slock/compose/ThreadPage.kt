@@ -2414,10 +2414,18 @@ internal fun SharedThreadRouteContent(
             )
         }
     val composerSurface =
-        remember(scopedBaseComposerState, resolvedAuxiliaryThreadId, renderedPayload.parentChannelId) {
+        remember(
+            scopedBaseComposerState,
+            resolvedAuxiliaryThreadId,
+            renderedPayload.parentChannelId,
+            renderedPayload.title,
+            renderedPayload.subtitle,
+            renderedPayload.surfaceKind
+        ) {
             scopedBaseComposerState.toThreadComposerSurface(
                 channelId = resolvedAuxiliaryThreadId.orEmpty(),
-                parentChannelId = renderedPayload.parentChannelId
+                parentChannelId = renderedPayload.parentChannelId,
+                mentionChannelLabel = renderedPayload.threadComposerMentionScopeChannelLabel()
             )
         }
     fun currentComposerPayload(): KuiklyThreadComposerPayload =
@@ -5000,6 +5008,18 @@ private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelId(): Str
         ?: parentChannelId.nonBlank()
 }
 
+private fun KuiklyThreadScreenPayload.threadComposerMentionScopeChannelLabel(): String? =
+    when (surfaceKind) {
+        KuiklyThreadSurfaceKind.ReplyThread ->
+            existingThreadChannelHeaderSubtitle(subtitle)
+                ?: threadChannelHeaderSubtitle(title)
+        KuiklyThreadSurfaceKind.DirectMessage ->
+            title.takeIf { it.isNotBlank() }?.let { raw ->
+                if (raw.startsWith("@")) raw else "@${raw.removePrefix("@")}"
+            }
+        else -> title.takeIf { it.isNotBlank() }
+    }
+
 private fun KuiklyThreadScreenPayload.threadComposerMemberScopedMentions(): Boolean =
     memberScopedMentions || surfaceKind == KuiklyThreadSurfaceKind.DirectMessage
 
@@ -5033,6 +5053,8 @@ internal fun PendingMentionAction.toKuiklyPendingMentionActionItem(): KuiklyPend
     KuiklyPendingMentionActionItem(
         resolutionId = resolutionId,
         messageId = messageId?.value,
+        channelId = channelId?.value,
+        channelName = channelName,
         targetType = targetType,
         targetHandle = targetHandle,
         reason = reason,

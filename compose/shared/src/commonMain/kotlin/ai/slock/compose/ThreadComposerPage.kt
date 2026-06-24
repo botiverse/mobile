@@ -158,6 +158,7 @@ internal data class ThreadComposerSurface(
     val parentChannelId: String? = null,
     val parentMessageId: String? = null,
     val mentionChannelId: String? = null,
+    val mentionChannelLabel: String? = null,
     val showTaskButton: Boolean = true
 ) {
     val sendChannelId: String?
@@ -227,6 +228,8 @@ internal data class KuiklyPendingAttachmentItem(
 internal data class KuiklyPendingMentionActionItem(
     val resolutionId: String,
     val messageId: String? = null,
+    val channelId: String? = null,
+    val channelName: String? = null,
     val targetType: String = "unknown",
     val targetHandle: String = "",
     val reason: String = "",
@@ -546,7 +549,8 @@ internal fun KuiklyThreadComposerPayload.isDefaultThreadComposer(): Boolean =
 
 internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
     channelId: String,
-    parentChannelId: String? = null
+    parentChannelId: String? = null,
+    mentionChannelLabel: String? = null
 ): ThreadComposerSurface =
     ThreadComposerSurface(
         kind = surfaceKind,
@@ -555,6 +559,7 @@ internal fun KuiklyThreadComposerPayload.toThreadComposerSurface(
         parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         mentionChannelId = mentionChannelId,
+        mentionChannelLabel = mentionChannelLabel,
         showTaskButton = showAsTaskToggle
     )
 
@@ -890,6 +895,7 @@ internal fun ThreadComposerContent(
                         autoFocus = shouldAutoFocus,
                         onValueChange = { next ->
                             fieldValue = next
+                            focused = true
                             println("[composer] onValueChange len=" + next.text.length + " t=" + next.text.take(20))
                             emitChange(nextText = next.text)
                         },
@@ -1014,10 +1020,16 @@ private fun ThreadComposerSurface.memberSuggestionTitle(): String =
     }
 
 internal fun ThreadComposerSurface.mentionScopeChannelLabel(): String =
-    channelId
-        .takeIf { it.isNotBlank() }
-        ?.let { "#${it.removePrefix("#")}" }
+    mentionChannelLabel.toComposerChannelMentionLabel()
         ?: "this channel"
+
+internal fun String?.toComposerChannelMentionLabel(): String? {
+    val raw = this?.trim().orEmpty()
+    if (raw.isBlank()) return null
+    if (raw.startsWith("#") || raw.startsWith("@")) return raw
+    val display = threadHeaderSafeTitleOrNull(raw) ?: return null
+    return "#${display.removePrefix("#")}"
+}
 
 internal fun List<KuiklyPendingAttachmentItem>.readyThreadAttachmentIdsForSend(): List<String> =
     filter { attachment -> attachment.isReadyThreadAttachmentForSend() }
@@ -1263,7 +1275,7 @@ private fun PendingMentionActionBanner(
             actions.forEach { action ->
                 PendingMentionActionRow(
                     action = action,
-                    channelLabel = channelLabel,
+                    channelLabel = action.channelName.toComposerChannelMentionLabel() ?: channelLabel,
                     executing = action.resolutionId in executingIds,
                     onInvite = { onInvite(action.resolutionId) },
                     onNotify = { onNotify(action.resolutionId) },
@@ -1291,7 +1303,7 @@ private fun PendingMentionActionRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        SlockLucideIcon(SlockLucideIconName.User, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
+        SlockLucideIcon(SlockLucideIconName.UserMinus, modifier = Modifier.size(15.dp), color = SlockColor.TextMutedGrayArgb)
         Box(
             modifier = Modifier.size(22.dp).background(SlockColor.SurfaceWhite).border(SlockStroke.Default, SlockColor.BorderBlack),
             contentAlignment = Alignment.Center
