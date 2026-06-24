@@ -1511,6 +1511,160 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun taskReplyThreadPayloadUsesMemberProfileAvatarForOriginBeforeFirstRender() = runBlocking {
+        val agentParent =
+            message(threadId = "channel-1", id = "m1", seq = 1, body = "agent task parent")
+                .copy(
+                    author =
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Product UX",
+                            handle = "product-ux",
+                            kind = MemberKind.Agent,
+                            avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                            gravatarHash = "agent-hash"
+                        )
+                )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages =
+                                listOf(
+                                    message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")
+                                ),
+                            parentMessage = agentParent,
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Product UX",
+                            handle = "product-ux",
+                            kind = MemberKind.Agent,
+                            avatar = AvatarReference.Pixel("tree")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                memberRepository = memberRepository
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        assertEquals("agent task parent", payload.originMessage?.body)
+        assertEquals("pixel:tree", payload.originMessage?.avatarWireValue)
+        assertEquals(null, payload.originMessage?.gravatarHash)
+    }
+
+    @Test
+    fun taskReplyThreadPayloadResolvesParentChannelNameFromHomeSnapshot() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        localStore.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(id = ServerId("server-1"), name = "Slock"),
+                currentMember = member("u1", "Artin"),
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("channel-1"),
+                            channelId = ChannelId("channel-1"),
+                            kind = ConversationKind.Channel,
+                            name = "general",
+                            subtitle = "#general"
+                        )
+                    ),
+                directMessages = emptyList(),
+                unreadTotal = 0
+            )
+        )
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "thread-m1",
+                            messages = listOf(message(threadId = "thread-m1", id = "reply-1", seq = 2, body = "reply body")),
+                            parentMessage = message(threadId = "channel-1", id = "m1", seq = 1, body = "parent body"),
+                            conversation =
+                                conversationSummary("thread-m1").copy(
+                                    kind = ConversationKind.Thread,
+                                    channelId = ChannelId("thread-m1"),
+                                    name = "thread-m1",
+                                    subtitle = null,
+                                    thread =
+                                        ThreadConversation(
+                                            parentChannelId = ChannelId("channel-1"),
+                                            parentMessageId = MessageId("m1"),
+                                            streamChannelId = ChannelId("thread-m1")
+                                        )
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = messagesResponse("unused")),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                title = ThreadReplyPageTitle,
+                sourceThreadId = "thread-m1",
+                streamChannelId = "thread-m1",
+                parentChannelId = "channel-1",
+                parentMessageId = "m1",
+                originParentMessageId = "m1",
+                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+                showModeTabs = false,
+                originStatus = "loading"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base, persistResult = false) as DataResult.Content).data
+
+        assertEquals(listOf(ChannelId("channel-1") to MessageId("m1")), repository.getReplyThreadRequests)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+    }
+
+    @Test
     fun cachedThreadPayloadNormalizesAgentGravatarBeforeFirstRender() = runBlocking {
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeThread(

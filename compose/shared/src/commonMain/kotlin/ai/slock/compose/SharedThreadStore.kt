@@ -1477,6 +1477,7 @@ internal class SharedThreadDataSource(
         val parentMessageId = basePayload.parentMessageId?.takeIf { it.isNotBlank() }
             ?: basePayload.originParentMessageId?.takeIf { it.isNotBlank() }
             ?: return DataResult.Error(ScreenError(code = "thread_parent_message_missing", retryable = false))
+        val headerFallback = resolveConversationHeaderFallback(basePayload, session)
         val initialResult =
             fetchThreadSnapshotFromRepository("thread_network_reply") { repository ->
                 repository.getReplyThread(
@@ -1505,8 +1506,10 @@ internal class SharedThreadDataSource(
                 val payload =
                     initialResult.data
                         .withReplyParentMessageFromContext(resolvedBase)
+                        .withConversationHeaderFallback(headerFallback)
                         .toKuiklyThreadPayload(resolvedBase, session.user.id)
                         .withCachedSenderProfiles(session)
+                        .withSenderProfiles(session)
                 DataResult.Content(
                     if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && payload.messages.isEmpty()) {
                         payload.toEmptyReplyThreadPayload()
