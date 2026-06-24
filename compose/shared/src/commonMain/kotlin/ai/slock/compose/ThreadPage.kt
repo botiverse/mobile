@@ -749,7 +749,7 @@ private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile =
     MemberProfile(
         id = MemberId(authorId),
         displayName = authorName.ifBlank { authorId },
-        handle = authorName.ifBlank { authorId },
+        handle = authorHandle.ifBlank { authorName.ifBlank { authorId } },
         kind = threadAuthorKind(),
         gravatarHash = gravatarHash,
         avatar = avatarWireValue?.takeIf { it.isNotBlank() }?.let(AvatarReference::fromWireValue),
@@ -794,6 +794,7 @@ internal data class KuiklyThreadMessageItem(
     val id: String,
     val authorId: String,
     val authorName: String,
+    val authorHandle: String = "",
     val authorKind: String = "",
     val isOwn: Boolean = false,
     val avatarLabel: String = "",
@@ -869,6 +870,7 @@ private fun buildThreadPendingSendMessage(
         id = localMessageId,
         authorId = user?.id ?: "local-user",
         authorName = authorName,
+        authorHandle = user?.name ?: user?.email ?: authorName,
         authorKind = "human",
         isOwn = true,
         avatarLabel = authorName.take(1).uppercase(),
@@ -5138,6 +5140,7 @@ private fun KuiklyThreadComposerPayload.withThreadComposerDraftState(
         seedText = draftState.seedText,
         seedAsTask = draftState.seedAsTask,
         syncNonce = draftState.syncNonce,
+        focusRequestNonce = draftState.focusRequestNonce,
         pendingAttachments =
             pendingAttachments.map { attachment ->
                 KuiklyPendingAttachmentItem(
@@ -5348,6 +5351,11 @@ private fun ThreadPageContent(
                             contentExtrasVisible = contentExtrasVisible,
                             onThreadEvent = onThreadEvent,
                             onOpenMember = onOpenMemberProfile,
+                            onMentionAuthor = { handle ->
+                                if (showComposerForSelectedTab) {
+                                    composerDraftViewModel.dispatch(SharedThreadComposerDraftIntent.InsertMention(handle))
+                                }
+                            },
                             onOpenMarkdownTag = openMarkdownTag,
                             onOpenMarkdownUrl = openMarkdownUrl,
                             diagnosticsLogger = diagnosticsLogger,
@@ -5801,6 +5809,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     contentExtrasVisible: Boolean = true,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
+    onMentionAuthor: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
@@ -5852,6 +5861,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         contentExtrasVisible = contentExtrasVisible,
         onThreadEvent = onThreadEvent,
         onOpenMember = onOpenMember,
+        onMentionAuthor = onMentionAuthor,
         onOpenMarkdownTag = onOpenMarkdownTag,
         onOpenMarkdownUrl = onOpenMarkdownUrl,
         diagnosticsLogger = diagnosticsLogger,
@@ -5873,6 +5883,7 @@ private fun ThreadChatTab(
     contentExtrasVisible: Boolean = true,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
+    onMentionAuthor: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
@@ -5894,6 +5905,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
+                    onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
@@ -5925,6 +5937,7 @@ private fun ThreadChatTab(
                     contentExtrasVisible = contentExtrasVisible,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
+                    onMentionAuthor = onMentionAuthor,
                     onOpenMarkdownTag = onOpenMarkdownTag,
                     onOpenMarkdownUrl = onOpenMarkdownUrl,
                     diagnosticsLogger = diagnosticsLogger,
@@ -5950,6 +5963,7 @@ private fun ThreadChatTab(
                 contentExtrasVisible = contentExtrasVisible,
                 onThreadEvent = onThreadEvent,
                 onOpenMember = onOpenMember,
+                onMentionAuthor = onMentionAuthor,
                 onOpenMarkdownTag = onOpenMarkdownTag,
                 onOpenMarkdownUrl = onOpenMarkdownUrl,
                 diagnosticsLogger = diagnosticsLogger,
@@ -5972,6 +5986,7 @@ private fun ThreadMessagesList(
     contentExtrasVisible: Boolean = true,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
+    onMentionAuthor: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
     diagnosticsLogger: (String) -> Unit = {},
@@ -6383,6 +6398,7 @@ private fun ThreadMessagesList(
                             taskStatusMenuMessageId = message.id
                             taskStatusMenuAnchor = anchor
                         },
+                        onMentionAuthor = onMentionAuthor,
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl
                     )
@@ -6535,6 +6551,7 @@ private fun ThreadMessagesList(
                             currentServerSlug = currentServerSlug,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            onMentionAuthor = onMentionAuthor,
                             richContentEnabled = contentExtrasVisible
                         )
                     }
@@ -7468,6 +7485,7 @@ private fun ThreadMessageCard(
     currentServerSlug: String? = null,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit,
+    onMentionAuthor: (String) -> Unit = {},
     richContentEnabled: Boolean = true,
     focused: Boolean = false,
     outerPadding: com.tencent.kuikly.compose.ui.unit.Dp = SlockSpacing.Sm
@@ -7512,7 +7530,8 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         status = message.threadAgentStatusIndicatorState(),
-                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
+                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
+                        onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -7680,7 +7699,8 @@ private fun ThreadMessageCard(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
                         status = message.threadAgentStatusIndicatorState(),
-                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) }
+                        onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
+                        onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
                 }
             }
@@ -8174,6 +8194,15 @@ internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
 
 internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
+
+private fun KuiklyThreadMessageItem.threadMentionHandle(): String? =
+    authorHandle
+        .ifBlank { authorName }
+        .ifBlank { authorId }
+        .trim()
+        .removePrefix("@")
+        .takeIf { it.isNotBlank() }
+        ?.takeIf { threadAuthorBadgeLabel() == null }
 
 private fun KuiklyThreadMessageItem.isDeletedThreadAgent(): Boolean =
     isThreadAgentAuthor() &&
@@ -8910,6 +8939,7 @@ private fun ThreadOriginCard(
     onOpenMember: (String) -> Unit,
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
+    onMentionAuthor: (String) -> Unit,
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -8993,6 +9023,7 @@ private fun ThreadOriginCard(
                             currentServerSlug = currentServerSlug,
                             onOpenMarkdownTag = onOpenMarkdownTag,
                             onOpenMarkdownUrl = onOpenMarkdownUrl,
+                            onMentionAuthor = onMentionAuthor,
                             richContentEnabled = contentExtrasVisible
                         )
                     }
@@ -9015,14 +9046,23 @@ private fun ThreadMessageAvatar(
     avatarLabel: String,
     avatarWireValue: String?,
     status: SlockAgentStatusIndicatorState?,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onLongPress: () -> Unit = {}
 ) {
     val avatarSource =
         remember(avatarWireValue) {
             avatarWireValue?.takeIf { it.isNotBlank() }
         }
     Box(
-        modifier = Modifier.size(40.dp).clickable(onClick = onClick),
+        modifier =
+            Modifier
+                .size(40.dp)
+                .pointerInput(onClick, onLongPress) {
+                    detectTapGestures(
+                        onTap = { onClick() },
+                        onLongPress = { onLongPress() }
+                    )
+                },
         contentAlignment = Alignment.Center
     ) {
         SlockAvatarWithStatus(
