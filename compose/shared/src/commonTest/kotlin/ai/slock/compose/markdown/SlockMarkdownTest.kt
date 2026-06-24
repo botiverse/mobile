@@ -156,6 +156,16 @@ class SlockMarkdownTest {
     }
 
     @Test
+    fun inlineCodeTextFlowDoesNotInjectHorizontalPaddingSpaces() {
+        val rendered = renderSlockMarkdownParagraphText("Use `mimo` and `very-long-inline-code-value`")
+
+        assertEquals(
+            "Use mimo and very-long-inline-code-value",
+            rendered.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
+        )
+    }
+
+    @Test
     fun userMentionsRenderAsClickableInlineContent() {
         val inlineContent = slockMarkdownAnnotator("Ping @Android-App-Integrator in #markdown专修 for #15").inlineContent?.invoke().orEmpty()
 

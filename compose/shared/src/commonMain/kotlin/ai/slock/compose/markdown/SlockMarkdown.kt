@@ -604,9 +604,7 @@ internal fun slockMarkdownAnnotator(
                 val code = codeToken?.code
                 if (codeToken != null && code != null) {
                     pushStyle(annotatorSettings.codeSpanStyle)
-                    append(' ')
                     append(code.slockMarkdownInlineCodeWithSoftBreaks())
-                    append(' ')
                     pop()
                     return@markdownAnnotator true
                 }
