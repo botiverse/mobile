@@ -3,6 +3,8 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import deviceInfo from '@ohos.deviceInfo';
 import fs from '@ohos.file.fs';
 import hilog from '@ohos.hilog';
+import util from '@ohos.util';
+import zlib from '@ohos.zlib';
 import {
   Bugly,
   LogLevel,
@@ -22,6 +24,9 @@ const BUGLY_LOG_PREFIX: string = 'slock';
 const DIAGNOSTIC_UPLOAD_DIR_NAME: string = 'diagnostics_upload';
 const CRASH_DIR_NAME: string = 'crashes';
 const MAX_DIAGNOSTIC_EXPORT_CHARS: number = 180000;
+const FEEDBACK_FILE_PREFIX: string = 'slock-feedback-';
+const FEEDBACK_SUMMARY_NAME: string = 'slock-diagnostics-summary.txt';
+const FEEDBACK_ARCHIVE_MIME_TYPE: string = 'application/zip';
 
 export class SlockBuglyCrashListener {
   onCrash(crashType: string, crashName: string, crashMsg: string, crashStack: string): void {
@@ -231,26 +236,43 @@ export class SlockOhosBuglyDiagnostics {
       TDLog.i(TAG, 'manual diagnostics upload requested');
       TDLog.flushLog();
       const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context);
-      const files = SlockOhosBuglyDiagnostics.uploadPaths(context, diagnosticFilePath);
-      if (files.length === 0) {
-        return { "status": "error", "code": "bugly_no_log_files" };
-      }
-
-      const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
-      const params = new TDDiagUploadParams();
-      params.files = files;
-      params.tag = 'slock_diagnostics';
-      params.summary = `Slock diagnostics ${bundleInfo.versionName}`;
-      params.extraInfo = SlockOhosBuglyDiagnostics.uploadExtraInfo(context);
-      params.queryKey = `slock-${Date.now()}`;
-      TDDiag.uploadLogFiles(params);
-      SlockOhosDiagnostics.record(TAG, `bugly_log_upload_requested files=${files.length} key=${params.queryKey}`);
-      return { "status": "ok", "code": "bugly_upload_requested", "queryKey": params.queryKey };
+      return SlockOhosBuglyDiagnostics.requestBuglyUpload(context, diagnosticFilePath);
     } catch (error) {
       const message = SlockOhosBuglyDiagnostics.safeString(error);
       hilog.error(0x0000, TAG, 'Failed to upload Bugly diagnostics: %{public}s', message);
       SlockOhosDiagnostics.record(TAG, `bugly_log_upload_failed ${message}`);
       return { "status": "error", "code": "bugly_upload_failed", "message": message };
+    }
+  }
+
+  static async prepareDiagnosticsFeedbackDraft(context: common.UIAbilityContext): Promise<Record<string, Object>> {
+    try {
+      if (SlockOhosBuglyDiagnostics.initialized) {
+        TDLog.i(TAG, 'manual diagnostics feedback export requested');
+        TDLog.flushLog();
+      }
+      const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context);
+      const archivePath = await SlockOhosBuglyDiagnostics.writeFeedbackArchive(context, diagnosticFilePath);
+      const archiveBytes = SlockOhosBuglyDiagnostics.readFileBytes(archivePath);
+      const bodyBase64 = new util.Base64Helper().encodeToStringSync(archiveBytes);
+      const buglyUpload = SlockOhosBuglyDiagnostics.requestBuglyUpload(context, diagnosticFilePath, archivePath);
+      const fileName = archivePath.split('/').pop() ?? `${FEEDBACK_FILE_PREFIX}${Date.now()}.zip`;
+      SlockOhosDiagnostics.record(TAG, `bugly_feedback_archive_prepared file=${fileName} bytes=${archiveBytes.byteLength}`);
+      return {
+        "status": "ok",
+        "message": SlockOhosBuglyDiagnostics.feedbackMessage(fileName),
+        "fileName": fileName,
+        "mimeType": FEEDBACK_ARCHIVE_MIME_TYPE,
+        "sizeBytes": archiveBytes.byteLength,
+        "bodyBase64": bodyBase64,
+        "buglyUploadStatus": buglyUpload["status"] ?? "unknown",
+        "buglyQueryKey": buglyUpload["queryKey"] ?? "",
+      };
+    } catch (error) {
+      const message = SlockOhosBuglyDiagnostics.safeString(error);
+      hilog.error(0x0000, TAG, 'Failed to prepare Bugly feedback archive: %{public}s', message);
+      SlockOhosDiagnostics.record(TAG, `bugly_feedback_archive_failed ${message}`);
+      return { "status": "error", "code": "bugly_feedback_archive_failed", "message": message };
     }
   }
 
@@ -279,7 +301,7 @@ export class SlockOhosBuglyDiagnostics {
   private static writeDiagnosticSnapshot(context: common.UIAbilityContext): string {
     const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
     SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
-    const path = `${uploadDir}/diagnostics-${Date.now()}.txt`;
+    const path = `${uploadDir}/${FEEDBACK_SUMMARY_NAME}`;
     const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
     try {
       fs.writeSync(file.fd, SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
@@ -289,12 +311,67 @@ export class SlockOhosBuglyDiagnostics {
     return path;
   }
 
-  private static uploadPaths(context: common.UIAbilityContext, diagnosticFilePath: string): Array<string> {
+  private static async writeFeedbackArchive(context: common.UIAbilityContext, diagnosticFilePath: string): Promise<string> {
+    const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
+    SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
+    SlockOhosBuglyDiagnostics.pruneFeedbackArchives(uploadDir);
+    const archivePath = `${uploadDir}/${FEEDBACK_FILE_PREFIX}${Date.now()}.zip`;
+    const inputFiles = SlockOhosBuglyDiagnostics.feedbackArchiveFiles(context, diagnosticFilePath);
+    if (inputFiles.length === 0) {
+      throw new Error('No diagnostics files available for feedback archive');
+    }
+    await zlib.compressFiles(inputFiles, archivePath, {
+      level: zlib.CompressLevel.COMPRESS_LEVEL_DEFAULT_COMPRESSION,
+    });
+    return archivePath;
+  }
+
+  private static requestBuglyUpload(
+    context: common.UIAbilityContext,
+    diagnosticFilePath: string,
+    feedbackArchivePath: string = ''
+  ): Record<string, Object> {
+    if (!SlockOhosBuglyDiagnostics.initialized) {
+      return SlockOhosBuglyDiagnostics.disabledResult('bugly_diagnostics_not_initialized');
+    }
+    const files = SlockOhosBuglyDiagnostics.uploadPaths(context, diagnosticFilePath, feedbackArchivePath);
+    if (files.length === 0) {
+      return { "status": "error", "code": "bugly_no_log_files" };
+    }
+
+    const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+    const params = new TDDiagUploadParams();
+    params.files = files;
+    params.tag = 'slock_diagnostics';
+    params.summary = `Slock diagnostics ${bundleInfo.versionName}`;
+    params.extraInfo = SlockOhosBuglyDiagnostics.uploadExtraInfo(context);
+    params.queryKey = `slock-${Date.now()}`;
+    TDDiag.uploadLogFiles(params);
+    SlockOhosDiagnostics.record(TAG, `bugly_log_upload_requested files=${files.length} key=${params.queryKey}`);
+    return { "status": "ok", "code": "bugly_upload_requested", "queryKey": params.queryKey };
+  }
+
+  private static uploadPaths(
+    context: common.UIAbilityContext,
+    diagnosticFilePath: string,
+    feedbackArchivePath: string = ''
+  ): Array<string> {
     return [
       SlockOhosBuglyDiagnostics.tdLogDir(context),
       diagnosticFilePath,
+      feedbackArchivePath,
       `${context.filesDir}/${CRASH_DIR_NAME}`,
     ].filter((path: string) => SlockOhosBuglyDiagnostics.pathExists(path));
+  }
+
+  private static feedbackArchiveFiles(context: common.UIAbilityContext, diagnosticFilePath: string): Array<string> {
+    return [
+      diagnosticFilePath,
+      ...SlockOhosBuglyDiagnostics.collectFiles(SlockOhosBuglyDiagnostics.tdLogDir(context)),
+      ...SlockOhosBuglyDiagnostics.collectFiles(`${context.filesDir}/${CRASH_DIR_NAME}`),
+    ].filter((path: string, index: number, paths: Array<string>) => {
+      return SlockOhosBuglyDiagnostics.pathIsFile(path) && paths.indexOf(path) === index;
+    });
   }
 
   private static tdLogDir(context: common.UIAbilityContext): string {
@@ -310,10 +387,81 @@ export class SlockOhosBuglyDiagnostics {
     });
   }
 
+  private static feedbackMessage(fileName: string): string {
+    return [
+      '## Raft feedback',
+      '',
+      '<!-- Describe what happened here. -->',
+      '',
+      '## Diagnostics',
+      '',
+      `Bugly TDLog diagnostics are attached as \`${fileName}\`.`,
+    ].join('\n');
+  }
+
+  private static readFileBytes(path: string): Uint8Array {
+    const stat = fs.statSync(path);
+    const size = Number(stat.size);
+    const file = fs.openSync(path, fs.OpenMode.READ_ONLY);
+    try {
+      const buffer = new ArrayBuffer(size);
+      const bytesRead = fs.readSync(file.fd, buffer);
+      return new Uint8Array(buffer.slice(0, bytesRead));
+    } finally {
+      fs.closeSync(file);
+    }
+  }
+
+  private static collectFiles(path: string): Array<string> {
+    if (!SlockOhosBuglyDiagnostics.pathExists(path)) {
+      return [];
+    }
+    if (SlockOhosBuglyDiagnostics.pathIsFile(path)) {
+      return [path];
+    }
+    if (!SlockOhosBuglyDiagnostics.pathIsDirectory(path)) {
+      return [];
+    }
+    const result: Array<string> = [];
+    try {
+      fs.listFileSync(path).forEach((name: string) => {
+        result.push(...SlockOhosBuglyDiagnostics.collectFiles(`${path}/${name}`));
+      });
+    } catch (_error) {
+    }
+    return result;
+  }
+
+  private static pruneFeedbackArchives(uploadDir: string): void {
+    try {
+      const archives: Array<string> = fs.listFileSync(uploadDir)
+        .filter((name: string) => name.startsWith(FEEDBACK_FILE_PREFIX) && name.endsWith('.zip'))
+        .map((name: string) => `${uploadDir}/${name}`)
+        .sort((left: string, right: string) => {
+          return fs.statSync(right).mtime - fs.statSync(left).mtime;
+        });
+      archives.slice(5).forEach((path: string) => {
+        try {
+          fs.unlinkSync(path);
+        } catch (_error) {
+        }
+      });
+    } catch (_error) {
+    }
+  }
+
   private static pathExists(path: string): boolean {
     try {
       fs.statSync(path);
       return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  private static pathIsFile(path: string): boolean {
+    try {
+      return fs.statSync(path).isFile();
     } catch (_error) {
       return false;
     }

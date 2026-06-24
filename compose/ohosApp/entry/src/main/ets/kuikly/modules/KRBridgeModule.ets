@@ -490,6 +490,10 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback({ "status": "ok", "code": "diagnostics_cleared" });
           return;
         }
+        case "prepareDiagnosticsFeedback": {
+          callback(await this.prepareDiagnosticsFeedbackCapability());
+          return;
+        }
         case "sendFeedback": {
           callback(this.uploadBuglyDiagnosticsCapability());
           return;
@@ -664,6 +668,15 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
     const result = SlockOhosBuglyDiagnostics.uploadDiagnostics(context);
     if (result["status"] === "ok") {
       SlockOhosDiagnostics.record("Settings", "diagnostics_upload_requested");
+    }
+    return result;
+  }
+
+  private async prepareDiagnosticsFeedbackCapability(): Promise<Record<string, Object>> {
+    const context = getContext(this) as common.UIAbilityContext;
+    const result = await SlockOhosBuglyDiagnostics.prepareDiagnosticsFeedbackDraft(context);
+    if (result["status"] === "ok") {
+      SlockOhosDiagnostics.record("Settings", "diagnostics_feedback_prepared");
     }
     return result;
   }
