@@ -72,6 +72,7 @@ import ai.slock.compose.data.buildSharedThreadPayloadFromMessagesPage
 import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationPermissions
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberId
@@ -306,7 +307,7 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun startUsesHomeHeaderForImmediateLoadingPayloadWhenTitleIsIdentity() = runBlocking {
+    fun startUsesHomeHeaderAndMembershipForImmediateLoadingPayloadWhenTitleIsIdentity() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
         localStore.writeHome(
@@ -322,7 +323,9 @@ class SharedThreadStoreTest {
                             kind = ConversationKind.Channel,
                             name = "all",
                             subtitle = "General updates",
-                            memberCount = 4
+                            joined = false,
+                            memberCount = 4,
+                            permissions = ConversationPermissions(canSend = false)
                         )
                     ),
                 directMessages = emptyList(),
@@ -344,6 +347,9 @@ class SharedThreadStoreTest {
         assertEquals("all", payload.title)
         assertEquals("General updates", payload.subtitle)
         assertEquals("public", payload.channelKind)
+        assertEquals(false, payload.joined)
+        assertEquals(false, payload.canSend)
+        assertEquals(false, payload.composer.enabled)
         scope.cancel()
     }
 

@@ -68,7 +68,17 @@ internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
 ): KuiklyThreadScreenPayload {
     fallback ?: return this
     val headerState = sharedConversationHeaderState(listOf(fallback))
-    return withConversationHeader(headerState.entryFor(this))
+    val entry = headerState.entryFor(this) ?: return this
+    val headerPayload = withConversationHeader(entry)
+    return if (!fallback.joined) {
+        headerPayload.copy(
+            joined = false,
+            canSend = fallback.permissions.canSend,
+            composer = headerPayload.composer.copy(enabled = false)
+        )
+    } else {
+        headerPayload
+    }
 }
 
 private fun KuiklyThreadScreenPayload.conversationHeaderLookupIds(): List<String> =

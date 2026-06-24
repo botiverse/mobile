@@ -94,6 +94,26 @@ class ChannelRepositoryDataSourceTest {
         assertEquals(false, error.retryable)
     }
 
+    @Test
+    fun channelCacheAllowsJoinedStateToBecomeFalse() = runBlocking {
+        val network =
+            FakeChannelNetworkClient(
+                responseBody = """[{"id":"channel-1","name":"general","type":"channel","joined":true}]"""
+            )
+        val repository = RealChannelRepository(sampleStore(), network)
+        val serverId = ServerId("server-1")
+
+        val joined = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(serverId)).data.channels.single()
+        assertEquals(true, joined.joined)
+        assertEquals(true, joined.permissions.canSend)
+
+        network.responseBody = """[{"id":"channel-1","name":"general","type":"channel","joined":false}]"""
+        val notJoined = assertIs<DataResult.Content<ChannelSnapshot>>(repository.getChannels(serverId)).data.channels.single()
+
+        assertEquals(false, notJoined.joined)
+        assertEquals(false, notJoined.permissions.canSend)
+    }
+
     private fun String.asJsonObject() =
         Json.parseToJsonElement(this).jsonObject
 
@@ -125,7 +145,7 @@ class ChannelRepositoryDataSourceTest {
 
     private class FakeChannelNetworkClient(
         private val responseCode: Int = 200,
-        private val responseBody: String = """{"id":"channel-1","name":"general","type":"channel","joined":true}"""
+        var responseBody: String = """{"id":"channel-1","name":"general","type":"channel","joined":true}"""
     ) : SlockNetworkClient {
         val requests = mutableListOf<RecordedChannelRequest>()
         val bodies = mutableListOf<String>()
