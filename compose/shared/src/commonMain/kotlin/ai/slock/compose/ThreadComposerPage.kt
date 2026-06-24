@@ -165,9 +165,9 @@ internal data class ThreadComposerSurface(
 
     val mentionScopeChannelId: String?
         get() =
-            streamChannelId?.takeIf { it.isNotBlank() }
-                ?: mentionChannelId?.takeIf { it.isNotBlank() }
+            mentionChannelId?.takeIf { it.isNotBlank() }
                 ?: parentChannelId?.takeIf { it.isNotBlank() }
+                ?: streamChannelId?.takeIf { it.isNotBlank() }
                 ?: channelId.takeIf { it.isNotBlank() }
 }
 
