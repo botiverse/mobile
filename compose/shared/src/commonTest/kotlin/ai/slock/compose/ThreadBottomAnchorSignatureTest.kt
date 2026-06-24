@@ -402,6 +402,43 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun backToBottomButton_allowsTopAnchoredOriginContent() {
+        assertEquals(
+            true,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    topAnchoredOriginContent = true,
+                    initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = false,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+        assertEquals(
+            true,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    topAnchoredOriginContent = false,
+                    initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = false,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    topAnchoredOriginContent = true,
+                    initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = true,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+    }
+
+    @Test
     fun initialBottomAnchor_revealsOnlyAfterLatestRenderedAtBottom() {
         assertEquals(
             false,

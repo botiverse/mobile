@@ -6327,10 +6327,14 @@ private fun ThreadMessagesList(
         if (!initialBottomAnchorReady && latestItemIndex >= 0) {
             ThreadStateMessage("Loading...", null)
         }
-        if (!topAnchoredOriginContent &&
-            initialBottomAnchorReady &&
-            !pendingKeyboardBottomAnchor &&
-            listState.shouldShowThreadBackToBottom(latestItemIndex)
+        if (shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    topAnchoredOriginContent = topAnchoredOriginContent,
+                    initialBottomAnchorReady = initialBottomAnchorReady,
+                    pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
+                    latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
+                )
+            )
         ) {
             ThreadBackToBottomButton(
                 modifier = Modifier.align(Alignment.BottomEnd).padding(end = SlockSpacing.Md, bottom = SlockSpacing.Md),
@@ -6636,6 +6640,18 @@ internal fun shouldAnchorThreadKeyboardBottomOnInsetChange(state: ThreadKeyboard
         state.initialBottomAnchorReady &&
         state.latestItemIndex >= 0 &&
         state.allowBottomAutoAnchor
+
+internal data class ThreadBackToBottomButtonState(
+    val topAnchoredOriginContent: Boolean,
+    val initialBottomAnchorReady: Boolean,
+    val pendingKeyboardBottomAnchor: Boolean,
+    val latestItemOffBottom: Boolean
+)
+
+internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonState): Boolean =
+    state.initialBottomAnchorReady &&
+        !state.pendingKeyboardBottomAnchor &&
+        state.latestItemOffBottom
 
 internal data class ThreadInitialBottomAnchorState(
     val canScrollToLatest: Boolean,
