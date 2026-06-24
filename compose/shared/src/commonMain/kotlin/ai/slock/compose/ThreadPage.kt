@@ -2921,7 +2921,6 @@ internal fun SharedThreadRouteContent(
                 return@launch
             }
             threadViewModel.dispatch(SharedThreadIntent.ReplaceLocalSendWithSentPage(localMessageId, sentPage))
-            threadViewModel.dispatch(SharedThreadIntent.Refresh)
             bridge.performanceMarker(
                 phase = "composer_send",
                 routeName = "kuikly_thread",
