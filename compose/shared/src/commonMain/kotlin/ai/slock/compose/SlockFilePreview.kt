@@ -67,6 +67,7 @@ private const val SlockFilePreviewOpenWithActionId = "open-with"
 private const val SlockFilePreviewSourceThreadAttachment = "thread_attachment"
 private const val SlockFilePreviewSourceAgentWorkspace = "agent_workspace"
 private const val SlockFilePreviewMarkdownMaxChars = 80_000
+private const val SlockFilePreviewTextMaxChars = 96_000
 private const val SlockFilePreviewLoadingLabel = "Loading..."
 
 private val SlockFilePreviewJson = Json { ignoreUnknownKeys = true }
@@ -265,6 +266,7 @@ internal fun KuiklyThreadAttachmentItem.toThreadAttachmentLazyPreviewPayload(kin
         title = when (kind) {
             "image" -> "Image preview"
             "markdown" -> "Markdown preview"
+            "text" -> "Text preview"
             else -> "File preview"
         },
         subtitle = name.ifBlank { "Attachment" },
@@ -295,11 +297,22 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
     networkModule: SlockNetworkModule
 ): SlockFilePreviewPayload? {
     if (source != SlockFilePreviewSourceThreadAttachment || attachmentId.isBlank() || kind != "loading") return null
-    val wantsMarkdown = externalMimeType.isMarkdownMimeType() || name.isMarkdownFileName() || path.isMarkdownFileName()
+    val wantsMarkdown =
+        slockFilePreviewIsMarkdownAttachment(
+            fileName = name.ifBlank { path.ifBlank { externalFileName } },
+            mimeType = externalMimeType
+        )
     val wantsImage = externalMimeType.substringBefore(';').trim().startsWith("image/", ignoreCase = true)
+    val wantsText =
+        !wantsMarkdown &&
+            slockFilePreviewIsTextLikeAttachment(
+                fileName = name.ifBlank { path.ifBlank { externalFileName } },
+                mimeType = externalMimeType
+            )
     return when {
         wantsMarkdown -> loadThreadMarkdownAttachmentPreview(threadApi, networkModule)
         wantsImage -> loadThreadImageAttachmentPreview(threadApi)
+        wantsText -> loadThreadTextAttachmentPreview(threadApi, networkModule)
         else ->
             copy(
                 kind = "unsupported",
@@ -308,15 +321,6 @@ private suspend fun SlockFilePreviewPayload.loadThreadAttachmentPreview(
             )
     }
 }
-
-private fun String.isMarkdownMimeType(): Boolean =
-    substringBefore(';').trim().let { normalized ->
-        normalized.equals("text/markdown", ignoreCase = true) ||
-            normalized.equals("text/x-markdown", ignoreCase = true)
-    }
-
-private fun String.isMarkdownFileName(): Boolean =
-    endsWith(".md", ignoreCase = true) || endsWith(".markdown", ignoreCase = true)
 
 private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
     threadApi: SlockThreadApiClient
@@ -332,6 +336,66 @@ private suspend fun SlockFilePreviewPayload.loadThreadImageAttachmentPreview(
         imageUrl = imageUrl,
         message = if (imageUrl == null) "Image preview is unavailable." else "",
         error = if (imageUrl == null) "image_preview_unavailable" else null
+    )
+}
+
+private suspend fun SlockFilePreviewPayload.loadThreadTextAttachmentPreview(
+    threadApi: SlockThreadApiClient,
+    networkModule: SlockNetworkModule
+): SlockFilePreviewPayload {
+    val target =
+        when (val response = threadApi.attachmentUrl(attachmentId, disposition = "inline")) {
+            is ThreadApiResult.Success -> response.data.url.takeIf { it.isNotBlank() }
+            is ThreadApiResult.Failure -> null
+        } ?: return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load text preview.",
+            error = "text_preview_url_failed"
+        )
+    val response =
+        try {
+            networkModule.request(
+                JSONObject().apply {
+                    put("url", target)
+                    put("method", "GET")
+                    put("headers", JSONObject())
+                    put("timeoutMillis", 30_000)
+                }
+            )
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            return copy(
+                kind = "error",
+                title = "Preview unavailable",
+                message = "Unable to load text preview.",
+                error = "text_preview_fetch_failed"
+            )
+        }
+    if (response.code !in 200..299) {
+        return copy(
+            kind = "error",
+            title = "Preview unavailable",
+            message = "Unable to load text preview.",
+            error = "text_preview_fetch_failed"
+        )
+    }
+    val body = response.bodyText.orEmpty()
+    val previewBody =
+        if (body.length > SlockFilePreviewTextMaxChars) {
+            body.take(SlockFilePreviewTextMaxChars) +
+                "\n\nPreview truncated. Open with system viewer for the full file."
+        } else {
+            body
+        }
+    return copy(
+        kind = "text",
+        title = "Text preview",
+        content = previewBody,
+        markdown = false,
+        message = "",
+        error = null
     )
 }
 
@@ -441,6 +505,95 @@ private suspend fun SlockFilePreviewPayload.loadAgentWorkspacePreview(
             )
     }
 }
+
+internal fun slockFilePreviewIsMarkdownAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim()
+    return normalizedMime.equals("text/markdown", ignoreCase = true) ||
+        normalizedMime.equals("text/x-markdown", ignoreCase = true) ||
+        fileName.endsWith(".md", ignoreCase = true) ||
+        fileName.endsWith(".markdown", ignoreCase = true)
+}
+
+internal fun slockFilePreviewIsTextLikeAttachment(fileName: String, mimeType: String): Boolean {
+    val normalizedMime = mimeType.substringBefore(';').trim().lowercase()
+    if (normalizedMime.startsWith("text/")) return true
+    if (normalizedMime in SlockFilePreviewTextMimeTypes) return true
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return extension in SlockFilePreviewTextFileExtensions
+}
+
+private val SlockFilePreviewTextMimeTypes =
+    setOf(
+        "application/csv",
+        "application/ecmascript",
+        "application/javascript",
+        "application/json",
+        "application/ld+json",
+        "application/sql",
+        "application/toml",
+        "application/typescript",
+        "application/x-javascript",
+        "application/x-ndjson",
+        "application/x-python-code",
+        "application/x-sh",
+        "application/x-yaml",
+        "application/xml",
+        "image/svg+xml"
+    )
+
+private val SlockFilePreviewTextFileExtensions =
+    setOf(
+        "bash",
+        "c",
+        "cc",
+        "cfg",
+        "cjs",
+        "conf",
+        "cpp",
+        "cs",
+        "css",
+        "csv",
+        "diff",
+        "env",
+        "go",
+        "h",
+        "hpp",
+        "htm",
+        "html",
+        "ini",
+        "java",
+        "js",
+        "json",
+        "jsonl",
+        "jsx",
+        "kt",
+        "kts",
+        "less",
+        "log",
+        "mjs",
+        "patch",
+        "php",
+        "properties",
+        "py",
+        "rb",
+        "rs",
+        "sass",
+        "scss",
+        "sh",
+        "sql",
+        "svg",
+        "swift",
+        "text",
+        "toml",
+        "ts",
+        "tsx",
+        "tsv",
+        "txt",
+        "xml",
+        "yaml",
+        "yml",
+        "zsh"
+    )
 
 internal fun SlockWorkspaceFilePreview.toSlockFilePreviewPayload(path: String): SlockFilePreviewPayload =
     when (this) {
