@@ -3550,8 +3550,7 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.weight(1f)
                 )
                 if (canEdit && !editingDisplayName) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Pencil,
+                    MembersProfilePencilButton(
                         onClick = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -3562,8 +3561,7 @@ private fun MembersAgentProfileTab(
                                 localDisplayNameError = null
                                 localEditingDisplayName = true
                             }
-                        },
-                        size = MembersActionSize
+                        }
                     )
                 }
             }
@@ -3643,8 +3641,7 @@ private fun MembersAgentProfileTab(
                     modifier = Modifier.weight(1f)
                 )
                 if (canEdit && !editingRole) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Pencil,
+                    MembersProfilePencilButton(
                         onClick = {
                             if (storeBackedProfileEdit) {
                                 profileStore.dispatch(
@@ -3655,8 +3652,7 @@ private fun MembersAgentProfileTab(
                                 localRoleError = null
                                 localEditingRole = true
                             }
-                        },
-                        size = MembersActionSize
+                        }
                     )
                 }
             }
@@ -3878,13 +3874,11 @@ private fun MembersAgentProfileTab(
             ) {
                 MembersDetailSectionTitle("RUNTIME CONFIG", modifier = Modifier.weight(1f))
                 if (canEdit && !editingRuntimeConfig) {
-                    SlockBrutalIconButton(
-                        iconName = SlockLucideIconName.Pencil,
+                    MembersProfilePencilButton(
                         onClick = {
                             runtimeConfigError = null
                             editingRuntimeConfig = true
-                        },
-                        size = MembersActionSize
+                        }
                     )
                 }
             }
@@ -5360,6 +5354,25 @@ private fun MembersDetailActionButton(
         enabled = enabled,
         backgroundColor = SlockColor.AccentPink
     )
+}
+
+@Composable
+private fun MembersProfilePencilButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(24.dp)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        SlockLucideIcon(
+            SlockLucideIconName.Pencil,
+            modifier = Modifier.size(14.dp),
+            color = SlockColor.TextMutedGrayArgb
+        )
+    }
 }
 
 @Composable
