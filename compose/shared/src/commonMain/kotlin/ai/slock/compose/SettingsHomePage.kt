@@ -412,6 +412,7 @@ private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationDeveloper = "developer"
 private const val SettingsDestinationRouter = "router"
+private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val PreJoinAgreementBodyMaxLength = 5_000
 private const val AppShellRealtimeEvent = "slockRealtimeEvent"
 private const val AppShellRealtimeAuthRefreshAction = "authRefreshRequired"
@@ -424,6 +425,18 @@ private val SearchPopoverShadowColor = SlockColor.ShadowBlack
 private val SearchLightRowBorderColor = SlockColor.TextBlack.copy(alpha = 0.3f)
 private val SearchMutedTextColor = SlockColor.TextBlack.copy(alpha = 0.62f)
 private val AppShellThreadLaunchJson = Json { ignoreUnknownKeys = true }
+
+internal fun sharedSettingsResolvedWebBaseUrl(webUrl: String?): String =
+    webUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { SharedSettingsDefaultWebBaseUrl }
+
+internal fun sharedSettingsWebUrl(webUrl: String?, path: String): String {
+    val baseUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
+    val cleanPath = path.trim().trimStart('/')
+    return if (cleanPath.isBlank()) baseUrl else "$baseUrl/$cleanPath"
+}
+
+internal fun ScreenLoadState<SharedSettingsDeveloperSnapshot>.configuredWebBaseUrlOrNull(): String? =
+    (this as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data?.webUrl
 
 @Page(SETTINGS_HOME_PAGE, supportInLocal = true)
 internal class ComposeSettingsHomePage : ai.slock.compose.base.BasePager() {
@@ -2772,7 +2785,7 @@ private fun SettingsAppShellContent(
                 ) { action, value ->
                     when (action) {
                         "comparePlans" -> settingsCapabilities.openUrl(value ?: "https://raft.build/#pricing")
-                        "portal" -> settingsCapabilities.openUrl("https://raft.build/settings/billing")
+                        "portal" -> settingsCapabilities.openUrl(sharedSettingsWebUrl(settingsState.developer.configuredWebBaseUrlOrNull(), "settings/billing"))
                     }
                 }
             SettingsDestinationLanguageRegion ->
@@ -3123,7 +3136,8 @@ private fun SettingsAppShellContent(
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
-                    onOpenSlock = { settingsCapabilities.openUrl("https://app.raft.build") },
+                    webUrl = sharedSettingsResolvedWebBaseUrl(settingsState.developer.configuredWebBaseUrlOrNull()),
+                    onOpenSlock = { url -> settingsCapabilities.openUrl(url) },
                     onSendFeedback = { onSettingsIntent(SharedSettingsIntent.SendFeedback) }
                 )
             SettingsDestinationDeveloper ->
@@ -5818,7 +5832,8 @@ private fun SharedSettingsAboutContent(
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onOpenDiagnostics: () -> Unit,
     onCopyBuild: (String) -> Unit,
-    onOpenSlock: () -> Unit,
+    webUrl: String = SharedSettingsDefaultWebBaseUrl,
+    onOpenSlock: (String) -> Unit,
     onSendFeedback: () -> Unit
 ) {
     val snapshot =
@@ -5826,12 +5841,12 @@ private fun SharedSettingsAboutContent(
             is ScreenLoadState.Content -> state.data
             else -> fallback
         }
-    val payload = snapshot.toAboutPayload()
+    val payload = snapshot.toAboutPayload(webUrl)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             "diagnostics" -> onOpenDiagnostics()
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
-            "openSlock" -> onOpenSlock()
+            "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             "feedback" -> onSendFeedback()
         }
     }
@@ -7093,8 +7108,9 @@ private fun appShellAboutFallback(session: StoredAuthSession?): SharedSettingsAb
         notificationStatusLabel = "Checking"
     )
 
-private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPayload =
-    KuiklySharedSettingsPayload(
+private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySharedSettingsPayload {
+    val resolvedWebUrl = sharedSettingsResolvedWebBaseUrl(webUrl)
+    return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = "About",
         heroIconName = SlockLucideIconName.Bug,
@@ -7118,11 +7134,12 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(): KuiklySharedSettingsPa
                     rows =
                         listOf(
                             KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.Terminal, "Developer", "Open API server, diagnostics, and route launcher tools.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open app.raft.build in the system browser.", status = "Open", enabled = true)
+                            KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true)
                         )
                 )
             )
     )
+}
 
 private fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
@@ -10152,8 +10169,6 @@ private data class SharedHomeSavedContextMenuState(
     val anchor: Offset
 )
 
-private const val SharedHomeSavedDefaultWebBaseUrl = "https://app.raft.build"
-
 internal fun sharedHomeSavedPermalink(
     item: InboxItem,
     serverSlug: String,
@@ -10161,7 +10176,7 @@ internal fun sharedHomeSavedPermalink(
 ): String? {
     val messageId = item.savedMessageIdOrNull()?.value?.takeIf { it.isNotBlank() } ?: return null
     val cleanServerSlug = serverSlug.trim().takeIf { it.isNotBlank() } ?: return null
-    val cleanWebBaseUrl = webBaseUrl?.trim()?.trimEnd('/').orEmpty().ifBlank { SharedHomeSavedDefaultWebBaseUrl }
+    val cleanWebBaseUrl = sharedSettingsResolvedWebBaseUrl(webBaseUrl)
     val isThread = item.kind == InboxItemKind.Thread
     val channelForLink = if (isThread) item.parentChannelId ?: item.channelId else item.channelId
     val routeKind =

@@ -232,7 +232,7 @@ private fun SettingsBillingScreen() {
             "comparePlans" -> environment.settingsCapabilities.openUrl(planId ?: payload.comparePlansUrl)
             "portal" -> {
                 bridge.toast("Billing portal is not yet available on mobile. Opening in browser.")
-                environment.settingsCapabilities.openUrl("https://raft.build/settings/billing")
+                environment.settingsCapabilities.openUrl(sharedSettingsWebUrl(settingsState.developer.configuredWebBaseUrlOrNull(), "settings/billing"))
             }
             else -> bridge.settingsEvent(launchPayload.instanceId, action, planId)
         }
