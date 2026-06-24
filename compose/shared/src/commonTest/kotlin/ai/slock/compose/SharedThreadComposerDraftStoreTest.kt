@@ -1,11 +1,71 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.InMemorySlockKeyValueStore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SharedThreadComposerDraftStoreTest {
+    @Test
+    fun persistedDraftRestoresByComposerKey() {
+        val repository = SharedThreadComposerDraftRepository(InMemorySlockKeyValueStore())
+        val firstStore = SharedThreadComposerDraftStore(repository)
+        val composer =
+            KuiklyThreadComposerPayload(
+                instanceId = "composer-1",
+                seedText = "",
+                seedAsTask = false
+            )
+
+        firstStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = composer,
+                draftKey = "send=channel-1|parent=_"
+            )
+        )
+        firstStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "remember me", seedAsTask = true))
+
+        val secondStore = SharedThreadComposerDraftStore(repository)
+        secondStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = composer.copy(seedText = "", seedAsTask = false),
+                draftKey = "send=channel-1|parent=_"
+            )
+        )
+
+        assertEquals("remember me", secondStore.state.value.seedText)
+        assertTrue(secondStore.state.value.seedAsTask)
+    }
+
+    @Test
+    fun successfulSendClearsPersistedDraftForComposerKey() {
+        val repository = SharedThreadComposerDraftRepository(InMemorySlockKeyValueStore())
+        val draftKey = "send=thread-1|parent=message-1"
+        val store = SharedThreadComposerDraftStore(repository)
+
+        store.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
+                draftKey = draftKey
+            )
+        )
+        store.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "send me", seedAsTask = true))
+        store.dispatch(SharedThreadComposerDraftIntent.BeginSend)
+        store.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
+
+        val nextStore = SharedThreadComposerDraftStore(repository)
+        nextStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = KuiklyThreadComposerPayload(instanceId = "composer-2"),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals("", nextStore.state.value.seedText)
+        assertFalse(nextStore.state.value.seedAsTask)
+    }
+
     @Test
     fun sendFailureRestoresDraftTextAndMode() {
         val store = SharedThreadComposerDraftStore()

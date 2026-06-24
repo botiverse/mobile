@@ -359,6 +359,32 @@ class ThreadComposerPayloadTest {
     }
 
     @Test
+    fun composerDraftKeySeparatesReplyThreadFromParentChannelComposer() {
+        val channelSurface =
+            ThreadComposerSurface(
+                kind = KuiklyThreadSurfaceKind.Channel,
+                channelId = "parent-channel-1"
+            )
+        val replySurface =
+            ThreadComposerSurface(
+                kind = KuiklyThreadSurfaceKind.ReplyThread,
+                channelId = "parent-channel-1",
+                streamChannelId = "reply-thread-1",
+                parentChannelId = "parent-channel-1",
+                parentMessageId = "parent-message-1"
+            )
+
+        assertEquals(
+            "send=parent-channel-1|parent=_|mention=parent-channel-1",
+            channelSurface.threadComposerDraftKey()
+        )
+        assertEquals(
+            "send=reply-thread-1|parent=parent-message-1|mention=parent-channel-1",
+            replySurface.threadComposerDraftKey()
+        )
+    }
+
+    @Test
     fun pendingMentionActionsExposeActionSupportAndTargetLabel() {
         val action =
             KuiklyPendingMentionActionItem(
