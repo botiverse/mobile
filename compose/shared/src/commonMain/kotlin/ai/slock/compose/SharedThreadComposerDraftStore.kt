@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.SharedPreferenceStore
 import com.tencent.kuikly.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -7,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal data class SharedThreadComposerDraftState(
     val instanceId: String = "",
+    val draftKey: String? = null,
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
@@ -19,8 +21,45 @@ internal data class SharedThreadComposerDraftState(
     val executingMentionActionIds: Set<String> = emptySet()
 )
 
+internal data class SharedThreadComposerPersistedDraft(
+    val text: String = "",
+    val asTask: Boolean = false
+)
+
+internal class SharedThreadComposerDraftRepository(
+    private val store: SharedPreferenceStore
+) {
+    fun read(key: String): SharedThreadComposerPersistedDraft? {
+        val text = store.getString(textKey(key)) ?: return null
+        return SharedThreadComposerPersistedDraft(
+            text = text,
+            asTask = store.getString(asTaskKey(key)) == "true"
+        )
+    }
+
+    fun save(key: String, text: String, asTask: Boolean) {
+        if (text.isBlank() && !asTask) {
+            clear(key)
+            return
+        }
+        store.putString(textKey(key), text)
+        store.putString(asTaskKey(key), asTask.toString())
+    }
+
+    fun clear(key: String) {
+        store.putString(textKey(key), null)
+        store.putString(asTaskKey(key), null)
+    }
+
+    private fun textKey(key: String): String = "threadComposerDraft:v1:$key:text"
+    private fun asTaskKey(key: String): String = "threadComposerDraft:v1:$key:asTask"
+}
+
 internal sealed interface SharedThreadComposerDraftIntent {
-    data class Start(val composer: KuiklyThreadComposerPayload) : SharedThreadComposerDraftIntent
+    data class Start(
+        val composer: KuiklyThreadComposerPayload,
+        val draftKey: String? = null
+    ) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
@@ -57,7 +96,9 @@ internal sealed interface SharedThreadComposerDraftIntent {
     data class RetryAttachment(val id: String) : SharedThreadComposerDraftIntent
 }
 
-internal class SharedThreadComposerDraftStore {
+internal class SharedThreadComposerDraftStore(
+    private val draftRepository: SharedThreadComposerDraftRepository? = null
+) {
     private val _state = MutableStateFlow(SharedThreadComposerDraftState())
     val state: StateFlow<SharedThreadComposerDraftState> = _state.asStateFlow()
 
@@ -65,20 +106,30 @@ internal class SharedThreadComposerDraftStore {
         val current = _state.value
         _state.value =
             when (intent) {
-                is SharedThreadComposerDraftIntent.Start ->
+                is SharedThreadComposerDraftIntent.Start -> {
+                    val persistedDraft =
+                        intent.draftKey
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { key -> draftRepository?.read(key) }
                     SharedThreadComposerDraftState(
                         instanceId = intent.composer.instanceId,
-                        seedText = intent.composer.seedText,
-                        seedAsTask = intent.composer.seedAsTask,
+                        draftKey = intent.draftKey,
+                        seedText = persistedDraft?.text ?: intent.composer.seedText,
+                        seedAsTask = persistedDraft?.asTask ?: intent.composer.seedAsTask,
                         syncNonce = intent.composer.syncNonce
                     )
+                }
                 is SharedThreadComposerDraftIntent.Change -> {
                     current.copy(
                         seedText = intent.seedText ?: current.seedText,
                         seedAsTask = intent.seedAsTask ?: current.seedAsTask,
                         sending = false,
                         failureLabel = null
-                    )
+                    ).also { next ->
+                        next.draftKey?.let { key ->
+                            draftRepository?.save(key, next.seedText, next.seedAsTask)
+                        }
+                    }
                 }
                 SharedThreadComposerDraftIntent.BeginSend ->
                     current.copy(
@@ -99,7 +150,11 @@ internal class SharedThreadComposerDraftStore {
                         syncNonce = current.syncNonce + 1,
                         sending = false,
                         failureLabel = intent.failureLabel
-                    )
+                    ).also { next ->
+                        next.draftKey?.let { key ->
+                            draftRepository?.save(key, next.seedText, next.seedAsTask)
+                        }
+                    }
                 SharedThreadComposerDraftIntent.CompleteInlineSendFailure -> {
                     val shouldClearComposer = current.sending
                     current.copy(
@@ -127,7 +182,11 @@ internal class SharedThreadComposerDraftStore {
                         pendingMentionActions = intent.pendingMentionActions,
                         mentionActionNotice = null,
                         executingMentionActionIds = emptySet()
-                    )
+                    ).also { next ->
+                        if (shouldClearComposer) {
+                            next.draftKey?.let { key -> draftRepository?.clear(key) }
+                        }
+                    }
                 }
                 is SharedThreadComposerDraftIntent.ApplyPendingMentionActions ->
                     current.copy(
@@ -211,8 +270,10 @@ internal class SharedThreadComposerDraftStore {
     }
 }
 
-internal class SharedThreadComposerDraftViewModel : ViewModel() {
-    private val store = SharedThreadComposerDraftStore()
+internal class SharedThreadComposerDraftViewModel(
+    draftRepository: SharedThreadComposerDraftRepository? = null
+) : ViewModel() {
+    private val store = SharedThreadComposerDraftStore(draftRepository)
     val state: StateFlow<SharedThreadComposerDraftState> = store.state
 
     fun dispatch(intent: SharedThreadComposerDraftIntent) {

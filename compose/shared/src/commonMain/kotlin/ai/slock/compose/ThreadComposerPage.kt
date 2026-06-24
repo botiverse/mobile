@@ -171,6 +171,26 @@ internal data class ThreadComposerSurface(
                 ?: channelId.takeIf { it.isNotBlank() }
 }
 
+internal fun ThreadComposerSurface.threadComposerDraftKey(): String? {
+    val sendTarget = sendChannelId?.takeIf { it.isNotBlank() } ?: return null
+    return listOf(
+        "send" to sendTarget,
+        "parent" to parentMessageId.orEmpty(),
+        "mention" to mentionScopeChannelId.orEmpty()
+    ).joinToString(separator = "|") { (name, value) ->
+        "$name=${value.threadComposerDraftKeyPart()}"
+    }
+}
+
+private fun String.threadComposerDraftKeyPart(): String =
+    if (isBlank()) {
+        "_"
+    } else {
+        replace("%", "%25")
+            .replace("|", "%7C")
+            .replace("=", "%3D")
+    }
+
 internal data class ThreadComposerUiState(
     val instanceId: String = "",
     val seedText: String = "",

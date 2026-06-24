@@ -66,6 +66,7 @@ import ai.slock.compose.data.isAuthSessionBlocker
 import ai.slock.compose.data.isAuthSessionErrorCode
 import ai.slock.compose.data.actionCardFromMessageMetadata
 import ai.slock.compose.data.isSupportedCommitAction
+import ai.slock.compose.data.kuiklySharedPreferenceStore
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
@@ -2163,9 +2164,13 @@ internal fun SharedThreadRouteContent(
         viewModel(key = "shared-thread-files-$auxiliaryRouteKey") {
             SharedThreadFilesViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
+    val composerDraftRepository =
+        remember(pager) {
+            SharedThreadComposerDraftRepository(kuiklySharedPreferenceStore(pager))
+        }
     val composerDraftViewModel: SharedThreadComposerDraftViewModel =
         viewModel(key = "shared-thread-composer-$auxiliaryRouteKey") {
-            SharedThreadComposerDraftViewModel()
+            SharedThreadComposerDraftViewModel(composerDraftRepository)
         }
     val emptyComputerPickerSliceFlow = remember { MutableStateFlow(SharedComputersPickerSlice()) }
     val computerPickerSlice by remember(computersStore, createAgentComputerServerId) {
@@ -2206,11 +2211,21 @@ internal fun SharedThreadRouteContent(
     }
 
     LaunchedEffect(composerDraftViewModel, initialPayload.instanceId, resolvedAuxiliaryThreadId) {
+        val composer =
+            renderedPayload
+                .resolveThreadComposer()
+                .copy(streamChannelId = resolvedAuxiliaryThreadId)
+        val draftKey =
+            composer
+                .toThreadComposerSurface(
+                    channelId = resolvedAuxiliaryThreadId.orEmpty(),
+                    parentChannelId = renderedPayload.parentChannelId
+                )
+                .threadComposerDraftKey()
         composerDraftViewModel.dispatch(
             SharedThreadComposerDraftIntent.Start(
-                renderedPayload
-                    .resolveThreadComposer()
-                    .copy(streamChannelId = resolvedAuxiliaryThreadId)
+                composer = composer,
+                draftKey = draftKey
             )
         )
     }
