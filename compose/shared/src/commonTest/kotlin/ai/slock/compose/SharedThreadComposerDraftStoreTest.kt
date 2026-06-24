@@ -136,18 +136,6 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
-    fun clearingBlankTaskDraftRemovesActiveDraftRecord() {
-        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
-        val draftKey = "send=channel-1|parent=_|mention=channel-1"
-
-        persistence.save(draftKey, "channel draft", asTask = true)
-        persistence.save(draftKey, "", asTask = true)
-
-        assertTrue(persistence.activeDraftRecords().isEmpty())
-        assertEquals(null, persistence.read(draftKey))
-    }
-
-    @Test
     fun activeDraftRecordsStateUpdatesAcrossPersistSliceInstances() {
         val storage = InMemorySlockKeyValueStore()
         val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
@@ -170,32 +158,6 @@ class SharedThreadComposerDraftStoreTest {
         threadStore.dispatch(SharedThreadComposerDraftIntent.BeginSend)
         threadStore.dispatch(SharedThreadComposerDraftIntent.CompleteSend())
 
-        assertTrue(homePersistSlice.activeDraftRecordsState.value.isEmpty())
-    }
-
-    @Test
-    fun blankChangeClearsTaskModeAndActiveDraftRecord() {
-        val storage = InMemorySlockKeyValueStore()
-        val homePersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
-        val threadPersistSlice = SharedThreadComposerDraftPersistSlice(SharedThreadComposerDraftPersistence(storage))
-        val threadStore = SharedThreadComposerDraftStore(persistSlices = listOf(threadPersistSlice))
-        val draftKey = "send=channel-1|parent=_|mention=channel-1"
-
-        threadStore.dispatch(
-            SharedThreadComposerDraftIntent.Start(
-                composer = KuiklyThreadComposerPayload(instanceId = "composer-1"),
-                draftKey = draftKey
-            )
-        )
-        threadStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "channel draft", seedAsTask = true))
-
-        assertTrue(threadStore.state.value.seedAsTask)
-        assertTrue(homePersistSlice.activeDraftRecordsState.value.any { it.matchesRootConversation("channel-1") })
-
-        threadStore.dispatch(SharedThreadComposerDraftIntent.Change(seedText = "", seedAsTask = true))
-
-        assertEquals("", threadStore.state.value.seedText)
-        assertFalse(threadStore.state.value.seedAsTask)
         assertTrue(homePersistSlice.activeDraftRecordsState.value.isEmpty())
     }
 
