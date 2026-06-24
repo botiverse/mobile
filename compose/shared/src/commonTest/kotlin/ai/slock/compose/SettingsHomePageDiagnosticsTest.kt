@@ -1,8 +1,11 @@
 package ai.slock.compose
 
 import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.SharedSettingsAboutSnapshot
+import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
+import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerDefaults
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerFiles
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
@@ -30,7 +33,7 @@ class SettingsHomePageDiagnosticsTest {
                 actionState = null
             )
 
-        assertEquals("Sanitized app diagnostics and Kuikly profiler status", payload.detail)
+        assertEquals("Auth, network, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
         assertEquals(
             listOf("Recomposition profiler", "Actions", "Log"),
             payload.sections.map { it.title }
@@ -39,6 +42,65 @@ class SettingsHomePageDiagnosticsTest {
         assertFalse(profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).enabled)
         assertEquals("Debug only", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).status)
         assertEquals("Recomposition profiler is available only in shared debug builds.", profilerRows.getValue(DIAGNOSTICS_ACTION_PROFILER_ENABLED).detail)
+    }
+
+    @Test
+    fun diagnosticsPayloadIncludesMergedAuthEnvironmentAndNetworkProbe() {
+        val payload =
+            emptyList<ai.slock.compose.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
+                state =
+                    ScreenLoadState.Content(
+                        SharedSettingsDiagnosticsSnapshot(
+                            about =
+                                SharedSettingsAboutSnapshot(
+                                    appName = "Raft",
+                                    versionLabel = "1.2.3",
+                                    sourceLabel = "auth-bootstrap-diagnostics/e36bc138+",
+                                    signedInUserLabel = "Artin",
+                                    selectedServerLabel = "Botiverse",
+                                    sessionStatusLabel = "Signed in",
+                                    socketStatusLabel = "Host active"
+                                ),
+                            networkProbe =
+                                SharedSettingsNetworkProbeSnapshot(
+                                    baseUrl = "https://api.raft.build/api/",
+                                    statusLabel = "API host reachable",
+                                    detail = "Host responded with HTTP 401 Unauthorized",
+                                    reachable = true,
+                                    code = 401,
+                                    durationMillis = 37L
+                                ),
+                            profiler = SharedSettingsRecompositionProfilerSnapshot(supported = false)
+                        )
+                    ),
+                actionState = null
+            )
+
+        assertEquals(
+            listOf("Environment", "Network probe", "Recomposition profiler", "Actions", "Log"),
+            payload.sections.map { it.title }
+        )
+        val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
+        assertEquals("Artin", environmentRows.getValue("diagnosticsSession").detail)
+        assertEquals("Botiverse", environmentRows.getValue("diagnosticsServer").detail)
+        val probeRows = payload.sections.first { it.title == "Network probe" }.rows.associateBy { it.key }
+        assertEquals("https://api.raft.build/api/", probeRows.getValue("diagnosticsProbeBaseUrl").detail)
+        assertEquals("HTTP 401 | 37ms", probeRows.getValue("diagnosticsProbeHttp").detail)
+    }
+
+    @Test
+    fun developerPayloadUsesSingleMergedDiagnosticsEntry() {
+        val payload =
+            SharedSettingsDeveloperSnapshot().toDeveloperPayload(
+                state = ScreenLoadState.Content(SharedSettingsDeveloperSnapshot()),
+                actionState = null
+            )
+        val rows = payload.sections.first { it.title == "Diagnostics" }.rows
+
+        assertEquals(listOf("diagnostics", "router"), rows.map { it.key })
+        assertEquals("Diagnostics", rows.first().title)
+        assertTrue(rows.first().detail.contains("auth"))
+        assertTrue(rows.first().detail.contains("network"))
     }
 
     @Test

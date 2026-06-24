@@ -116,6 +116,7 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.SharedSettingsEffect
 import ai.slock.compose.data.SharedSettingsIntent
+import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsStorageRow
@@ -2341,7 +2342,6 @@ private fun SlockAppShellContent() {
                                 pager.openSettingsComputerDetailPage(computerId, threadTimeContext)
                             },
                             onOpenRouter = { jumpPage(pager, "router") },
-                            onOpenAuthDiagnostics = { pager.openAppShellAuthDiagnostics() },
                             onMessageAlignmentSelected = {
                                 myMessageAlignment = it
                             },
@@ -2446,7 +2446,6 @@ private fun SettingsAppShellContent(
     onDestinationChange: (String) -> Unit,
     onOpenComputer: (String) -> Unit,
     onOpenRouter: () -> Unit,
-    onOpenAuthDiagnostics: () -> Unit,
     onMessageAlignmentSelected: (MyMessageAlignmentPreference) -> Unit,
     onSettingsAction: (String, String?) -> Unit,
     onDiagnosticsFeedbackPrepared: (SettingsDiagnosticsFeedbackDraft) -> Unit,
@@ -3148,7 +3147,6 @@ private fun SettingsAppShellContent(
                     onSetApiEnvironment = { key ->
                         onSettingsIntent(SharedSettingsIntent.SetApiEnvironment(key))
                     },
-                    onOpenAuthDiagnostics = onOpenAuthDiagnostics,
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
                 )
@@ -5858,7 +5856,6 @@ internal fun SharedSettingsDeveloperContent(
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
     onSetApiEnvironment: (String) -> Unit,
-    onOpenAuthDiagnostics: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -5867,7 +5864,6 @@ internal fun SharedSettingsDeveloperContent(
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
             DEVELOPER_ACTION_API_ENVIRONMENT -> value?.takeIf { it.isNotBlank() }?.let(onSetApiEnvironment)
-            "authDiagnostics" -> onOpenAuthDiagnostics()
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
@@ -7141,7 +7137,7 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySh
     )
 }
 
-private fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
+internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?
 ): KuiklySharedSettingsPayload {
@@ -7223,8 +7219,7 @@ private fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                     title = "Diagnostics",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("authDiagnostics", SlockLucideIconName.LogIn, "Auth diagnostics", "Open auth bootstrap, session, and network diagnostic details.", status = "Open", enabled = true),
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "App diagnostics", "Open sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open auth, network, sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("router", SlockLucideIconName.Route, "Route launcher", "Open Kuikly route launcher and icon compare.", status = "Open", enabled = true)
                         )
                 )
@@ -7246,7 +7241,8 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
 ): KuiklySharedSettingsPayload {
     val logsAvailable = isNotEmpty()
     val diagnosticsExportAvailable = state is ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>
-    val profiler = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data?.profiler
+    val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDiagnosticsSnapshot>)?.data
+    val profiler = snapshot?.profiler
         ?: SharedSettingsRecompositionProfilerSnapshot()
     val profilerRunning = profiler.statusLabel == "Running"
     val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
@@ -7280,6 +7276,25 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
                 )
             )
         }
+    val environmentRows =
+        snapshot?.about?.toDiagnosticsEnvironmentRows().orEmpty()
+    val networkProbeRows =
+        snapshot?.networkProbe?.toDiagnosticsNetworkProbeRows().orEmpty()
+    val loadStatusRows =
+        snapshot?.loadErrorMessage
+            ?.takeIf { it.isNotBlank() }
+            ?.let { errorMessage ->
+                listOf(
+                    KuiklySharedSettingsRow(
+                        key = "diagnosticsLoadStatus",
+                        iconName = SlockLucideIconName.TriangleAlert,
+                        title = "Partial diagnostics",
+                        detail = errorMessage,
+                        status = "Partial"
+                    )
+                )
+            }
+            .orEmpty()
     val reportSummary =
         when {
             profiler.report.reportAvailable ->
@@ -7509,23 +7524,33 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
         detail =
             profiler.actionFeedback
                 ?: if (profiler.supported) {
-                    "Sanitized app diagnostics and Kuikly recomposition profiler"
+                    "Auth, network, sanitized app diagnostics, and Kuikly recomposition profiler"
                 } else if (profiler.detail.isNotBlank()) {
-                    "Sanitized app diagnostics and Kuikly profiler status"
+                    "Auth, network, sanitized app diagnostics, and Kuikly profiler status"
                 } else {
-                    "Sanitized app diagnostics"
+                    "Auth, network, and sanitized app diagnostics"
                 },
         heroIconName = SlockLucideIconName.ClipboardList,
         heroLabel = "Diagnostics",
         sections =
-            profilerSections + listOf(
+            listOfNotNull(
+                environmentRows.takeIf { it.isNotEmpty() }?.let {
+                    KuiklySharedSettingsSection(title = "Environment", rows = it)
+                },
+                networkProbeRows.takeIf { it.isNotEmpty() }?.let {
+                    KuiklySharedSettingsSection(title = "Network probe", rows = it)
+                },
+                loadStatusRows.takeIf { it.isNotEmpty() }?.let {
+                    KuiklySharedSettingsSection(title = "Load status", rows = it)
+                }
+            ) + profilerSections + listOf(
                 KuiklySharedSettingsSection(
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("copyLogs", SlockLucideIconName.Copy, "Copy logs", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Share logs", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
-                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized logs with support.", status = "Send", enabled = true),
+                            KuiklySharedSettingsRow("copyLogs", SlockLucideIconName.Copy, "Copy diagnostics", "Copy sanitized diagnostics to the clipboard.", status = if (diagnosticsExportAvailable) "Copy" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("shareLogs", SlockLucideIconName.Share, "Share diagnostics", "Open the native share sheet with sanitized diagnostics.", status = if (diagnosticsExportAvailable) "Share" else "Disabled", enabled = diagnosticsExportAvailable),
+                            KuiklySharedSettingsRow("feedback", SlockLucideIconName.MessageSquarePlus, "Send diagnostics", "Share sanitized diagnostics with support.", status = "Send", enabled = true),
                             KuiklySharedSettingsRow("clearLogs", SlockLucideIconName.Trash2, "Clear logs", "Clear the sanitized local diagnostics buffer.", status = if (logsAvailable) "Clear" else "Disabled", enabled = logsAvailable)
                         )
                 ),
@@ -7533,6 +7558,23 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             )
     )
 }
+
+private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(): List<KuiklySharedSettingsRow> =
+    listOf(
+        KuiklySharedSettingsRow("diagnosticsApp", SlockLucideIconName.Info, "App", appName.ifBlank { "Raft" }, status = versionLabel.ifBlank { "Version" }),
+        KuiklySharedSettingsRow("diagnosticsBuild", SlockLucideIconName.GitBranch, "Build", buildLabel.ifBlank { "Unknown" }, status = sourceLabel.ifBlank { "Source" }),
+        KuiklySharedSettingsRow("diagnosticsPackage", SlockLucideIconName.Package, "Package", packageName.ifBlank { "Unknown" }, status = "Host"),
+        KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, "Platform", platformLabel.ifBlank { "Unknown" }, status = deviceLabel.ifBlank { "Device" }),
+        KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, "Session", signedInUserLabel.ifBlank { "No signed-in user" }, status = sessionStatusLabel.ifBlank { "Unknown" }),
+        KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "Unknown" }, status = socketStatusLabel.ifBlank { "Socket" })
+    )
+
+private fun SharedSettingsNetworkProbeSnapshot.toDiagnosticsNetworkProbeRows(): List<KuiklySharedSettingsRow> =
+    listOf(
+        KuiklySharedSettingsRow("diagnosticsProbeStatus", SlockLucideIconName.Activity, "Status", detail.ifBlank { "No detail returned." }, status = statusLabel.ifBlank { if (reachable) "Reachable" else "Unavailable" }),
+        KuiklySharedSettingsRow("diagnosticsProbeBaseUrl", SlockLucideIconName.Globe, "Base URL", baseUrl.ifBlank { "Unknown" }, status = if (reachable) "Reachable" else "Unavailable"),
+        KuiklySharedSettingsRow("diagnosticsProbeHttp", SlockLucideIconName.Hash, "HTTP probe", listOfNotNull(code.takeIf { it > 0 }?.let { "HTTP $it" }, durationMillis.takeIf { it > 0L }?.let { "${it}ms" }).joinToString(" | ").ifBlank { "No HTTP response metadata." }, status = if (code > 0) code.toString() else "None")
+    )
 
 private fun settingsDestinationTitle(destination: String): String =
     when (destination) {
@@ -8056,14 +8098,6 @@ private fun AuthProvider.appShellProviderId(): String =
         AuthProvider.Google -> "google"
         AuthProvider.GitHub -> "github"
     }
-
-private fun Pager.openAppShellAuthDiagnostics() {
-    acquireModule<RouterModule>(RouterModule.MODULE_NAME)
-        .openPage(
-            AUTH_DIAGNOSTICS_PAGE,
-            JSONObject().put("pageName", AUTH_DIAGNOSTICS_PAGE)
-        )
-}
 
 private fun Pager.openAppShellDeveloper() {
     acquireModule<RouterModule>(RouterModule.MODULE_NAME)

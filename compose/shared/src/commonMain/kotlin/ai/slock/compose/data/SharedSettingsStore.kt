@@ -139,8 +139,11 @@ data class SharedSettingsApiEnvironmentOption(
 )
 
 data class SharedSettingsDiagnosticsSnapshot(
+    val about: SharedSettingsAboutSnapshot? = null,
+    val networkProbe: SharedSettingsNetworkProbeSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
-    val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot()
+    val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot(),
+    val loadErrorMessage: String? = null
 )
 
 data class SharedSettingsDiagnosticsEntry(
@@ -335,6 +338,9 @@ interface SharedSettingsPlatformCapabilities {
         DataResult.Error(ScreenError("settings_developer_environment_unavailable", retryable = false))
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
+        DataResult.Empty(EmptyReason.NoSettingsAvailable)
+
+    suspend fun loadNetworkProbe(): DataResult<SharedSettingsNetworkProbeSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
@@ -798,13 +804,36 @@ class SharedSettingsDataSource(
     private suspend fun loadDiagnosticsSnapshot(
         feedback: String? = null
     ): DataResult<SharedSettingsDiagnosticsSnapshot> {
+        val aboutResult = loadAbout()
+        val networkProbeResult = platformCapabilities.loadNetworkProbe()
+        val hostResult = platformCapabilities.loadDiagnosticsHost()
+        val about =
+            when (aboutResult) {
+                is DataResult.Content -> aboutResult.data
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> null
+            }
+        val networkProbe =
+            when (networkProbeResult) {
+                is DataResult.Content -> networkProbeResult.data
+                is DataResult.Empty,
+                is DataResult.Error,
+                is DataResult.NoPermission -> null
+            }
         val entries =
-            when (val result = platformCapabilities.loadDiagnosticsHost()) {
-                is DataResult.Content -> result.data.entries
-                is DataResult.Empty -> emptyList()
-                is DataResult.Error -> emptyList()
+            when (hostResult) {
+                is DataResult.Content -> hostResult.data.entries
+                is DataResult.Empty,
+                is DataResult.Error,
                 is DataResult.NoPermission -> emptyList()
             }
+        val loadErrorMessage =
+            listOfNotNull(
+                aboutResult.settingsDiagnosticsErrorLabel("about"),
+                networkProbeResult.settingsDiagnosticsErrorLabel("probe"),
+                hostResult.settingsDiagnosticsErrorLabel("logs")
+            ).joinToString("; ").takeIf { it.isNotBlank() }
         val persistedProfilerEnabled = recompositionProfilerPreferenceRepository?.getPreference()?.enabled == true
         val profilerEnabled =
             if (recompositionProfilerController.isRunning) {
@@ -817,8 +846,11 @@ class SharedSettingsDataSource(
             }
         return DataResult.Content(
             SharedSettingsDiagnosticsSnapshot(
+                about = about,
+                networkProbe = networkProbe,
                 entries = entries,
-                profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback)
+                profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback),
+                loadErrorMessage = loadErrorMessage
             )
         )
     }
@@ -832,6 +864,14 @@ class SharedSettingsDataSource(
         }
         return loadDiagnosticsSnapshot(feedback = actionResult.feedback)
     }
+
+    private fun <T> DataResult<T>.settingsDiagnosticsErrorLabel(label: String): String? =
+        when (this) {
+            is DataResult.Content -> null
+            is DataResult.Empty -> "$label empty: ${reason.name}"
+            is DataResult.Error -> "$label error: ${error.code}"
+            is DataResult.NoPermission -> "$label blocked: ${blocker.code}"
+        }
 }
 
 class SharedSettingsViewModel(

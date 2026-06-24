@@ -1602,16 +1602,16 @@ internal class SlockKuiklyBridgeModule(
                             mapOf("status" to "ok", "enabled" to enabled)
                         }
                         "copyDiagnostics" -> {
-                            copyText("Raft diagnostics", SanitizedDiagnosticsLogBuffer.exportText())
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_logs")
+                            copyText("Raft diagnostics", buildMergedSettingsDiagnosticsExportText())
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_copy_diagnostics")
                             mapOf("status" to "ok")
                         }
                         "shareDiagnostics" -> {
                             shareText(
                                     subject = "Raft diagnostics",
-                                    text = SanitizedDiagnosticsLogBuffer.exportText()
+                                    text = buildMergedSettingsDiagnosticsExportText()
                             )
-                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_share_logs")
+                            SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_share_diagnostics")
                             mapOf("status" to "ok")
                         }
                         "clearDiagnostics" -> {
@@ -2063,8 +2063,49 @@ internal class SlockKuiklyBridgeModule(
                 ?.drop(5)
                 ?.forEach { it.delete() }
         val file = File(feedbackDir, "slock-feedback-${System.currentTimeMillis()}.txt")
-        file.writeText(SanitizedDiagnosticsLogBuffer.exportText(), StandardCharsets.UTF_8)
+        file.writeText(buildMergedSettingsDiagnosticsExportText(), StandardCharsets.UTF_8)
         return file
+    }
+
+    private fun buildMergedSettingsDiagnosticsExportText(): String {
+        val about = loadSettingsAbout()
+        val probe = probeSettingsNetwork()
+        return buildString {
+            appendLine("Raft diagnostics")
+            appendLine()
+            appendLine("Environment")
+            appendDiagnosticsLine("App", about.stringValue("appName").ifBlank { "Raft" })
+            appendDiagnosticsLine("Version", about.stringValue("versionLabel"))
+            appendDiagnosticsLine("Build", about.stringValue("buildLabel"))
+            appendDiagnosticsLine("Source", about.stringValue("sourceLabel"))
+            appendDiagnosticsLine("Package", about.stringValue("packageName"))
+            appendDiagnosticsLine("Platform", about.stringValue("platformLabel"))
+            appendDiagnosticsLine("Device", about.stringValue("deviceLabel"))
+            appendDiagnosticsLine("Session", about.stringValue("sessionStatusLabel"))
+            appendDiagnosticsLine("Signed in user", about.stringValue("signedInUserLabel"))
+            appendDiagnosticsLine("Selected server", about.stringValue("selectedServerLabel"))
+            appendDiagnosticsLine("Socket", about.stringValue("socketStatusLabel"))
+            appendLine()
+            appendLine("Network probe")
+            appendDiagnosticsLine("Base URL", probe.stringValue("baseUrl"))
+            appendDiagnosticsLine("Status", probe.stringValue("statusLabel"))
+            appendDiagnosticsLine("Reachable", probe["reachable"]?.toString())
+            appendDiagnosticsLine("HTTP code", probe["code"]?.takeIf { it != 0 }?.toString())
+            appendDiagnosticsLine("Duration", probe["durationMillis"]?.takeIf { it != 0L }?.let { "${it}ms" })
+            appendDiagnosticsLine("Detail", probe.stringValue("detail"))
+            appendLine()
+            appendLine("Recent logs")
+            append(SanitizedDiagnosticsLogBuffer.exportText())
+        }
+    }
+
+    private fun Map<String, Any>.stringValue(key: String): String =
+            this[key]?.toString().orEmpty()
+
+    private fun StringBuilder.appendDiagnosticsLine(label: String, value: String?) {
+        append(label)
+        append(": ")
+        appendLine(value?.takeIf { it.isNotBlank() } ?: "--")
     }
 
     private fun shareTextWithAttachment(

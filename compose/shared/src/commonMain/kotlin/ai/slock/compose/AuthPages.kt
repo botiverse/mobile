@@ -467,7 +467,6 @@ private fun AuthDeveloperScreen() {
         state = state,
         actionState = actionState,
         onSetApiEnvironment = { key -> pendingEnvironment = key },
-        onOpenAuthDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
         onOpenRouter = { pager.openAuthPage("router") }
     )

@@ -127,7 +127,7 @@ internal class BridgeSettingsPlatformCapabilities(
         return DataResult.Content(response.toDiagnosticsHostSnapshot())
     }
 
-    suspend fun loadNetworkProbe(): DataResult<SharedSettingsNetworkProbeSnapshot> {
+    override suspend fun loadNetworkProbe(): DataResult<SharedSettingsNetworkProbeSnapshot> {
         val response = bridge.settingsCapability(JSONObject().put("action", "probeNetwork"))
         if (response?.optString("status") != "ok") {
             return DataResult.Error(ScreenError(response?.optString("code").orEmpty().ifBlank { "settings_network_probe_unavailable" }))
