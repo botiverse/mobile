@@ -350,6 +350,7 @@ import com.tencent.kuikly.core.pager.Pager
 import com.tencent.kuikly.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -382,6 +383,7 @@ private const val AUTH_REPLACE_CURRENT_PAGE = "slockReplaceCurrentPage"
 private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
+private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
@@ -1313,9 +1315,9 @@ private fun SlockAppShellContent() {
         }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val sharedPreferenceStore = remember(pager) { kuiklySharedPreferenceStore(pager) }
-    val composerDraftRepository =
+    val composerDraftPersistence =
         remember(sharedPreferenceStore) {
-            SharedThreadComposerDraftRepository(sharedPreferenceStore)
+            SharedThreadComposerDraftPersistence(sharedPreferenceStore)
         }
     val localeRepository =
         remember(sharedPreferenceStore) {
@@ -2234,7 +2236,7 @@ private fun SlockAppShellContent() {
                             bridge = bridge,
                             state = homeState,
                             active = active,
-                            draftRepository = composerDraftRepository,
+                            draftPersistence = composerDraftPersistence,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             activityUnreadLoaded = homeActivityState.loaded || homeActivityState.snapshot != null,
@@ -8764,7 +8766,7 @@ private fun SharedHomeScreen(
     bridge: ai.slock.compose.base.BridgeModule,
     state: SharedHomeState,
     active: Boolean,
-    draftRepository: SharedThreadComposerDraftRepository? = null,
+    draftPersistence: SharedThreadComposerDraftPersistence? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     activityUnreadLoaded: Boolean = false,
@@ -8836,7 +8838,8 @@ private fun SharedHomeScreen(
             )
         is SharedHomeContentState.Content -> {
             val snapshot = current.snapshot
-            val activeDraftRecords = draftRepository?.activeDraftRecords().orEmpty()
+            val activeDraftRecords by (draftPersistence?.activeDraftRecordsState ?: EmptyComposerDraftRecordsFlow)
+                .collectAsState(emptySet())
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
