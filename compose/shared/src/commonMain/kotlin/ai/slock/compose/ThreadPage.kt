@@ -2621,11 +2621,17 @@ internal fun SharedThreadRouteContent(
         if (attachment.id.isBlank()) return
         imagePreviewState = null
         attachmentNoPreviewState = null
-        if (!attachment.isMarkdownAttachment()) {
+        val lazyPreviewKind =
+            when {
+                attachment.isMarkdownAttachment() -> "markdown"
+                attachment.isTextLikeAttachment() || attachment.isHtmlAttachment() -> "text"
+                else -> null
+            }
+        if (lazyPreviewKind == null) {
             attachmentNoPreviewState = ThreadAttachmentNoPreviewState(attachment = attachment)
             return
         }
-        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = "markdown"))
+        pager.openSlockFilePreviewPage(attachment.toThreadAttachmentLazyPreviewPayload(kind = lazyPreviewKind))
     }
 
     fun openComposerAttachmentPreview(attachmentId: String) {
@@ -9095,17 +9101,15 @@ private fun KuiklyThreadAttachmentItem.normalizedMimeType(): String =
     mimeType.substringBefore(';').trim().lowercase()
 
 private fun KuiklyThreadAttachmentItem.isMarkdownAttachment(): Boolean =
-    normalizedMimeType().let { normalizedMime ->
-        normalizedMime.equals("text/markdown", ignoreCase = true) ||
-            normalizedMime.equals("text/x-markdown", ignoreCase = true)
-    } ||
-        name.endsWith(".md", ignoreCase = true) ||
-        name.endsWith(".markdown", ignoreCase = true)
+    slockFilePreviewIsMarkdownAttachment(fileName = name, mimeType = mimeType)
+
+private fun KuiklyThreadAttachmentItem.isTextLikeAttachment(): Boolean =
+    !isMarkdownAttachment() && slockFilePreviewIsTextLikeAttachment(fileName = name, mimeType = mimeType)
 
 private fun KuiklyThreadAttachmentItem.isPreviewableDocumentAttachment(): Boolean =
     isPdfAttachment() ||
         isMarkdownAttachment() ||
-        normalizedMimeType() in setOf("text/plain", "text/csv", "application/csv", "application/json")
+        isTextLikeAttachment()
 
 private fun KuiklyThreadAttachmentItem.isHtmlAttachment(): Boolean =
     normalizedMimeType() == "text/html" || name.endsWith(".html", ignoreCase = true) || name.endsWith(".htm", ignoreCase = true)
@@ -9132,6 +9136,7 @@ internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentSummaryLine(): String? =
     when {
+        isTextLikeAttachment() || isHtmlAttachment() -> "Text preview"
         isPreviewableDocumentAttachment() -> "Document preview"
         else -> null
     }
