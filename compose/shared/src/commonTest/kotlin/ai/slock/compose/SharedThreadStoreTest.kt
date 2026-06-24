@@ -387,6 +387,88 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentPatchPreservesDirectMessageHeaderWhenPatchOmitsDisplayMetadata() {
+        val current =
+            directMessagePayload().copy(
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "cached-1",
+                            authorId = "u2",
+                            authorName = "Stdrc",
+                            body = "cached body"
+                        )
+                    )
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                title = "Direct Message",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                dmPeerName = null,
+                dmPeerAvatarUrl = null,
+                dmPeerAvatarLabel = null,
+                dmPeerGravatarUrl = null
+            )
+
+        val payload = current.withContentPatchFrom(networkPatch)
+
+        assertEquals("artin", payload.title)
+        assertEquals("artin", payload.dmPeerName)
+        assertEquals("pixel:crown", payload.dmPeerAvatarUrl)
+        assertEquals("AR", payload.dmPeerAvatarLabel)
+        assertEquals("https://www.gravatar.com/avatar/artin", payload.dmPeerGravatarUrl)
+        assertEquals("network body", payload.messages.single().body)
+    }
+
+    @Test
+    fun contentPatchDoesNotReplaceAgentDirectMessagePixelAvatarWithGravatar() {
+        val current =
+            directMessagePayload().copy(
+                title = "Product-UX-Designer",
+                sourceThreadId = "dm-agent-1",
+                streamChannelId = "dm-agent-1",
+                status = "content",
+                messages =
+                    listOf(
+                        KuiklyThreadMessageItem(
+                            id = "cached-1",
+                            authorId = "agent-1",
+                            authorName = "Product UX",
+                            authorKind = "agent",
+                            body = "cached body"
+                        )
+                    ),
+                dmPeerName = "Product-UX-Designer",
+                dmPeerAvatarUrl = "pixel:tree",
+                dmPeerAvatarLabel = "PU",
+                dmPeerGravatarUrl = null
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                title = "Product-UX-Designer",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                sourceThreadId = "dm-agent-1",
+                streamChannelId = "dm-agent-1",
+                dmPeerName = "Product-UX-Designer",
+                dmPeerAvatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                dmPeerAvatarLabel = "PU",
+                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
+            )
+
+        val payload = current.withContentPatchFrom(networkPatch)
+
+        assertEquals("Product-UX-Designer", payload.title)
+        assertEquals("Product-UX-Designer", payload.dmPeerName)
+        assertEquals("pixel:tree", payload.dmPeerAvatarUrl)
+        assertEquals("PU", payload.dmPeerAvatarLabel)
+        assertEquals(null, payload.dmPeerGravatarUrl)
+        assertEquals("network body", payload.messages.single().body)
+    }
+
+    @Test
     fun staleRefreshResultDoesNotOverwriteCurrentThreadRoute() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val channelStarted = CompletableDeferred<Unit>()

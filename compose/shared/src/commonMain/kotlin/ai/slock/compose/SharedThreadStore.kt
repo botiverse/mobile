@@ -3715,6 +3715,43 @@ private fun List<String>.cleanActionCardIds(): List<String> =
 
 internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload {
     val patchResolvesReplyThreadStream = patch.hasResolvedReplyThreadStreamFrom(this)
+    val preserveDirectMessageHeader = shouldPreserveDirectMessageHeaderForPatch(patch)
+    val patchDirectMessageName =
+        if (patch.surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) {
+            patch.safeDirectMessagePeerNameFromPatch()
+        } else {
+            null
+        }
+    val nextDmPeerName =
+        if (preserveDirectMessageHeader) {
+            patchDirectMessageName ?: dmPeerName
+        } else {
+            patch.dmPeerName
+        }
+    val nextDmPeerAvatarUrl =
+        if (preserveDirectMessageHeader) {
+            mergeDirectMessagePatchAvatar(dmPeerAvatarUrl, patch.dmPeerAvatarUrl)
+        } else {
+            patch.dmPeerAvatarUrl
+        }
+    val nextDmPeerAvatarLabel =
+        if (preserveDirectMessageHeader) {
+            patch.dmPeerAvatarLabel?.takeIf { it.isNotBlank() } ?: dmPeerAvatarLabel
+        } else {
+            patch.dmPeerAvatarLabel
+        }
+    val nextDmPeerGravatarUrl =
+        if (preserveDirectMessageHeader) {
+            patch.dmPeerGravatarUrl?.takeIf { !nextDmPeerAvatarUrl.isNonGravatarAvatarWireValue() } ?: dmPeerGravatarUrl
+        } else {
+            patch.dmPeerGravatarUrl
+        }
+    val nextTitle =
+        if (preserveDirectMessageHeader) {
+            patchDirectMessageName ?: title
+        } else {
+            patch.title
+        }
     val hasMembersPatch =
         patch.membersCount > 0 ||
             patch.members.isNotEmpty() ||
@@ -3728,7 +3765,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
             }
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
-        title = patch.title,
+        title = nextTitle,
         subtitle = nextSubtitle,
         surfaceKind = patch.surfaceKind,
         channelKind = patch.channelKind,
@@ -3780,12 +3817,58 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         showTaskOpenActions = patch.showTaskOpenActions,
         showTaskStatusActions = patch.showTaskStatusActions,
         joinLabel = patch.joinLabel,
-        dmPeerName = patch.dmPeerName,
-        dmPeerAvatarUrl = patch.dmPeerAvatarUrl,
-        dmPeerAvatarLabel = patch.dmPeerAvatarLabel,
-        dmPeerGravatarUrl = patch.dmPeerGravatarUrl
+        dmPeerName = nextDmPeerName,
+        dmPeerAvatarUrl = nextDmPeerAvatarUrl,
+        dmPeerAvatarLabel = nextDmPeerAvatarLabel,
+        dmPeerGravatarUrl = nextDmPeerGravatarUrl
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
+
+private fun KuiklyThreadScreenPayload.shouldPreserveDirectMessageHeaderForPatch(
+    patch: KuiklyThreadScreenPayload
+): Boolean {
+    if (surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return false
+    if (patch.surfaceKind != KuiklyThreadSurfaceKind.DirectMessage) return false
+    val currentIds =
+        listOfNotNull(sourceThreadId, streamChannelId)
+            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    if (currentIds.isEmpty()) return false
+    val patchIds =
+        listOfNotNull(patch.sourceThreadId, patch.streamChannelId)
+            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    return patchIds.any { it in currentIds }
+}
+
+private fun KuiklyThreadScreenPayload.safeDirectMessagePeerNameFromPatch(): String? {
+    val identityIds =
+        listOfNotNull(sourceThreadId, streamChannelId)
+            .mapNotNull { it.takeIf { id -> id.isNotBlank() } }
+            .toSet()
+    return dmPeerName
+        ?.takeIf { it.isNotBlank() }
+        ?.let { threadHeaderSafeTitleOrNull(it, identityIds) }
+        ?: title
+            .takeIf { it != threadHeaderFallbackTitle(KuiklyThreadSurfaceKind.DirectMessage) }
+            ?.let { threadHeaderSafeTitleOrNull(it, identityIds) }
+}
+
+private fun mergeDirectMessagePatchAvatar(
+    currentAvatarWireValue: String?,
+    patchAvatarWireValue: String?
+): String? {
+    val patchAvatar = patchAvatarWireValue?.takeIf { it.isNotBlank() }
+    val currentAvatar = currentAvatarWireValue?.takeIf { it.isNotBlank() }
+    if (patchAvatar == null) return currentAvatar
+    if (currentAvatar.isNonGravatarAvatarWireValue() && patchAvatar.isGravatarAvatarWireValue()) {
+        return currentAvatar
+    }
+    return patchAvatar
+}
+
+private fun String?.isNonGravatarAvatarWireValue(): Boolean =
+    !isNullOrBlank() && !isGravatarAvatarWireValue()
 
 internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(
