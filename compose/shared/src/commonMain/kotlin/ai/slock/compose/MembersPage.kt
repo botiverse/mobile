@@ -986,9 +986,6 @@ private class MemberDetailRouteProvider(
                 }
             }
             is DataResult.Error -> {
-                if (expectedKind == null && detailResult.error.code == "http_404") {
-                    return loadHumanMember(selectedId)
-                }
                 agentDetailStore.dispatch(
                     SharedAgentDetailIntent.SetDetailError(selectedId, detailResult.error.code)
                 )
