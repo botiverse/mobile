@@ -256,7 +256,6 @@ fun buildRuntimeConfig(
 
 // ── Name validation ──
 
-private val NAME_REGEX = Regex("^[\\p{L}][\\p{L}\\p{N}_-]*$")
 const val NAME_MIN_LENGTH: Int = 1
 const val NAME_MAX_LENGTH: Int = 32
 val RESERVED_AGENT_NAMES: List<String> = listOf(
@@ -280,13 +279,21 @@ fun validateAgentName(name: String, label: String = "Agent name"): String? {
     if (trimmed.length > NAME_MAX_LENGTH) {
         return "$label must be at most $NAME_MAX_LENGTH characters"
     }
-    if (!NAME_REGEX.matches(trimmed)) {
+    if (!trimmed.isValidAgentNameCharacters()) {
         return "$label must start with a letter and can only contain letters, numbers, hyphens, and underscores"
     }
     return null
 }
 
 // ── Server plans ──
+
+private fun String.isValidAgentNameCharacters(): Boolean {
+    val first = firstOrNull() ?: return false
+    if (!first.isLetter()) return false
+    return drop(1).all { char ->
+        char.isLetterOrDigit() || char == '_' || char == '-'
+    }
+}
 
 @Serializable
 enum class ServerPlan { free, founder }
