@@ -845,6 +845,7 @@ fun SlockStructuralHomeShell(
                                 }
                             }
                         }
+                        item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                         item {
                             SlockCollapsibleSectionHeader(
                                 label = labels.directMessages,
@@ -1063,6 +1064,7 @@ internal fun homeLazyItemCount(
             1 + // saved
             1 + // section spacer
             1 + // channels header
+            1 + // section spacer
             1 + // direct messages header
             1 // bottom spacer
     val jointSectionItems = if (jointCount > 0) 2 else 0 // spacer + header
