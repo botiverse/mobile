@@ -192,10 +192,11 @@ class SlockMarkdownTest {
         val backgroundText =
             backgroundSpans.joinToString(separator = "") { span ->
                 annotated.text.substring(span.start, span.end)
-            }
+            }.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
 
         assertEquals("Use $code now", visibleText)
         assertTrue(inlineIds.isEmpty())
+        assertEquals(1, backgroundSpans.size)
         assertEquals(code, backgroundText)
     }
 

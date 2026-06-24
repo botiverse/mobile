@@ -1411,13 +1411,9 @@ private fun AnnotatedString.Builder.appendSlockMarkdownInlineCodeWithBackground(
     code: String,
     style: SpanStyle
 ) {
-    val pieces = code.slockMarkdownInlineCodeSoftBreakPieces()
-    pieces.forEachIndexed { index, piece ->
-        if (index > 0) append(SlockMarkdownInlineCodeSoftBreak)
-        pushStyle(style)
-        append(piece)
-        pop()
-    }
+    pushStyle(style)
+    append(code.slockMarkdownInlineCodeWithSoftBreaks())
+    pop()
 }
 
 internal const val SlockMarkdownInlineCodeSoftBreak = '\u200B'
