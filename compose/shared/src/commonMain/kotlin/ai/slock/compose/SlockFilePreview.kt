@@ -105,7 +105,7 @@ internal class ComposeSlockFilePreviewPage : ai.slock.compose.base.BasePager() {
 private fun SlockFilePreviewStandalonePageContent() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager.pagerId) { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val networkModule = remember { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
     val networkClient =
         remember {

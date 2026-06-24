@@ -704,7 +704,7 @@ internal fun MembersPageContent() {
     // Build the KMP dataSource + coordinator directly (no bridge event round-trip).
     // Mirrors ThreadPage's pattern: sharedStores gives us the auth store;
     // pager.acquireModule<SlockNetworkModule>(...) gives us a network client.
-    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     val networkClient = remember {
         KuiklySlockNetworkClient(
@@ -1141,7 +1141,7 @@ private fun rememberMemberDetailRouteProvider(
     pager: Pager,
     bridge: BridgeModule
 ): MemberDetailRouteProvider {
-    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { ai.slock.compose.data.SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     val networkClient =
         remember {

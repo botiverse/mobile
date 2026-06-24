@@ -42,7 +42,7 @@ internal fun rememberStandaloneSettingsEnvironment(
     pager: Pager,
     bridge: BridgeModule
 ): StandaloneSettingsEnvironment {
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     val networkModule = remember(pager) { pager.acquireModule<SlockNetworkModule>(SlockNetworkModule.MODULE_NAME) }
     val networkClient =

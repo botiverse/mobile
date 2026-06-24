@@ -15,7 +15,13 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+
+const val SLOCK_AUTH_SESSION_MMKV_NAMESPACE = "slockAuthSession"
+const val SLOCK_AUTH_SESSION_RECORD_KEY = "session"
+const val SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY = "slockAuthSession:session"
 
 interface SlockAuthSessionStore {
     suspend fun readSession(): StoredAuthSession?
@@ -165,3 +171,93 @@ class InMemorySlockAuthSessionStore(
         invalidations.emit(Unit)
     }
 }
+
+internal class KuiklyMMKVAuthSessionStore(
+    private val store: SlockKeyValueStore,
+    private val legacyStore: SlockRelationalStore? = null
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
+    private val mutex = Mutex()
+    private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
+
+    override suspend fun readSession(): StoredAuthSession? =
+        mutex.withLock {
+            store.getString(SLOCK_AUTH_SESSION_RECORD_KEY)?.decodeStoredSessionOrNull()?.let { return@withLock it }
+            migrateLegacySessionLocked()
+        }
+
+    override suspend fun saveSession(session: StoredAuthSession) {
+        mutex.withLock {
+            store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+            clearLegacySessionLocked()
+        }
+    }
+
+    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        val current = readSession() ?: return
+        saveSession(current.copy(accessToken = accessToken, refreshToken = refreshToken))
+    }
+
+    override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
+        val current = readSession() ?: return
+        saveSession(current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug))
+    }
+
+    override suspend fun clearSession() {
+        mutex.withLock {
+            store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, null)
+            clearLegacySessionLocked()
+        }
+        invalidations.emit(Unit)
+    }
+
+    private suspend fun migrateLegacySessionLocked(): StoredAuthSession? {
+        val legacy = legacyStore ?: return null
+        val encoded =
+            runCatching {
+                legacy.query(
+                    "SELECT value FROM slock_kv WHERE key = ?",
+                    listOf(RelationalValue.Text(LEGACY_AUTH_SESSION_KEY))
+                ).rows.firstOrNull()?.firstOrNull()?.asText()
+            }.getOrNull()
+                ?: return null
+        val session = encoded.decodeStoredSessionOrNull()
+        clearLegacySessionLocked()
+        if (session != null) {
+            store.putString(SLOCK_AUTH_SESSION_RECORD_KEY, authSessionStoreJson.encodeToString(session))
+        }
+        return session
+    }
+
+    private suspend fun clearLegacySessionLocked() {
+        val legacy = legacyStore ?: return
+        runCatching {
+            legacy.execute(
+                "DELETE FROM slock_kv WHERE key = ?",
+                listOf(RelationalValue.Text(LEGACY_AUTH_SESSION_KEY))
+            )
+        }
+    }
+
+    private fun String.decodeStoredSessionOrNull(): StoredAuthSession? =
+        runCatching {
+            authSessionStoreJson.decodeFromString(StoredAuthSession.serializer(), this)
+        }.getOrNull()
+}
+
+private const val LEGACY_AUTH_SESSION_KEY = "auth_session"
+
+private val authSessionStoreJson = Json {
+    ignoreUnknownKeys = true
+    encodeDefaults = true
+}
+
+private fun RelationalValue.asText(): String? =
+    when (this) {
+        is RelationalValue.Text -> value
+        is RelationalValue.LongNumber -> value.toString()
+        is RelationalValue.DoubleNumber -> value.toString()
+        is RelationalValue.BooleanValue -> value.toString()
+        RelationalValue.Null -> null
+    }

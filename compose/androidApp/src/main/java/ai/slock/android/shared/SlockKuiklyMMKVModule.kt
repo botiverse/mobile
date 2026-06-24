@@ -2,14 +2,22 @@ package ai.slock.android.shared
 
 import android.content.Context
 import android.util.Base64
+import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
+import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+import ai.slock.compose.data.SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY
+import ai.slock.compose.data.StoredAuthSession
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
+import com.google.gson.Gson
 import com.tencent.mmkv.MMKV
 import org.json.JSONObject
 
 internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule() {
+    private val appContext = context.applicationContext
+    private val gson = Gson()
+
     init {
-        ensureInitialized(context.applicationContext)
+        ensureInitialized(appContext)
     }
 
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? =
@@ -49,6 +57,11 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
             "bool" -> store.encode(key, json.optBoolean("value"))
             "bytes" -> store.encode(key, Base64.decode(json.optString("value"), Base64.DEFAULT))
         }
+        maybeUpdateAuthSessionContext(
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            encodedSession = json.optString("value").takeIf { json.optString("type") == "string" }
+        )
         return null
     }
 
@@ -78,6 +91,11 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
         val json = params?.let(::JSONObject) ?: return null
         val key = json.optString("key").takeIf { it.isNotBlank() } ?: return null
         mmkv(json.optNullableString("mmapID")).removeValueForKey(key)
+        maybeUpdateAuthSessionContext(
+            mmapID = json.optNullableString("mmapID"),
+            key = key,
+            encodedSession = null
+        )
         return null
     }
 
@@ -130,8 +148,27 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
                 "double" -> store.encode(key, entry.optDouble("value"))
                 "bool" -> store.encode(key, entry.optBoolean("value"))
             }
+            maybeUpdateAuthSessionContext(
+                mmapID = json.optNullableString("mmapID"),
+                key = key,
+                encodedSession = entry.optString("value").takeIf { entry.optString("type", "string") == "string" }
+            )
         }
         return null
+    }
+
+    private fun maybeUpdateAuthSessionContext(mmapID: String?, key: String, encodedSession: String?) {
+        if (mmapID != SLOCK_AUTH_SESSION_MMKV_NAMESPACE || key != SLOCK_AUTH_SESSION_MMKV_STORAGE_KEY) return
+        val session =
+            encodedSession
+                ?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { gson.fromJson(it, StoredAuthSession::class.java) }.getOrNull() }
+        SlockAndroidBuglyDiagnostics.updateUserContext(
+            context = appContext,
+            userId = session?.user?.id,
+            selectedServerId = session?.currentServerId,
+            selectedServerSlug = session?.selectedServerSlug
+        )
     }
 
     private fun JSONObject.optNullableString(name: String): String? =

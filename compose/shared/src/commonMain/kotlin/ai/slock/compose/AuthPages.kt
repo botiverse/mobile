@@ -87,7 +87,7 @@ private fun Modifier.authPageStaticTextFocus(): Modifier =
     focusProperties { canFocus = false }
 
 private fun Pager.sharedAuthDataSource(bridge: BridgeModule): SharedAuthDataSource {
-    val sharedStores = SlockSharedStoreRegistry.get(bridge)
+    val sharedStores = SlockSharedStoreRegistry.get(this, bridge)
     return SharedAuthDataSource(
         transport =
             KuiklySlockAuthTransport(
@@ -425,7 +425,7 @@ private fun ForgotPasswordScreen() {
 private fun AuthDeveloperScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val settingsDataSource =
         remember {
             SharedSettingsDataSource(
@@ -485,7 +485,7 @@ private data class AuthDiagnosticsUiState(
 private fun AuthDiagnosticsScreen() {
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val settingsCapabilities = remember { BridgeSettingsPlatformCapabilities(bridge) }
     val settingsDataSource =
         remember {

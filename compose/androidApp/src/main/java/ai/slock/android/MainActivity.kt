@@ -1,7 +1,7 @@
 package ai.slock.android
 
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
-import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.shared.SlockKuiklyActivity
 import ai.slock.compose.data.SharedAuthDataSource
@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = EncryptedAuthSessionStore(applicationContext)
+                        sessionStore = AndroidMMKVAuthSessionStore(applicationContext)
                     ).completeSocialLogin(provider = provider, code = code)
                 }
             when (result) {

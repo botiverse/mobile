@@ -3,7 +3,7 @@ package ai.slock.android.shared
 import android.content.Context
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
@@ -32,12 +32,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal object AndroidRealtimeBridgeManager {
     private const val LOG_TAG = "SlockKuiklyRealtime"
-    private const val STORED_SESSION_CONNECT_RETRY_DELAY_MS = 1_500L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val consumers = linkedMapOf<String, RealtimeConsumer>()
@@ -82,30 +80,20 @@ internal object AndroidRealtimeBridgeManager {
     ) {
         val appContext = context.applicationContext
         val repository = ensureRealtimeRepository(appContext)
-        val sessionStore = EncryptedAuthSessionStore(appContext)
+        val sessionStore = AndroidMMKVAuthSessionStore(appContext)
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
                 try {
-                    var restoredSession = sessionStore.readSession()
-                    var serverId = restoredSession?.currentServerId?.let(::ServerId)
+                    val session = sessionStore.readSession()
+                    val serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockDiagnosticsLogger.w(
                             LOG_TAG,
                             "connect_skip reason=missing_selected_server"
                         )
-                        delay(STORED_SESSION_CONNECT_RETRY_DELAY_MS)
-                        restoredSession = sessionStore.readSession()
-                        serverId = restoredSession?.currentServerId?.let(::ServerId)
-                            ?: run {
-                                SlockDiagnosticsLogger.w(
-                                    LOG_TAG,
-                                    "connect_skip reason=missing_selected_server_after_retry delayMs=$STORED_SESSION_CONNECT_RETRY_DELAY_MS"
-                                )
-                                return@launch
-                            }
+                        return@launch
                     }
-                    val session = restoredSession ?: return@launch
                     val accessToken =
                         session.accessToken.takeIf { it.isNotBlank() }
                             ?: run {
@@ -256,7 +244,7 @@ internal object AndroidRealtimeBridgeManager {
 
     private fun ensureRealtimeRepository(context: Context): RealtimeRepository {
         realtimeRepository?.let { return it }
-        val sessionStore = EncryptedAuthSessionStore(context.applicationContext)
+        val sessionStore = AndroidMMKVAuthSessionStore(context.applicationContext)
         val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(context.applicationContext)
         val client =
             SocketIoRealtimeClient(
@@ -448,7 +436,7 @@ internal object AndroidRealtimeBridgeManager {
 
     private suspend fun maybePostBackgroundUnreadNotification(
         appContext: Context,
-        sessionStore: EncryptedAuthSessionStore,
+        sessionStore: AndroidMMKVAuthSessionStore,
         serverId: ServerId,
         event: MessageNew
     ) {

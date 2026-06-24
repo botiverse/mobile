@@ -19,12 +19,13 @@ import ai.slock.compose.model.TaskDeleted
 import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.TaskUpdated
 import ai.slock.compose.model.ThreadUpdated
+import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 internal class SlockSharedStoreProvider private constructor(
     private val sqlDatabase: SlockSqlDatabase,
-    val authStore: KuiklyAuthSessionStore,
+    val authStore: KuiklyMMKVAuthSessionStore,
     val localDataStore: ComposeLocalDataStore,
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
@@ -38,14 +39,21 @@ internal class SlockSharedStoreProvider private constructor(
         )
 
     companion object {
-        fun create(bridge: BridgeModule): SlockSharedStoreProvider {
+        fun create(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
             val database = createSlockSqlDatabase(bridge)
             val relationalStore = SqlDelightRelationalStore(database)
             val localDataStore = RelationalComposeLocalDataStore(relationalStore)
             val tasksDataStore = SharedTasksDataStore()
             return SlockSharedStoreProvider(
                 sqlDatabase = database,
-                authStore = KuiklyAuthSessionStore(relationalStore),
+                authStore =
+                    KuiklyMMKVAuthSessionStore(
+                        store = KuiklyMMKVKeyValueStore(
+                            pager = pager,
+                            namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
+                        ),
+                        legacyStore = relationalStore
+                    ),
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(
                     logger = { message -> bridge.log("shared_agent_detail_store $message") }
@@ -218,8 +226,8 @@ private fun TaskSummary.taskDomainKey(): String =
 internal object SlockSharedStoreRegistry {
     private var provider: SlockSharedStoreProvider? = null
 
-    fun get(bridge: BridgeModule): SlockSharedStoreProvider {
+    fun get(pager: Pager, bridge: BridgeModule): SlockSharedStoreProvider {
         provider?.let { return it }
-        return SlockSharedStoreProvider.create(bridge).also { provider = it }
+        return SlockSharedStoreProvider.create(pager, bridge).also { provider = it }
     }
 }

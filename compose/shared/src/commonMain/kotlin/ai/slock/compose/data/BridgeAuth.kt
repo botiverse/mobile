@@ -3,18 +3,8 @@ package ai.slock.compose.data
 import ai.slock.compose.base.BridgeModule
 import ai.slock.compose.model.TaskStatus
 import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
-
-private const val SESSION_KEY = "auth_session"
-
-private val bridgeAuthJson = Json {
-    ignoreUnknownKeys = true
-    encodeDefaults = true
-}
 
 class SettingsDiagnosticsFeedbackDraft(
     val message: String,
@@ -355,64 +345,3 @@ internal interface SharedThreadNetworkApi {
     suspend fun updateTaskStatus(taskId: String, status: TaskStatus): HomeNetworkResponse
     suspend fun createOrOpenThread(channelId: String, parentMessageId: String): HomeNetworkResponse
 }
-
-internal class KuiklyAuthSessionStore(
-    private val store: SlockRelationalStore
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
-    private val invalidations = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-
-    override val sessionInvalidations: kotlinx.coroutines.flow.SharedFlow<Unit> =
-        invalidations.asSharedFlow()
-
-    override suspend fun readSession(): StoredAuthSession? {
-        ensureTable()
-        val rows = store.query("SELECT value FROM slock_kv WHERE key = ?", listOf(RelationalValue.Text(SESSION_KEY)))
-        val encoded = rows.rows.firstOrNull()?.firstOrNull()?.asText() ?: return null
-        return runCatching {
-            bridgeAuthJson.decodeFromString(StoredAuthSession.serializer(), encoded)
-        }.getOrNull()
-    }
-
-    override suspend fun saveSession(session: StoredAuthSession) {
-        ensureTable()
-        val encoded = bridgeAuthJson.encodeToString(StoredAuthSession.serializer(), session)
-        store.execute(
-            "INSERT OR REPLACE INTO slock_kv(key, value) VALUES(?, ?)",
-            listOf(RelationalValue.Text(SESSION_KEY), RelationalValue.Text(encoded))
-        )
-    }
-
-    override suspend fun updateTokens(accessToken: String, refreshToken: String) {
-        val current = readSession() ?: return
-        saveSession(current.copy(accessToken = accessToken, refreshToken = refreshToken))
-    }
-
-    override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
-        val current = readSession() ?: return
-        saveSession(current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug))
-    }
-
-    override suspend fun clearSession() {
-        ensureTable()
-        store.execute("DELETE FROM slock_kv WHERE key = ?", listOf(RelationalValue.Text(SESSION_KEY)))
-        invalidations.emit(Unit)
-    }
-
-    private suspend fun ensureTable() {
-        store.execute(
-            "CREATE TABLE IF NOT EXISTS slock_kv(" +
-                "key TEXT PRIMARY KEY NOT NULL, " +
-                "value TEXT NOT NULL" +
-                ")"
-        )
-    }
-}
-
-private fun RelationalValue.asText(): String? =
-    when (this) {
-        is RelationalValue.Text -> value
-        is RelationalValue.LongNumber -> value.toString()
-        is RelationalValue.DoubleNumber -> value.toString()
-        is RelationalValue.BooleanValue -> value.toString()
-        RelationalValue.Null -> null
-    }

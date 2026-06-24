@@ -49,8 +49,7 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
 import ai.slock.android.BuildConfig
-import ai.slock.compose.data.StoredAuthSession as AuthSession
-import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
 import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
 import ai.slock.android.core.data.auth.GoogleSocialAuthResult
 import ai.slock.android.core.data.auth.completeGoogleSocialAuth
@@ -89,7 +88,6 @@ import com.tencent.kuikly.core.render.android.performace.launch.KRLaunchData
 import com.tencent.kuikly.core.render.android.expand.component.KRTextAreaView
 import com.tencent.kuikly.core.render.android.expand.component.KRTextFieldView
 import com.caverock.androidsvg.SVG
-import com.google.gson.Gson
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.net.HttpURLConnection
@@ -373,7 +371,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             withContext(Dispatchers.IO) {
                                 SharedAuthDataSource(
                                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                                        sessionStore = EncryptedAuthSessionStore(applicationContext)
+                                        sessionStore = AndroidMMKVAuthSessionStore(applicationContext)
                                 ).completeGoogleSocialAuth(nativeResult)
                             }
                     when (result) {
@@ -1300,8 +1298,6 @@ internal class SlockKuiklyBridgeModule(
             ai.slock.android.badge.AndroidNotificationBadgeApplier(appContext),
 ) : KuiklyRenderBaseModule() {
     private val databases = ConcurrentHashMap<String, SQLiteDatabase>()
-    private val gson = Gson()
-
     override fun call(method: String, params: String?, callback: KuiklyRenderCallback?): Any? {
         return when (method) {
             "toast" -> toast(params)
@@ -1488,7 +1484,6 @@ internal class SlockKuiklyBridgeModule(
                             "query" -> query(db, sql, bindArgs)
                             else -> {
                                 db.execSQL(sql, bindArgs.toTypedArray())
-                                mirrorAuthSessionWrite(sql, bindArgs)
                                 mapOf("status" to "ok")
                             }
                         }
@@ -1530,37 +1525,6 @@ internal class SlockKuiklyBridgeModule(
                         }
             }
             return mapOf("status" to "ok", "columns" to columns, "rows" to rows)
-        }
-    }
-
-    private fun mirrorAuthSessionWrite(sql: String, bindArgs: List<Any?>) {
-        if (!sql.contains("slock_kv", ignoreCase = true)) return
-        val key = bindArgs.firstOrNull()?.toString() ?: return
-        if (key != AUTH_SESSION_KEY) return
-
-        val store = EncryptedAuthSessionStore(appContext)
-        when {
-            sql.startsWith("DELETE", ignoreCase = true) -> {
-                runBlocking { store.clearSession() }
-                SlockAndroidBuglyDiagnostics.updateUserContext(
-                    context = appContext,
-                    userId = null,
-                    selectedServerId = null,
-                    selectedServerSlug = null
-                )
-            }
-            sql.contains("INSERT", ignoreCase = true) || sql.contains("REPLACE", ignoreCase = true) -> {
-                val encodedSession = bindArgs.getOrNull(1)?.toString().orEmpty()
-                if (encodedSession.isBlank()) return
-                val session = gson.fromJson(encodedSession, AuthSession::class.java)
-                runBlocking { store.saveSession(session) }
-                SlockAndroidBuglyDiagnostics.updateUserContext(
-                    context = appContext,
-                    userId = session.user.id,
-                    selectedServerId = session.currentServerId,
-                    selectedServerSlug = session.selectedServerSlug
-                )
-            }
         }
     }
 
@@ -1881,7 +1845,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun loadSettingsAbout(): Map<String, Any> {
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-        val session = runBlocking { EncryptedAuthSessionStore(appContext).readSession() }
+        val session = runBlocking { AndroidMMKVAuthSessionStore(appContext).readSession() }
         val selectedServer =
                 session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
                         ?: session?.servers?.firstOrNull()
@@ -1940,7 +1904,7 @@ internal class SlockKuiklyBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val changed = before.key != after.key
         if (changed) {
-            runBlocking { EncryptedAuthSessionStore(appContext).clearSession() }
+            runBlocking { AndroidMMKVAuthSessionStore(appContext).clearSession() }
             AndroidRealtimeBridgeManager.disconnectForSessionEnd("api_environment_changed")
             SlockDiagnosticsLogger.record(
                     "SlockDeveloper",
@@ -2503,7 +2467,6 @@ internal class SlockKuiklyBridgeModule(
 
     companion object {
         const val MODULE_NAME = "HRBridgeModule"
-        private const val AUTH_SESSION_KEY = "auth_session"
         private const val REQUEST_NOTIFICATIONS_CODE = 4207
         private const val AUTH_DIAGNOSTICS_SOURCE_MARKER = "auth-bootstrap-diagnostics/e36bc138+"
         private const val ATTACHMENT_CACHE_MAX_FILES = 80

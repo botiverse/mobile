@@ -1435,7 +1435,7 @@ private fun ThreadPageScreen() {
             instanceId = instanceId
         )
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
@@ -1658,7 +1658,7 @@ private fun ThreadPageScreen() {
                 currentPayload.findThreadAuthorProfile(memberId)
                     ?.toThreadCandidateAgentDetailSnapshot()
                     ?.let { candidate ->
-                        val agentDetailStore = SlockSharedStoreRegistry.get(bridge).agentDetailStore
+                        val agentDetailStore = SlockSharedStoreRegistry.get(pager, bridge).agentDetailStore
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SelectMember(candidate.agentId))
                         agentDetailStore.dispatch(SharedAgentDetailIntent.SetDetail(candidate.agentId, candidate))
                     }

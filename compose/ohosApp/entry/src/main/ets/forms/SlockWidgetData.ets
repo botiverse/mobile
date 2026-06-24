@@ -1,11 +1,11 @@
 import { common } from '@kit.AbilityKit';
 import { http } from '@kit.NetworkKit';
-import { relationalStore } from '@kit.ArkData';
 import util from '@ohos.util';
+import { MMKV } from '@tencent/mmkv';
 import { SLOCK_API_BASE_URL } from '../kuikly/SlockOhosApiConfig';
 
-const DATABASE_NAME = 'slock_shared.db';
-const SESSION_KEY = 'auth:session';
+const AUTH_SESSION_MMKV_NAMESPACE = 'slockAuthSession';
+const AUTH_SESSION_MMKV_STORAGE_KEY = 'slockAuthSession:session';
 const REQUEST_TIMEOUT_MS = 8000;
 
 export const FORM_ACTIVITY_UNREAD = 'activityUnread';
@@ -151,25 +151,20 @@ export function snapshotRecord(snapshot: SlockWidgetSnapshot): Object {
 }
 
 async function readStoredAuthSession(context: common.Context): Promise<StoredAuthSession | null> {
-  let resultSet: relationalStore.ResultSet | undefined = undefined;
   try {
-    const store = await relationalStore.getRdbStore(context, {
-      name: DATABASE_NAME,
-      securityLevel: relationalStore.SecurityLevel.S1
-    });
-    resultSet = await store.querySql(
-      'SELECT value FROM slock_kv WHERE key = ?',
-      [SESSION_KEY]
-    );
-    if (!resultSet.goToFirstRow()) {
+    try {
+      MMKV.initialize(context.getApplicationContext());
+    } catch (_error) {
+      // MMKV may already be initialized by the app process.
+    }
+    const store = MMKV.mmkvWithID(AUTH_SESSION_MMKV_NAMESPACE);
+    const encoded = store.decodeString(AUTH_SESSION_MMKV_STORAGE_KEY);
+    if (!encoded || encoded.length === 0) {
       return null;
     }
-    const encoded = resultSet.getString(resultSet.getColumnIndex('value'));
     return JSON.parse(encoded) as StoredAuthSession;
   } catch (_error) {
     return null;
-  } finally {
-    resultSet?.close();
   }
 }
 

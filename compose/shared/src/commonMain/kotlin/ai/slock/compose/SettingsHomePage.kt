@@ -575,7 +575,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
     RememberKmmResourceLocaleSeedFromLocalActivity()
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember(pager) { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember(bridge) { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     val networkClient =
         remember(authStore, pager) {
@@ -1200,7 +1200,7 @@ private fun SlockAppShellContent() {
     var selectedSettingsDestination by remember { mutableStateOf(SettingsDestinationHome) }
     val pager = LocalActivity.current.getPager() as Pager
     val bridge = remember { Utils.bridgeModule(pager.pagerId) }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authStore = sharedStores.authStore
     val localWriteThrough =
         remember {
@@ -7839,7 +7839,7 @@ private fun AuthChooseServerPageContent() {
     val closeChooser = remember(pager) {
         { pager.acquireModule<RouterModule>(RouterModule.MODULE_NAME).closePage() }
     }
-    val sharedStores = remember { SlockSharedStoreRegistry.get(bridge) }
+    val sharedStores = remember { SlockSharedStoreRegistry.get(pager, bridge) }
     val authDataSource =
         remember {
             SharedAuthDataSource(

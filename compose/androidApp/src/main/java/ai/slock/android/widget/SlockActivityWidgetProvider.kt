@@ -2,7 +2,7 @@ package ai.slock.android.widget
 
 import ai.slock.android.MainActivity
 import ai.slock.android.R
-import ai.slock.android.core.data.auth.EncryptedAuthSessionStore
+import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.compose.data.DataRequestPriority
@@ -68,7 +68,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         }
 
         private suspend fun loadWidgetState(context: Context, previous: SlockWidgetState): SlockWidgetState {
-            val sessionStore = EncryptedAuthSessionStore(context)
+            val sessionStore = AndroidMMKVAuthSessionStore(context)
             val session = sessionStore.readSession()
                 ?: return SlockWidgetState.SignedOut
             val serverId = session.currentServerId?.let(::ServerId)
