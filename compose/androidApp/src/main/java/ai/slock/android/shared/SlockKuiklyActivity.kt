@@ -244,12 +244,26 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
 
     private fun handleKuiklySystemBack() {
         if (kuiklyRenderViewDelegator.onBackPressed()) return
+        if (moveAppShellTaskToBackIfNeeded()) return
         kuiklySystemBackCallback.isEnabled = false
         try {
             onBackPressedDispatcher.onBackPressed()
         } finally {
             kuiklySystemBackCallback.isEnabled = true
         }
+    }
+
+    internal fun closeKuiklyHostPage() {
+        if (moveAppShellTaskToBackIfNeeded()) return
+        finish()
+    }
+
+    private fun moveAppShellTaskToBackIfNeeded(): Boolean {
+        val action = slockKuiklyHostCloseAction(pageSpec?.pageName ?: pageName)
+        if (action != SlockKuiklyHostCloseAction.MoveTaskToBack) return false
+        Log.i("SlockKuiklyActivity", "app_shell_close_to_background")
+        moveTaskToBack(true)
+        return true
     }
 
     override fun registerExternalModule(kuiklyRenderExport: IKuiklyRenderExport) {
@@ -918,9 +932,26 @@ private object SlockKuiklyRouterAdapter : IKRRouterAdapter {
     }
 
     override fun closePage(context: Context) {
-        (context as? Activity)?.finish()
+        val activity = context as? Activity ?: return
+        if (activity is SlockKuiklyActivity) {
+            activity.closeKuiklyHostPage()
+        } else {
+            activity.finish()
+        }
     }
 }
+
+internal enum class SlockKuiklyHostCloseAction {
+    Finish,
+    MoveTaskToBack
+}
+
+internal fun slockKuiklyHostCloseAction(pageName: String?): SlockKuiklyHostCloseAction =
+        if (pageName == SlockKuiklyPages.APP_SHELL) {
+            SlockKuiklyHostCloseAction.MoveTaskToBack
+        } else {
+            SlockKuiklyHostCloseAction.Finish
+        }
 
 private object SlockKuiklyLogAdapter : IKRLogAdapter {
     override val asyncLogEnable: Boolean = true
@@ -1277,7 +1308,12 @@ internal class SlockKuiklyBridgeModule(
                 null
             }
             "closePage" -> {
-                activity?.finish()
+                val hostActivity = activity
+                if (hostActivity is SlockKuiklyActivity) {
+                    hostActivity.closeKuiklyHostPage()
+                } else {
+                    hostActivity?.finish()
+                }
                 null
             }
             "log" -> {
