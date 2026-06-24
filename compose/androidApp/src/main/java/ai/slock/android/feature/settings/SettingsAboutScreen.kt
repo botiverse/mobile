@@ -21,13 +21,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import ai.slock.android.R
-import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticLogEntry
 import ai.slock.android.ui.components.SlockButton
 import ai.slock.android.ui.components.SlockButtonVariant
 import ai.slock.android.ui.theme.SlockColor
 import ai.slock.android.ui.theme.SlockSpacing
 import ai.slock.android.ui.theme.SlockStroke
 import ai.slock.android.ui.theme.SlockType
+
+data class SettingsDiagnosticLogEntry(
+    val timestampMillis: Long,
+    val tag: String,
+    val message: String
+)
 
 data class SettingsAboutSnapshot(
     val appVersion: String,
@@ -39,7 +44,7 @@ data class SettingsAboutSnapshot(
     val serverStatus: String,
     val socketStatus: String,
     val notificationStatus: String,
-    val diagnosticLogs: List<SanitizedDiagnosticLogEntry>
+    val diagnosticLogs: List<SettingsDiagnosticLogEntry>
 )
 
 @Composable
@@ -81,7 +86,7 @@ fun SettingsAboutScreen(
 
 @Composable
 fun SettingsDiagnosticsScreen(
-    logs: List<SanitizedDiagnosticLogEntry>,
+    logs: List<SettingsDiagnosticLogEntry>,
     modifier: Modifier = Modifier,
     onCopyLogs: () -> Unit = {},
     onShareLogs: () -> Unit = {},
@@ -238,7 +243,7 @@ private fun SettingsDiagnosticsActions(
 
 @Composable
 private fun SettingsDiagnosticsText(
-    logs: List<SanitizedDiagnosticLogEntry>,
+    logs: List<SettingsDiagnosticLogEntry>,
 ) {
     val text =
         if (logs.isEmpty()) {

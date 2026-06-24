@@ -70,7 +70,7 @@ object SlockCrashReporter {
 
             appendLine()
             appendLine("Recent diagnostics:")
-            appendLine("Bugly TDLog records app diagnostics when Bugly Diagnose is initialized.")
+            appendLine(SlockAndroidBuglyDiagnostics.exportRecentDiagnosticsText(context))
         }
 
     private fun buildFallbackCrashLog(

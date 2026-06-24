@@ -40,6 +40,7 @@ object SlockAndroidBuglyDiagnostics {
     private const val TdLogMaxFileSize = 50L * 1024L * 1024L
     private const val TdLogMaxAliveDay = 7
     private const val DiagnoseUploadTimeWindowMillis = 7L * 24L * 60L * 60L * 1000L
+    private const val RecentDiagnosticsMaxChars = 120_000
 
     private val initialized = AtomicBoolean(false)
     private val diagnoseInitialized = AtomicBoolean(false)
@@ -108,7 +109,7 @@ object SlockAndroidBuglyDiagnostics {
 
     fun recordLog(level: String, tag: String, message: String) {
         val cleanTag = tag.buglyValueOrNull() ?: return
-        val cleanMessage = SanitizedDiagnosticsLogBuffer.sanitize(message).buglyValueOrNull() ?: return
+        val cleanMessage = DiagnosticsSanitizer.sanitize(message).buglyValueOrNull() ?: return
         if (diagnoseInitialized.get()) {
             runCatching {
                 when (level.lowercase()) {
@@ -162,6 +163,36 @@ object SlockAndroidBuglyDiagnostics {
             "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} tdlog_files=${diagnoseLogFiles(appContext).size}"
         )
         return archive
+    }
+
+    fun exportRecentDiagnosticsText(context: Context, maxChars: Int = RecentDiagnosticsMaxChars): String {
+        val appContext = context.applicationContext
+        flushDiagnoseLogs()
+        val files = diagnoseLogFiles(appContext)
+        if (files.isEmpty()) {
+            return if (diagnoseInitialized.get()) {
+                "Bugly TDLog is initialized, but no local TDLog files are currently available."
+            } else {
+                "Bugly TDLog diagnostics are not initialized."
+            }
+        }
+        val header =
+            buildString {
+                appendLine("Bugly TDLog recent diagnostics")
+                appendLine("Files: ${files.size}")
+            }
+        val budget = (maxChars - header.length).coerceAtLeast(1)
+        val body =
+            files
+                .take(6)
+                .joinToString(separator = "\n\n") { file ->
+                    buildString {
+                        appendLine("### ${file.name} (${file.length()} bytes)")
+                        append(readTailText(file, (budget / files.take(6).size).coerceAtLeast(1_000)))
+                    }
+                }
+                .takeLast(budget)
+        return header + body
     }
 
     fun uploadDiagnostics(context: Context, attachment: File, summary: String): Boolean {
@@ -563,6 +594,25 @@ object SlockAndroidBuglyDiagnostics {
             .distinctBy { it.absolutePath }
             .sortedByDescending { it.lastModified() }
     }
+
+    private fun readTailText(file: File, maxChars: Int): String =
+        runCatching {
+            val maxBytes = (maxChars * 2).coerceAtLeast(1_000)
+            val length = file.length()
+            file.inputStream().buffered().use { input ->
+                if (length > maxBytes) {
+                    var remaining = length - maxBytes
+                    while (remaining > 0L) {
+                        val skipped = input.skip(remaining)
+                        if (skipped <= 0L) break
+                        remaining -= skipped
+                    }
+                }
+                DiagnosticsSanitizer.sanitize(input.readBytes().toString(StandardCharsets.UTF_8)).takeLast(maxChars)
+            }
+        }.getOrElse { error ->
+            "Unable to read TDLog file ${file.name}: ${error.javaClass.simpleName}"
+        }
 
     private fun pruneFeedbackArchives(feedbackDir: File) {
         feedbackDir.listFiles()

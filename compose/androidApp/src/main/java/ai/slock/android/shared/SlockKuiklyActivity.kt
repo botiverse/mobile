@@ -2028,19 +2028,24 @@ internal class SlockKuiklyBridgeModule(
         }
     }
 
-    private fun buildFeedbackText(diagnosticsFileName: String): String =
+    private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
+
+    private fun buildFeedbackText(diagnosticsFileName: String, summaryText: String): String =
             buildString {
-                appendLine("## Raft feedback")
-                appendLine()
-                appendLine("<!-- Describe what happened here. -->")
-                appendLine()
                 appendLine("## Diagnostics")
                 appendLine()
-                appendLine("Sanitized diagnostics are attached as `$diagnosticsFileName`.")
+                appendLine(summaryText.trim())
+                appendLine()
+                appendLine("Bugly TDLog diagnostics are attached as `$diagnosticsFileName`.")
+                appendLine()
+                appendLine("## Feedback")
+                appendLine()
+                appendLine("<!-- Describe what happened here. -->")
             }
 
     private fun shareFeedbackWithDiagnosticsFile() {
-        val diagnosticsFile = writeDiagnosticsFeedbackFile()
+        val diagnostics = writeDiagnosticsFeedbackFile()
+        val diagnosticsFile = diagnostics.file
         val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
         SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
                 fileName = diagnosticsFile.name,
@@ -2049,14 +2054,15 @@ internal class SlockKuiklyBridgeModule(
         )
         shareTextWithAttachment(
                 subject = "Raft feedback",
-                text = buildFeedbackText(diagnosticsFile.name),
+                text = buildFeedbackText(diagnosticsFile.name, diagnostics.summaryText),
                 attachment = diagnosticsFile,
                 attachmentMimeType = diagnosticsFeedbackMimeType(diagnosticsFile)
         )
     }
 
     private fun prepareDiagnosticsFeedbackDraft(): Map<String, Any> {
-        val diagnosticsFile = writeDiagnosticsFeedbackFile()
+        val diagnostics = writeDiagnosticsFeedbackFile()
+        val diagnosticsFile = diagnostics.file
         val bytes = diagnosticsFile.readBytes()
         val buglyAttachmentRegistered = SlockAndroidBuglyDiagnostics.registerDiagnosticsAttachment(diagnosticsFile)
         SlockAndroidBuglyDiagnostics.reportDiagnosticsFeedbackPrepared(
@@ -2067,7 +2073,7 @@ internal class SlockKuiklyBridgeModule(
         SlockDiagnosticsLogger.record("SlockDiagnostics", "shared_prepare_channel_feedback")
         return mapOf(
                 "status" to "ok",
-                "message" to buildFeedbackText(diagnosticsFile.name),
+                "message" to buildFeedbackText(diagnosticsFile.name, diagnostics.summaryText),
                 "fileName" to diagnosticsFile.name,
                 "mimeType" to diagnosticsFeedbackMimeType(diagnosticsFile),
                 "sizeBytes" to bytes.size.toLong(),
@@ -2075,7 +2081,7 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
-    private fun writeDiagnosticsFeedbackFile(): File {
+    private fun writeDiagnosticsFeedbackFile(): DiagnosticsFeedbackFile {
         val summaryText = buildMergedSettingsDiagnosticsExportText()
         val archive = SlockAndroidBuglyDiagnostics.prepareDiagnosticsFeedbackArchive(appContext, summaryText)
         SlockAndroidBuglyDiagnostics.uploadDiagnostics(
@@ -2083,7 +2089,7 @@ internal class SlockKuiklyBridgeModule(
                 attachment = archive,
                 summary = "settings_feedback"
         )
-        return archive
+        return DiagnosticsFeedbackFile(file = archive, summaryText = summaryText)
     }
 
     private fun diagnosticsFeedbackMimeType(file: File): String =
@@ -2094,6 +2100,7 @@ internal class SlockKuiklyBridgeModule(
 
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
+        recordSettingsDiagnosticsEnvironment(about)
         val probe = probeSettingsNetwork()
         return buildString {
             appendLine("Raft diagnostics")
@@ -2123,6 +2130,24 @@ internal class SlockKuiklyBridgeModule(
             appendDiagnosticsLine("TDLog", if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) "enabled" else "disabled")
             appendDiagnosticsLine("Attachment", "Bugly TDLog files are included in this zip when available.")
         }
+    }
+
+    private fun recordSettingsDiagnosticsEnvironment(about: Map<String, Any>) {
+        SlockAndroidBuglyDiagnostics.recordLog(
+                "info",
+                "SlockDiagnostics",
+                "environment app=${about.stringValue("appName").ifBlank { "Raft" }} " +
+                        "version=${about.stringValue("versionLabel")} " +
+                        "build=${about.stringValue("buildLabel")} " +
+                        "source=${about.stringValue("sourceLabel")} " +
+                        "package=${about.stringValue("packageName")} " +
+                        "platform=${about.stringValue("platformLabel")} " +
+                        "device=${about.stringValue("deviceLabel")} " +
+                        "session=${about.stringValue("sessionStatusLabel")} " +
+                        "signedInUser=${about.stringValue("signedInUserLabel")} " +
+                        "selectedServer=${about.stringValue("selectedServerLabel")} " +
+                        "socket=${about.stringValue("socketStatusLabel")}"
+        )
     }
 
     private fun Map<String, Any>.stringValue(key: String): String =

@@ -251,7 +251,8 @@ export class SlockOhosBuglyDiagnostics {
         TDLog.i(TAG, 'manual diagnostics feedback export requested');
         TDLog.flushLog();
       }
-      const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context);
+      const diagnosticSummaryText = SlockOhosBuglyDiagnostics.exportDiagnosticsText(context);
+      const diagnosticFilePath = SlockOhosBuglyDiagnostics.writeDiagnosticSnapshot(context, diagnosticSummaryText);
       const archivePath = await SlockOhosBuglyDiagnostics.writeFeedbackArchive(context, diagnosticFilePath);
       const archiveBytes = SlockOhosBuglyDiagnostics.readFileBytes(archivePath);
       const bodyBase64 = new util.Base64Helper().encodeToStringSync(archiveBytes);
@@ -260,7 +261,10 @@ export class SlockOhosBuglyDiagnostics {
       SlockOhosDiagnostics.record(TAG, `bugly_feedback_archive_prepared file=${fileName} bytes=${archiveBytes.byteLength}`);
       return {
         "status": "ok",
-        "message": SlockOhosBuglyDiagnostics.feedbackMessage(fileName),
+        "message": SlockOhosBuglyDiagnostics.feedbackMessage(
+          fileName,
+          SlockOhosBuglyDiagnostics.feedbackSummaryText(context)
+        ),
         "fileName": fileName,
         "mimeType": FEEDBACK_ARCHIVE_MIME_TYPE,
         "sizeBytes": archiveBytes.byteLength,
@@ -278,11 +282,23 @@ export class SlockOhosBuglyDiagnostics {
 
   static exportDiagnosticsText(context: common.UIAbilityContext): string {
     const bundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT);
+    SlockOhosBuglyDiagnostics.recordDiagnosticsEnvironment(context, bundleInfo);
     const diagnostics = SlockOhosDiagnostics.exportText(1000);
     const clippedDiagnostics =
       diagnostics.length > MAX_DIAGNOSTIC_EXPORT_CHARS
         ? diagnostics.slice(diagnostics.length - MAX_DIAGNOSTIC_EXPORT_CHARS)
         : diagnostics;
+    return [
+      SlockOhosBuglyDiagnostics.feedbackSummaryText(context, bundleInfo),
+      '',
+      clippedDiagnostics,
+    ].join('\n');
+  }
+
+  private static feedbackSummaryText(
+    context: common.UIAbilityContext,
+    bundleInfo: bundleManager.BundleInfo = bundleManager.getBundleInfoForSelfSync(bundleManager.BundleFlag.GET_BUNDLE_INFO_DEFAULT)
+  ): string {
     return [
       'Slock OHOS diagnostics',
       `Exported at: ${new Date().toString()}`,
@@ -293,18 +309,30 @@ export class SlockOhosBuglyDiagnostics {
       `Device type: ${deviceInfo.deviceType}`,
       `OS: ${deviceInfo.osFullName} / ${deviceInfo.displayVersion} / API ${deviceInfo.sdkApiVersion}`,
       `Files dir: ${context.filesDir}`,
-      '',
-      clippedDiagnostics,
     ].join('\n');
   }
 
-  private static writeDiagnosticSnapshot(context: common.UIAbilityContext): string {
+  private static recordDiagnosticsEnvironment(
+    context: common.UIAbilityContext,
+    bundleInfo: bundleManager.BundleInfo
+  ): void {
+    SlockOhosDiagnostics.record(
+      TAG,
+      `environment bundle=${bundleInfo.name} version=${bundleInfo.versionName} code=${bundleInfo.versionCode} ` +
+        `device=${`${deviceInfo.manufacture} ${deviceInfo.productModel}`.trim()} ` +
+        `deviceType=${deviceInfo.deviceType} ` +
+        `os=${deviceInfo.osFullName}/${deviceInfo.displayVersion}/api${deviceInfo.sdkApiVersion} ` +
+        `filesDir=${context.filesDir}`
+    );
+  }
+
+  private static writeDiagnosticSnapshot(context: common.UIAbilityContext, text: string = ''): string {
     const uploadDir = `${context.filesDir}/${DIAGNOSTIC_UPLOAD_DIR_NAME}`;
     SlockOhosBuglyDiagnostics.ensureDirectory(uploadDir);
     const path = `${uploadDir}/${FEEDBACK_SUMMARY_NAME}`;
     const file = fs.openSync(path, fs.OpenMode.CREATE | fs.OpenMode.TRUNC | fs.OpenMode.WRITE_ONLY);
     try {
-      fs.writeSync(file.fd, SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
+      fs.writeSync(file.fd, text.length > 0 ? text : SlockOhosBuglyDiagnostics.exportDiagnosticsText(context));
     } finally {
       fs.closeSync(file);
     }
@@ -387,15 +415,17 @@ export class SlockOhosBuglyDiagnostics {
     });
   }
 
-  private static feedbackMessage(fileName: string): string {
+  private static feedbackMessage(fileName: string, summaryText: string): string {
     return [
-      '## Raft feedback',
-      '',
-      '<!-- Describe what happened here. -->',
-      '',
       '## Diagnostics',
       '',
+      summaryText,
+      '',
       `Bugly TDLog diagnostics are attached as \`${fileName}\`.`,
+      '',
+      '## Feedback',
+      '',
+      '<!-- Describe what happened here. -->',
     ].join('\n');
   }
 
