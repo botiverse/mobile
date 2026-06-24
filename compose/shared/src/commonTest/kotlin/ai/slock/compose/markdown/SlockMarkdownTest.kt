@@ -126,64 +126,17 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeUsesTextFlowInsteadOfInlineContentAtAnyLength() {
+    fun longInlineCodeUsesWrappingMarkdownSpanInsteadOfInlineChip() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
 
+        assertTrue(shortCode.shouldRenderThreadInlineCodeAsChip())
+        assertFalse(longCode.shouldRenderThreadInlineCodeAsChip())
+
         val inlineContent = slockMarkdownAnnotator("short `$shortCode` long `$longCode`").inlineContent?.invoke().orEmpty()
 
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:6") })
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:25") })
-    }
-
-    @Test
-    fun inlineCodeSoftBreaksPreserveVisibleTextForShortAndLongCode() {
-        val shortCode = "git diff --check"
-        val longCode = "very-long-inline-code-value-that-should-wrap-normally"
-        val tokens =
-            SlockMarkdownInlineTokenRegistry.plan("Use `$shortCode` and `$longCode`")
-                .inlineCodeTokens()
-        val shortSegments = tokens.first().toSlockMarkdownInlineCodeChipSegments()
-        val longSegments = tokens.last().toSlockMarkdownInlineCodeChipSegments()
-        val wrappedShortCode = shortCode.slockMarkdownInlineCodeWithSoftBreaks()
-        val wrappedCode = longCode.slockMarkdownInlineCodeWithSoftBreaks()
-
-        assertTrue(shortSegments.isEmpty())
-        assertTrue(longSegments.isEmpty())
-        assertEquals(shortCode, wrappedShortCode.replace(SlockMarkdownInlineCodeSoftBreak.toString(), ""))
-        assertTrue(wrappedCode.contains(SlockMarkdownInlineCodeSoftBreak))
-        assertEquals(longCode, wrappedCode.replace(SlockMarkdownInlineCodeSoftBreak.toString(), ""))
-    }
-
-    @Test
-    fun inlineCodeTextFlowDoesNotInjectHorizontalPaddingSpaces() {
-        val rendered = renderSlockMarkdownParagraphText("Use `mimo` and `very-long-inline-code-value`")
-
-        assertEquals(
-            "Use mimo and very-long-inline-code-value",
-            rendered.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
-        )
-    }
-
-    @Test
-    fun inlineCodeTextFlowAddsYellowBackgroundWithoutRelyingOnMarkdownCodeSpanStyle() {
-        val code = "very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes"
-        val annotated = buildSlockMarkdownParagraphAnnotatedString("Use `$code` now")
-        val visibleText = annotated.text.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
-        val codeStart = annotated.text.indexOf("very")
-        val codeIndexes =
-            annotated.text.withIndex()
-                .filter { (_, char) -> char != SlockMarkdownInlineCodeSoftBreak }
-                .dropWhile { (_, char) -> char != 'v' }
-                .take(code.length)
-                .map { it.index }
-        val yellow = SlockColor.BrandYellow.copy(alpha = 0.4f)
-        val yellowRanges =
-            annotated.spanStyles.filter { span -> span.item.background == yellow }
-
-        assertEquals("Use $code now", visibleText)
-        assertTrue(codeStart >= 0)
-        assertTrue(codeIndexes.all { index -> yellowRanges.any { range -> index in range.start until range.end } })
+        assertTrue(inlineContent.containsKey("slock-code:6"))
+        assertFalse(inlineContent.containsKey("slock-code:25"))
     }
 
     @Test
@@ -434,7 +387,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTagPlaceholdersReserveVerticalPaddingAndCodeUsesTextFlow() {
+    fun inlineTagAndCodePlaceholdersReserveVerticalPadding() {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Ping @artin for #405 and `mimo`",
@@ -444,11 +397,11 @@ class SlockMarkdownTest {
 
         assertEquals(24.sp, inlineContent.getValue("slock:5").placeholder.height)
         assertEquals(24.sp, inlineContent.getValue("slock:16").placeholder.height)
-        assertFalse(inlineContent.containsKey("slock-code:25"))
+        assertEquals(24.sp, inlineContent.getValue("slock-code:25").placeholder.height)
     }
 
     @Test
-    fun inlineCodeMeasuredWidthOverridesDoNotCreatePlaceholders() {
+    fun inlineCodePlaceholdersCanUseMeasuredWidthOverrides() {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Use `mimo`",
@@ -456,18 +409,20 @@ class SlockMarkdownTest {
                 inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
             ).inlineContent?.invoke().orEmpty()
 
-        assertFalse(inlineContent.containsKey("slock-code:4"))
+        assertEquals(48.sp, inlineContent.getValue("slock-code:4").placeholder.width)
+        assertEquals(24.sp, inlineContent.getValue("slock-code:4").placeholder.height)
     }
 
     @Test
-    fun inlineCodeTextFlowDoesNotExposeFallbackWidthPlaceholders() {
+    fun inlineCodeMeasuredWidthCannotShrinkBelowFallbackWidth() {
+        val fallbackWidth = slockMarkdownInlineCodeWidthSp("SlockColor.BorderBlack")
         val inlineContent =
             slockMarkdownAnnotator(
-                content = "Use `MIMOAPIKEY`",
+                content = "Use `SlockColor.BorderBlack`",
                 inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
             ).inlineContent?.invoke().orEmpty()
 
-        assertFalse(inlineContent.containsKey("slock-code:4"))
+        assertEquals(fallbackWidth, inlineContent.getValue("slock-code:4").placeholder.width)
     }
 
     @Test
@@ -491,8 +446,9 @@ class SlockMarkdownTest {
             ).inlineContent?.invoke().orEmpty()
 
         plan.inlineCodeTokens().forEach { token ->
-            assertTrue(token.toSlockMarkdownInlineCodeChipSegments().isEmpty())
-            assertFalse(inlineContent.keys.any { it.startsWith(token.id) })
+            val placeholder = inlineContent.getValue(token.id).placeholder
+            assertEquals(slockMarkdownInlineCodeWidthSp(token.code!!), placeholder.width)
+            assertEquals(slockMarkdownInlineCodeChipHeightSp(SlockType.Body), placeholder.height)
         }
     }
 
