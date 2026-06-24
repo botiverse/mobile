@@ -597,18 +597,6 @@ class SlockAuthApiClient(
             .mapAuthBody("server_create_contract_mismatch", StoredAuthServer.serializer()) { it }
 }
 
-interface SlockAuthTransport {
-    suspend fun login(bodyText: String): AuthNetworkResponse
-    suspend fun completeSocialLogin(provider: String, bodyText: String): AuthNetworkResponse
-    suspend fun register(bodyText: String): AuthNetworkResponse
-    suspend fun forgotPassword(bodyText: String): AuthNetworkResponse
-    suspend fun currentUser(authorization: String): AuthNetworkResponse
-    suspend fun refresh(bodyText: String): AuthNetworkResponse
-    suspend fun logout(bodyText: String): AuthNetworkResponse
-    suspend fun servers(authorization: String): AuthNetworkResponse
-    suspend fun createServer(authorization: String, bodyText: String): AuthNetworkResponse
-}
-
 sealed interface AuthApiResult<out T> {
     data class Success<T>(val data: T) : AuthApiResult<T>
     data class Failure(
