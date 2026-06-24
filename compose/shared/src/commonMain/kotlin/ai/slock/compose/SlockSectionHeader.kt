@@ -2,6 +2,9 @@ package ai.slock.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.tencent.kuikly.compose.animation.core.RepeatMode
 import com.tencent.kuikly.compose.animation.core.animateFloat
 import com.tencent.kuikly.compose.animation.core.animateFloatAsState
@@ -32,6 +35,8 @@ import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.graphics.Color
+import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
+import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
@@ -312,10 +317,19 @@ internal fun SlockSectionHeaderIconAction(
     onClick: () -> Unit = {},
     onClick2: (Offset) -> Unit = {}
 ) {
+    var anchor by remember { mutableStateOf(Offset.Zero) }
     Button(
-        onClick = onClick,
-        onClick2 = onClick2,
-        modifier = Modifier.size(SectionHeaderActionSize)
+        onClick = {
+            onClick()
+            onClick2(anchor)
+        },
+        modifier =
+            Modifier
+                .size(SectionHeaderActionSize)
+                .onGloballyPositioned { coords ->
+                    val root = coords.positionInRoot()
+                    anchor = Offset(root.x, root.y + coords.size.height.toFloat())
+                }
     ) {
         SlockLucideIcon(icon, Modifier.size(SectionHeaderActionIconSize))
     }
