@@ -5,7 +5,4 @@
    Note: This file is ignored for devices older than API 31
    See https://developer.android.com/about/versions/12/backup-restore
 -->
-<full-backup-content>
-    <!-- Auth session values are encrypted with an Android Keystore key that is not backed up. -->
-    <exclude domain="sharedpref" path="slock_auth_session.xml" />
-</full-backup-content>
+<full-backup-content />

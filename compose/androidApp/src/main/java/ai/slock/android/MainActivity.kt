@@ -1,9 +1,10 @@
 package ai.slock.android
 
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
-import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
+import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.shared.SlockKuiklyActivity
+import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import android.content.Intent
@@ -64,7 +65,7 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.IO) {
                     SharedAuthDataSource(
                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                        sessionStore = AndroidMMKVAuthSessionStore(applicationContext)
+                        sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(applicationContext))
                     ).completeSocialLogin(provider = provider, code = code)
                 }
             when (result) {

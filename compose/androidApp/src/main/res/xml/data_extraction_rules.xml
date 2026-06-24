@@ -4,12 +4,6 @@
    for details.
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- Auth session values are encrypted with an Android Keystore key that is not backed up. -->
-        <exclude domain="sharedpref" path="slock_auth_session.xml" />
-    </cloud-backup>
-    <device-transfer>
-        <!-- Keep encrypted session blobs out of device transfer without their Keystore key. -->
-        <exclude domain="sharedpref" path="slock_auth_session.xml" />
-    </device-transfer>
+    <cloud-backup />
+    <device-transfer />
 </data-extraction-rules>

@@ -2,12 +2,13 @@ package ai.slock.android.widget
 
 import ai.slock.android.MainActivity
 import ai.slock.android.R
-import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
+import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.network.RealSlockNetworkClientFactory
 import ai.slock.compose.data.DataRequestPriority
 import ai.slock.compose.data.DataResult
 import ai.slock.compose.data.InboxFilter
+import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.RealChannelRepository
 import ai.slock.compose.data.RealInboxRepository
 import ai.slock.compose.data.RealSavedRepository
@@ -68,7 +69,7 @@ class SlockActivityWidgetProvider : AppWidgetProvider() {
         }
 
         private suspend fun loadWidgetState(context: Context, previous: SlockWidgetState): SlockWidgetState {
-            val sessionStore = AndroidMMKVAuthSessionStore(context)
+            val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context))
             val session = sessionStore.readSession()
                 ?: return SlockWidgetState.SignedOut
             val serverId = session.currentServerId?.let(::ServerId)

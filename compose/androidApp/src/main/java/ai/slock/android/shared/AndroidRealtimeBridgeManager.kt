@@ -3,7 +3,7 @@ package ai.slock.android.shared
 import android.content.Context
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AuthTokenRefresher
-import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
+import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import ai.slock.android.core.data.realtime.SessionRealtimeRepository
 import ai.slock.android.core.data.realtime.SocketIoRealtimeClient
@@ -15,10 +15,12 @@ import ai.slock.android.core.model.MessageNew
 import ai.slock.android.core.model.RealtimeEvent
 import ai.slock.android.core.model.ServerId
 import ai.slock.compose.data.DataResult
+import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.NOTIFICATION_ENABLED_PREFERENCE_KEY
 import ai.slock.compose.data.RealtimeRepository
 import ai.slock.compose.data.RealtimeSubscription
 import ai.slock.compose.data.ScreenError
+import ai.slock.compose.data.SlockAuthSessionStore
 import ai.slock.compose.data.SlockLocalPreferenceStore
 import ai.slock.compose.data.buildSystemUnreadNotificationRequest
 import ai.slock.compose.data.realtime.RealtimeAuth
@@ -80,7 +82,7 @@ internal object AndroidRealtimeBridgeManager {
     ) {
         val appContext = context.applicationContext
         val repository = ensureRealtimeRepository(appContext)
-        val sessionStore = AndroidMMKVAuthSessionStore(appContext)
+        val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
         realtimeConnectJob?.cancel()
         realtimeConnectJob =
             scope.launch {
@@ -244,7 +246,7 @@ internal object AndroidRealtimeBridgeManager {
 
     private fun ensureRealtimeRepository(context: Context): RealtimeRepository {
         realtimeRepository?.let { return it }
-        val sessionStore = AndroidMMKVAuthSessionStore(context.applicationContext)
+        val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(context.applicationContext))
         val apiBaseUrl = AndroidAuthApiFactory.currentBaseUrl(context.applicationContext)
         val client =
             SocketIoRealtimeClient(
@@ -436,7 +438,7 @@ internal object AndroidRealtimeBridgeManager {
 
     private suspend fun maybePostBackgroundUnreadNotification(
         appContext: Context,
-        sessionStore: AndroidMMKVAuthSessionStore,
+        sessionStore: SlockAuthSessionStore,
         serverId: ServerId,
         event: MessageNew
     ) {

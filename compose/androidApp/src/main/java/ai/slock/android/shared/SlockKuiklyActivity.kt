@@ -49,12 +49,12 @@ import androidx.core.content.res.ResourcesCompat
 import androidx.lifecycle.lifecycleScope
 import ai.slock.android.R
 import ai.slock.android.BuildConfig
-import ai.slock.android.core.data.auth.AndroidMMKVAuthSessionStore
 import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
 import ai.slock.android.core.data.auth.GoogleSocialAuthResult
 import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
+import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
 import ai.slock.android.core.data.diagnostics.SlockAndroidBuglyDiagnostics
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
@@ -62,6 +62,7 @@ import ai.slock.android.core.data.diagnostics.SlockPerformanceDiagnostics
 import ai.slock.android.core.data.storage.StorageClearTarget
 import ai.slock.android.core.data.storage.StorageManagementRepository
 import ai.slock.android.core.data.storage.StorageManagementSnapshot
+import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
 import ai.slock.android.core.model.ChannelId
@@ -371,7 +372,10 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
                             withContext(Dispatchers.IO) {
                                 SharedAuthDataSource(
                                         api = AndroidAuthApiFactory.createAuthApi(applicationContext),
-                                        sessionStore = AndroidMMKVAuthSessionStore(applicationContext)
+                                        sessionStore =
+                                                KuiklyMMKVAuthSessionStore(
+                                                        androidMMKVAuthKeyValueStore(applicationContext)
+                                                )
                                 ).completeGoogleSocialAuth(nativeResult)
                             }
                     when (result) {
@@ -1845,7 +1849,10 @@ internal class SlockKuiklyBridgeModule(
 
     private fun loadSettingsAbout(): Map<String, Any> {
         val packageInfo = appContext.packageManager.getPackageInfo(appContext.packageName, 0)
-        val session = runBlocking { AndroidMMKVAuthSessionStore(appContext).readSession() }
+        val session =
+                runBlocking {
+                    KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).readSession()
+                }
         val selectedServer =
                 session?.currentServerId?.let { serverId -> session.servers.firstOrNull { it.id == serverId } }
                         ?: session?.servers?.firstOrNull()
@@ -1904,7 +1911,9 @@ internal class SlockKuiklyBridgeModule(
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
         val changed = before.key != after.key
         if (changed) {
-            runBlocking { AndroidMMKVAuthSessionStore(appContext).clearSession() }
+            runBlocking {
+                KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()
+            }
             AndroidRealtimeBridgeManager.disconnectForSessionEnd("api_environment_changed")
             SlockDiagnosticsLogger.record(
                     "SlockDeveloper",

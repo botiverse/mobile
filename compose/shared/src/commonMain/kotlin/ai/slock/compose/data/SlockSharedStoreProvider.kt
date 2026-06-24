@@ -51,8 +51,7 @@ internal class SlockSharedStoreProvider private constructor(
                         store = KuiklyMMKVKeyValueStore(
                             pager = pager,
                             namespace = SLOCK_AUTH_SESSION_MMKV_NAMESPACE
-                        ),
-                        legacyStore = relationalStore
+                        )
                     ),
                 localDataStore = localDataStore,
                 agentDetailStore = SharedAgentDetailStore(

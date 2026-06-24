@@ -201,5 +201,25 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
                 }
             }
         }
+
+        internal fun containsKey(context: Context, key: String, mmapID: String): Boolean {
+            ensureInitialized(context)
+            return MMKV.mmkvWithID(mmapID).containsKey(key)
+        }
+
+        internal fun decodeString(context: Context, key: String, mmapID: String): String? {
+            ensureInitialized(context)
+            return MMKV.mmkvWithID(mmapID).decodeString(key, null)
+        }
+
+        internal fun encodeString(context: Context, key: String, value: String, mmapID: String) {
+            ensureInitialized(context)
+            MMKV.mmkvWithID(mmapID).encode(key, value)
+        }
+
+        internal fun removeValueForKey(context: Context, key: String, mmapID: String) {
+            ensureInitialized(context)
+            MMKV.mmkvWithID(mmapID).removeValueForKey(key)
+        }
     }
 }
