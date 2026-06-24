@@ -8,13 +8,10 @@ import ai.slock.compose.model.DirectMessageCreated
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberPresenceUpdated
-import ai.slock.compose.model.Message
-import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
-import ai.slock.compose.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -304,12 +301,6 @@ class SharedHomeStore(
             reduceState(
                 _state.value.copy(
                     content = nextContent,
-                    notifications = _state.value.notifications.withForegroundRealtimeNotification(
-                        serverId = serverId,
-                        event = event,
-                        content = nextContent,
-                        activeConversationId = _state.value.selectedConversationId
-                    ),
                     appBadgeCount = nextBadge
                 )
             )
@@ -344,34 +335,6 @@ class SharedHomeStore(
                 }
             }
         }
-    }
-
-    private fun List<SharedHomeNotification>.withForegroundRealtimeNotification(
-        serverId: ServerId,
-        event: RealtimeEvent,
-        content: SharedHomeContentState.Content,
-        activeConversationId: String?
-    ): List<SharedHomeNotification> {
-        val message = (event as? MessageNew)?.message ?: return this
-        if (message.author.id.value == content.session.user.id) return this
-        if (message.matchesHomeConversation(activeConversationId)) return this
-        val id = "foreground-message:${serverId.value}:${message.id.value}"
-        if (any { it.id == id } || id in dismissedLocalNotificationIds) return this
-        val conversation = content.snapshot.findConversationForMessage(message)
-        val notification =
-            SharedHomeNotification(
-                id = id,
-                title = conversation?.name?.takeIf { it.isNotBlank() } ?: "New message",
-                body = message.foregroundNotificationBody(),
-                actionLabel = "View",
-                targetId = conversation?.threadId?.value,
-                kind = SharedHomeNotificationKind.Info
-            )
-        diagnosticsLogger(
-            "home_foreground_notification_added serverId=${serverId.value} " +
-                "messageId=${message.id.value} targetId=${notification.targetId.orEmpty()}"
-        )
-        return (listOf(notification) + this).take(MaxForegroundHomeNotifications)
     }
 
     private suspend fun setHomeSurfaceVisible(visible: Boolean) {
@@ -1428,43 +1391,6 @@ private data class PresenceProjection(
     val snapshot: HomeSnapshot,
     val changedCount: Int
 )
-
-private const val MaxForegroundHomeNotifications = 5
-
-private fun HomeSnapshot.findConversationForMessage(message: Message): ConversationSummary? {
-    val candidates = channels + directMessages
-    return candidates.firstOrNull { conversation ->
-        val streamChannelId = conversation.messageStreamChannelId().value
-        streamChannelId == message.channelId?.value ||
-            streamChannelId == message.threadChannelId?.value ||
-            conversation.threadId.value == message.threadId.value ||
-            conversation.threadId.value == message.channelId?.value ||
-            conversation.threadId.value == message.threadChannelId?.value
-    }
-}
-
-private fun Message.matchesHomeConversation(conversationId: String?): Boolean {
-    if (conversationId.isNullOrBlank()) return false
-    return threadId.value == conversationId ||
-        channelId?.value == conversationId ||
-        threadChannelId?.value == conversationId
-}
-
-private fun Message.foregroundNotificationBody(maxLength: Int = 140): String {
-    val sender = author.displayName.ifBlank { author.handle.ifBlank { "Someone" } }
-    val preview =
-        body.trim()
-            .replace(Regex("\\s+"), " ")
-            .ifBlank { "Sent a new message." }
-            .let { text ->
-                if (text.length <= maxLength) {
-                    text
-                } else {
-                    text.take(maxLength - 1).trimEnd() + "..."
-                }
-            }
-    return "$sender: $preview"
-}
 
 private fun List<ConversationSummary>.withPresenceEvents(
     events: Collection<MemberPresenceUpdated>
