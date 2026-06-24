@@ -1962,19 +1962,26 @@ internal class SharedThreadStore(
             dataSource.withKnownMarkdownChannelNames(
                 dataSource.withConversationHeaderFallback(initialPayload)
             ).withoutTransientLocalSendingMessages()
+        val routeIdentity = headerResolvedInitialPayload.resolveThreadRouteIdentity()
         dataSource.cachePayload(headerResolvedInitialPayload)
-        val threadId = headerResolvedInitialPayload.sourceThreadId?.takeIf { it.isNotBlank() }
+        val threadId = routeIdentity.timelineKey
         val cached =
             threadId
                 ?.let(dataSource::cachedPayload)
+                ?.takeIf { routeIdentity.canRenderTimelineCandidates }
                 ?.takeIf { it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) }
                 ?.withRouteContext(headerResolvedInitialPayload)
         val current =
-            _state.value.payload.takeIf {
-                it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) && it.hasRenderableThreadContent()
+            if (routeIdentity.canRenderTimelineCandidates) {
+                _state.value.payload.takeIf {
+                    it.isUsableCachedPayloadForRoute(headerResolvedInitialPayload) && it.hasRenderableThreadContent()
+                }
+            } else {
+                null
             }
         val shouldReadEarlyPersistentCache =
             threadId != null &&
+                routeIdentity.canRenderTimelineCandidates &&
                 cached == null &&
                 current == null &&
                 headerResolvedInitialPayload.shouldReadPersistentCandidateBeforeFirstFrame()
@@ -2023,6 +2030,7 @@ internal class SharedThreadStore(
         }
         if (
             threadId != null &&
+            routeIdentity.canRenderTimelineCandidates &&
             cached == null &&
             current == null &&
             earlyPersistentCached == null &&

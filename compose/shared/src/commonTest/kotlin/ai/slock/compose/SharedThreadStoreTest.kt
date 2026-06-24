@@ -114,6 +114,52 @@ import kotlin.test.assertTrue
 
 class SharedThreadStoreTest {
     @Test
+    fun threadRouteIdentitySeparatesUnresolvedReplyParentFromResolvedTimeline() {
+        val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
+        val resolved = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
+
+        assertEquals("reply-parent:channel-1:m1", unresolved.instanceKey)
+        assertNull(unresolved.timelineKey)
+        assertFalse(unresolved.canRenderTimelineCandidates)
+        assertEquals("reply-stream:thread-m1", resolved.instanceKey)
+        assertEquals("thread-m1", resolved.timelineKey)
+        assertTrue(resolved.canRenderTimelineCandidates)
+    }
+
+    @Test
+    fun unresolvedReplyStartDoesNotRenderPreviousResolvedReplyTimeline() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val resolvedRoute = replyPayload(parentMessageId = "m1", threadId = "thread-m1")
+        dataSource.cachePayload(
+            contentPayloadForRoute(
+                base = resolvedRoute,
+                body = "old resolved reply body",
+                id = "reply-old",
+                channelId = "thread-m1"
+            )
+        )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(resolvedRoute))
+        assertEquals("old resolved reply body", store.state.value.payload.messages.single().body)
+
+        store.accept(SharedThreadIntent.Start(unresolvedReplyPayload(parentMessageId = "m1")))
+
+        val payload = store.state.value.payload
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel-1", payload.parentChannelId)
+        assertEquals("m1", payload.parentMessageId)
+        assertTrue(payload.messages.isEmpty())
+        scope.cancel()
+    }
+
+    @Test
     fun cachedThreadPayloadSurvivesVisibleFetchFailure() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
@@ -4906,6 +4952,21 @@ class SharedThreadStoreTest {
             surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
             sourceThreadId = threadId,
             streamChannelId = threadId,
+            parentChannelId = "channel-1",
+            parentMessageId = parentMessageId,
+            originParentMessageId = parentMessageId,
+            title = ThreadReplyPageTitle,
+            subtitle = "#general",
+            showModeTabs = false,
+            showReplyActions = false
+        )
+
+    private fun unresolvedReplyPayload(parentMessageId: String): KuiklyThreadScreenPayload =
+        basePayload().copy(
+            instanceId = "shared-shell-thread-pending-$parentMessageId",
+            surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
+            sourceThreadId = null,
+            streamChannelId = null,
             parentChannelId = "channel-1",
             parentMessageId = parentMessageId,
             originParentMessageId = parentMessageId,

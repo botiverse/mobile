@@ -2011,8 +2011,11 @@ internal fun SharedThreadRouteContent(
 ) {
     val pager = LocalActivity.current.getPager() as Pager
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
+    val initialRouteIdentity = remember(initialPayload) {
+        initialPayload.resolveThreadRouteIdentity()
+    }
     val threadViewModel: SharedThreadViewModel =
-        viewModel(key = "shared-thread-${initialPayload.sourceThreadId ?: initialPayload.instanceId}") {
+        viewModel(key = "shared-thread-${initialRouteIdentity.instanceKey}") {
             SharedThreadViewModel(dataSource, diagnosticsLogger = { bridge.log(it) })
         }
     val threadState by threadViewModel.state.collectAsState()
@@ -2082,10 +2085,13 @@ internal fun SharedThreadRouteContent(
     var lastTasksJoinResultKey by remember { mutableStateOf<String?>(null) }
     var tasksJoinStartedAt by remember { mutableStateOf<TimeMark?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    val payloadRouteIdentity = remember(payload) {
+        payload.resolveThreadRouteIdentity()
+    }
     val threadRouteKey =
-        payload.sourceThreadId
-            ?: initialPayload.sourceThreadId
-            ?: payload.instanceId.ifBlank { initialPayload.instanceId }
+        payloadRouteIdentity.timelineKey
+            ?: initialRouteIdentity.timelineKey
+            ?: payloadRouteIdentity.instanceKey
 
     LaunchedEffect(authStore, initialPayload.instanceId) {
         val session = authStore.readSession()
@@ -2099,7 +2105,7 @@ internal fun SharedThreadRouteContent(
             phase = "thread_open_start",
             routeName = "kuikly_thread",
             event = "instant",
-            threadId = initialPayload.sourceThreadId ?: initialPayload.instanceId,
+            threadId = initialRouteIdentity.timelineKey ?: initialRouteIdentity.instanceKey,
             metadata =
                 mapOf(
                     "status" to initialPayload.status.ifBlank { "unknown" },
