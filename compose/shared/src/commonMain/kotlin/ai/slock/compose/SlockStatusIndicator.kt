@@ -36,12 +36,7 @@ internal object SlockStatusIndicatorTokens {
     val AvatarSize: Dp = 11.dp
     val InlineSize: Dp = 10.dp
     val ServerUnreadSize: Dp = 10.dp
-    // #90 React parity: bump border from 1dp (`SlockStroke.Thin`) to 2dp
-    // (`SlockStroke.Default`). React `StatusDot` uses `border border-black`
-    // which Tailwind renders as 1px; with KMP's 1dp defaulting to 1.5-2x px
-    // density on most Android devices, 2dp gives the visibly heavier border
-    // owner wants (React screenshot vs Android screenshot comparison).
-    val BorderWidth: Dp = SlockStroke.Default
+    val BorderWidth: Dp = SlockStroke.Thin
     val BorderColor: Color = SlockColor.BorderBlack
 }
 

@@ -8995,7 +8995,9 @@ private fun ThreadMessageAvatar(
         SlockAvatarWithStatus(
             statusColor = status?.color,
             avatarSize = 40.dp,
-            statusSize = 10.dp,
+            // #90 React parity: bump chat thread avatar overlay status dot
+            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
+            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true
         ) {
             SlockAvatar(
@@ -9025,7 +9027,9 @@ private fun ThreadMessageStaticAvatar(
         SlockAvatarWithStatus(
             statusColor = status?.color,
             avatarSize = 40.dp,
-            statusSize = 10.dp,
+            // #90 React parity: bump chat thread avatar overlay status dot
+            // 10dp → 11dp to match React `StatusDot size="lg"` (size-[11px]).
+            statusSize = 11.dp,
             statusPulsing = status?.pulsing == true
         ) {
             SlockAvatar(
