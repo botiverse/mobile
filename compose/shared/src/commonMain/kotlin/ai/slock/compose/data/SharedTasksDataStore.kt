@@ -56,6 +56,34 @@ internal class SharedTasksDataStore {
             }
     }
 
+    fun upsertTask(serverId: String, task: TaskSummary) {
+        val normalizedServerId = serverId.normalizedTasksStoreId() ?: return
+        val taskChannelId = task.channelId?.value.normalizedTasksStoreId()
+        val taskChannelName = task.channelName.normalizedTasksChannelName()
+        val current = state.value
+        state.value =
+            current.copy(
+                serverSnapshots =
+                    current.serverSnapshots.mapValues { (snapshotServerId, snapshot) ->
+                        if (snapshotServerId == normalizedServerId) snapshot.upsert(task) else snapshot
+                    },
+                channelSnapshots =
+                    current.channelSnapshots.mapValues { (key, snapshot) ->
+                        if (
+                            key.serverId == normalizedServerId &&
+                            (
+                                (taskChannelId != null && key.channelId == taskChannelId) ||
+                                    (taskChannelName != null && key.channelName == taskChannelName)
+                                )
+                        ) {
+                            snapshot.upsert(task)
+                        } else {
+                            snapshot
+                        }
+                    }
+            )
+    }
+
     fun channelProjectionFlow(
         serverId: String?,
         channelId: String?,
@@ -103,3 +131,13 @@ private fun String?.normalizedTasksChannelName(): String? =
         ?.trim()
         ?.removePrefix("#")
         ?.takeIf { it.isNotBlank() }
+
+private fun TaskSnapshot.upsert(task: TaskSummary): TaskSnapshot {
+    val nextTasks =
+        if (tasks.any { it.id == task.id }) {
+            tasks.map { current -> if (current.id == task.id) task else current }
+        } else {
+            tasks + task
+        }
+    return copy(tasks = nextTasks, summaryCounts = nextTasks.summaryCounts())
+}
