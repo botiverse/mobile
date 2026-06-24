@@ -74,6 +74,16 @@ internal class SlockSqlDatabase(
             ?: RelationalValue.Null
 
     private fun ensureCompatibilitySchema() {
+        ensureColumn("channelEntity", "jointChannelId", "jointChannelId TEXT")
+        ensureColumn("channelEntity", "jointRole", "jointRole TEXT")
+        ensureColumn("channelEntity", "jointPeerServerId", "jointPeerServerId TEXT")
+        ensureColumn("channelEntity", "jointPeerServerName", "jointPeerServerName TEXT")
+        ensureColumn("channelEntity", "jointPeerServerSlug", "jointPeerServerSlug TEXT")
+        ensureColumn("channelEntity", "jointPeerStatus", "jointPeerStatus TEXT")
+        ensureColumn("channelEntity", "capabilities", "capabilities INTEGER NOT NULL DEFAULT 15")
+        ensureColumn("channelEntity", "updatedAtLabel", "updatedAtLabel TEXT")
+        ensureColumn("channelEntity", "lastSyncedAtMs", "lastSyncedAtMs INTEGER NOT NULL DEFAULT 0")
+
         driver.execute(
             identifier = null,
             sql =
@@ -103,6 +113,31 @@ internal class SlockSqlDatabase(
             parameters = 0
         )
     }
+
+    private fun ensureColumn(tableName: String, columnName: String, columnDefinition: String) {
+        if (hasColumn(tableName, columnName)) return
+        driver.execute(
+            identifier = null,
+            sql = "ALTER TABLE $tableName ADD COLUMN $columnDefinition",
+            parameters = 0
+        )
+    }
+
+    private fun hasColumn(tableName: String, columnName: String): Boolean =
+        driver.executeQuery(
+            identifier = null,
+            sql = "PRAGMA table_info($tableName)",
+            mapper = { cursor ->
+                var found = false
+                while (cursor.next().value) {
+                    if (cursor.getString(1) == columnName) {
+                        found = true
+                    }
+                }
+                QueryResult.Value(found)
+            },
+            parameters = 0
+        ).value
 
     companion object {
         const val DatabaseName: String = "slock_shared.db"
