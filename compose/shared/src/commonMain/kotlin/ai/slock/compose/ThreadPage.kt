@@ -6452,14 +6452,7 @@ private fun ThreadMessagesList(
                     if (isSystemMessage && actionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayMessage,
-                            highlightedMentions = highlightedMentions,
-                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
-                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
-                            performanceKey = threadMessagePerformanceKey(message.id, index),
-                            diagnosticsLogger = diagnosticsLogger,
-                            onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                            timestampLabel = payload.formatTimestampLabel(message.timestampLabel)
                         )
                     } else {
                         ThreadMessageCard(
@@ -6944,6 +6937,10 @@ private fun KuiklyThreadScreenPayload.threadInitialMessageMinHeightsPx(density: 
 }
 
 private fun KuiklyThreadMessageItem.threadInitialMessageMinHeightDp(): Dp {
+    if (isSystemMessage()) {
+        val bodyLines = body.threadInitialMarkdownLineEstimate().coerceAtMost(3)
+        return (32f + bodyLines * 16f).dp
+    }
     val bodyLines = body.threadInitialMarkdownLineEstimate()
     val bodyHeight = if (bodyLines > 0) bodyLines * 16f else 0f
     val attachmentHeight = attachments.size.coerceAtMost(2) * 44f
@@ -7305,59 +7302,31 @@ private const val ThreadOlderAutoLoadVisibleItemThreshold = 1
 private const val ThreadInitialContentHeightTolerancePx = 8
 private const val ThreadInitialMarkdownEstimatedCharsPerLine = 44
 private const val ThreadInitialMarkdownMaxEstimatedLines = 8
-private val ThreadSystemMessageTimeColor = SlockColor.TextBlack.copy(alpha = 0.4f)
 private val ThreadSystemMessageBodyColor = SlockColor.TextBlack.copy(alpha = 0.5f)
 
 @Composable
 private fun ThreadSystemMessageRow(
     message: KuiklyThreadMessageItem,
-    highlightedMentions: Set<String>,
-    timestampLabel: String,
-    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)?,
-    knownMarkdownChannelNames: Set<String>?,
-    performanceKey: String? = null,
-    diagnosticsLogger: (String) -> Unit = {},
-    onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
-    onOpenMarkdownUrl: (String) -> Unit
+    timestampLabel: String
 ) {
-    val systemBody = remember(message.body) { message.systemContentSummary() }
+    val systemBody = remember(message.body, timestampLabel) { message.collapsedSystemSummary(timestampLabel) }
     Column(
         modifier =
             Modifier.fillMaxWidth()
                 .background(SlockColor.SurfaceWhite)
                 .padding(horizontal = SlockSpacing.Md, vertical = SlockSpacing.Xs)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = timestampLabel,
-                style = SlockType.Caption.copy(color = ThreadSystemMessageTimeColor),
-                color = ThreadSystemMessageTimeColor,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.width(138.dp)
-            )
-            SlockMarkdownBody(
-                body = systemBody,
-                modifier = Modifier.weight(1f),
-                textStyle =
-                    SlockType.Body.copy(
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        color = ThreadSystemMessageBodyColor
-                    ),
-                highlightedMentions = highlightedMentions,
-                knownChannelNames = knownMarkdownChannelNames,
-                resolveTagLabel = resolveMarkdownTagLabel,
-                onOpenTag = onOpenMarkdownTag,
-                onOpenUrl = onOpenMarkdownUrl,
-                performanceKey = performanceKey,
-                performanceLogger = diagnosticsLogger
-            )
-        }
+        Text(
+            text = systemBody,
+            style =
+                SlockType.Body.copy(
+                    fontSize = 15.sp,
+                    lineHeight = 22.sp,
+                    color = ThreadSystemMessageBodyColor
+                ),
+            color = ThreadSystemMessageBodyColor,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
@@ -8934,14 +8903,7 @@ private fun ThreadOriginCard(
                     if (displayOrigin.isSystemMessage() && originActionCard == null) {
                         ThreadSystemMessageRow(
                             message = displayOrigin,
-                            highlightedMentions = highlightedMentions,
-                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel),
-                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
-                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
-                            performanceKey = threadMessagePerformanceKey(origin.id, -1),
-                            diagnosticsLogger = diagnosticsLogger,
-                            onOpenMarkdownTag = onOpenMarkdownTag,
-                            onOpenMarkdownUrl = onOpenMarkdownUrl
+                            timestampLabel = payload.formatTimestampLabel(origin.timestampLabel)
                         )
                     } else {
                         ThreadMessageCard(
