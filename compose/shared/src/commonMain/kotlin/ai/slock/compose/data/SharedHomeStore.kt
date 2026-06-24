@@ -12,6 +12,7 @@ import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
 import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.messageStreamChannelId
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
