@@ -338,6 +338,70 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun keyboardBottomAnchor_runsWhenInsetChangesAndBottomAutoAnchorAllowed() {
+        assertEquals(
+            true,
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 240f,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = 4,
+                    allowBottomAutoAnchor = true
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = 240f,
+                    nextKeyboardInsetDp = 240f,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = 4,
+                    allowBottomAutoAnchor = true
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 240f,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = 4,
+                    allowBottomAutoAnchor = false
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 240f,
+                    initialBottomAnchorReady = false,
+                    latestItemIndex = 4,
+                    allowBottomAutoAnchor = true
+                )
+            )
+        )
+        assertEquals(
+            false,
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = 0f,
+                    nextKeyboardInsetDp = 240f,
+                    initialBottomAnchorReady = true,
+                    latestItemIndex = -1,
+                    allowBottomAutoAnchor = true
+                )
+            )
+        )
+    }
+
+    @Test
     fun initialBottomAnchor_revealsOnlyAfterLatestRenderedAtBottom() {
         assertEquals(
             false,

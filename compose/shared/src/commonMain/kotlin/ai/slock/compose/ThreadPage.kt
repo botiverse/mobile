@@ -5756,7 +5756,7 @@ private fun ThreadMessagesList(
     var taskStatusMenuMessageId by remember(payload.instanceId) { mutableStateOf<String?>(null) }
     var taskStatusMenuAnchor by remember(payload.instanceId) { mutableStateOf(Offset(16f, 16f)) }
     var allowBottomAutoAnchor by remember(payload.instanceId, topAnchoredOriginContent) {
-        mutableStateOf(!topAnchoredOriginContent)
+        mutableStateOf(true)
     }
     var initialBottomAnchorReady by remember(payload.instanceId, topAnchoredOriginContent) {
         mutableStateOf(topAnchoredOriginContent)
@@ -5865,7 +5865,6 @@ private fun ThreadMessagesList(
         }
     }
     LaunchedEffect(payload.instanceId, latestItemIndex) {
-        if (topAnchoredOriginContent) return@LaunchedEffect
         snapshotFlow {
             listState.isScrollInProgress to listState.isLatestItemAtRenderedBottom(latestItemIndex)
         }
@@ -6056,15 +6055,18 @@ private fun ThreadMessagesList(
         }
     }
     LaunchedEffect(payload.instanceId, composerKeyboardInsetDp, latestItemIndex) {
-        if (topAnchoredOriginContent) return@LaunchedEffect
-        if (composerKeyboardInsetDp == lastComposerKeyboardInsetDp) {
-            return@LaunchedEffect
-        }
-        val wasAtBottom = initialBottomAnchorReady &&
-            latestItemIndex >= 0 &&
-            allowBottomAutoAnchor
+        val shouldAnchor =
+            shouldAnchorThreadKeyboardBottomOnInsetChange(
+                ThreadKeyboardBottomAnchorState(
+                    previousKeyboardInsetDp = lastComposerKeyboardInsetDp,
+                    nextKeyboardInsetDp = composerKeyboardInsetDp,
+                    initialBottomAnchorReady = initialBottomAnchorReady,
+                    latestItemIndex = latestItemIndex,
+                    allowBottomAutoAnchor = allowBottomAutoAnchor
+                )
+            )
         lastComposerKeyboardInsetDp = composerKeyboardInsetDp
-        if (!wasAtBottom) {
+        if (!shouldAnchor) {
             pendingKeyboardBottomAnchor = false
             return@LaunchedEffect
         }
@@ -6611,6 +6613,20 @@ internal fun shouldAutoCorrectThreadBottomAnchor(state: ThreadBottomAnchorCorrec
     state.allowBottomAutoAnchor &&
         !state.isScrollInProgress &&
         !state.isAtRenderedBottom
+
+internal data class ThreadKeyboardBottomAnchorState(
+    val previousKeyboardInsetDp: Float,
+    val nextKeyboardInsetDp: Float,
+    val initialBottomAnchorReady: Boolean,
+    val latestItemIndex: Int,
+    val allowBottomAutoAnchor: Boolean
+)
+
+internal fun shouldAnchorThreadKeyboardBottomOnInsetChange(state: ThreadKeyboardBottomAnchorState): Boolean =
+    state.previousKeyboardInsetDp != state.nextKeyboardInsetDp &&
+        state.initialBottomAnchorReady &&
+        state.latestItemIndex >= 0 &&
+        state.allowBottomAutoAnchor
 
 internal data class ThreadInitialBottomAnchorState(
     val canScrollToLatest: Boolean,
