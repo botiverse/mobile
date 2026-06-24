@@ -118,12 +118,37 @@ class SharedThreadStoreTest {
         val unresolved = unresolvedReplyPayload(parentMessageId = "m1").resolveThreadRouteIdentity()
         val resolved = replyPayload(parentMessageId = "m1", threadId = "thread-m1").resolveThreadRouteIdentity()
 
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, unresolved.surfaceKind)
         assertEquals("reply-parent:channel-1:m1", unresolved.instanceKey)
         assertNull(unresolved.timelineKey)
         assertFalse(unresolved.canRenderTimelineCandidates)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, resolved.surfaceKind)
         assertEquals("reply-stream:thread-m1", resolved.instanceKey)
         assertEquals("thread-m1", resolved.timelineKey)
         assertTrue(resolved.canRenderTimelineCandidates)
+    }
+
+    @Test
+    fun threadRouteIdentityKeepsChannelAndDirectMessageSurfacesTyped() {
+        val channel =
+            basePayload().copy(
+                sourceThreadId = "same-stream",
+                streamChannelId = "same-stream",
+                surfaceKind = KuiklyThreadSurfaceKind.Channel
+            ).resolveThreadRouteIdentity()
+        val dm =
+            basePayload().copy(
+                sourceThreadId = "same-stream",
+                streamChannelId = "same-stream",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage
+            ).resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, channel.surfaceKind)
+        assertEquals("channel:same-stream", channel.instanceKey)
+        assertEquals("same-stream", channel.timelineKey)
+        assertEquals(KuiklyThreadSurfaceKind.DirectMessage, dm.surfaceKind)
+        assertEquals("dm:same-stream", dm.instanceKey)
+        assertEquals("same-stream", dm.timelineKey)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 internal data class ThreadRouteIdentity(
+    val surfaceKind: String,
     val instanceKey: String,
     val timelineKey: String?,
     val canRenderTimelineCandidates: Boolean
@@ -22,18 +23,21 @@ internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRoute
         when {
             resolvedStream != null ->
                 ThreadRouteIdentity(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     instanceKey = "reply-stream:$resolvedStream",
                     timelineKey = resolvedStream,
                     canRenderTimelineCandidates = true
                 )
             parentChannel != null && parentMessage != null ->
                 ThreadRouteIdentity(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     instanceKey = "reply-parent:$parentChannel:$parentMessage",
                     timelineKey = null,
                     canRenderTimelineCandidates = false
                 )
             else ->
                 ThreadRouteIdentity(
+                    surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
                     instanceKey = instanceId.nonBlank() ?: "reply-pending",
                     timelineKey = null,
                     canRenderTimelineCandidates = false
@@ -42,6 +46,7 @@ internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRoute
     } else {
         val timelineKey = streamCandidate
         ThreadRouteIdentity(
+            surfaceKind = surface,
             instanceKey = timelineKey?.let { "$surface:$it" } ?: instanceId.nonBlank() ?: "$surface:pending",
             timelineKey = timelineKey,
             canRenderTimelineCandidates = timelineKey != null
