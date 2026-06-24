@@ -682,7 +682,7 @@ fun SlockStructuralHomeShell(
                                     onClick = if (sidebarInteractionsEnabled) onInboxClick else null
                                 )
                             }
-                            item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = savedCount.takeIf { it > 0 }?.toString(), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
+                            item { SidebarActionRow(SlockLucideIconName.Bookmark, labels.saved, selected = sidebarSelection.topAction == SlockHomeSidebarTopSelection.Saved, modifier = Modifier.padding(horizontal = HomeListHorizontalPadding), trailingText = formatHomeSavedCount(savedCount), onClick = if (sidebarInteractionsEnabled) onSavedClick else null) }
                             if (displayedPinned.isNotEmpty()) {
                             item { Spacer(Modifier.height(SlockSpacing.Xs)) }
                             item {
@@ -1758,6 +1758,13 @@ private fun SidebarActionRow(icon: SlockLucideIconName, label: String, modifier:
         }
     }
 }
+
+internal fun formatHomeSavedCount(savedCount: Int): String? =
+    when {
+        savedCount <= 0 -> null
+        savedCount > 100 -> "99+"
+        else -> savedCount.toString()
+    }
 
 @Composable
 private fun SidebarTrailingNumberText(text: String, color: Color) {

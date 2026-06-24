@@ -67,6 +67,24 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun openSavedRequestsHundredItemsForHomeCount() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val saved = FakeSavedRepository(items = listOf(inboxItem("message-1")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = saved,
+                searchRepository = FakeSearchRepository(),
+                scope = scope
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(listOf(100), saved.loadInitialLimits)
+        scope.cancel()
+    }
+
+    @Test
     fun openSavedShowsRefreshingAffordanceDuringLoadedReentry() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val saved = DeferredSavedRepository()
@@ -395,9 +413,11 @@ class SharedHomeSearchSavedStoreTest {
     ) : SavedRepository {
         var unsavedMessageId: MessageId? = null
         var loadInitialCalls: Int = 0
+        val loadInitialLimits = mutableListOf<Int>()
 
         override suspend fun loadInitial(serverId: ServerId, limit: Int): DataResult<SavedSnapshot> {
             loadInitialCalls++
+            loadInitialLimits += limit
             return DataResult.Content(SavedSnapshot(server = testServer(serverId), items = items))
         }
 

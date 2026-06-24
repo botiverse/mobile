@@ -87,6 +87,15 @@ class SlockHomeComponentsTest {
     }
 
     @Test
+    fun homeSavedCountFormatsOverflow() {
+        assertEquals(null, formatHomeSavedCount(0))
+        assertEquals(null, formatHomeSavedCount(-1))
+        assertEquals("20", formatHomeSavedCount(20))
+        assertEquals("100", formatHomeSavedCount(100))
+        assertEquals("99+", formatHomeSavedCount(101))
+    }
+
+    @Test
     fun homeSidebarSelectionPrefersTopActionOverConversation() {
         assertEquals(
             SlockHomeSidebarSelection(topAction = SlockHomeSidebarTopSelection.Activity),

@@ -19,7 +19,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-private const val HomePanelPageSize = 30
+private const val HomeSavedPageSize = 100
+private const val HomeSearchPageSize = 30
 private const val SearchDebounceMillis = 250L
 
 class SharedHomeSearchSavedStore(
@@ -221,9 +222,9 @@ class SharedHomeSearchSavedStore(
                     val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val result =
                         if (refresh) {
-                            savedRepository.loadInitial(serverId, HomePanelPageSize)
+                            savedRepository.loadInitial(serverId, HomeSavedPageSize)
                         } else {
-                            savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomePanelPageSize)
+                            savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomeSavedPageSize)
                         }
                     applySavedResult(result, append = !refresh, senderProfiles = senderProfiles)
                 } catch (cancellation: CancellationException) {
@@ -303,7 +304,7 @@ class SharedHomeSearchSavedStore(
                             serverId = serverId,
                             query = previous.query,
                             offset = if (refresh) 0 else previous.nextOffset ?: previous.items.size,
-                            limit = HomePanelPageSize,
+                            limit = HomeSearchPageSize,
                             options =
                                 SearchQueryOptions(
                                     sort = previous.sort,
