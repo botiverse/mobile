@@ -1222,26 +1222,27 @@ private fun SlockAppShellContent() {
                 warningLogger = { message -> bridge.log("kuikly_network $message") }
             )
         }
-    val homeDataSource =
-        remember {
-            SharedHomeDataSource(
-                sessionStore = authStore,
-                api = NetworkSlockHomeApi(appShellNetworkClient),
-                announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
-                computersApi = SlockComputersNetworkApi(appShellNetworkClient),
-                localWriteThrough = localWriteThrough,
-                parseHome = { payload, session ->
-                    parseSlockHome(payload, session) { message -> bridge.log(message) }
-                },
-                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
-            )
-        }
     val memberRepository =
         remember {
             RealMemberRepository(
                 sessionStore = authStore,
                 networkClient = appShellNetworkClient,
                 logger = { message -> bridge.log("app_shell_member_repository $message") }
+            )
+        }
+    val homeDataSource =
+        remember(memberRepository) {
+            SharedHomeDataSource(
+                sessionStore = authStore,
+                api = NetworkSlockHomeApi(appShellNetworkClient),
+                announcementsApi = NetworkSlockAnnouncementsRemindersApi(appShellNetworkClient),
+                computersApi = SlockComputersNetworkApi(appShellNetworkClient),
+                memberRepository = memberRepository,
+                localWriteThrough = localWriteThrough,
+                parseHome = { payload, session ->
+                    parseSlockHome(payload, session) { message -> bridge.log(message) }
+                },
+                diagnosticsLogger = { message -> bridge.log("shared_home $message") }
             )
         }
     val channelRepository =

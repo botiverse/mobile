@@ -3,6 +3,7 @@ package ai.slock.compose.data
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -39,6 +40,76 @@ class HomeDataSourceTest {
 
         assertEquals(1, (result as DataResult.Content).data.channels.size)
         assertEquals(1, localStore.readHome(ServerId("server-1"))?.channels?.size)
+    }
+
+    @Test
+    fun loadHomeEnrichesAgentDirectMessageStatusesFromMembers() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val agentDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-agent-1"),
+                channelId = ChannelId("dm-agent-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Agent One",
+                directMessagePeerType = "agent",
+                presence = Presence.Offline,
+                presenceMemberId = MemberId("agent-1")
+            )
+        val humanDm =
+            ConversationSummary(
+                threadId = ThreadId("dm-human-1"),
+                channelId = ChannelId("dm-human-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "Human One",
+                directMessagePeerType = "user",
+                presence = Presence.Offline,
+                presenceMemberId = MemberId("human-1")
+            )
+        val source =
+            SharedHomeDataSource(
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                api = FakeHomeApi(),
+                memberRepository =
+                    FakeMemberRepository(
+                        members =
+                            listOf(
+                                MemberProfile(
+                                    id = MemberId("agent-1"),
+                                    displayName = "Agent One",
+                                    handle = "agent-one",
+                                    kind = MemberKind.Agent,
+                                    presence = Presence.Active,
+                                    agentStatus = AgentStatus.Working
+                                ),
+                                MemberProfile(
+                                    id = MemberId("human-1"),
+                                    displayName = "Human One",
+                                    handle = "human-one",
+                                    kind = MemberKind.Human,
+                                    presence = Presence.Active
+                                )
+                            )
+                    ),
+                localWriteThrough = ComposeLocalWriteThrough(localStore),
+                parseHome = { _, session ->
+                    DataResult.Content(
+                        sampleHome(ServerId(session.currentServerId!!)).copy(
+                            directMessages = listOf(agentDm, humanDm)
+                        )
+                    )
+                }
+            )
+
+        val result = source.loadHome()
+
+        val dms = (result as DataResult.Content).data.directMessages
+        assertEquals(AgentStatus.Working, dms[0].agentStatus)
+        assertEquals(Presence.Active, dms[0].presence)
+        assertEquals(null, dms[1].agentStatus)
+        assertEquals(Presence.Offline, dms[1].presence)
+        val cached = localStore.readHome(ServerId("server-1"))?.directMessages.orEmpty()
+        assertEquals(AgentStatus.Working, cached[0].agentStatus)
+        assertEquals(Presence.Active, cached[0].presence)
     }
 
     @Test
@@ -302,6 +373,90 @@ class HomeDataSourceTest {
                 }
             return HomeNetworkResponse(code = 200, bodyText = body)
         }
+    }
+
+    private class FakeMemberRepository(
+        private val members: List<MemberProfile>
+    ) : MemberRepository {
+        override suspend fun getMembers(
+            priority: DataRequestPriority,
+            serverId: ServerId
+        ): DataResult<MemberSnapshot> =
+            DataResult.Content(MemberSnapshot(ServerSummary(id = serverId, name = "Slock"), members))
+
+        override suspend fun getMemberProfile(priority: DataRequestPriority, memberId: MemberId): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun updateAgentProfile(priority: DataRequestPriority, request: AgentProfileUpdateRequest): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun uploadAgentAvatar(priority: DataRequestPriority, request: AgentAvatarUploadRequest): DataResult<MemberProfile> =
+            error("unused")
+
+        override suspend fun getAgentDetail(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDetailSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentDirectMessages(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentDmSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentReminders(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentReminderSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentActivity(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentActivitySnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaces(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentWorkspaceSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaceTree(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentWorkspaceTreeSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentWorkspaceChildren(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            dirPath: String
+        ): DataResult<AgentWorkspaceChildrenSnapshot> =
+            error("unused")
+
+        override suspend fun readAgentWorkspaceFile(
+            priority: DataRequestPriority,
+            agentId: MemberId,
+            path: String
+        ): DataResult<AgentWorkspaceFilePreviewSnapshot> =
+            error("unused")
+
+        override suspend fun getAgentSkills(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentSkillsSnapshot> =
+            error("unused")
+
+        override suspend fun startAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun stopAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun resetAgent(priority: DataRequestPriority, request: AgentResetRequest): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun deleteAgent(priority: DataRequestPriority, agentId: MemberId): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun assignAgentMachine(
+            priority: DataRequestPriority,
+            request: AgentMachineAssignmentRequest
+        ): DataResult<AgentLifecycleActionResult> =
+            error("unused")
+
+        override suspend fun getChannelMembers(priority: DataRequestPriority, channelId: ChannelId): DataResult<ChannelMemberSnapshot> =
+            error("unused")
+
+        override suspend fun addChannelMember(priority: DataRequestPriority, request: AddChannelMemberRequest): DataResult<ChannelMemberActionResult> =
+            error("unused")
+
+        override suspend fun removeChannelMember(
+            priority: DataRequestPriority,
+            request: RemoveChannelMemberRequest
+        ): DataResult<ChannelMemberActionResult> =
+            error("unused")
     }
 
     private fun sampleSession(): StoredAuthSession =
