@@ -175,6 +175,8 @@ import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
+import ai.slock.compose.data.SharedConversationDirectoryProjection
+import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
 import ai.slock.compose.data.SharedHomeSavedStateCache
 import ai.slock.compose.data.SharedHomeSearchPanelState
@@ -395,6 +397,8 @@ private const val AUTH_CHOOSE_SERVER_FROM_SHELL = "slockChooseServerFromShell"
 
 private const val HomeSurfaceVisibleResumeDelayMs = 48L
 private val EmptyComposerDraftRecordsFlow = MutableStateFlow(emptySet<SharedThreadComposerDraftRecord>())
+private val EmptyConversationDirectoryProjectionFlow =
+    MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>())
 private const val AppShellLifecycleAction = "appLifecycle"
 private const val AppShellLifecycleResume = "resume"
 private const val AppShellLifecycleShow = "show"
@@ -2293,6 +2297,7 @@ private fun SlockAppShellContent() {
                             state = homeState,
                             active = active,
                             draftPersistSlice = composerDraftPersistSlice,
+                            conversationDirectoryStore = sharedStores.conversationDirectoryStore,
                             activityUnreadCount = homeActivityState.totalUnreadCount,
                             activityTotalCount = homeActivityState.totalCount,
                             savedCount = homeSearchSavedState.saved.totalCount,
@@ -8914,6 +8919,7 @@ private fun SharedHomeScreen(
     state: SharedHomeState,
     active: Boolean,
     draftPersistSlice: SharedThreadComposerDraftPersistSlice? = null,
+    conversationDirectoryStore: SharedConversationDirectoryStore? = null,
     activityUnreadCount: Int = 0,
     activityTotalCount: Int = 0,
     savedCount: Int = 0,
@@ -8994,6 +9000,17 @@ private fun SharedHomeScreen(
                         SharedThreadComposerDraftProjection.Empty
                     }
                 }
+            val conversationDirectoryIds =
+                remember(snapshot.channels, snapshot.directMessages) {
+                    (snapshot.channels + snapshot.directMessages).map { it.threadId.value }
+                }
+            val conversationDirectoryFlow =
+                remember(conversationDirectoryStore, snapshot.server.id, conversationDirectoryIds) {
+                    conversationDirectoryStore
+                        ?.projectionFlow(snapshot.server.id, conversationDirectoryIds)
+                        ?: EmptyConversationDirectoryProjectionFlow
+                }
+            val conversationDirectoryProjections by conversationDirectoryFlow.collectAsState(emptyMap())
             val servers =
                 remember(current.session.servers, snapshot.server, state.serverUnreadCounts) {
                     current.session.servers.map { server ->
@@ -9007,15 +9024,21 @@ private fun SharedHomeScreen(
                     }.ifEmpty { listOf(snapshot.server.toSharedSwitcherItem(state.serverUnreadCounts)) }
                 }
             val channelItems =
-                remember(snapshot.channels, draftProjection) {
+                remember(snapshot.channels, draftProjection, conversationDirectoryProjections) {
                     snapshot.channels.map { conversation ->
-                        conversation.toSharedHomeConversationItem(draftProjection)
+                        conversation.toSharedHomeConversationItem(
+                            draftProjection = draftProjection,
+                            directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
+                        )
                     }
                 }
             val directMessageItems =
-                remember(snapshot.directMessages, draftProjection) {
+                remember(snapshot.directMessages, draftProjection, conversationDirectoryProjections) {
                     snapshot.directMessages.map { conversation ->
-                        conversation.toSharedHomeConversationItem(draftProjection)
+                        conversation.toSharedHomeConversationItem(
+                            draftProjection = draftProjection,
+                            directoryProjection = conversationDirectoryProjections[conversation.threadId.value]
+                        )
                     }
                 }
             val notificationItems =
@@ -11728,26 +11751,27 @@ private fun ServerSummary.toSharedSwitcherItem(serverUnreadCounts: Map<String, I
         unreadCount = serverUnreadCounts[id.value] ?: unreadCount
     )
 
-private fun ConversationSummary.toSharedHomeConversationItem(
-    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty
+internal fun ConversationSummary.toSharedHomeConversationItem(
+    draftProjection: SharedThreadComposerDraftProjection = SharedThreadComposerDraftProjection.Empty,
+    directoryProjection: SharedConversationDirectoryProjection? = null
 ): SlockHomeConversationItem =
     SlockHomeConversationItem(
         id = threadId.value,
-        name = name,
+        name = directoryProjection?.title ?: name,
         kind = kind.name.lowercase(),
-        channelType = channelType?.takeIf { it.isNotBlank() },
+        channelType = directoryProjection?.channelKind?.takeIf { it.isNotBlank() } ?: channelType?.takeIf { it.isNotBlank() },
         unreadCount = unreadCount,
         lastMessageAt = lastMessageAt,
-        description = subtitle?.takeIf { it.isNotBlank() },
+        description = directoryProjection?.subtitle ?: subtitle?.takeIf { it.isNotBlank() },
         avatarUrl = avatarUrl,
-        avatarWireValue = avatar?.wireValue ?: avatarUrl,
+        avatarWireValue = directoryProjection?.avatarWireValue ?: avatar?.wireValue ?: avatarUrl,
         gravatarUrl = gravatarUrl,
         peerType = directMessagePeerType?.takeIf { it.isNotBlank() },
-        presence = presence.toSharedPresence(),
-        agentStatus = agentStatus?.name,
+        presence = (directoryProjection?.presence ?: presence).toSharedPresence(),
+        agentStatus = (directoryProjection?.agentStatus ?: agentStatus)?.name,
         hasDraft = draftProjection.hasRootDraft(threadId.value),
-        joined = joined && permissions.canRead,
-        archived = archived
+        joined = directoryProjection?.joined ?: (joined && permissions.canRead),
+        archived = directoryProjection?.archived ?: archived
     )
 
 private fun Presence?.toSharedPresence(): SlockPresence? =

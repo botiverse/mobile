@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.data.HomeSnapshot
 import ai.slock.compose.data.SharedHomeContentState
 import ai.slock.compose.data.SharedHomeState
@@ -7,11 +8,16 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -213,6 +219,61 @@ class SlockHomeComponentsTest {
 
         assertTrue(projected.hasRootDraft("channel-1"))
         assertFalse(projected.hasRootDraft("reply-thread-1"))
+    }
+
+    @Test
+    fun homeConversationItemUsesDirectoryProjectionForDisplayFields() {
+        val summary =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                channelType = "channel",
+                kind = ConversationKind.Channel,
+                name = "stale-name",
+                subtitle = "stale-subtitle",
+                unreadCount = 7,
+                avatarUrl = "https://example.invalid/stale.png",
+                presence = Presence.Offline,
+                joined = false,
+                archived = false
+            )
+        val directoryProjection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "private",
+                title = "fresh-name",
+                subtitle = "fresh-subtitle",
+                avatarWireValue = "pixel:fresh",
+                presence = Presence.Active,
+                joined = true,
+                archived = true
+            )
+        val draftProjection =
+            setOf(
+                SharedThreadComposerDraftRecord(
+                    key = "send=channel-1|parent=_|mention=channel-1",
+                    sendChannelId = "channel-1"
+                )
+            ).toSharedThreadComposerDraftProjection()
+
+        val item =
+            summary.toSharedHomeConversationItem(
+                draftProjection = draftProjection,
+                directoryProjection = directoryProjection
+            )
+
+        assertEquals("fresh-name", item.name)
+        assertEquals("private", item.channelType)
+        assertEquals(7, item.unreadCount)
+        assertEquals("fresh-subtitle", item.description)
+        assertEquals("pixel:fresh", item.avatarWireValue)
+        assertEquals(SlockPresence.Online, item.presence)
+        assertTrue(item.hasDraft)
+        assertTrue(item.joined)
+        assertTrue(item.archived)
     }
 
     @Test
