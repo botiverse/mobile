@@ -2,6 +2,7 @@ package ai.slock.compose
 
 import ai.slock.compose.components.SegmentedControl
 import ai.slock.compose.components.SegmentedControlOption
+import ai.slock.compose.components.SlockAnchorPlacement
 import ai.slock.compose.components.SlockAnchoredMetaChip
 import ai.slock.compose.components.SlockAnchoredToolbarChip
 import ai.slock.compose.components.SlockBrutalActionButton
@@ -647,6 +648,9 @@ private fun SharedTasksLoadedBodyContent(
                 },
                 selectedId = task.status.name,
                 uppercaseLabels = false,
+                horizontalOffset = 0.dp,
+                verticalOffset = 0.dp,
+                verticalPlacement = SlockFloatingVerticalPlacement.Below,
                 onDismiss = { statusMenuTask = null },
                 onSelect = { id ->
                     val next = TaskStatus.values().firstOrNull { it.name == id }
@@ -1059,7 +1063,8 @@ private fun SharedTaskCard(
                     label = if (updating) "Updating" else task.status.label.uppercase(),
                     iconName = task.status.iconName,
                     color = task.status.color,
-                    onClick = if (updating) null else onStatusBadgeClick
+                    onClick = if (updating) null else onStatusBadgeClick,
+                    anchorPlacement = SlockAnchorPlacement.BottomEnd
                 )
             }
         }

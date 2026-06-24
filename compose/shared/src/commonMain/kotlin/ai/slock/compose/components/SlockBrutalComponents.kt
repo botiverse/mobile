@@ -78,6 +78,24 @@ internal data class SegmentedControlOption(
     val count: Int? = null
 )
 
+internal enum class SlockAnchorPlacement {
+    Tap,
+    BottomStart,
+    BottomEnd
+}
+
+internal fun slockAnchoredChipGeometryAnchor(
+    root: Offset,
+    width: Float,
+    height: Float,
+    placement: SlockAnchorPlacement
+): Offset =
+    when (placement) {
+        SlockAnchorPlacement.Tap -> root
+        SlockAnchorPlacement.BottomStart -> Offset(root.x, root.y + height)
+        SlockAnchorPlacement.BottomEnd -> Offset(root.x + width, root.y + height)
+    }
+
 @Composable
 internal fun SlockAnchoredMetaChip(
     label: String,
@@ -88,18 +106,46 @@ internal fun SlockAnchoredMetaChip(
     iconSize: Dp = 10.dp,
     trailingIconName: SlockLucideIconName? = null,
     trailingIconSize: Dp = iconSize,
-    pressFeedback: Boolean = onClick != null
+    pressFeedback: Boolean = onClick != null,
+    anchorPlacement: SlockAnchorPlacement = SlockAnchorPlacement.Tap
 ) {
+    val geometryAnchor = remember { SlockMutableOffsetRef() }
+    val chipModifier =
+        modifier
+            .heightIn(min = 20.dp)
+            .border(SlockStroke.Thin, SlockColor.BorderBlack)
+            .background(color)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
+            .let { base ->
+                if (anchorPlacement == SlockAnchorPlacement.Tap) {
+                    base
+                } else {
+                    base.onGloballyPositioned { coordinates ->
+                        val root = coordinates.positionInRoot()
+                        geometryAnchor.update(
+                            slockAnchoredChipGeometryAnchor(
+                                root = root,
+                                width = coordinates.size.width.toFloat(),
+                                height = coordinates.size.height.toFloat(),
+                                placement = anchorPlacement
+                            )
+                        )
+                    }
+                }
+            }
     SlockAnchorButton(
-        onClick2 = { anchor -> onClick?.invoke(anchor) },
+        onClick2 = { tapAnchor ->
+            val anchor =
+                if (anchorPlacement == SlockAnchorPlacement.Tap || !geometryAnchor.hasValue) {
+                    tapAnchor
+                } else {
+                    geometryAnchor.value
+                }
+            onClick?.invoke(anchor)
+        },
         enabled = onClick != null,
         pressFeedback = pressFeedback,
-        modifier =
-            modifier
-                .heightIn(min = 20.dp)
-                .border(SlockStroke.Thin, SlockColor.BorderBlack)
-                .background(color)
-                .padding(horizontal = 6.dp, vertical = 2.dp)
+        modifier = chipModifier
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
