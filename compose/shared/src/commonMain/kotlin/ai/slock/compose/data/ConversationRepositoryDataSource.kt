@@ -10,6 +10,9 @@ import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
+import ai.slock.compose.model.conversationSafeDisplayTitleOrNull
+import ai.slock.compose.model.headerIdentityIds
+import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.parentChannelIdOrNull
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
@@ -921,7 +924,9 @@ private fun ConversationSummary.withThreadAnchor(
 ): ConversationSummary {
     fun ConversationSummary.withParentNameFallback(): ConversationSummary {
         val fallbackName =
-            parentChannelName?.takeIf { name.isBlank() || name == threadId.value || name == channelId?.value }
+            parentChannelName
+                ?.let { candidate -> conversationSafeDisplayTitleOrNull(candidate, headerIdentityIds()) }
+                ?.takeIf { nameIsBlankOrIdentity() }
                 ?: return this
         return copy(name = fallbackName)
     }

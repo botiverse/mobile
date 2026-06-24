@@ -1223,6 +1223,25 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun canonicalConversationContextUsesNormalizedChannelTitle() {
+        val context =
+            SharedThreadHeaderContextStore.conversationContext(
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        kind = ConversationKind.Channel,
+                        name = "#对话流专修"
+                    ),
+                originMessage = null,
+                parentMessageId = null
+            )
+
+        assertEquals("对话流专修", context.title)
+    }
+
+    @Test
     fun appShellActivityThreadItemOpensReplyThreadChrome() {
         val request =
             InboxItem(

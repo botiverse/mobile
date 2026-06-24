@@ -1,6 +1,7 @@
 package ai.slock.compose
 
 import ai.slock.compose.model.ConversationSummary
+import ai.slock.compose.model.safeDisplayNameOrNull
 
 internal data class SharedThreadHeaderContext(
     val title: String,
@@ -102,19 +103,8 @@ internal object SharedThreadHeaderContextStore {
         conversation: ConversationSummary,
         surfaceKind: String
     ): String =
-        threadHeaderSafeTitle(
-            raw = conversation.name,
-            surfaceKind = surfaceKind,
-            identityIds = conversation.headerIdentityIds()
-        )
+        conversation.safeDisplayNameOrNull() ?: threadHeaderFallbackTitle(surfaceKind)
 }
-
-private fun ConversationSummary.headerIdentityIds(): Set<String> =
-    listOfNotNull(
-        threadId.value,
-        channelId?.value,
-        thread?.streamChannelId?.value
-    ).filter { it.isNotBlank() }.toSet()
 
 internal fun KuiklyThreadScreenPayload.withHeaderContext(
     context: SharedThreadHeaderContext

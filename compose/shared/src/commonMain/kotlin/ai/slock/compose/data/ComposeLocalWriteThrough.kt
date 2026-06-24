@@ -23,7 +23,9 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.explicitMessageStreamChannelId
 import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.resolveMergedAvatarSlot
+import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.compose.model.withTitleFallback
 
@@ -660,17 +662,11 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
             ?: storedConversation?.thread?.parentChannelId
             ?: fallbackHeader?.thread?.parentChannelId
     if (parentMessage != null && resolvedParentChannelId != null) {
-        val fallbackName =
-            fallbackHeader?.name?.takeIf {
-                it.isNotBlank() &&
-                    it != fallbackHeader.threadId.value &&
-                    it != fallbackHeader.channelId?.value
-            }
+        val fallbackName = fallbackHeader?.safeDisplayNameOrNull()
         val nameLooksLikeIdentity =
-            name.isBlank() ||
-                name == threadId.value ||
-                name == channelId?.value ||
-                name == streamChannelId?.value
+            nameIsBlankOrIdentity(
+                additionalIdentityIds = setOfNotNull(streamChannelId?.value)
+            )
         return copy(
             threadId = threadIdentity(resolvedParentChannelId, parentMessage.id),
             channelId = resolvedParentChannelId,

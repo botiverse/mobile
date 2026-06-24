@@ -1,10 +1,53 @@
 package ai.slock.compose.model
 
 // ConversationSummary extensions
+private val ConversationTitleUuidRegex =
+    Regex("^[A-Fa-f0-9]{8}(?:-[A-Fa-f0-9]{4}){3}-[A-Fa-f0-9]{12}$")
+private val ConversationTitleShortIdRegex = Regex("^[A-Fa-f0-9]{8}$")
+
+fun conversationDisplayTitleCandidate(raw: String?): String? =
+    raw
+        ?.trim()
+        ?.removePrefix("#")
+        ?.removePrefix("@")
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+
+fun conversationIdentityLikeTitle(
+    title: String,
+    identityIds: Set<String> = emptySet()
+): Boolean {
+    val candidate = conversationDisplayTitleCandidate(title) ?: return false
+    if (ConversationTitleUuidRegex.matches(candidate) || ConversationTitleShortIdRegex.matches(candidate)) return true
+    return identityIds.any { id -> id.isNotBlank() && candidate.equals(id.trim(), ignoreCase = true) }
+}
+
+fun conversationSafeDisplayTitleOrNull(
+    raw: String?,
+    identityIds: Set<String> = emptySet()
+): String? =
+    conversationDisplayTitleCandidate(raw)
+        ?.takeUnless { candidate -> conversationIdentityLikeTitle(candidate, identityIds) }
+
+fun ConversationSummary.headerIdentityIds(): Set<String> =
+    listOfNotNull(
+        threadId.value,
+        channelId?.value,
+        thread?.streamChannelId?.value
+    ).filter { it.isNotBlank() }.toSet()
+
+fun ConversationSummary.safeDisplayNameOrNull(): String? =
+    conversationSafeDisplayTitleOrNull(name, headerIdentityIds())
+
+fun ConversationSummary.nameIsBlankOrIdentity(
+    rawName: String = name,
+    additionalIdentityIds: Set<String> = emptySet()
+): Boolean =
+    conversationSafeDisplayTitleOrNull(rawName, headerIdentityIds() + additionalIdentityIds) == null
+
 fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): ConversationSummary {
     if (fallback == null) return this
-    val nameLooksLikeIdentity =
-        name.isBlank() || name == threadId.value || name == channelId?.value
+    val nameLooksLikeIdentity = nameIsBlankOrIdentity()
     val sameConversation = isSameConversationAs(fallback)
     val sameParentChannel =
         kind == ConversationKind.Thread &&
@@ -14,8 +57,9 @@ fun ConversationSummary.withTitleFallback(fallback: ConversationSummary?): Conve
             fallback.hasDisplayName()
     val shouldUseFallbackName =
         nameLooksLikeIdentity && fallback.hasDisplayName() && (sameConversation || sameParentChannel)
+    val fallbackDisplayName = fallback.safeDisplayNameOrNull()
     return copy(
-        name = if (shouldUseFallbackName) fallback.name else name,
+        name = if (shouldUseFallbackName && fallbackDisplayName != null) fallbackDisplayName else name,
         subtitle = subtitle ?: fallback.subtitle,
         directMessagePeerType = directMessagePeerType ?: fallback.directMessagePeerType.takeIf { sameConversation },
         channelId = channelId ?: fallback.channelId.takeIf { sameConversation },
@@ -84,7 +128,7 @@ private val ConversationSummary.isTopLevelChannel: Boolean
         (channelId == null || channelId.value == threadId.value)
 
 private fun ConversationSummary.hasDisplayName(): Boolean =
-    name.isNotBlank() && name != threadId.value && name != channelId?.value
+    safeDisplayNameOrNull() != null
 
 fun ConversationSummary.withPreviewMembershipFallback(
     fallback: ConversationSummary?

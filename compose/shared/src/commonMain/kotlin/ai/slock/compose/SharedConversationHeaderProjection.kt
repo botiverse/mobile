@@ -3,6 +3,7 @@ package ai.slock.compose
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.avatarSlotResolution
+import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.toGravatarAvatarUrl
 
 internal data class SharedConversationHeaderEntry(
@@ -119,17 +120,7 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
             thread?.streamChannelId?.value
         ).filter { it.isNotBlank() }.toSet()
     if (ids.isEmpty()) return null
-    val rawDisplayName =
-        when (surfaceKind) {
-            KuiklyThreadSurfaceKind.DirectMessage -> name.removePrefix("@").ifBlank { name }
-            else -> name.removePrefix("#").ifBlank { name }
-        }
-    val displayName =
-        threadHeaderSafeTitle(
-            raw = rawDisplayName,
-            surfaceKind = surfaceKind,
-            identityIds = ids
-        )
+    val displayName = safeDisplayNameOrNull() ?: threadHeaderFallbackTitle(surfaceKind)
     val avatar = avatarSlotResolution()
     return SharedConversationHeaderEntry(
         ids = ids,

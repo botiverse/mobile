@@ -93,8 +93,10 @@ import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.formatSlockTimestampLabel
 import ai.slock.compose.model.isGravatarAvatarWireValue
+import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.resolveAvatarSlot
 import ai.slock.compose.model.resolveMergedAvatarSlot
+import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.withPreviewMembershipFallback
 import com.tencent.kuikly.lifecycle.ViewModel
 import com.tencent.kuikly.lifecycle.viewModelScope
@@ -4212,9 +4214,9 @@ private fun ThreadSnapshot.withConversationHeaderFallback(
 ): ThreadSnapshot {
     fallback ?: return this
     val current = conversation
-    val fallbackName = fallback.name.takeIf { it.isNotBlank() }
+    val fallbackName = fallback.safeDisplayNameOrNull()
     val nextName =
-        if (fallbackName != null && current.name.isBlankOrIdentityFor(current)) {
+        if (fallbackName != null && current.nameIsBlankOrIdentity()) {
             fallbackName
         } else {
             current.name
@@ -4249,9 +4251,6 @@ private fun ConversationSummary.headerFallbackIds(): Set<String> =
         channelId?.value,
         thread?.streamChannelId?.value
     ).filter { it.isNotBlank() }.toSet()
-
-private fun String.isBlankOrIdentityFor(conversation: ConversationSummary): Boolean =
-    isBlank() || this in conversation.headerFallbackIds()
 
 private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
     if (!hasRenderableThreadContent()) return null
