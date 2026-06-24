@@ -140,16 +140,17 @@ class SettingsStandaloneLaunchPayloadTest {
     }
 
     @Test
-    fun accountConnectedAccountsHidePasswordCredentialProvider() {
+    fun accountConnectedAccountsHideUnsupportedCredentialProviders() {
         val accounts =
             listOf(
                 KuiklySettingsConnectedAccount(providerId = "password", provider = "Email password", identifier = "artin@example.com", status = "connected"),
                 KuiklySettingsConnectedAccount(providerId = "google", provider = "Google", identifier = "artin@example.com", status = "connected"),
-                KuiklySettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected")
+                KuiklySettingsConnectedAccount(providerId = "github", provider = "GitHub", identifier = "Not connected", status = "notConnected"),
+                KuiklySettingsConnectedAccount(providerId = "saml", provider = "SAML", identifier = "corp.example.com", status = "connected")
             )
 
         assertEquals(
-            listOf("google", "github"),
+            listOf("saml"),
             accounts.visibleSettingsConnectedAccounts().map { it.providerId }
         )
     }
