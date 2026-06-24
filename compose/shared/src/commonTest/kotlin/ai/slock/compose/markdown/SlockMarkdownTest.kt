@@ -126,19 +126,14 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeUsesTextFlowBackgroundAtAnyLength() {
+    fun inlineCodeUsesTextFlowInsteadOfInlineContentAtAnyLength() {
         val shortCode = "inline-code"
         val longCode = "very-long-inline-code-value-that-should-wrap-normally"
-        val annotated = buildSlockMarkdownParagraphAnnotatedString("short `$shortCode` long `$longCode`")
 
         val inlineContent = slockMarkdownAnnotator("short `$shortCode` long `$longCode`").inlineContent?.invoke().orEmpty()
-        val visibleText = annotated.text.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
-        val codeBackgroundSpans =
-            annotated.spanStyles.filter { it.item.background == SlockColor.BrandYellow.copy(alpha = 0.4f) }
 
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:") })
-        assertEquals("short $shortCode long $longCode", visibleText)
-        assertTrue(codeBackgroundSpans.isNotEmpty())
+        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:6") })
+        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:25") })
     }
 
     @Test
@@ -148,25 +143,16 @@ class SlockMarkdownTest {
         val tokens =
             SlockMarkdownInlineTokenRegistry.plan("Use `$shortCode` and `$longCode`")
                 .inlineCodeTokens()
+        val shortSegments = tokens.first().toSlockMarkdownInlineCodeChipSegments()
+        val longSegments = tokens.last().toSlockMarkdownInlineCodeChipSegments()
         val wrappedShortCode = shortCode.slockMarkdownInlineCodeWithSoftBreaks()
         val wrappedCode = longCode.slockMarkdownInlineCodeWithSoftBreaks()
 
-        assertTrue(tokens.first().toSlockMarkdownInlineCodeChipSegments().isEmpty())
-        assertTrue(tokens.last().toSlockMarkdownInlineCodeChipSegments().isEmpty())
+        assertTrue(shortSegments.isEmpty())
+        assertTrue(longSegments.isEmpty())
         assertEquals(shortCode, wrappedShortCode.replace(SlockMarkdownInlineCodeSoftBreak.toString(), ""))
         assertTrue(wrappedCode.contains(SlockMarkdownInlineCodeSoftBreak))
         assertEquals(longCode, wrappedCode.replace(SlockMarkdownInlineCodeSoftBreak.toString(), ""))
-    }
-
-    @Test
-    fun inlineCodeSoftBreaksStayInTextFlowInsteadOfPlaceholderSegments() {
-        val code = "very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes"
-        val annotated = buildSlockMarkdownParagraphAnnotatedString("Use `$code` now")
-        val visibleText = annotated.text.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
-        val inlineIds = annotated.slockMarkdownInlineContentIds().filter { it.startsWith("slock-code:") }
-
-        assertEquals("Use $code now", visibleText)
-        assertTrue(inlineIds.isEmpty())
     }
 
     @Test
@@ -180,24 +166,24 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineCodeBackgroundSpansPreserveTextWithoutPlaceholderBoxes() {
+    fun inlineCodeTextFlowAddsYellowBackgroundWithoutRelyingOnMarkdownCodeSpanStyle() {
         val code = "very-long-inline-code-value-that-should-wrap-normally-without-overlapping-inline-boxes"
         val annotated = buildSlockMarkdownParagraphAnnotatedString("Use `$code` now")
         val visibleText = annotated.text.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
-        val inlineIds = annotated.slockMarkdownInlineContentIds().filter { it.startsWith("slock-code:") }
-        val backgroundSpans =
-            annotated.spanStyles
-                .filter { it.item.background == SlockColor.BrandYellow.copy(alpha = 0.4f) }
-                .sortedBy { it.start }
-        val backgroundText =
-            backgroundSpans.joinToString(separator = "") { span ->
-                annotated.text.substring(span.start, span.end)
-            }.replace(SlockMarkdownInlineCodeSoftBreak.toString(), "")
+        val codeStart = annotated.text.indexOf("very")
+        val codeIndexes =
+            annotated.text.withIndex()
+                .filter { (_, char) -> char != SlockMarkdownInlineCodeSoftBreak }
+                .dropWhile { (_, char) -> char != 'v' }
+                .take(code.length)
+                .map { it.index }
+        val yellow = SlockColor.BrandYellow.copy(alpha = 0.4f)
+        val yellowRanges =
+            annotated.spanStyles.filter { span -> span.item.background == yellow }
 
         assertEquals("Use $code now", visibleText)
-        assertTrue(inlineIds.isEmpty())
-        assertEquals(1, backgroundSpans.size)
-        assertEquals(code, backgroundText)
+        assertTrue(codeStart >= 0)
+        assertTrue(codeIndexes.all { index -> yellowRanges.any { range -> index in range.start until range.end } })
     }
 
     @Test
@@ -448,7 +434,7 @@ class SlockMarkdownTest {
     }
 
     @Test
-    fun inlineTagPlaceholdersReserveVerticalPaddingWhileCodeUsesTextFlow() {
+    fun inlineTagPlaceholdersReserveVerticalPaddingAndCodeUsesTextFlow() {
         val inlineContent =
             slockMarkdownAnnotator(
                 content = "Ping @artin for #405 and `mimo`",
@@ -458,11 +444,34 @@ class SlockMarkdownTest {
 
         assertEquals(24.sp, inlineContent.getValue("slock:5").placeholder.height)
         assertEquals(24.sp, inlineContent.getValue("slock:16").placeholder.height)
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:") })
+        assertFalse(inlineContent.containsKey("slock-code:25"))
     }
 
     @Test
-    fun inlineCodeMeasuredWidthCannotCreatePlaceholderTokens() {
+    fun inlineCodeMeasuredWidthOverridesDoNotCreatePlaceholders() {
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = "Use `mimo`",
+                inlineCodeWidths = mapOf("slock-code:4" to 48.sp),
+                inlineCodeTextStyle = SlockType.Body.copy(fontSize = 15.sp, lineHeight = 20.sp)
+            ).inlineContent?.invoke().orEmpty()
+
+        assertFalse(inlineContent.containsKey("slock-code:4"))
+    }
+
+    @Test
+    fun inlineCodeTextFlowDoesNotExposeFallbackWidthPlaceholders() {
+        val inlineContent =
+            slockMarkdownAnnotator(
+                content = "Use `MIMOAPIKEY`",
+                inlineCodeWidths = mapOf("slock-code:4" to 72.sp)
+            ).inlineContent?.invoke().orEmpty()
+
+        assertFalse(inlineContent.containsKey("slock-code:4"))
+    }
+
+    @Test
+    fun inlineCodeMeasuredWidthCannotInterceptReportedTokens() {
         val tokens =
             listOf(
                 "mimo",
@@ -479,10 +488,12 @@ class SlockMarkdownTest {
                 content = body,
                 inlineCodeWidths = measuredWidths,
                 inlineCodeTextStyle = SlockType.Body
-        ).inlineContent?.invoke().orEmpty()
+            ).inlineContent?.invoke().orEmpty()
 
-        assertTrue(plan.inlineCodeTokens().isNotEmpty())
-        assertFalse(inlineContent.keys.any { it.startsWith("slock-code:") })
+        plan.inlineCodeTokens().forEach { token ->
+            assertTrue(token.toSlockMarkdownInlineCodeChipSegments().isEmpty())
+            assertFalse(inlineContent.keys.any { it.startsWith(token.id) })
+        }
     }
 
     @Test

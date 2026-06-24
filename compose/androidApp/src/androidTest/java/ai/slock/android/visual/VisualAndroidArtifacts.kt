@@ -50,8 +50,7 @@ internal object VisualAndroidArtifacts {
     }
 
     fun deleteCaseArtifacts(caseId: String) {
-        deleteExistingMediaStoreDownloadsForCase(caseId)
-        runShell("rm -f '$PublicOutputPath'/'$caseId'*")
+        runShell("rm -f $PublicOutputPath/${caseId}*")
         publicOutputDir()
             .listFiles()
             ?.filter { file -> file.name.startsWith(caseId) }
