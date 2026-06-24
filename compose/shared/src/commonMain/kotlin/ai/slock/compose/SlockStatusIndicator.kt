@@ -45,53 +45,39 @@ internal fun SlockStatusIndicator(
     borderWidth: Dp = SlockStatusIndicatorTokens.BorderWidth,
     pulsing: Boolean = false
 ) {
-    val pulseProgressState: State<Float>? =
+    val pulseAlphaState: State<Float>? =
         if (pulsing) {
             val transition = rememberInfiniteTransition(label = "slock-status-pulse")
             transition.animateFloat(
-                initialValue = 0f,
-                targetValue = 1f,
+                initialValue = 1f,
+                targetValue = 0.5f,
                 animationSpec =
                     infiniteRepeatable(
-                        animation = tween(durationMillis = 1150),
-                        repeatMode = RepeatMode.Restart
+                        animation = tween(durationMillis = 1000),
+                        repeatMode = RepeatMode.Reverse
                     ),
-                label = "slock-status-pulse-progress"
+                label = "slock-status-pulse-alpha"
             )
         } else {
             null
         }
-    // Pulse animation: when `pulsing` is true, an alpha-blended ring is drawn ON TOP of the
-    // dot at the same radius (no expansion) so the visible footprint stays exactly `size` and
-    // callers that anchor the indicator (row-end `Modifier.align(End)`,
-    // `SlockAvatarWithStatus.align(BottomEnd)`, inline timestamp column, etc.) get identical
-    // dot alignment regardless of `pulsing`. The previous implementation reserved a 5dp
-    // `pulsePadding` slot around the core dot so the ring could expand outward; @artin
-    // flagged the expansion as visually noisy and asked to keep only the static alpha ring
-    // (overlap on the dot). This means pulsing no longer changes the indicator's outer
-    // bounds — alignment is now intrinsic, not layout-padded.
+    // Match React StatusDot's Tailwind `animate-pulse`: the whole dot breathes by opacity,
+    // while its layout footprint stays exactly `size` for row-end and avatar overlay anchors.
     Canvas(modifier = modifier.size(size)) {
         // Read the animation state in the draw phase so pulsing only invalidates the Canvas draw,
         // not the SlockStatusIndicator composable group every frame.
-        val pulseProgress = pulseProgressState?.value ?: 0f
+        val pulseAlpha = pulseAlphaState?.value ?: 1f
+        val fillColor = color.copy(alpha = color.alpha * pulseAlpha)
+        val outlineColor = borderColor.copy(alpha = borderColor.alpha * pulseAlpha)
         val stroke = borderWidth.toPx()
         val halfStroke = stroke / 2f
-        val pulseAlpha = ((1f - pulseProgress) * 0.28f).coerceIn(0f, 0.28f)
         when (shape) {
             SlockStatusIndicatorShape.Circle -> {
                 val radius = (minOf(this.size.width, this.size.height) - stroke).coerceAtLeast(0f) / 2f
                 val center = Offset(this.size.width / 2f, this.size.height / 2f)
-                drawCircle(color = color, radius = radius, center = center, style = Fill)
-                if (pulsing) {
-                    drawCircle(
-                        color = color.copy(alpha = pulseAlpha),
-                        radius = radius,
-                        center = center,
-                        style = Fill
-                    )
-                }
+                drawCircle(color = fillColor, radius = radius, center = center, style = Fill)
                 if (stroke > 0f) {
-                    drawCircle(color = borderColor, radius = radius, center = center, style = Stroke(width = stroke))
+                    drawCircle(color = outlineColor, radius = radius, center = center, style = Stroke(width = stroke))
                 }
             }
             SlockStatusIndicatorShape.Square -> {
@@ -101,22 +87,14 @@ internal fun SlockStatusIndicator(
                         height = (this.size.height - stroke).coerceAtLeast(0f)
                     )
                 drawRect(
-                    color = color,
+                    color = fillColor,
                     topLeft = Offset(halfStroke, halfStroke),
                     size = fillSize,
                     style = Fill
                 )
-                if (pulsing) {
-                    drawRect(
-                        color = color.copy(alpha = pulseAlpha),
-                        topLeft = Offset(halfStroke, halfStroke),
-                        size = fillSize,
-                        style = Fill
-                    )
-                }
                 if (stroke > 0f) {
                     drawRect(
-                        color = borderColor,
+                        color = outlineColor,
                         topLeft = Offset(halfStroke, halfStroke),
                         size = fillSize,
                         style = Stroke(width = stroke)
