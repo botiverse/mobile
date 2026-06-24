@@ -175,6 +175,7 @@ import ai.slock.compose.data.SharedAgentDetailActions
 import ai.slock.compose.data.SharedAgentDetailIntent
 import ai.slock.compose.data.SharedAgentDetailStore
 import ai.slock.compose.data.SharedHomeSavedPanelState
+import ai.slock.compose.data.SharedHomeSavedStateCache
 import ai.slock.compose.data.SharedHomeSearchPanelState
 import ai.slock.compose.data.SharedHomeSearchSavedIntent
 import ai.slock.compose.data.SharedHomeSearchSavedViewModel
@@ -587,6 +588,7 @@ private data class HomeSecondaryRouteEnvironment(
     val networkClient: KuiklySlockNetworkClient,
     val localWriteThrough: ComposeLocalWriteThrough,
     val settingsCapabilities: BridgeSettingsPlatformCapabilities,
+    val homeSavedStateCache: SharedHomeSavedStateCache,
     val timeContext: AppShellThreadTimeContext?,
     val alignOwnMessagesRight: Boolean,
     val shellScope: SlockAppShellScope
@@ -637,6 +639,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
         networkClient,
         localWriteThrough,
         settingsCapabilities,
+        sharedStores.homeSavedStateCache,
         timeContext,
         myMessageAlignment,
         shellScope
@@ -648,6 +651,7 @@ private fun rememberHomeSecondaryRouteEnvironment(): HomeSecondaryRouteEnvironme
             networkClient = networkClient,
             localWriteThrough = localWriteThrough,
             settingsCapabilities = settingsCapabilities,
+            homeSavedStateCache = sharedStores.homeSavedStateCache,
             timeContext = timeContext,
             alignOwnMessagesRight = myMessageAlignment == MyMessageAlignmentPreference.Right,
             shellScope = shellScope
@@ -836,6 +840,7 @@ private fun rememberHomeSearchSavedViewModel(
             savedRepository = savedRepository,
             searchRepository = searchRepository,
             memberRepository = memberRepository,
+            savedStateCache = environment.homeSavedStateCache,
             timeRangeBoundsProvider = { range -> environment.timeContext.toSearchIsoBounds(range) }
         )
     }
@@ -1507,6 +1512,7 @@ private fun SlockAppShellContent() {
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
+                savedStateCache = sharedStores.homeSavedStateCache,
                 timeRangeBoundsProvider = { range -> hostThreadTimeContext.toSearchIsoBounds(range) }
             )
         }
@@ -1602,6 +1608,7 @@ private fun SlockAppShellContent() {
         membersListRefreshKey = 0
         membersAgentDetailRefreshKey = 0
         membersListCachedContent = null
+        sharedStores.homeSavedStateCache.clear()
         selectedTab = "home"
         retainedAppShellTabs = setOf("home")
         selectedSettingsDestination = SettingsDestinationHome

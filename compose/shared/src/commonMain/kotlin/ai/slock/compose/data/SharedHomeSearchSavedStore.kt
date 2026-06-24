@@ -28,6 +28,7 @@ class SharedHomeSearchSavedStore(
     private val savedRepository: SavedRepository,
     private val searchRepository: SearchRepository,
     private val memberRepository: MemberRepository? = null,
+    private val savedStateCache: SharedHomeSavedStateCache? = null,
     private val scope: CoroutineScope,
     private val timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() },
     private val searchDebounceMillis: Long = SearchDebounceMillis
@@ -219,6 +220,22 @@ class SharedHomeSearchSavedStore(
                 try {
                     val session = authStore.readSession() ?: return@launch setSavedError("unauthenticated")
                     val serverId = session.currentServerId?.let(::ServerId) ?: return@launch setSavedError("server_missing")
+                    if (refresh && !previous.loaded && previous.items.isEmpty()) {
+                        savedStateCache?.read(serverId.value, session.user.id)?.let { cached ->
+                            _state.value =
+                                _state.value.copy(
+                                    saved =
+                                        cached.copy(
+                                            loading = false,
+                                            refreshing = true,
+                                            pullRefreshing = false,
+                                            loadingMore = false,
+                                            errorCode = null,
+                                            noPermissionCode = null
+                                        )
+                                )
+                        }
+                    }
                     val senderProfiles = loadSenderAvatarProfiles(session, serverId)
                     val result =
                         if (refresh) {
@@ -226,7 +243,13 @@ class SharedHomeSearchSavedStore(
                         } else {
                             savedRepository.loadMore(serverId, previous.nextOffset ?: previous.items.size, HomeSavedPageSize)
                         }
-                    applySavedResult(result, append = !refresh, senderProfiles = senderProfiles)
+                    applySavedResult(
+                        result = result,
+                        append = !refresh,
+                        senderProfiles = senderProfiles,
+                        serverId = serverId,
+                        userId = session.user.id
+                    )
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (_: Throwable) {
@@ -438,7 +461,9 @@ class SharedHomeSearchSavedStore(
     private fun applySavedResult(
         result: DataResult<SavedSnapshot>,
         append: Boolean,
-        senderProfiles: Map<String, SenderAvatarProfile>
+        senderProfiles: Map<String, SenderAvatarProfile>,
+        serverId: ServerId,
+        userId: String
     ) {
         val current = _state.value.saved
         _state.value =
@@ -453,20 +478,23 @@ class SharedHomeSearchSavedStore(
                                 } else {
                                     pageItems
                                 }
-                            current.copy(
-                                items = items,
-                                totalCount = result.data.totalCount,
-                                hasMore = result.data.hasMore,
-                                nextOffset = result.data.nextOffset,
-                                loaded = true,
-                                empty = items.isEmpty(),
-                                loading = false,
-                                refreshing = false,
-                                pullRefreshing = false,
-                                loadingMore = false,
-                                errorCode = null,
-                                noPermissionCode = null
-                            )
+                            val nextState =
+                                current.copy(
+                                    items = items,
+                                    totalCount = result.data.totalCount,
+                                    hasMore = result.data.hasMore,
+                                    nextOffset = result.data.nextOffset,
+                                    loaded = true,
+                                    empty = items.isEmpty(),
+                                    loading = false,
+                                    refreshing = false,
+                                    pullRefreshing = false,
+                                    loadingMore = false,
+                                    errorCode = null,
+                                    noPermissionCode = null
+                                )
+                            savedStateCache?.write(result.data.server.id.value, userId, nextState)
+                            nextState
                         }
                         is DataResult.Empty ->
                             current.copy(
@@ -481,7 +509,9 @@ class SharedHomeSearchSavedStore(
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = null
-                            )
+                            ).also { nextState ->
+                                savedStateCache?.write(serverId.value, userId, nextState)
+                            }
                         is DataResult.Error ->
                             current.copy(
                                 loading = false,
@@ -499,7 +529,9 @@ class SharedHomeSearchSavedStore(
                                 loadingMore = false,
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
-                            )
+                            ).also {
+                                savedStateCache?.clear(serverId.value, userId)
+                            }
                     }
             )
     }
@@ -622,11 +654,49 @@ class SharedHomeSearchSavedStore(
     }
 }
 
+class SharedHomeSavedStateCache {
+    private var ownerKey: String? = null
+    private var state: SharedHomeSavedPanelState? = null
+
+    fun read(serverId: String, userId: String): SharedHomeSavedPanelState? =
+        state.takeIf { ownerKey == savedStateCacheKey(serverId, userId) }
+
+    fun write(serverId: String, userId: String?, state: SharedHomeSavedPanelState) {
+        if (!state.loaded) return
+        val resolvedUserId = userId?.takeIf { it.isNotBlank() } ?: return
+        ownerKey = savedStateCacheKey(serverId, resolvedUserId)
+        this.state =
+            state.copy(
+                loading = false,
+                refreshing = false,
+                pullRefreshing = false,
+                loadingMore = false,
+                errorCode = null,
+                noPermissionCode = null
+            )
+    }
+
+    fun clear() {
+        ownerKey = null
+        state = null
+    }
+
+    fun clear(serverId: String, userId: String) {
+        if (ownerKey == savedStateCacheKey(serverId, userId)) {
+            clear()
+        }
+    }
+}
+
+private fun savedStateCacheKey(serverId: String, userId: String): String =
+    "${serverId.trim()}:${userId.trim()}"
+
 class SharedHomeSearchSavedViewModel(
     authStore: SlockAuthSessionStore,
     savedRepository: SavedRepository,
     searchRepository: SearchRepository,
     memberRepository: MemberRepository? = null,
+    savedStateCache: SharedHomeSavedStateCache? = null,
     timeRangeBoundsProvider: (SearchTimeRange) -> SearchIsoBounds = { SearchIsoBounds() }
 ) : ViewModel() {
     private val storeDelegate =
@@ -636,6 +706,7 @@ class SharedHomeSearchSavedViewModel(
                 savedRepository = savedRepository,
                 searchRepository = searchRepository,
                 memberRepository = memberRepository,
+                savedStateCache = savedStateCache,
                 scope = viewModelScope,
                 timeRangeBoundsProvider = timeRangeBoundsProvider
             )

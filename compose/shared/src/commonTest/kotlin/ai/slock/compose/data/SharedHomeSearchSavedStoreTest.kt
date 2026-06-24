@@ -85,6 +85,75 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun openSavedSeedsColdStoreFromMatchingSavedStateCache() = runBlocking {
+        val cache = SharedHomeSavedStateCache()
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val preloadStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = preloadScope
+            )
+        preloadStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val standaloneSaved = DeferredSavedRepository()
+        val standaloneStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = standaloneSaved,
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = standaloneScope
+            )
+
+        standaloneStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(false, standaloneStore.state.value.saved.loading)
+        assertEquals(true, standaloneStore.state.value.saved.refreshing)
+        assertEquals(listOf("message-1"), standaloneStore.state.value.saved.items.map { it.key })
+        standaloneSaved.completeNext("message-2")
+        assertEquals(false, standaloneStore.state.value.saved.refreshing)
+        assertEquals(listOf("message-2"), standaloneStore.state.value.saved.items.map { it.key })
+        preloadScope.cancel()
+        standaloneScope.cancel()
+    }
+
+    @Test
+    fun openSavedIgnoresSavedStateCacheForDifferentUser() = runBlocking {
+        val cache = SharedHomeSavedStateCache()
+        val preloadScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val preloadStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(items = listOf(inboxItem("message-1"))),
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = preloadScope
+            )
+        preloadStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        val standaloneScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val standaloneStore =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession(userId = "user-2")),
+                savedRepository = DeferredSavedRepository(),
+                searchRepository = FakeSearchRepository(),
+                savedStateCache = cache,
+                scope = standaloneScope
+            )
+
+        standaloneStore.dispatch(SharedHomeSearchSavedIntent.OpenSaved)
+
+        assertEquals(true, standaloneStore.state.value.saved.loading)
+        assertEquals(emptyList(), standaloneStore.state.value.saved.items.map { it.key })
+        preloadScope.cancel()
+        standaloneScope.cancel()
+    }
+
+    @Test
     fun openSavedShowsRefreshingAffordanceDuringLoadedReentry() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val saved = DeferredSavedRepository()
@@ -556,9 +625,9 @@ class SharedHomeSearchSavedStoreTest {
         val options: SearchQueryOptions
     )
 
-    private fun sampleSession(): StoredAuthSession =
+    private fun sampleSession(userId: String = "user-1"): StoredAuthSession =
         StoredAuthSession(
-            user = StoredAuthUser(id = "user-1", email = "user@slock.local", displayName = "User One"),
+            user = StoredAuthUser(id = userId, email = "$userId@slock.local", displayName = "User One"),
             accessToken = "access",
             refreshToken = "refresh",
             selectedServerId = "server-1",

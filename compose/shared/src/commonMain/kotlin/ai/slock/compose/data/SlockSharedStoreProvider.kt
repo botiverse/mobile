@@ -30,6 +30,7 @@ internal class SlockSharedStoreProvider private constructor(
     val agentDetailStore: SharedAgentDetailStore,
     val tasksDataStore: SharedTasksDataStore,
     val conversationDirectoryStore: SharedConversationDirectoryStore,
+    val homeSavedStateCache: SharedHomeSavedStateCache,
     val realtimeDomainEventOwner: SharedRealtimeDomainEventOwner
 ) {
     fun createThreadLocalDataStore(currentServerId: suspend () -> ServerId?): ComposeLocalDataStore =
@@ -65,6 +66,7 @@ internal class SlockSharedStoreProvider private constructor(
                 ),
                 tasksDataStore = tasksDataStore,
                 conversationDirectoryStore = conversationDirectoryStore,
+                homeSavedStateCache = SharedHomeSavedStateCache(),
                 realtimeDomainEventOwner = SharedRealtimeDomainEventOwner(tasksDataStore)
             )
         }
