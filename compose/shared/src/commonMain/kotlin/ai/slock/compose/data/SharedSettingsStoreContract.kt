@@ -131,6 +131,7 @@ class SharedSettingsStoreContract(
                 is SharedSettingsIntent.SetMessageAlignment -> MviActionKey(MOBILE_ACTION_MESSAGE_ALIGNMENT)
                 is SharedSettingsIntent.UpdateAppearance -> MviActionKey(APPEARANCE_ACTION_MESSAGE_FONT_SIZE)
                 is SharedSettingsIntent.SetApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:$environmentKey")
+                is SharedSettingsIntent.SaveApiEnvironment -> MviActionKey("${DEVELOPER_ACTION_API_ENVIRONMENT}:${request.key}")
                 else -> null
             }
     }

@@ -138,6 +138,14 @@ data class SharedSettingsApiEnvironmentOption(
     val webUrl: String
 )
 
+data class SharedSettingsApiEnvironmentRequest(
+    val key: String,
+    val label: String,
+    val apiBaseUrl: String,
+    val socketBaseUrl: String,
+    val webUrl: String
+)
+
 data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
     val networkProbe: SharedSettingsNetworkProbeSnapshot? = null,
@@ -281,6 +289,7 @@ sealed interface SharedSettingsIntent {
     data object RefreshStorage : SharedSettingsIntent
     data class ClearStorage(val target: String) : SharedSettingsIntent
     data class SetApiEnvironment(val environmentKey: String) : SharedSettingsIntent
+    data class SaveApiEnvironment(val request: SharedSettingsApiEnvironmentRequest) : SharedSettingsIntent
     data class CompleteStorageClear(
         val target: String,
         val ok: Boolean,
@@ -336,6 +345,9 @@ interface SharedSettingsPlatformCapabilities {
 
     suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
         DataResult.Error(ScreenError("settings_developer_environment_unavailable", retryable = false))
+
+    suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
+        setApiEnvironment(request.key)
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
@@ -666,6 +678,9 @@ class SharedSettingsDataSource(
 
     suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> =
         platformCapabilities.setApiEnvironment(environmentKey)
+
+    suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> =
+        platformCapabilities.saveApiEnvironment(request)
 
     suspend fun loadDiagnostics(): DataResult<SharedSettingsDiagnosticsSnapshot> =
         loadDiagnosticsSnapshot()
@@ -1257,6 +1272,12 @@ class SharedSettingsStore(
                 runAction(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey) {
                     dataSource.setApiEnvironment(intent.environmentKey)
                         .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.environmentKey)
+                }
+            }
+            is SharedSettingsIntent.SaveApiEnvironment -> {
+                runAction(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key) {
+                    dataSource.saveApiEnvironment(intent.request)
+                        .applyDeveloperActionResult(DEVELOPER_ACTION_API_ENVIRONMENT, intent.request.key)
                 }
             }
             is SharedSettingsIntent.CompleteStorageClear ->
@@ -1888,6 +1909,7 @@ private val SharedSettingsIntent.loadsSettingsContent: Boolean
             is SharedSettingsIntent.SetMessageAlignment,
             is SharedSettingsIntent.ClearStorage,
             is SharedSettingsIntent.SetApiEnvironment,
+            is SharedSettingsIntent.SaveApiEnvironment,
             is SharedSettingsIntent.CompleteStorageClear,
             SharedSettingsIntent.CopyDiagnostics,
             SharedSettingsIntent.ShareDiagnostics,

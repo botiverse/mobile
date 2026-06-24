@@ -109,6 +109,8 @@ import ai.slock.compose.data.SharedHomeShellIntent
 import ai.slock.compose.data.SharedHomeShellStore
 import ai.slock.compose.data.RealtimeDomainEventSinks
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
+import ai.slock.compose.data.SharedSettingsApiEnvironmentOption
+import ai.slock.compose.data.SharedSettingsApiEnvironmentRequest
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDestination
 import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
@@ -306,6 +308,7 @@ import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.ColumnScope
+import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
 import com.tencent.kuikly.compose.foundation.layout.RowScope
 import com.tencent.kuikly.compose.foundation.layout.Spacer
@@ -338,6 +341,7 @@ import com.tencent.kuikly.compose.ui.layout.onGloballyPositioned
 import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
+import com.tencent.kuikly.compose.ui.semantics.Role
 import com.tencent.kuikly.compose.ui.text.font.FontFamily
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextAlign
@@ -412,6 +416,7 @@ private const val SettingsDestinationAbout = "about"
 private const val SettingsDestinationDiagnostics = "diagnostics"
 private const val SettingsDestinationDiagnosticsFeedbackChannel = "diagnostics-feedback-channel"
 private const val SettingsDestinationDeveloper = "developer"
+private const val SettingsDestinationApiEnvironment = "api-environment"
 private const val SettingsDestinationRouter = "router"
 private const val SharedSettingsDefaultWebBaseUrl = "https://app.raft.build"
 private const val PreJoinAgreementBodyMaxLength = 5_000
@@ -2459,8 +2464,13 @@ private fun SettingsAppShellContent(
     onLogout: () -> Unit
 ) {
     LaunchedEffect(selectedDestination) {
-        selectedDestination.toSharedSettingsDestination()?.let { destination ->
-            onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+        when (selectedDestination) {
+            SettingsDestinationApiEnvironment ->
+                onSettingsIntent(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+            else ->
+                selectedDestination.toSharedSettingsDestination()?.let { destination ->
+                    onSettingsIntent(SharedSettingsIntent.OpenDestination(destination))
+                }
         }
     }
 
@@ -2696,10 +2706,10 @@ private fun SettingsAppShellContent(
         subtitle = "",
         iconName = settingsDestinationIcon(selectedDestination),
         onBack = {
-            if (selectedDestination == SettingsDestinationDiagnosticsFeedbackChannel) {
-                onDiagnosticsFeedbackBack()
-            } else {
-                onDestinationChange(SettingsDestinationHome)
+            when (selectedDestination) {
+                SettingsDestinationDiagnosticsFeedbackChannel -> onDiagnosticsFeedbackBack()
+                SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
+                else -> onDestinationChange(SettingsDestinationHome)
             }
         }
     ) {
@@ -3143,11 +3153,18 @@ private fun SettingsAppShellContent(
                     state = settingsState.developer,
                     actionState = settingsState.actionState,
                     bottomContentPadding = bottomContentPadding,
-                    onSetApiEnvironment = { key ->
-                        onSettingsIntent(SharedSettingsIntent.SetApiEnvironment(key))
-                    },
+                    onOpenApiEnvironment = { onDestinationChange(SettingsDestinationApiEnvironment) },
                     onOpenDiagnostics = { onDestinationChange(SettingsDestinationDiagnostics) },
                     onOpenRouter = onOpenRouter
+                )
+            SettingsDestinationApiEnvironment ->
+                SharedSettingsApiEnvironmentContent(
+                    state = settingsState.developer,
+                    actionState = settingsState.actionState,
+                    bottomContentPadding = bottomContentPadding,
+                    onSaveApiEnvironment = { request ->
+                        onSettingsIntent(SharedSettingsIntent.SaveApiEnvironment(request))
+                    }
                 )
             SettingsDestinationDiagnostics ->
                 SharedSettingsDiagnosticsContent(
@@ -5852,7 +5869,7 @@ internal fun SharedSettingsDeveloperContent(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    onSetApiEnvironment: (String) -> Unit,
+    onOpenApiEnvironment: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenRouter: () -> Unit
 ) {
@@ -5860,10 +5877,193 @@ internal fun SharedSettingsDeveloperContent(
     val payload = snapshot.toDeveloperPayload(state, actionState)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
-            DEVELOPER_ACTION_API_ENVIRONMENT -> value?.takeIf { it.isNotBlank() }?.let(onSetApiEnvironment)
+            DEVELOPER_ACTION_API_ENVIRONMENT -> onOpenApiEnvironment()
             "diagnostics" -> onOpenDiagnostics()
             "router" -> onOpenRouter()
         }
+    }
+}
+
+@Composable
+private fun SharedSettingsApiEnvironmentContent(
+    state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
+    actionState: SharedSettingsActionState?,
+    bottomContentPadding: Dp = SlockSpacing.Lg,
+    onSaveApiEnvironment: (SharedSettingsApiEnvironmentRequest) -> Unit
+) {
+    val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+    var selectedPresetKey by remember(snapshot?.environmentKey, snapshot?.options) {
+        mutableStateOf(snapshot?.environmentKey?.takeIf { key -> snapshot.options.any { it.key == key } }.orEmpty())
+    }
+    var label by remember(snapshot?.environmentKey, snapshot?.environmentLabel) {
+        mutableStateOf(snapshot?.environmentLabel.orEmpty().ifBlank { "Custom" })
+    }
+    var apiBaseUrl by remember(snapshot?.environmentKey, snapshot?.apiBaseUrl) {
+        mutableStateOf(snapshot?.apiBaseUrl.orEmpty())
+    }
+    var socketBaseUrl by remember(snapshot?.environmentKey, snapshot?.socketBaseUrl) {
+        mutableStateOf(snapshot?.socketBaseUrl.orEmpty())
+    }
+    var webUrl by remember(snapshot?.environmentKey, snapshot?.webUrl) {
+        mutableStateOf(snapshot?.webUrl.orEmpty())
+    }
+    val busy = actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.inProgress
+    val normalizedApi = apiBaseUrl.trim()
+    val normalizedSocket = socketBaseUrl.trim()
+    val normalizedWeb = webUrl.trim()
+    val matchingPreset =
+        snapshot?.options?.firstOrNull { option ->
+            option.apiBaseUrl == normalizedApi &&
+                option.socketBaseUrl == normalizedSocket &&
+                option.webUrl == normalizedWeb
+        }
+    val requestKey = matchingPreset?.key ?: "custom"
+    val requestLabel = matchingPreset?.label ?: label.trim().ifBlank { "Custom" }
+    val canSave = normalizedApi.startsWith("http") && normalizedSocket.startsWith("http") && !busy
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            SettingsFormSectionCard(iconName = SlockLucideIconName.SlidersHorizontal, title = "Presets") {
+                SettingsFormDetailText("Choose a preset to fill the environment form, then save to apply it.")
+                snapshot?.options.orEmpty().forEach { option ->
+                    SettingsApiEnvironmentPresetRow(
+                        option = option,
+                        selected = selectedPresetKey == option.key,
+                        enabled = !busy,
+                        onSelect = {
+                            selectedPresetKey = option.key
+                            label = option.label
+                            apiBaseUrl = option.apiBaseUrl
+                            socketBaseUrl = option.socketBaseUrl
+                            webUrl = option.webUrl
+                        }
+                    )
+                }
+                if (snapshot?.options.isNullOrEmpty()) {
+                    SettingsFormEmptyText("No presets are available from this host.")
+                }
+            }
+        }
+        item {
+            SettingsFormSectionCard(iconName = SlockLucideIconName.Server, title = "Environment form") {
+                SettingsFormDetailText("Saving changes may clear the current session and reconnect realtime against the selected API server.")
+                SlockBrutalTextField(
+                    label = "Label",
+                    value = label,
+                    placeholder = "Custom",
+                    onValueChange = {
+                        selectedPresetKey = ""
+                        label = it
+                    },
+                    enabled = !busy
+                )
+                SlockBrutalTextField(
+                    label = "API Base URL",
+                    value = apiBaseUrl,
+                    placeholder = "https://api.example.com/api/",
+                    onValueChange = {
+                        selectedPresetKey = ""
+                        apiBaseUrl = it
+                    },
+                    required = true,
+                    enabled = !busy
+                )
+                SlockBrutalTextField(
+                    label = "Socket Base URL",
+                    value = socketBaseUrl,
+                    placeholder = "https://api.example.com",
+                    onValueChange = {
+                        selectedPresetKey = ""
+                        socketBaseUrl = it
+                    },
+                    required = true,
+                    enabled = !busy
+                )
+                SlockBrutalTextField(
+                    label = "Web URL",
+                    value = webUrl,
+                    placeholder = "https://app.raft.build",
+                    onValueChange = {
+                        selectedPresetKey = ""
+                        webUrl = it
+                    },
+                    optional = true,
+                    enabled = !busy
+                )
+                SlockBrutalActionButton(
+                    label = if (busy) "Saving" else "Save environment",
+                    onClick = {
+                        onSaveApiEnvironment(
+                            SharedSettingsApiEnvironmentRequest(
+                                key = requestKey,
+                                label = requestLabel,
+                                apiBaseUrl = normalizedApi,
+                                socketBaseUrl = normalizedSocket,
+                                webUrl = normalizedWeb
+                            )
+                        )
+                    },
+                    enabled = canSave,
+                    leadingIcon = SlockLucideIconName.Save,
+                    backgroundColor = SlockColor.BrandYellow,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (!canSave && !busy) {
+                    SettingsFormErrorText("API Base URL and Socket Base URL must start with http.")
+                }
+                if (actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.errorCode != null) {
+                    SettingsFormErrorText(actionState.errorCode)
+                }
+            }
+        }
+        item { Spacer(Modifier.height(bottomContentPadding)) }
+    }
+}
+
+@Composable
+private fun SettingsApiEnvironmentPresetRow(
+    option: SharedSettingsApiEnvironmentOption,
+    selected: Boolean,
+    enabled: Boolean,
+    onSelect: () -> Unit
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(if (selected) SlockColor.SurfaceCream else SlockColor.SurfaceWhite)
+                .border(SlockStroke.Default, SlockColor.BorderBlack)
+                .clickable(enabled = enabled, role = Role.Button, onClick = onSelect)
+                .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SlockLucideIcon(
+            name = if (selected) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Server,
+            modifier = Modifier.size(18.dp),
+            color = SlockColor.TextBlackArgb
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(
+                text = option.label,
+                style = SlockType.Button.copy(fontSize = 13.sp, lineHeight = 16.sp),
+                color = SlockColor.TextBlack
+            )
+            Text(
+                text = listOf(option.apiBaseUrl, option.socketBaseUrl).filter { it.isNotBlank() }.joinToString(" | "),
+                style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+                color = SlockColor.TextMutedGray
+            )
+        }
+        Text(
+            text = if (selected) "Current" else "Preset",
+            style = SlockType.Caption.copy(color = SlockColor.TextMutedGray),
+            color = SlockColor.TextMutedGray
+        )
     }
 }
 
@@ -7137,57 +7337,20 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
     state: ScreenLoadState<SharedSettingsDeveloperSnapshot>,
     actionState: SharedSettingsActionState?
 ): KuiklySharedSettingsPayload {
-    val currentKey = this?.environmentKey.orEmpty()
-    val options =
-        this?.options
-            ?.takeIf { it.isNotEmpty() }
-            ?: emptyList()
-    val environmentRows =
-        if (options.isNotEmpty()) {
-            options.map { option ->
-                val selected = option.key == currentKey
-                val switching =
-                    actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT &&
-                        actionState.itemId == option.key &&
-                        actionState.inProgress
-                KuiklySharedSettingsRow(
-                    key = DEVELOPER_ACTION_API_ENVIRONMENT,
-                    iconName = if (selected) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Server,
-                    title = if (selected) "${option.label} (current)" else "Switch to ${option.label}",
-                    detail =
-                        listOf(
-                            option.apiBaseUrl.ifBlank { option.webUrl },
-                            option.socketBaseUrl
-                        )
-                            .filter { it.isNotBlank() }
-                            .joinToString(" | "),
-                    value = option.key,
-                    status =
-                        when {
-                            switching -> "Switching"
-                            selected -> "Current"
-                            else -> "Tap to switch"
-                        },
-                    enabled = !selected && actionState?.inProgress != true
-                )
-            }
-        } else {
-            listOf(
-                KuiklySharedSettingsRow(
-                    key = "environmentUnavailable",
-                    iconName = SlockLucideIconName.TriangleAlert,
-                    title = "API server",
-                    detail =
-                        when (state) {
-                            is ScreenLoadState.Error -> state.error.code
-                            is ScreenLoadState.Empty -> state.reason.name
-                            is ScreenLoadState.NoPermission -> state.blocker.code
-                            ScreenLoadState.Loading -> "Loading developer environment options."
-                            is ScreenLoadState.Content -> "No API server environments are available."
-                        },
-                    status = if (state is ScreenLoadState.Loading) "Loading" else "Unavailable"
-                )
-            )
+    val environmentDetail =
+        when (state) {
+            is ScreenLoadState.Error -> state.error.code
+            is ScreenLoadState.Empty -> state.reason.name
+            is ScreenLoadState.NoPermission -> state.blocker.code
+            ScreenLoadState.Loading -> "Loading developer environment options."
+            is ScreenLoadState.Content -> "Choose presets or edit API, socket, and web URLs."
+        }
+    val environmentStatus =
+        when {
+            actionState?.action == DEVELOPER_ACTION_API_ENVIRONMENT && actionState.inProgress -> "Saving"
+            this?.environmentLabel.orEmpty().isNotBlank() -> this?.environmentLabel.orEmpty()
+            state is ScreenLoadState.Loading -> "Loading"
+            else -> "Open"
         }
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-developer",
@@ -7214,12 +7377,16 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 title = "Current socket",
                                 detail = this?.socketBaseUrl.orEmpty().ifBlank { "Unknown" },
                                 status = "Realtime"
+                            ),
+                            KuiklySharedSettingsRow(
+                                key = DEVELOPER_ACTION_API_ENVIRONMENT,
+                                iconName = SlockLucideIconName.SlidersHorizontal,
+                                title = "API Environment",
+                                detail = environmentDetail,
+                                status = environmentStatus,
+                                enabled = state is ScreenLoadState.Content
                             )
                         )
-                ),
-                KuiklySharedSettingsSection(
-                    title = "API Environment",
-                    rows = environmentRows
                 ),
                 KuiklySharedSettingsSection(
                     title = "Diagnostics",
@@ -7597,6 +7764,7 @@ private fun settingsDestinationTitle(destination: String): String =
         SettingsDestinationStorage -> "Storage"
         SettingsDestinationAbout -> "About"
         SettingsDestinationDeveloper -> "Developer"
+        SettingsDestinationApiEnvironment -> "API Environment"
         SettingsDestinationDiagnostics -> "Diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "请选择 channel"
         else -> "Settings"
@@ -7617,6 +7785,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationStorage -> "Local cache"
         SettingsDestinationAbout -> "Version and build information"
         SettingsDestinationDeveloper -> "API server, diagnostics, route launcher"
+        SettingsDestinationApiEnvironment -> "Presets and custom server URLs"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
         else -> ""
@@ -7637,6 +7806,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationStorage -> SlockLucideIconName.Archive
         SettingsDestinationAbout -> SlockLucideIconName.Info
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
+        SettingsDestinationApiEnvironment -> SlockLucideIconName.SlidersHorizontal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
         else -> SlockLucideIconName.Settings

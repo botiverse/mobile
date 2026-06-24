@@ -53,6 +53,7 @@ import ai.slock.android.core.data.auth.GoogleSocialAuthGateway
 import ai.slock.android.core.data.auth.GoogleSocialAuthResult
 import ai.slock.android.core.data.auth.completeGoogleSocialAuth
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
+import ai.slock.android.core.data.auth.AndroidApiServerEnvironment
 import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.auth.androidMMKVAuthKeyValueStore
 import ai.slock.android.core.data.diagnostics.SanitizedDiagnosticsLogBuffer
@@ -1590,7 +1591,7 @@ internal class SlockKuiklyBridgeModule(
                         "clearStorage" -> clearSettingsStorage(request.optString("target"))
                         "loadAbout" -> loadSettingsAbout()
                         "loadDeveloper" -> loadSettingsDeveloper()
-                        "setApiEnvironment" -> setApiEnvironment(request.optString("environmentKey"))
+                        "setApiEnvironment" -> setApiEnvironment(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
                         "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
@@ -1919,13 +1920,26 @@ internal class SlockKuiklyBridgeModule(
         )
     }
 
-    private fun setApiEnvironment(environmentKey: String): Map<String, Any> {
+    private fun setApiEnvironment(request: JSONObject): Map<String, Any> {
+        val environmentKey = request.optString("environmentKey")
         val store = AndroidApiServerEnvironmentStore(appContext)
         val before = store.current()
         val after =
-                store.select(environmentKey)
+                if (environmentKey == AndroidApiServerEnvironmentStore.CustomKey) {
+                    store.save(
+                            AndroidApiServerEnvironment(
+                                    key = environmentKey,
+                                    label = request.optString("environmentLabel").ifBlank { "Custom" },
+                                    apiBaseUrl = request.optString("apiBaseUrl"),
+                                    socketBaseUrl = request.optString("socketBaseUrl"),
+                                    webUrl = request.optString("webUrl")
+                            )
+                    )
+                } else {
+                    store.select(environmentKey)
+                }
                         ?: return mapOf("status" to "error", "code" to "settings_developer_environment_unknown")
-        val changed = before.key != after.key
+        val changed = before != after
         if (changed) {
             runBlocking {
                 KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext)).clearSession()

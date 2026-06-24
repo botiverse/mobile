@@ -1273,6 +1273,43 @@ class SharedSettingsStoreTest {
     }
 
     @Test
+    fun developerEnvironmentSavesCustomUrlsThroughPlatformCapabilities() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val capabilities = FakeSettingsCapabilities()
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                        platformCapabilities = capabilities
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenDestination(SharedSettingsDestination.Developer))
+        store.accept(
+            SharedSettingsIntent.SaveApiEnvironment(
+                SharedSettingsApiEnvironmentRequest(
+                    key = "custom",
+                    label = "Local Dev",
+                    apiBaseUrl = "http://10.0.2.2:3000/api/",
+                    socketBaseUrl = "http://10.0.2.2:3000",
+                    webUrl = "http://10.0.2.2:5173"
+                )
+            )
+        )
+
+        val updated = assertIs<ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>>(store.state.value.developer).data
+        assertEquals("custom", updated.environmentKey)
+        assertEquals("Local Dev", updated.environmentLabel)
+        assertEquals("http://10.0.2.2:3000/api/", updated.apiBaseUrl)
+        assertEquals("http://10.0.2.2:3000", updated.socketBaseUrl)
+        assertEquals(SharedSettingsActionState(DEVELOPER_ACTION_API_ENVIRONMENT, "custom", inProgress = false), store.state.value.actionState)
+        assertEquals(listOf("developer", "environment:custom"), capabilities.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun aboutSessionLabelsComeFromCanonicalSessionStoreWhenHostLabelsAreBlank() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val capabilities =
@@ -2187,6 +2224,25 @@ class SharedSettingsStoreTest {
         override suspend fun setApiEnvironment(environmentKey: String): DataResult<SharedSettingsDeveloperSnapshot> {
             calls += "environment:$environmentKey"
             developerSnapshot = buildDeveloperSnapshot(environmentKey)
+            return DataResult.Content(developerSnapshot)
+        }
+
+        override suspend fun saveApiEnvironment(request: SharedSettingsApiEnvironmentRequest): DataResult<SharedSettingsDeveloperSnapshot> {
+            calls += "environment:${request.key}"
+            developerSnapshot =
+                if (request.key == "custom") {
+                    SharedSettingsDeveloperSnapshot(
+                        environmentKey = request.key,
+                        environmentLabel = request.label,
+                        apiBaseUrl = request.apiBaseUrl,
+                        socketBaseUrl = request.socketBaseUrl,
+                        webUrl = request.webUrl,
+                        options = buildDeveloperSnapshot("production").options,
+                        feedback = "Selected ${request.label}"
+                    )
+                } else {
+                    buildDeveloperSnapshot(request.key)
+                }
             return DataResult.Content(developerSnapshot)
         }
 

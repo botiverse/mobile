@@ -466,7 +466,10 @@ private fun AuthDeveloperScreen() {
     SharedSettingsDeveloperContent(
         state = state,
         actionState = actionState,
-        onSetApiEnvironment = { key -> pendingEnvironment = key },
+        onOpenApiEnvironment = {
+            val snapshot = (state as? ScreenLoadState.Content<SharedSettingsDeveloperSnapshot>)?.data
+            pendingEnvironment = snapshot?.options?.firstOrNull { it.key != snapshot.environmentKey }?.key
+        },
         onOpenDiagnostics = { pager.openAuthPage(AUTH_DIAGNOSTICS_PAGE) },
         onOpenRouter = { pager.openAuthPage("router") }
     )

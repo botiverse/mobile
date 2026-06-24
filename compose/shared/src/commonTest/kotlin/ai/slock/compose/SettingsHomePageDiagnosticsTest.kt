@@ -5,6 +5,7 @@ import ai.slock.compose.data.SharedSettingsApiEnvironmentOption
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
+import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
 import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerDefaults
@@ -98,7 +99,7 @@ class SettingsHomePageDiagnosticsTest {
             )
         val rows = payload.sections.first { it.title == "Diagnostics" }.rows
 
-        assertEquals(listOf("API Server", "API Environment", "Diagnostics"), payload.sections.map { it.title })
+        assertEquals(listOf("API Server", "Diagnostics"), payload.sections.map { it.title })
         assertEquals(listOf("diagnostics", "router"), rows.map { it.key })
         assertEquals("Diagnostics", rows.first().title)
         assertTrue(rows.first().detail.contains("auth"))
@@ -106,7 +107,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun developerPayloadMakesStagingSwitcherExplicit() {
+    fun developerPayloadOpensApiEnvironmentEditor() {
         val production =
             SharedSettingsApiEnvironmentOption(
                 key = "production",
@@ -139,16 +140,13 @@ class SettingsHomePageDiagnosticsTest {
                 actionState = null
             )
 
-        val environmentRows = payload.sections.first { it.title == "API Environment" }.rows
-        val stagingRow = environmentRows.first { it.value == "staging" }
+        val apiRows = payload.sections.first { it.title == "API Server" }.rows
+        val environmentRow = apiRows.first { it.key == DEVELOPER_ACTION_API_ENVIRONMENT }
 
-        assertEquals("Production (current)", environmentRows.first { it.value == "production" }.title)
-        assertEquals("Current", environmentRows.first { it.value == "production" }.status)
-        assertFalse(environmentRows.first { it.value == "production" }.enabled)
-        assertEquals("Switch to Staging", stagingRow.title)
-        assertEquals("Tap to switch", stagingRow.status)
-        assertTrue(stagingRow.enabled)
-        assertTrue(stagingRow.detail.contains("api-aws-staging.botiverse.dev"))
+        assertEquals("API Environment", environmentRow.title)
+        assertEquals("Production", environmentRow.status)
+        assertTrue(environmentRow.enabled)
+        assertTrue(environmentRow.detail.contains("Choose presets"))
     }
 
     @Test
