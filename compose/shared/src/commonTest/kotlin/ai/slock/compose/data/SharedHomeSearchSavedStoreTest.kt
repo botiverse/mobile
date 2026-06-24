@@ -185,6 +185,26 @@ class SharedHomeSearchSavedStoreTest {
     }
 
     @Test
+    fun searchQueryChangeShowsPendingAffordanceBeforeDebounceRuns() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val search = FakeSearchRepository(items = listOf(inboxItem("message-pending")))
+        val store =
+            SharedHomeSearchSavedStore(
+                authStore = InMemorySlockAuthSessionStore(sampleSession()),
+                savedRepository = FakeSavedRepository(),
+                searchRepository = search,
+                scope = scope,
+                searchDebounceMillis = 250L
+            )
+
+        store.dispatch(SharedHomeSearchSavedIntent.SearchQueryChanged("release"))
+
+        assertEquals(true, store.state.value.search.querySearchPending)
+        assertEquals(emptyList(), search.calls)
+        scope.cancel()
+    }
+
+    @Test
     fun searchRefreshShowsRefreshingAffordanceDuringLoadedRefresh() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val search = QueuedSearchRepository()

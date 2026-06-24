@@ -58,7 +58,13 @@ class SharedHomeSearchSavedStore(
             is SharedHomeSearchSavedIntent.Unsave -> unsave(intent.item)
             is SharedHomeSearchSavedIntent.SearchQueryChanged -> {
                 _state.value =
-                    _state.value.copy(search = _state.value.search.copy(query = intent.query))
+                    _state.value.copy(
+                        search =
+                            _state.value.search.copy(
+                                query = intent.query,
+                                querySearchPending = intent.query.trim().isNotBlank()
+                            )
+                    )
                 scheduleSearchRefresh()
             }
             SharedHomeSearchSavedIntent.SubmitSearch -> runSearch(refresh = true)
@@ -259,6 +265,7 @@ class SharedHomeSearchSavedStore(
                                 previous.copy(
                                     loading = !refreshInPlace,
                                     refreshing = refreshInPlace,
+                                    querySearchPending = false,
                                     searched = true,
                                     errorCode = null,
                                     noPermissionCode = null
@@ -316,6 +323,7 @@ class SharedHomeSearchSavedStore(
                         loading = false,
                         refreshing = false,
                         loadingMore = false,
+                        querySearchPending = false,
                         empty = false,
                         hasMore = false,
                         nextOffset = null,
@@ -507,6 +515,7 @@ class SharedHomeSearchSavedStore(
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
+                                querySearchPending = false,
                                 errorCode = null,
                                 noPermissionCode = null
                             )
@@ -521,6 +530,7 @@ class SharedHomeSearchSavedStore(
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
+                                querySearchPending = false,
                                 errorCode = null,
                                 noPermissionCode = null
                             )
@@ -530,6 +540,7 @@ class SharedHomeSearchSavedStore(
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
+                                querySearchPending = false,
                                 errorCode = result.error.code,
                                 noPermissionCode = null
                             )
@@ -539,6 +550,7 @@ class SharedHomeSearchSavedStore(
                                 loading = false,
                                 refreshing = false,
                                 loadingMore = false,
+                                querySearchPending = false,
                                 errorCode = null,
                                 noPermissionCode = result.blocker.code
                             )
@@ -556,7 +568,15 @@ class SharedHomeSearchSavedStore(
     private fun setSearchError(code: String) {
         _state.value =
             _state.value.copy(
-                search = _state.value.search.copy(loading = false, refreshing = false, loadingMore = false, searched = true, errorCode = code)
+                search =
+                    _state.value.search.copy(
+                        loading = false,
+                        refreshing = false,
+                        loadingMore = false,
+                        querySearchPending = false,
+                        searched = true,
+                        errorCode = code
+                    )
             )
     }
 
@@ -654,6 +674,7 @@ data class SharedHomeSearchPanelState(
     val searched: Boolean = false,
     val loading: Boolean = false,
     val refreshing: Boolean = false,
+    val querySearchPending: Boolean = false,
     val loadingMore: Boolean = false,
     val empty: Boolean = false,
     val hasMore: Boolean = false,

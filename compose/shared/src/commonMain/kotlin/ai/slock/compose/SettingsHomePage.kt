@@ -9789,7 +9789,10 @@ private fun SharedHomeSearchPanel(
                             detail = if (trimmedQuery.isNotBlank()) "Try different keywords or a shorter phrase." else "Try a different filter set."
                         )
                     } else {
-                        SharedHomeSearchResultsCount(state.totalCount + entityResults.size)
+                        SharedHomeSearchResultsCount(
+                            totalResults = state.totalCount + entityResults.size,
+                            searching = state.querySearchPending || state.loading || state.refreshing
+                        )
                     }
                 }
                 if (entityResults.isNotEmpty()) {
@@ -10826,10 +10829,13 @@ private fun SharedHomeSearchEmptyState(
 }
 
 @Composable
-private fun SharedHomeSearchResultsCount(totalResults: Int) {
+private fun SharedHomeSearchResultsCount(
+    totalResults: Int,
+    searching: Boolean
+) {
     Text(
-        text = "$totalResults results",
-        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 10.sp, lineHeight = 12.sp, letterSpacing = 0.6.sp),
+        text = if (searching) "SEARCHING..." else "$totalResults results",
+        style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 12.sp, lineHeight = 14.sp, letterSpacing = 0.6.sp),
         color = SlockColor.TextMutedGray,
         maxLines = 1,
         modifier =
