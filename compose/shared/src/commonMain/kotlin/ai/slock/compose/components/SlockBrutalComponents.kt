@@ -430,24 +430,50 @@ internal fun SlockBrutalReadOnlyField(
 ) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SlockBrutalSectionLabel(label = label)
-        Box(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = fieldMinHeight)
-                    .background(Color(0xFFF9FAFB))
-                    .border(SlockStroke.Default, SlockColor.BorderBlack.copy(alpha = 0.30f))
-                    .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Text(
-                value,
-                style = textStyle,
-                color = textColor,
-                maxLines = maxLines,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
+        SlockBrutalReadOnlyValueField(
+            value = value,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = maxLines,
+            fieldMinHeight = fieldMinHeight,
+            horizontalPadding = horizontalPadding,
+            verticalPadding = verticalPadding,
+            textStyle = textStyle,
+            textColor = textColor
+        )
+    }
+}
+
+@Composable
+internal fun SlockBrutalReadOnlyValueField(
+    value: String,
+    modifier: Modifier = Modifier,
+    maxLines: Int = 1,
+    fieldMinHeight: Dp = 42.dp,
+    horizontalPadding: Dp = 12.dp,
+    verticalPadding: Dp = 8.dp,
+    backgroundColor: Color = Color(0xFFF9FAFB),
+    borderColor: Color = SlockColor.BorderBlack.copy(alpha = 0.30f),
+    textStyle: TextStyle = SlockType.Input.copy(fontSize = 14.sp, lineHeight = 18.sp, color = SlockColor.TextMutedGray),
+    textColor: Color = SlockColor.TextMutedGray
+) {
+    Box(
+        modifier =
+            modifier
+                .heightIn(min = fieldMinHeight)
+                .background(backgroundColor)
+                .border(SlockStroke.Default, borderColor)
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        TextField(
+            value = value,
+            onValueChange = {},
+            placeholder = "",
+            autoFocus = false,
+            maxLines = maxLines,
+            textStyle = textStyle.copy(color = textColor),
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
