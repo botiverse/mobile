@@ -3131,7 +3131,6 @@ private fun SettingsAppShellContent(
                     state = settingsState.about,
                     fallback = appShellAboutFallback(session),
                     bottomContentPadding = bottomContentPadding,
-                    onOpenDiagnostics = { onDestinationChange(SettingsDestinationDeveloper) },
                     onCopyBuild = { summary ->
                         settingsCapabilities.bridgeCopyToClipboard(summary)
                     },
@@ -5828,7 +5827,6 @@ private fun SharedSettingsAboutContent(
     state: ScreenLoadState<SharedSettingsAboutSnapshot>,
     fallback: SharedSettingsAboutSnapshot,
     bottomContentPadding: Dp = SlockSpacing.Lg,
-    onOpenDiagnostics: () -> Unit,
     onCopyBuild: (String) -> Unit,
     webUrl: String = SharedSettingsDefaultWebBaseUrl,
     onOpenSlock: (String) -> Unit,
@@ -5842,7 +5840,6 @@ private fun SharedSettingsAboutContent(
     val payload = snapshot.toAboutPayload(webUrl)
     SharedSettingsSectionContent(payload, bottomContentPadding = bottomContentPadding) { action, value ->
         when (action) {
-            "diagnostics" -> onOpenDiagnostics()
             "copyBuild" -> onCopyBuild(value.orEmpty().ifBlank { snapshot.buildSummary() })
             "openSlock" -> onOpenSlock(value.orEmpty().ifBlank { webUrl })
             "feedback" -> onSendFeedback()
@@ -7109,9 +7106,9 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySh
     return KuiklySharedSettingsPayload(
         instanceId = "shared-shell-settings-about",
         title = "About",
-        heroIconName = SlockLucideIconName.Bug,
+        heroIconName = SlockLucideIconName.Info,
         heroLabel = appName.ifBlank { "Raft" },
-        detail = "Version, diagnostics, feedback",
+        detail = "Version, build, and source",
         sections =
             listOf(
                 KuiklySharedSettingsSection(
@@ -7129,7 +7126,6 @@ private fun SharedSettingsAboutSnapshot.toAboutPayload(webUrl: String): KuiklySh
                     title = "Actions",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.Terminal, "Developer", "Open API server, diagnostics, and route launcher tools.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("openSlock", SlockLucideIconName.ExternalLink, "Open Raft", "Open $resolvedWebUrl in the system browser.", value = resolvedWebUrl, status = "Open", enabled = true)
                         )
                 )
@@ -7157,14 +7153,20 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                 KuiklySharedSettingsRow(
                     key = DEVELOPER_ACTION_API_ENVIRONMENT,
                     iconName = if (selected) SlockLucideIconName.CircleCheckBig else SlockLucideIconName.Server,
-                    title = option.label,
-                    detail = option.apiBaseUrl.ifBlank { option.webUrl },
+                    title = if (selected) "${option.label} (current)" else "Switch to ${option.label}",
+                    detail =
+                        listOf(
+                            option.apiBaseUrl.ifBlank { option.webUrl },
+                            option.socketBaseUrl
+                        )
+                            .filter { it.isNotBlank() }
+                            .joinToString(" | "),
                     value = option.key,
                     status =
                         when {
                             switching -> "Switching"
-                            selected -> "Selected"
-                            else -> "Switch"
+                            selected -> "Current"
+                            else -> "Tap to switch"
                         },
                     enabled = !selected && actionState?.inProgress != true
                 )
@@ -7213,7 +7215,11 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                                 detail = this?.socketBaseUrl.orEmpty().ifBlank { "Unknown" },
                                 status = "Realtime"
                             )
-                        ) + environmentRows
+                        )
+                ),
+                KuiklySharedSettingsSection(
+                    title = "API Environment",
+                    rows = environmentRows
                 ),
                 KuiklySharedSettingsSection(
                     title = "Diagnostics",
@@ -7609,7 +7615,7 @@ private fun settingsDestinationSubtitle(destination: String): String =
         SettingsDestinationNotifications -> "Push status and workspace mute"
         SettingsDestinationMobile -> "My message alignment"
         SettingsDestinationStorage -> "Local cache"
-        SettingsDestinationAbout -> "Diagnostics"
+        SettingsDestinationAbout -> "Version and build information"
         SettingsDestinationDeveloper -> "API server, diagnostics, route launcher"
         SettingsDestinationDiagnostics -> "Sanitized logs and diagnostics"
         SettingsDestinationDiagnosticsFeedbackChannel -> "最近用过的 channel 放前面"
@@ -7629,7 +7635,7 @@ private fun settingsDestinationIcon(destination: String): SlockLucideIconName =
         SettingsDestinationNotifications -> SlockLucideIconName.Bell
         SettingsDestinationMobile -> SlockLucideIconName.Smartphone
         SettingsDestinationStorage -> SlockLucideIconName.Archive
-        SettingsDestinationAbout -> SlockLucideIconName.Bug
+        SettingsDestinationAbout -> SlockLucideIconName.Info
         SettingsDestinationDeveloper -> SlockLucideIconName.Terminal
         SettingsDestinationDiagnostics -> SlockLucideIconName.Clipboard
         SettingsDestinationDiagnosticsFeedbackChannel -> SlockLucideIconName.Hash
