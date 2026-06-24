@@ -3047,41 +3047,6 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun threadRealtimeChannelIdsIncludeResolvedStreamAndParentChannel() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "activity-thread",
-                surfaceKind = KuiklyThreadSurfaceKind.ReplyThread,
-                sourceThreadId = "reply-stream-1",
-                streamChannelId = "reply-stream-1",
-                parentChannelId = "parent-channel-1",
-                parentMessageId = "m1",
-                status = "content"
-            )
-
-        assertEquals(
-            listOf("reply-stream-1", "parent-channel-1"),
-            payload.threadRealtimeChannelIds()
-        )
-    }
-
-    @Test
-    fun threadRealtimeChannelIdsDropCompositeThreadRouteIds() {
-        val payload =
-            KuiklyThreadScreenPayload(
-                instanceId = "parent-channel-1:m1",
-                sourceThreadId = "parent-channel-1:m1",
-                parentChannelId = "parent-channel-1",
-                status = "content"
-            )
-
-        assertEquals(
-            listOf("parent-channel-1"),
-            payload.threadRealtimeChannelIds()
-        )
-    }
-
-    @Test
     fun resolvedAuxiliaryThreadIdAllowsEmptyReplyThreadAfterLoad() {
         val launchPayload =
             KuiklyThreadScreenPayload(

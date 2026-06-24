@@ -1254,19 +1254,6 @@ internal fun KuiklyThreadScreenPayload.resolvedAuxiliaryThreadId(): String? {
     return candidate
 }
 
-internal fun KuiklyThreadScreenPayload.threadRealtimeChannelIds(
-    resolvedAuxiliaryThreadId: String? = resolvedAuxiliaryThreadId()
-): List<String> =
-    listOf(
-        resolvedAuxiliaryThreadId,
-        streamChannelId.nonBlank(),
-        sourceThreadId.nonBlank(),
-        parentChannelId.nonBlank()
-    )
-        .filterNotNull()
-        .filterNot { it.contains(":") }
-        .distinct()
-
 private fun KuiklyThreadScreenPayload.isReplyThreadWithExplicitParentPair(): Boolean =
     surfaceKind == KuiklyThreadSurfaceKind.ReplyThread &&
         parentChannelId.nonBlank() != null &&
@@ -2050,27 +2037,6 @@ internal fun SharedThreadRouteContent(
         currentServerSlug = session?.currentServerSlug()
         createAgentComputerServerId = session?.currentServerId?.takeIf { it.isNotBlank() }
         createAgentComputerServerResolved = true
-    }
-    LaunchedEffect(
-        active,
-        currentSession?.currentServerId,
-        currentSession?.accessToken,
-        payload.sourceThreadId,
-        payload.streamChannelId,
-        payload.parentChannelId,
-        resolvedAuxiliaryThreadId
-    ) {
-        if (!active) return@LaunchedEffect
-        val session = currentSession ?: return@LaunchedEffect
-        val serverId = session.currentServerId?.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        val accessToken = session.accessToken.takeIf { it.isNotBlank() } ?: return@LaunchedEffect
-        bridge.realtimeConnect(
-            serverId = serverId,
-            accessToken = accessToken
-        )
-        payload.threadRealtimeChannelIds(resolvedAuxiliaryThreadId).forEach { channelId ->
-            bridge.realtimeJoinChannel(channelId)
-        }
     }
     LaunchedEffect(initialPayload) {
         bridge.performanceMarker(
