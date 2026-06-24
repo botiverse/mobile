@@ -40,6 +40,41 @@ class SharedThreadComposerDraftStoreTest {
     }
 
     @Test
+    fun insertMentionAppendsTokenFocusesComposerAndPersistsDraft() {
+        val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
+        val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)
+        val draftKey = "send=channel-1|parent=_|mention=channel-1"
+        val firstStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        val composer =
+            KuiklyThreadComposerPayload(
+                instanceId = "composer-mention",
+                seedText = "hello",
+                seedAsTask = true,
+                syncNonce = 4,
+                focusRequestNonce = 2
+            )
+
+        firstStore.dispatch(SharedThreadComposerDraftIntent.Start(composer = composer, draftKey = draftKey))
+        firstStore.dispatch(SharedThreadComposerDraftIntent.InsertMention("@Android Developer"))
+
+        assertEquals("hello @android-developer ", firstStore.state.value.seedText)
+        assertEquals(true, firstStore.state.value.seedAsTask)
+        assertEquals(5, firstStore.state.value.syncNonce)
+        assertEquals(3, firstStore.state.value.focusRequestNonce)
+
+        val secondStore = SharedThreadComposerDraftStore(persistSlices = listOf(persistSlice))
+        secondStore.dispatch(
+            SharedThreadComposerDraftIntent.Start(
+                composer = composer.copy(seedText = "", seedAsTask = false, syncNonce = 0, focusRequestNonce = 0),
+                draftKey = draftKey
+            )
+        )
+
+        assertEquals("hello @android-developer ", secondStore.state.value.seedText)
+        assertTrue(secondStore.state.value.seedAsTask)
+    }
+
+    @Test
     fun successfulSendClearsPersistedDraftForComposerKey() {
         val persistence = SharedThreadComposerDraftPersistence(InMemorySlockKeyValueStore())
         val persistSlice = SharedThreadComposerDraftPersistSlice(persistence)

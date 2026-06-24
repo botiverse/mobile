@@ -3962,6 +3962,7 @@ private fun KuiklyThreadMessageItem.withSenderProfile(profile: MemberProfile?): 
     }
     return copy(
         authorName = authorName.takeUnless { it.isBlank() || it == authorId || it == "Unknown" } ?: profile.displayName,
+        authorHandle = authorHandle.ifBlank { profile.handle },
         authorKind =
             when (profile.kind) {
                 MemberKind.Agent -> "agent"
@@ -4553,6 +4554,7 @@ internal fun Message.toKuiklyThreadMessageItem(currentUserId: String?): KuiklyTh
         id = id.value,
         authorId = author.id.value,
         authorName = author.displayName,
+        authorHandle = author.handle,
         authorKind =
             when (author.kind) {
                 MemberKind.Agent -> "agent"

@@ -17,6 +17,7 @@ internal data class SharedThreadComposerDraftState(
     val seedText: String = "",
     val seedAsTask: Boolean = false,
     val syncNonce: Int = 0,
+    val focusRequestNonce: Int = 0,
     val sending: Boolean = false,
     val failureLabel: String? = null,
     val removedAttachmentIds: Set<String> = emptySet(),
@@ -188,6 +189,7 @@ internal class SharedThreadComposerDraftPersistSlice(
     ) {
         when (intent) {
             is SharedThreadComposerDraftIntent.Change,
+            is SharedThreadComposerDraftIntent.InsertMention,
             is SharedThreadComposerDraftIntent.RestoreAfterFailure ->
                 next.draftKey?.let { key ->
                     persistence.save(key, next.seedText, next.seedAsTask)
@@ -219,6 +221,7 @@ internal sealed interface SharedThreadComposerDraftIntent {
         val draftKey: String? = null
     ) : SharedThreadComposerDraftIntent
     data class Change(val seedText: String? = null, val seedAsTask: Boolean? = null) : SharedThreadComposerDraftIntent
+    data class InsertMention(val handle: String) : SharedThreadComposerDraftIntent
     data object BeginSend : SharedThreadComposerDraftIntent
     data class RestoreAfterFailure(
         val seedText: String,
@@ -282,12 +285,21 @@ internal class SharedThreadComposerDraftStore(
                     draftKey = intent.draftKey,
                     seedText = intent.composer.seedText,
                     seedAsTask = intent.composer.seedAsTask,
-                    syncNonce = intent.composer.syncNonce
+                    syncNonce = intent.composer.syncNonce,
+                    focusRequestNonce = intent.composer.focusRequestNonce
                 )
             is SharedThreadComposerDraftIntent.Change ->
                 current.copy(
                     seedText = intent.seedText ?: current.seedText,
                     seedAsTask = intent.seedAsTask ?: current.seedAsTask,
+                    sending = false,
+                    failureLabel = null
+                )
+            is SharedThreadComposerDraftIntent.InsertMention ->
+                current.copy(
+                    seedText = current.seedText.withInsertedThreadMention(intent.handle),
+                    syncNonce = current.syncNonce + 1,
+                    focusRequestNonce = current.focusRequestNonce + 1,
                     sending = false,
                     failureLabel = null
                 )
@@ -420,6 +432,29 @@ internal class SharedThreadComposerDraftStore(
                 )
         }
 }
+
+internal fun String.withInsertedThreadMention(handle: String): String {
+    val token = handle.toThreadMentionToken() ?: return this
+    val mention = "@$token "
+    if (isBlank()) return mention
+    return if (last().isWhitespace()) {
+        this + mention
+    } else {
+        "$this $mention"
+    }
+}
+
+private fun String.toThreadMentionToken(): String? =
+    trim()
+        .removePrefix("@")
+        .takeIf { it.isNotBlank() }
+        ?.let { raw ->
+            raw.takeIf { value -> value.none { char -> char.isWhitespace() } }
+                ?: raw.lowercase()
+                    .replace(Regex("""\s+"""), "-")
+                    .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == '.' }
+        }
+        ?.takeIf { it.isNotBlank() }
 
 internal class SharedThreadComposerDraftViewModel(
     persistSlices: List<MviPersistSlice<SharedThreadComposerDraftState, SharedThreadComposerDraftIntent>> = emptyList()
