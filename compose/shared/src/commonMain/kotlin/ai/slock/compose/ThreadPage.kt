@@ -6442,6 +6442,7 @@ private fun ThreadMessagesList(
                     topAnchoredOriginContent = topAnchoredOriginContent,
                     initialBottomAnchorReady = initialBottomAnchorReady,
                     pendingKeyboardBottomAnchor = pendingKeyboardBottomAnchor,
+                    canScrollTowardBottom = listState.canScrollForward,
                     latestItemOffBottom = listState.shouldShowThreadBackToBottom(latestItemIndex)
                 )
             )
@@ -6755,12 +6756,14 @@ internal data class ThreadBackToBottomButtonState(
     val topAnchoredOriginContent: Boolean,
     val initialBottomAnchorReady: Boolean,
     val pendingKeyboardBottomAnchor: Boolean,
+    val canScrollTowardBottom: Boolean = true,
     val latestItemOffBottom: Boolean
 )
 
 internal fun shouldShowThreadBackToBottomButton(state: ThreadBackToBottomButtonState): Boolean =
     state.initialBottomAnchorReady &&
         !state.pendingKeyboardBottomAnchor &&
+        state.canScrollTowardBottom &&
         state.latestItemOffBottom
 
 internal data class ThreadInitialBottomAnchorState(
@@ -7153,6 +7156,7 @@ internal fun threadFocusedItemCenterScrollOffset(
 
 private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Boolean {
     if (latestItemIndex <= 0) return false
+    if (!canScrollForward) return false
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex }
@@ -7161,6 +7165,7 @@ private fun LazyListState.shouldShowThreadBackToBottom(latestItemIndex: Int): Bo
 }
 
 private fun LazyListState.isLatestItemAtRenderedBottom(latestItemIndex: Int): Boolean {
+    if (!canScrollForward) return true
     val layoutInfo = layoutInfo
     if (layoutInfo.totalItemsCount <= latestItemIndex) return false
     val latestItem = layoutInfo.visibleItemsInfo.firstOrNull { it.index == latestItemIndex } ?: return false

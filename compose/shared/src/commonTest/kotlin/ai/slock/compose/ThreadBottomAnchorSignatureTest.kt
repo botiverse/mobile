@@ -488,6 +488,22 @@ class ThreadBottomAnchorSignatureTest {
     }
 
     @Test
+    fun backToBottomButton_hidesWhenListCannotScrollTowardBottom() {
+        assertEquals(
+            false,
+            shouldShowThreadBackToBottomButton(
+                ThreadBackToBottomButtonState(
+                    topAnchoredOriginContent = false,
+                    initialBottomAnchorReady = true,
+                    pendingKeyboardBottomAnchor = false,
+                    canScrollTowardBottom = false,
+                    latestItemOffBottom = true
+                )
+            )
+        )
+    }
+
+    @Test
     fun initialBottomAnchor_revealsOnlyAfterLatestRenderedAtBottom() {
         assertEquals(
             false,
