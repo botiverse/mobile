@@ -63,9 +63,4 @@ internal class SlockKuiklyPageData private constructor(
     }
 }
 
-internal fun slockKuiklyPageIsOpaque(pageName: String): Boolean =
-        pageName == SlockKuiklyPages.THREAD ||
-                pageName == SlockKuiklyPages.THREAD_COMPOSER_VISUAL ||
-                pageName == SlockKuiklyPages.APP_SHELL
-
 private const val SLOCK_KUIKLY_APP_ID = 1
