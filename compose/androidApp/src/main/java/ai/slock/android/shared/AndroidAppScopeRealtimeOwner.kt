@@ -36,6 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 internal object AndroidAppScopeRealtimeOwner {
@@ -135,6 +136,14 @@ internal object AndroidAppScopeRealtimeOwner {
         context: Context,
         requestedLastSeq: Long = 0L
     ) {
+        connectFromStoredSession(context, requestedLastSeq, missingSelectedServerRetryCount = 0)
+    }
+
+    private fun connectFromStoredSession(
+        context: Context,
+        requestedLastSeq: Long,
+        missingSelectedServerRetryCount: Int
+    ) {
         val appContext = context.applicationContext
         val repository = ensureRealtimeRepository(appContext)
         val sessionStore = KuiklyMMKVAuthSessionStore(androidMMKVAuthKeyValueStore(appContext))
@@ -142,17 +151,28 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeConnectJob =
             scope.launch {
                 try {
-                    val session = sessionStore.readSession()
-                    val serverId = session?.currentServerId?.let(::ServerId)
+                    var session = sessionStore.readSession()
+                    var serverId = session?.currentServerId?.let(::ServerId)
                     if (serverId == null) {
                         SlockDiagnosticsLogger.w(
                             LOG_TAG,
-                            "connect_skip reason=missing_selected_server"
+                            "connect_skip reason=missing_selected_server retry=$missingSelectedServerRetryCount"
                         )
-                        return@launch
+                        if (missingSelectedServerRetryCount < 1) {
+                            delay(1500L)
+                            session = sessionStore.readSession()
+                            serverId = session?.currentServerId?.let(::ServerId)
+                            if (serverId == null) {
+                                SlockDiagnosticsLogger.w(
+                                    LOG_TAG,
+                                    "connect_skip reason=missing_selected_server retry=${missingSelectedServerRetryCount + 1}"
+                                )
+                            }
+                        }
+                        if (serverId == null) return@launch
                     }
                     val accessToken =
-                        session.accessToken.takeIf { it.isNotBlank() }
+                        session?.accessToken?.takeIf { it.isNotBlank() }
                             ?: run {
                                 SlockDiagnosticsLogger.w(
                                     LOG_TAG,
@@ -192,7 +212,7 @@ internal object AndroidAppScopeRealtimeOwner {
             connectFromStoredSession(context, requestedLastSeq)
             return
         }
-        SlockDiagnosticsLogger.d(
+        SlockDiagnosticsLogger.w(
             LOG_TAG,
             "connect_request source=shared serverId=${serverId.value} lastSeq=$requestedLastSeq forceReconnect=$forceReconnect"
         )
@@ -428,7 +448,7 @@ internal object AndroidAppScopeRealtimeOwner {
             )
         )
         val result = DataResult.Content(Unit)
-        SlockDiagnosticsLogger.d(
+        SlockDiagnosticsLogger.w(
             LOG_TAG,
             "connect_result serverId=${serverId.value} result=${result::class.simpleName} lastSeq=$resumeSeq"
         )
@@ -521,13 +541,13 @@ internal object AndroidAppScopeRealtimeOwner {
     ) {
         val preferenceEnabled = isUnreadNotificationPreferenceEnabled(appContext)
         val hasAttachedConsumers = rawConsumers.isNotEmpty()
-        SlockDiagnosticsLogger.d(
+        SlockDiagnosticsLogger.w(
             LOG_TAG,
             "background_unread_notification_candidate serverId=${serverId.value} messageId=${event.message.id.value} consumer_count=${rawConsumers.size} preference_enabled=$preferenceEnabled visibility=$appVisibility"
         )
         val isAppInForeground = appVisibility == AppVisibility.Foreground
         if (!shouldPostBackgroundUnreadNotification(hasAttachedConsumers, preferenceEnabled, isAppInForeground)) {
-            SlockDiagnosticsLogger.d(
+            SlockDiagnosticsLogger.w(
                 LOG_TAG,
                 "background_unread_notification_skip reason=${backgroundUnreadNotificationSkipReason(hasAttachedConsumers, preferenceEnabled, isAppInForeground)} serverId=${serverId.value} messageId=${event.message.id.value}"
             )
@@ -546,14 +566,14 @@ internal object AndroidAppScopeRealtimeOwner {
                 isAppInForeground = isAppInForeground
             )
         if (request == null) {
-            SlockDiagnosticsLogger.d(
+            SlockDiagnosticsLogger.w(
                 LOG_TAG,
                 "background_unread_notification_skip reason=policy serverId=${serverId.value} messageId=${event.message.id.value}"
             )
             return
         }
         val result = AndroidUnreadNotificationPoster.postUnreadNotification(appContext, request)
-        SlockDiagnosticsLogger.d(
+        SlockDiagnosticsLogger.w(
             LOG_TAG,
             "background_unread_notification_result code=${result["code"]} status=${result["status"]} serverId=${serverId.value} messageId=${event.message.id.value}"
         )

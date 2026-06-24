@@ -315,7 +315,7 @@ enum class SharedHomeNotificationKind {
 }
 
 internal fun String.isLocalHomeNotificationId(): Boolean =
-    startsWith("machine-offline:")
+    startsWith("machine-offline:") || startsWith("foreground-message:")
 
 private fun ComputerListSummary.toSharedHomeMachineNotifications(): List<SharedHomeNotification> {
     val offlineMachines = machines.filter { it.status == ComputerStatus.Offline }

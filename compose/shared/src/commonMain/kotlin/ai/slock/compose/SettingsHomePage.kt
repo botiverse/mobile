@@ -9058,7 +9058,18 @@ private fun SharedHomeScreen(
                 onNotificationView = { notification ->
                     notification.targetId?.takeIf { it.startsWith("http://") || it.startsWith("https://") }?.let { url ->
                         bridge.openUrl(url)
-                    } ?: bridge.toast("Notification opened")
+                    } ?: notification.targetId?.takeIf { it.isNotBlank() }?.let { threadId ->
+                        conversationsByThreadId[threadId]?.let { conversation ->
+                            onOpenConversation(conversation)
+                            onIntent(SharedHomeIntent.SelectConversation(threadId))
+                        } ?: run {
+                            onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
+                            onOpenActivity()
+                        }
+                    } ?: run {
+                        onIntent(SharedHomeIntent.SelectTopAction(SharedHomeTopAction.Activity))
+                        onOpenActivity()
+                    }
                 },
                 onNotificationDismiss = { notification ->
                     onNotificationDismiss(notification.id)
