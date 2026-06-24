@@ -475,7 +475,7 @@ class ComposeLocalWriteThrough(
     ): Boolean {
         if (tasks.isEmpty()) return false
         var wroteThread = false
-        tasks.groupBy { task -> task.threadId ?: activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId) }
+        tasks.groupBy { task -> resolveRealtimeTaskThreadId(task, activeConversationId) }
             .forEach { (threadId, threadTasks) ->
                 if (threadId == null) return@forEach
                 val existing = store.readThread(threadId) ?: return@forEach
@@ -490,6 +490,17 @@ class ComposeLocalWriteThrough(
                     ) || wroteThread
             }
         return wroteThread
+    }
+
+    private suspend fun resolveRealtimeTaskThreadId(
+        task: ai.slock.compose.model.TaskSummary,
+        activeConversationId: String?
+    ): ThreadId? {
+        task.threadId?.let { return it }
+        task.channelId?.let { return ThreadId(it.value) }
+        val activeThreadId = activeConversationId?.takeIf { it.isNotBlank() }?.let(::ThreadId) ?: return null
+        val activeSnapshot = store.readThread(activeThreadId) ?: return null
+        return if (activeSnapshot.containsRealtimeTaskIdentity(task)) activeThreadId else null
     }
 
     private fun latestThreadUpdates(events: List<ThreadUpdated>): List<ThreadUpdated> =
@@ -952,6 +963,18 @@ private fun ThreadSnapshot.withRealtimeTasks(
         messages = messages.map { message -> message.withTaskPatch() }
     )
 }
+
+private fun ThreadSnapshot.containsRealtimeTaskIdentity(
+    task: ai.slock.compose.model.TaskSummary
+): Boolean {
+    val messageId = task.messageId
+    return tasks.any { existing -> existing.id == task.id } ||
+        parentMessage?.matchesTaskIdentity(task.id, messageId) == true ||
+        messages.any { message -> message.matchesTaskIdentity(task.id, messageId) }
+}
+
+private fun Message.matchesTaskIdentity(taskId: TaskId, messageId: MessageId?): Boolean =
+    task?.id == taskId || (messageId != null && id == messageId)
 
 private fun List<Message>.dedupeAndSortMessages(): List<Message> =
     distinctBy { it.id }.sortedWith(

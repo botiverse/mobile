@@ -121,7 +121,7 @@ class RealtimeEventMapper {
             RealtimeSocketEvents.TaskCreated ->
                 decodeOrNull(TaskCreatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.TaskUpdated ->
-                decodeOrNull(TaskUpdatedDto.serializer(), element)?.task?.toDomain()?.let(::TaskUpdated)
+                decodeOrNull(TaskUpdatedDto.serializer(), element)?.toDomain()
             RealtimeSocketEvents.TaskDeleted ->
                 decodeOrNull(TaskDeletedDto.serializer(), element)?.let { TaskDeleted(TaskId(it.taskId)) }
             RealtimeSocketEvents.AgentActivity ->
@@ -535,18 +535,21 @@ private fun ThreadUpdatedDto.toDomain(): ThreadUpdated? {
 }
 
 private fun TaskCreatedDto.toDomain(): TaskCreated? {
-    val list = tasks.map { it.toDomain() }
+    val list = tasks.map { it.toDomain(envelopeChannelId = channelId) }
     return if (list.isEmpty()) null else TaskCreated(list)
 }
 
-private fun TaskInfoWireDto.toDomain(): TaskSummary = TaskSummary(
+private fun TaskUpdatedDto.toDomain(): TaskUpdated =
+    TaskUpdated(task.toDomain(envelopeChannelId = channelId))
+
+private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSummary = TaskSummary(
     id = TaskId(id),
     title = title,
     status = TaskStatus.fromWireValue(status) ?: TaskStatus.Todo,
     taskNumber = taskNumber,
     messageId = messageId?.let(::MessageId),
     parentMessageId = null,
-    channelId = channelId?.let(::ChannelId),
+    channelId = (channelId ?: envelopeChannelId)?.takeIf { it.isNotBlank() }?.let(::ChannelId),
     threadId = null,
     isThreadTask = channelType?.lowercase() == "thread",
     assignee = memberFrom(type = claimedByType, id = claimedById, name = claimedByName),
