@@ -2119,7 +2119,15 @@ internal class SlockKuiklyBridgeModule(
             appendLine()
             appendLine("Bugly diagnostics")
             appendDiagnosticsLine("TDLog", if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) "enabled" else "disabled")
-            appendDiagnosticsLine("Attachment", "Bugly TDLog files are included in this zip when available.")
+            appendDiagnosticsLine(
+                "App log",
+                if (SlockAndroidBuglyDiagnostics.hasFallbackDiagnosticsLogs(appContext)) {
+                    "enabled"
+                } else {
+                    "pending"
+                }
+            )
+            appendDiagnosticsLine("Attachment", "Bugly TDLog and app-owned diagnostics files are included in this zip when available.")
         }
     }
 

@@ -19,6 +19,10 @@ import com.tencent.tddiag.protocol.LogLevel
 import com.tencent.tddiag.protocol.UploadListener
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -37,6 +41,10 @@ object SlockAndroidBuglyDiagnostics {
     private const val FeedbackFilePrefix = "slock-feedback-"
     private const val FeedbackZipExtension = ".zip"
     private const val FeedbackSnapshotName = "slock-diagnostics-summary.txt"
+    private const val FallbackLogDirName = "slock_diagnostics_logs"
+    private const val FallbackLogFileName = "slock-diagnostics.log"
+    private const val FallbackLogMaxBytes = 2L * 1024L * 1024L
+    private const val FallbackLogMaxFiles = 4
     private const val TdLogMaxFileSize = 50L * 1024L * 1024L
     private const val TdLogMaxAliveDay = 7
     private const val DiagnoseUploadTimeWindowMillis = 7L * 24L * 60L * 60L * 1000L
@@ -46,8 +54,12 @@ object SlockAndroidBuglyDiagnostics {
     private val diagnoseInitialized = AtomicBoolean(false)
     private val initAttempted = AtomicBoolean(false)
     private val fullLaunchReported = AtomicBoolean(false)
+    private val fallbackLogLock = Any()
+    @Volatile
+    private var appContext: Context? = null
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (!initAttempted.compareAndSet(false, true)) return
         val appId = BuildConfig.BUGLY_ANDROID_APP_ID.trim()
         val appKey = BuildConfig.BUGLY_ANDROID_APP_KEY.trim()
@@ -107,9 +119,13 @@ object SlockAndroidBuglyDiagnostics {
 
     fun isDiagnoseInitialized(): Boolean = diagnoseInitialized.get()
 
+    fun hasFallbackDiagnosticsLogs(context: Context): Boolean =
+        fallbackLogFiles(context.applicationContext).any { it.isFile && it.length() > 0L }
+
     fun recordLog(level: String, tag: String, message: String) {
         val cleanTag = tag.buglyValueOrNull() ?: return
         val cleanMessage = DiagnosticsSanitizer.sanitize(message).buglyValueOrNull() ?: return
+        writeFallbackLog(level, cleanTag, cleanMessage)
         if (diagnoseInitialized.get()) {
             runCatching {
                 when (level.lowercase()) {
@@ -156,11 +172,19 @@ object SlockAndroidBuglyDiagnostics {
                     zip.closeEntry()
                 }
             }
+            fallbackLogFiles(appContext).forEach { file ->
+                if (file.isFile && file.length() > 0L) {
+                    val entryName = "app_logs/${file.name}".uniqueZipEntryName(seenNames)
+                    zip.putNextEntry(ZipEntry(entryName))
+                    file.inputStream().buffered().use { input -> input.copyTo(zip) }
+                    zip.closeEntry()
+                }
+            }
         }
         recordLog(
             "info",
             Tag,
-            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} tdlog_files=${diagnoseLogFiles(appContext).size}"
+            "diagnostics_feedback_archive file=${archive.name} bytes=${archive.length()} tdlog_files=${diagnoseLogFiles(appContext).size} app_log_files=${fallbackLogFiles(appContext).size}"
         )
         return archive
     }
@@ -169,26 +193,30 @@ object SlockAndroidBuglyDiagnostics {
         val appContext = context.applicationContext
         flushDiagnoseLogs()
         val files = diagnoseLogFiles(appContext)
-        if (files.isEmpty()) {
-            return if (diagnoseInitialized.get()) {
-                "Bugly TDLog is initialized, but no local TDLog files are currently available."
-            } else {
-                "Bugly TDLog diagnostics are not initialized."
-            }
+        val fallbackFiles = fallbackLogFiles(appContext)
+        if (files.isEmpty() && fallbackFiles.isEmpty()) {
+            return "No local diagnostics log files are currently available."
         }
+        val sourceFiles = if (files.isNotEmpty()) files else fallbackFiles
+        val sourceLabel =
+            if (files.isNotEmpty()) {
+                "Bugly TDLog recent diagnostics"
+            } else {
+                "App-owned recent diagnostics"
+            }
         val header =
             buildString {
-                appendLine("Bugly TDLog recent diagnostics")
-                appendLine("Files: ${files.size}")
+                appendLine(sourceLabel)
+                appendLine("Files: ${sourceFiles.size}")
             }
         val budget = (maxChars - header.length).coerceAtLeast(1)
         val body =
-            files
+            sourceFiles
                 .take(6)
                 .joinToString(separator = "\n\n") { file ->
                     buildString {
                         appendLine("### ${file.name} (${file.length()} bytes)")
-                        append(readTailText(file, (budget / files.take(6).size).coerceAtLeast(1_000)))
+                        append(readTailText(file, (budget / sourceFiles.take(6).size).coerceAtLeast(1_000)))
                     }
                 }
                 .takeLast(budget)
@@ -260,6 +288,11 @@ object SlockAndroidBuglyDiagnostics {
         }
         runCatching {
             tdLogDir(appContext).walkBottomUp()
+                .filter { it.isFile }
+                .forEach { it.delete() }
+        }
+        runCatching {
+            fallbackLogDir(appContext).walkBottomUp()
                 .filter { it.isFile }
                 .forEach { it.delete() }
         }
@@ -570,6 +603,42 @@ object SlockAndroidBuglyDiagnostics {
         }
     }
 
+    private fun writeFallbackLog(level: String, tag: String, message: String) {
+        val context = appContext ?: return
+        runCatching {
+            synchronized(fallbackLogLock) {
+                val dir = fallbackLogDir(context).apply { mkdirs() }
+                val active = File(dir, FallbackLogFileName)
+                rotateFallbackLogsIfNeeded(active)
+                active.appendText(
+                    "${diagnosticsTimestamp()} ${level.uppercase(Locale.US)} $tag $message\n",
+                    StandardCharsets.UTF_8
+                )
+            }
+        }
+    }
+
+    private fun rotateFallbackLogsIfNeeded(active: File) {
+        if (!active.exists() || active.length() < FallbackLogMaxBytes) return
+        val dir = active.parentFile ?: return
+        for (index in FallbackLogMaxFiles - 1 downTo 1) {
+            val source = File(dir, "$FallbackLogFileName.$index")
+            val target = File(dir, "$FallbackLogFileName.${index + 1}")
+            if (!source.exists()) continue
+            if (index == FallbackLogMaxFiles - 1) {
+                source.delete()
+            } else {
+                source.renameTo(target)
+            }
+        }
+        active.renameTo(File(dir, "$FallbackLogFileName.1"))
+    }
+
+    private fun diagnosticsTimestamp(): String =
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US).apply {
+            timeZone = TimeZone.getDefault()
+        }.format(Date())
+
     private fun flushDiagnoseLogs() {
         if (!diagnoseInitialized.get()) return
         runCatching { TDLog.flushLog() }
@@ -594,6 +663,13 @@ object SlockAndroidBuglyDiagnostics {
             .distinctBy { it.absolutePath }
             .sortedByDescending { it.lastModified() }
     }
+
+    private fun fallbackLogFiles(context: Context): List<File> =
+        fallbackLogDir(context)
+            .walkTopDown()
+            .filter { it.isFile && it.length() > 0L && it.name.startsWith(FallbackLogFileName) }
+            .toList()
+            .sortedByDescending { it.lastModified() }
 
     private fun readTailText(file: File, maxChars: Int): String =
         runCatching {
@@ -623,6 +699,8 @@ object SlockAndroidBuglyDiagnostics {
     }
 
     private fun tdLogDir(context: Context): File = File(context.filesDir, TdLogDirName)
+
+    private fun fallbackLogDir(context: Context): File = File(context.filesDir, FallbackLogDirName)
 
     private fun feedbackDir(context: Context): File = File(context.cacheDir, FeedbackDirName)
 
