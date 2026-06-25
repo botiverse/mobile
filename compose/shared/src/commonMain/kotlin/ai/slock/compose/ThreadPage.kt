@@ -1856,7 +1856,10 @@ private fun ThreadMessageVisualScreen() {
                     value = message.taskAssigneeName,
                     id = message.taskAssigneeId
                 ),
-                resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                resolveMarkdownTagLabel =
+                    remember(payload.members) {
+                        { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+                    },
                 taskOpenEnabled = payload.showTaskOpenActions,
                 taskStatusActionsEnabled = payload.showTaskStatusActions,
                 timestampLabel = payload.formatTimestampLabel(message.timestampLabel),
@@ -5704,6 +5707,10 @@ private fun ThreadPageContent(
         remember(payload.knownMarkdownChannelNames) {
             payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet()
         }
+    val resolveMarkdownTagLabel =
+        remember(payload.members) {
+            { tag: ThreadMarkdownTag -> payload.resolveMarkdownTagDisplayLabel(tag) }
+        }
     val selectThreadTab: (KuiklyThreadTab, SlockSelectionChangeSource) -> Unit = { tab, _ ->
         selectedTab = tab
         onThreadEvent("selectTab", null, null, tab.wireValue)
@@ -5734,6 +5741,8 @@ private fun ThreadPageContent(
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
+                        knownMarkdownChannelNames = knownMarkdownChannelNames,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMemberProfile,
                         onMentionAuthor = { handle ->
@@ -6247,6 +6256,8 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    knownMarkdownChannelNames: Set<String>? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onMentionAuthor: (String) -> Unit,
@@ -6301,6 +6312,8 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         attachmentCommentsEnabled = attachmentCommentsEnabled,
         currentServerSlug = currentServerSlug,
         contentExtrasVisible = contentExtrasVisible,
+        knownMarkdownChannelNames = knownMarkdownChannelNames,
+        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
         onThreadEvent = onThreadEvent,
         onOpenMember = onOpenMember,
         onMentionAuthor = onMentionAuthor,
@@ -6325,6 +6338,8 @@ private fun ThreadChatTab(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    knownMarkdownChannelNames: Set<String>? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onMentionAuthor: (String) -> Unit,
@@ -6349,6 +6364,8 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
+                    knownMarkdownChannelNames = knownMarkdownChannelNames,
+                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
@@ -6383,6 +6400,8 @@ private fun ThreadChatTab(
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
                     currentServerSlug = currentServerSlug,
                     contentExtrasVisible = contentExtrasVisible,
+                    knownMarkdownChannelNames = knownMarkdownChannelNames,
+                    resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                     onThreadEvent = onThreadEvent,
                     onOpenMember = onOpenMember,
                     onMentionAuthor = onMentionAuthor,
@@ -6411,6 +6430,8 @@ private fun ThreadChatTab(
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
                 currentServerSlug = currentServerSlug,
                 contentExtrasVisible = contentExtrasVisible,
+                knownMarkdownChannelNames = knownMarkdownChannelNames,
+                resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                 onThreadEvent = onThreadEvent,
                 onOpenMember = onOpenMember,
                 onMentionAuthor = onMentionAuthor,
@@ -6436,6 +6457,8 @@ private fun ThreadMessagesList(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    knownMarkdownChannelNames: Set<String>? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
     onMentionAuthor: (String) -> Unit,
@@ -6849,6 +6872,8 @@ private fun ThreadMessagesList(
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
                         currentServerSlug = currentServerSlug,
                         contentExtrasVisible = contentExtrasVisible,
+                        knownMarkdownChannelNames = knownMarkdownChannelNames,
+                        resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                         diagnosticsLogger = diagnosticsLogger,
                         onThreadEvent = onThreadEvent,
                         onOpenMember = onOpenMember,
@@ -6977,10 +7002,10 @@ private fun ThreadMessagesList(
                             alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = payload.showReplyActions,
                             resolvedTaskAssigneeName = linkedTaskAssigneeName,
-                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
-                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
+                            knownMarkdownChannelNames = knownMarkdownChannelNames,
                             onShowActions = { anchor ->
                                 if (!message.hasLocalSendState() || message.isFailedLocalSend()) {
                                     actionMenuAnchor = anchor
@@ -9582,6 +9607,8 @@ private fun ThreadOriginCard(
     attachmentCommentsEnabled: Boolean = false,
     currentServerSlug: String? = null,
     contentExtrasVisible: Boolean = true,
+    knownMarkdownChannelNames: Set<String>? = null,
+    resolveMarkdownTagLabel: ((ThreadMarkdownTag) -> String)? = null,
     diagnosticsLogger: (String) -> Unit = {},
     onThreadEvent: (action: String, itemId: String?, attachmentId: String?, tab: String?) -> Unit,
     onOpenMember: (String) -> Unit,
@@ -9650,11 +9677,11 @@ private fun ThreadOriginCard(
                                         value = displayOrigin.taskAssigneeName,
                                         id = displayOrigin.taskAssigneeId
                                     ),
-                            resolveMarkdownTagLabel = payload::resolveMarkdownTagDisplayLabel,
+                            resolveMarkdownTagLabel = resolveMarkdownTagLabel,
                             taskOpenEnabled = payload.showTaskOpenActions && contentExtrasVisible,
                             taskStatusActionsEnabled = payload.showTaskStatusActions && contentExtrasVisible,
                             showSaveAction = payload.showMessageSaveAction,
-                            knownMarkdownChannelNames = payload.knownMarkdownChannelNames.toKnownMarkdownChannelNameSet(),
+                            knownMarkdownChannelNames = knownMarkdownChannelNames,
                             onShowActions = { anchor -> onShowActions(origin, anchor) },
                             onOpenMember = onOpenMember,
                             onOpenThread = { onThreadEvent("openMessageThread", it, null, null) },
