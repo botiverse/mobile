@@ -1355,6 +1355,47 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun cachedReplyPayloadDoesNotPersistParentDisplaySubtitle() = runBlocking {
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val payload =
+            replyPayload(parentMessageId = "parent-1", threadId = "thread-parent-1")
+                .copy(
+                    status = "content",
+                    subtitle = "#general",
+                    originMessage =
+                        KuiklyThreadMessageItem(
+                            id = "parent-1",
+                            authorId = "u1",
+                            authorName = "Artin",
+                            body = "Parent message",
+                            threadChannelId = "thread-parent-1"
+                        ),
+                    messages =
+                        listOf(
+                            KuiklyThreadMessageItem(
+                                id = "reply-1",
+                                authorId = "u2",
+                                authorName = "Cindy",
+                                body = "Reply body"
+                            )
+                        )
+                )
+
+        dataSource.writeCachedPayload(payload)
+
+        val cached = localStore.readThread(ThreadId("channel-1:parent-1"))
+        assertEquals(ConversationKind.Thread, cached?.conversation?.kind)
+        assertEquals("thread-parent-1", cached?.conversation?.name)
+        assertNull(cached?.conversation?.subtitle)
+    }
+
+    @Test
     fun localSendFailurePersistsFailedBubbleWithRetryContext() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

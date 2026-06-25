@@ -5184,7 +5184,7 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(
                 },
             kind = snapshotKind,
             name = snapshotConversationName(threadIdValue),
-            subtitle = subtitle,
+            subtitle = if (snapshotKind == ConversationKind.Thread) null else subtitle,
             joined = joined,
             memberCount = membersCount.takeIf { it > 0 },
             permissions = ConversationPermissions(canSend = canSend)

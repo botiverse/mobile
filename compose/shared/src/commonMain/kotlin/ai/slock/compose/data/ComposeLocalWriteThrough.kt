@@ -34,6 +34,7 @@ import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.resolveMergedAvatarSlot
 import ai.slock.compose.model.safeDisplayNameOrNull
 import ai.slock.compose.model.threadIdentity
+import ai.slock.compose.model.withTitleFallback
 
 class ComposeLocalWriteThrough(
     private val store: ComposeLocalDataStore,
@@ -256,7 +257,7 @@ class ComposeLocalWriteThrough(
             )
         }
         val resolvedParentMessage = snapshot.parentMessage ?: fallbackProof.parentMessage
-        val conversation =
+        val conversationWithResolvedMetadata =
             snapshot.conversation
                 .withStoredConversationMetadata(storedConversation)
                 .withResolvedReplyThreadMetadata(
@@ -265,6 +266,12 @@ class ComposeLocalWriteThrough(
                     parentMessage = resolvedParentMessage,
                     fallbackThreadId = fallbackProof.aliasThreadId
                 )
+        val conversation =
+            if (conversationWithResolvedMetadata.kind == ConversationKind.Thread) {
+                conversationWithResolvedMetadata
+            } else {
+                conversationWithResolvedMetadata.withTitleFallback(fallbackProof.header)
+            }
         val streamChannelId = conversation.messageStreamChannelId()
         val messages =
             (listOfNotNull(resolvedParentMessage) + snapshot.messages)
@@ -725,7 +732,6 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
             ?: storedConversation?.thread?.parentChannelId
             ?: fallbackHeader?.thread?.parentChannelId
     if (parentMessage != null && resolvedParentChannelId != null) {
-        val fallbackName = fallbackHeader?.safeDisplayNameOrNull()
         val nameLooksLikeIdentity =
             nameIsBlankOrIdentity(
                 additionalIdentityIds = setOfNotNull(streamChannelId?.value)
@@ -741,7 +747,7 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
                     parentChannelKind = channelType.normalizedThreadChannelKind()
                 ),
             kind = ConversationKind.Thread,
-            name = if (nameLooksLikeIdentity && fallbackName != null) fallbackName else name
+            name = if (nameLooksLikeIdentity) streamChannelId?.value ?: name else name
         )
     }
     val currentThread = thread
@@ -765,7 +771,7 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
             channelId = threadedFallback.channelId,
             thread = threadedFallbackThread,
             kind = ConversationKind.Thread,
-            name = name.takeIf { it.isNotBlank() } ?: threadedFallback.name
+            name = name
         )
     } else {
         this

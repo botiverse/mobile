@@ -157,6 +157,8 @@ class ComposeLocalWriteThroughTest {
         assertEquals(ConversationKind.Thread, cached.conversation.kind)
         assertEquals(ChannelId("channel-1"), cached.conversation.channelId)
         assertEquals(ChannelId("thread-channel-1"), cached.conversation.thread?.streamChannelId)
+        assertEquals("thread-channel-1", cached.conversation.name)
+        assertNull(cached.conversation.subtitle)
         assertEquals(parent.id, cached.parentMessage?.id)
     }
 
