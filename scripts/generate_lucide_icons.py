@@ -135,6 +135,7 @@ LUCIDE_ICONS = [
     "package",
     "paperclip",
     "panel-bottom-open",
+    "pause",
     "pencil",
     "pin",
     "pin-off",

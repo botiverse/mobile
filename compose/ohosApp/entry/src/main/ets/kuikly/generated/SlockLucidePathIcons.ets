@@ -103,6 +103,7 @@ export const SlockLucidePathIconNames: string[] = [
   'package',
   'paperclip',
   'panel-bottom-open',
+  'pause',
   'pencil',
   'pin',
   'pin-off',
@@ -3523,6 +3524,33 @@ export function slockLucidePathEntries(name: string): SlockLucidePathEntry[] {
     },
     {
       commands: 'm 9 10 3 -3 3 3',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    }
+      ];
+    case 'pause':
+      return [
+    {
+      commands: 'M 15 3 H 18 A 1 1 0 0 1 19 4 V 20 A 1 1 0 0 1 18 21 H 15 A 1 1 0 0 1 14 20 V 4 A 1 1 0 0 1 15 3 Z',
+      fillPaint: 'none',
+      strokePaint: 'currentColor',
+      fillOpacity: 0,
+      strokeOpacity: 1,
+      strokeWidth: 2,
+      strokeLineCap: LineCapStyle.Round,
+      strokeLineJoin: LineJoinStyle.Round,
+      viewportWidth: 24,
+      viewportHeight: 24,
+    },
+    {
+      commands: 'M 6 3 H 9 A 1 1 0 0 1 10 4 V 20 A 1 1 0 0 1 9 21 H 6 A 1 1 0 0 1 5 20 V 4 A 1 1 0 0 1 6 3 Z',
       fillPaint: 'none',
       strokePaint: 'currentColor',
       fillOpacity: 0,

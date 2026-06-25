@@ -214,13 +214,20 @@ private fun SlockFilePreviewStandalonePageContent() {
             )
         attachmentCacheState = result?.optBoolean("cached") == true
     }
-    suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload): String? {
+    suspend fun openPayloadExternally(currentPayload: SlockFilePreviewPayload, trackProgress: Boolean): String? {
         val externalUrl =
             currentPayload.externalUrl?.takeIf { it.isNotBlank() }
                 ?: currentPayload.threadAttachmentExternalUrl(threadApi)
                 ?: return "Unable to download attachment"
-        val downloadId = activeDownloadId ?: currentPayload.filePreviewDownloadId()
-        activeDownloadId = downloadId
+        val downloadId =
+            if (trackProgress) {
+                activeDownloadId ?: currentPayload.filePreviewDownloadId()
+            } else {
+                null
+            }
+        if (trackProgress) {
+            activeDownloadId = downloadId
+        }
         val result =
             bridge.openAttachment(
                 url = externalUrl,
@@ -228,11 +235,16 @@ private fun SlockFilePreviewStandalonePageContent() {
                 fileName = currentPayload.attachmentCacheFileName(),
                 mimeType = currentPayload.externalMimeType,
                 downloadId = downloadId,
-                onProgress = { progress ->
-                    if (progress.downloadId.isBlank() || progress.downloadId == activeDownloadId) {
-                        downloadProgress = progress
+                onProgress =
+                    if (trackProgress) {
+                        { progress ->
+                            if (progress.downloadId.isBlank() || progress.downloadId == activeDownloadId) {
+                                downloadProgress = progress
+                            }
+                        }
+                    } else {
+                        null
                     }
-                }
             )
         return when (result?.optString("status").orEmpty()) {
             "opened", "" -> {
@@ -251,12 +263,19 @@ private fun SlockFilePreviewStandalonePageContent() {
     }
     fun requestExternalOpen() {
         if (!canOpenWith || downloadStatus == "downloading" || downloadStatus == "paused") return
-        downloadStatus = "downloading"
+        val trackProgress = slockFilePreviewShouldTrackOpenProgress(attachmentCacheState)
         downloadMessage = ""
-        activeDownloadId = payload.filePreviewDownloadId()
-        downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
+        if (trackProgress) {
+            downloadStatus = "downloading"
+            activeDownloadId = payload.filePreviewDownloadId()
+            downloadProgress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = activeDownloadId.orEmpty())
+        } else {
+            downloadStatus = "idle"
+            activeDownloadId = null
+            downloadProgress = null
+        }
         coroutineScope.launch {
-            val error = openPayloadExternally(payload)
+            val error = openPayloadExternally(payload, trackProgress)
             if (error == null) {
                 downloadStatus = "idle"
                 downloadMessage = ""
@@ -874,7 +893,7 @@ internal fun SlockFilePreviewPayloadContent(
             )
         else ->
             SlockFilePreviewGenericCard(
-                iconName = SlockLucideIconName.File,
+                iconName = slockFilePreviewFileIconName(payload),
                 name = payload.name.ifBlank { payload.path.ifBlank { "File" } },
                 meta = payload.meta,
                 message = payload.message.ifBlank { "No preview is available for this file type." },
@@ -899,7 +918,7 @@ private fun SlockFilePreviewPayload.previewIconName(): SlockLucideIconName =
         "image" -> SlockLucideIconName.Image
         "loading" -> SlockLucideIconName.Loader
         "error" -> SlockLucideIconName.TriangleAlert
-        else -> SlockLucideIconName.File
+        else -> slockFilePreviewFileIconName(this)
     }
 
 private fun SlockFilePreviewPayload.previewHeaderTitle(): String {
@@ -1033,6 +1052,52 @@ internal fun slockFilePreviewOverflowActionLabel(payload: SlockFilePreviewPayloa
         payload.isAndroidPackageArchive() -> "Install"
         else -> "Open with..."
     }
+
+internal fun slockFilePreviewShouldTrackOpenProgress(cached: Boolean): Boolean = !cached
+
+internal fun slockFilePreviewFileIconName(payload: SlockFilePreviewPayload): SlockLucideIconName {
+    val mime = payload.externalMimeType.substringBefore(';').trim().lowercase()
+    val fileName = payload.attachmentCacheFileName().substringBefore('?').substringBefore('#')
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return when {
+        payload.isAndroidPackageArchive() -> SlockLucideIconName.Package
+        mime.startsWith("image/") ||
+            extension in setOf("avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "svg", "webp") ->
+            SlockLucideIconName.Image
+        mime.startsWith("text/") ||
+            extension in setOf("csv", "log", "md", "markdown", "pdf", "rtf", "text", "txt") ->
+            SlockLucideIconName.FileText
+        mime in setOf(
+            "application/javascript",
+            "application/json",
+            "application/typescript",
+            "application/x-javascript",
+            "application/xml",
+            "text/css",
+            "text/html",
+            "text/javascript",
+            "text/xml"
+        ) ||
+            extension in setOf(
+                "c", "cc", "cpp", "css", "go", "h", "html", "java", "js", "json", "kt", "kts",
+                "m", "mm", "py", "rb", "rs", "sh", "swift", "toml", "ts", "tsx", "xml", "yaml", "yml"
+            ) ->
+            SlockLucideIconName.FileCode
+        mime in setOf(
+            "application/gzip",
+            "application/java-archive",
+            "application/vnd.rar",
+            "application/x-7z-compressed",
+            "application/x-gzip",
+            "application/x-rar-compressed",
+            "application/x-tar",
+            "application/zip"
+        ) ||
+            extension in setOf("7z", "aar", "gz", "jar", "rar", "tar", "tgz", "war", "zip") ->
+            SlockLucideIconName.Archive
+        else -> SlockLucideIconName.File
+    }
+}
 
 private fun slockFilePreviewPrimaryActionIcon(payload: SlockFilePreviewPayload, cached: Boolean): SlockLucideIconName =
     when {

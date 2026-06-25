@@ -132,4 +132,43 @@ class SlockFilePreviewDownloadStatusTest {
 
         assertEquals("Download and open...", label)
     }
+
+    @Test
+    fun cachedOpenDoesNotTrackDownloadProgress() {
+        assertEquals(false, slockFilePreviewShouldTrackOpenProgress(cached = true))
+        assertEquals(true, slockFilePreviewShouldTrackOpenProgress(cached = false))
+    }
+
+    @Test
+    fun fileIconUsesPackageForApk() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(
+                    externalFileName = "raft.apk",
+                    externalMimeType = "application/vnd.android.package-archive"
+                )
+            )
+
+        assertEquals(SlockLucideIconName.Package, icon)
+    }
+
+    @Test
+    fun fileIconUsesArchiveForCompressedFiles() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "logs.zip")
+            )
+
+        assertEquals(SlockLucideIconName.Archive, icon)
+    }
+
+    @Test
+    fun fileIconUsesCodeForSourceFiles() {
+        val icon =
+            slockFilePreviewFileIconName(
+                SlockFilePreviewPayload(externalFileName = "ThreadPage.kt")
+            )
+
+        assertEquals(SlockLucideIconName.FileCode, icon)
+    }
 }
