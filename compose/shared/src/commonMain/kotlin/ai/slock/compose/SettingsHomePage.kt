@@ -289,6 +289,7 @@ import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.ThreadUpdated
 import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.TaskSummary
+import ai.slock.compose.model.avatarSlotResolution
 import ai.slock.compose.model.avatarWireValueForAvatarSlot
 import ai.slock.compose.model.parseSlockTimestampEpochMillisOrNull
 import ai.slock.compose.model.SlockTimeFormat24Hour
@@ -11903,7 +11904,7 @@ private fun ConversationSummary.toSharedHomeConversationRowSeed(): SharedHomeCon
         fallbackName = name,
         fallbackChannelType = channelType?.takeIf { it.isNotBlank() },
         fallbackDescription = subtitle?.takeIf { it.isNotBlank() },
-        fallbackAvatarWireValue = avatar?.wireValue ?: avatarUrl,
+        fallbackAvatarWireValue = avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl,
         fallbackPresence = presence,
         fallbackAgentStatus = agentStatus,
         fallbackJoined = joined && permissions.canRead,

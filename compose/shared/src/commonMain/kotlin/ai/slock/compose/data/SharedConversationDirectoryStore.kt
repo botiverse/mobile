@@ -307,7 +307,7 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
         description = subtitle?.takeIf { it.isNotBlank() },
         parentChannelId = thread?.parentChannelId?.value,
         parentMessageId = thread?.parentMessageId?.value,
-        avatarUrl = avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl,
+        avatarUrl = conversationDirectoryAvatarWireValue(),
         presence = presence?.name,
         agentStatus = agentStatus?.name,
         presenceMemberId = presenceMemberId?.value,
@@ -391,6 +391,9 @@ private fun ConversationSummary.toDirectoryChannelType(): String =
         ConversationKind.Inbox,
         ConversationKind.System -> "channel"
     }
+
+internal fun ConversationSummary.conversationDirectoryAvatarWireValue(): String? =
+    avatarSlotResolution().effectiveAvatarWireValue ?: avatar?.wireValue ?: avatarUrl
 
 private fun String.toDirectoryConversationKind(): ConversationKind =
     when (lowercase()) {

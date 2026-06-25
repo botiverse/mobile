@@ -8,12 +8,16 @@ import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.TasksViewMode
 import ai.slock.compose.model.AgentStatus
+import ai.slock.compose.model.ChannelId
+import ai.slock.compose.model.ConversationKind
+import ai.slock.compose.model.ConversationSummary
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
+import ai.slock.compose.model.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -271,6 +275,24 @@ class SlockHomeComponentsTest {
         assertTrue(item.hasDraft)
         assertTrue(item.joined)
         assertTrue(item.archived)
+    }
+
+    @Test
+    fun homeConversationItemUsesAgentDmAvatarFallbackWhenAvatarMissing() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("dm-agent-1"),
+                channelId = ChannelId("dm-agent-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "KMP-Expert",
+                directMessagePeerType = "agent",
+                presenceMemberId = MemberId("agent-1")
+            )
+
+        val item = SharedHomeConversationRowProjector().project(conversation)
+
+        assertEquals("pixel:robot", item.avatarWireValue)
+        assertEquals("agent", item.peerType)
     }
 
     @Test

@@ -31,6 +31,27 @@ import kotlin.test.assertTrue
 
 class ComposeLocalWriteThroughTest {
     @Test
+    fun conversationDirectoryUsesAgentDmAvatarFallbackWhenAvatarMissing() {
+        val missingAvatar =
+            ConversationSummary(
+                threadId = ThreadId("dm-agent-1"),
+                channelId = ChannelId("dm-agent-1"),
+                kind = ConversationKind.DirectMessage,
+                name = "KMP-Expert",
+                directMessagePeerType = "agent",
+                presenceMemberId = MemberId("agent-1")
+            )
+        val gravatarCandidate =
+            missingAvatar.copy(
+                avatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404",
+                gravatarUrl = "https://www.gravatar.com/avatar/agent-hash?s=52&d=404"
+            )
+
+        assertEquals("pixel:robot", missingAvatar.conversationDirectoryAvatarWireValue())
+        assertEquals("pixel:robot", gravatarCandidate.conversationDirectoryAvatarWireValue())
+    }
+
+    @Test
     fun writeHomeResultPreservesStoredDirectMessagePresence() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
