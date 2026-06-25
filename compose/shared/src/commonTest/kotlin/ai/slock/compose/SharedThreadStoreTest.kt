@@ -768,6 +768,53 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun contentSliceDoesNotOwnActionChromeWhenNetworkPayloadChangesIt() {
+        val current =
+            contentPayload("cached body").copy(
+                selectedTab = "tasks",
+                showModeTabs = false,
+                showReplyActions = false,
+                settingsActions = listOf(KuiklyThreadSettingsAction(id = "current-action")),
+                showMembersAction = false,
+                showSettingsAction = false,
+                showOpenInChannelAction = false,
+                showMessageSaveAction = false,
+                showTaskOpenActions = false,
+                showTaskStatusActions = false,
+                joinLabel = "JOIN CURRENT"
+            )
+        val networkPatch =
+            contentPayload("network body").copy(
+                selectedTab = "chat",
+                showModeTabs = true,
+                showReplyActions = true,
+                settingsActions = listOf(KuiklyThreadSettingsAction(id = "network-action")),
+                showMembersAction = true,
+                showSettingsAction = true,
+                showOpenInChannelAction = true,
+                showMessageSaveAction = true,
+                showTaskOpenActions = true,
+                showTaskStatusActions = true,
+                joinLabel = "JOIN NETWORK"
+            )
+
+        val payload = current.withContentSliceFrom(networkPatch)
+
+        assertEquals("network body", payload.messages.single().body)
+        assertEquals("tasks", payload.selectedTab)
+        assertEquals(false, payload.showModeTabs)
+        assertEquals(false, payload.showReplyActions)
+        assertEquals(listOf("current-action"), payload.settingsActions.map { it.id })
+        assertEquals(false, payload.showMembersAction)
+        assertEquals(false, payload.showSettingsAction)
+        assertEquals(false, payload.showOpenInChannelAction)
+        assertEquals(false, payload.showMessageSaveAction)
+        assertEquals(false, payload.showTaskOpenActions)
+        assertEquals(false, payload.showTaskStatusActions)
+        assertEquals("JOIN CURRENT", payload.joinLabel)
+    }
+
+    @Test
     fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
