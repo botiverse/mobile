@@ -72,32 +72,61 @@ The sprite work should replace `ThreadQuickReactionGlyph` internals and quick-re
 
 ## Asset Layout
 
-Add assets under shared common resources so all Kuikly targets can consume the same catalog:
+Use KMM Resource as the source-of-truth asset pipeline. The project already applies
+`com.tencent.kuiklybase.resource.generator` in `compose/shared/build.gradle.kts`,
+with input rooted at `compose/shared/src/commonMain/resources/MR`; the reaction
+atlas must extend that existing pipeline instead of adding a separate
+`commonMain/assets` + per-platform copy path.
+
+Add the atlas PNG and JSON manifest under shared MR assets:
 
 ```text
-compose/shared/src/commonMain/assets/reactions/reaction-atlas-v1.png
-compose/shared/src/commonMain/assets/reactions/reaction-atlas-v1.json
+compose/shared/src/commonMain/resources/MR/assets/reactions/reaction_atlas_v1.png
+compose/shared/src/commonMain/resources/MR/assets/reactions/reaction_atlas_v1.json
 ```
 
-Runtime URI convention:
+Generated common code should reference the generated resource handle, for example:
 
-```text
-assets://reactions/reaction-atlas-v1.png
-assets://reactions/reaction-atlas-v1.json
+```kotlin
+MR.assets.reactions.reaction_atlas_v1
 ```
 
-The source of truth is the shared asset path and JSON schema above. Platform packaging must preserve the `reactions/` relative path so common code never builds Android-only or OHOS-only resource strings.
+The exact generated accessor shape must be verified against the generator output;
+the contract is that common code depends on the generated resource, not on a
+literal platform path.
+
+Do not require checked-in duplicate files under Android or OHOS app resource
+folders. Platform-specific lookup belongs in one small adapter, for example
+`ThreadReactionAtlasResource`, that converts the generated KMM resource to the
+image/asset form required by the renderer.
 
 Android packaging requirement:
 
-- `compose/shared/src/commonMain/assets` must be included in the Android app assets.
-- Atlas lookup should resolve `assets://reactions/reaction-atlas-v1.png` to the Android packaged asset.
+- The KMM resource generator output must package the PNG and JSON so Android
+  can read both through the generated resource handle or the approved adapter.
+- If the source-rect renderer ultimately needs an `assets://...` or drawable URI,
+  only the adapter may construct that URI; Thread UI/catalog code must not
+  hard-code `assets://reactions/...`.
 
 OHOS packaging requirement:
 
-- The same files must be copied or generated into `compose/ohosApp/entry/src/main/resources/resfile/reactions/`.
-- Runtime lookup should resolve `assets://reactions/reaction-atlas-v1.png` to `resfile/reactions/reaction-atlas-v1.png`.
-- `compileKotlinOhosArm64` alone is not sufficient proof. Implementation acceptance must include either an HAP/runtime smoke or a deterministic file-existence/package check for both atlas PNG and catalog under `resfile/reactions/`.
+- The KMM resource generator must package the same files into the generated
+  OHOS resource output, expected under the generator's `rawfile/assets/...`
+  resource layout rather than a checked-in `entry/src/main/resources/resfile`
+  duplicate.
+- If Kuikly `ImageUri` only accepts OHOS-specific paths, hide the
+  `AssetResource -> ImageUri` mapping behind the same adapter used by Android.
+- `compileKotlinOhosArm64` alone is not sufficient proof. Implementation
+  acceptance must include either an HAP/runtime smoke or a deterministic
+  generated-resource/package check for both atlas PNG and catalog JSON on OHOS.
+
+Required spike before implementation lands:
+
+- Add one tiny PNG and one JSON fixture under `MR/assets/reactions/`.
+- Confirm the generated `MR` exposes both resources to common code.
+- Confirm Android can read both generated resources at runtime/package level.
+- Confirm OHOS can read both generated resources at runtime/HAP package level.
+- Document the exact generated accessor and adapter API in the implementation PR.
 
 ## Manifest Schema
 
@@ -107,7 +136,7 @@ Use one JSON file per atlas version:
 {
   "schemaVersion": 1,
   "atlas": {
-    "image": "reaction-atlas-v1.png",
+    "image": "reaction_atlas_v1.png",
     "width": 512,
     "height": 512,
     "pixelRatio": 3,
@@ -180,17 +209,22 @@ The quick reaction row should be derived from catalog order, not a hard-coded em
 
 ## Catalog Loading Boundary
 
-The recommended first implementation is **build-time generated Kotlin catalog**:
+The recommended first implementation is **KMM Resource + build-time generated
+Kotlin catalog**:
 
-1. Keep `reaction-atlas-v1.json` as the source of truth.
-2. Add a Gradle or checked-in generation step that validates the JSON and emits a commonMain Kotlin catalog, for example `GeneratedThreadReactionCatalog.kt`.
-3. Common UI reads the generated catalog synchronously and does not need runtime asset-text IO.
-4. Unit tests parse the JSON source directly to verify it still matches the generated Kotlin catalog.
+1. Keep `MR/assets/reactions/reaction_atlas_v1.json` as the manifest source of truth.
+2. Keep `MR/assets/reactions/reaction_atlas_v1.png` as the image source of truth.
+3. Add a Gradle or checked-in generation step that validates the JSON and emits a commonMain Kotlin catalog, for example `GeneratedThreadReactionCatalog.kt`.
+4. Common UI reads the generated Kotlin metadata synchronously and receives the generated image resource through a `ThreadReactionAtlasResource` wrapper.
+5. Unit tests parse the JSON source directly to verify it still matches the generated Kotlin catalog.
 
-This avoids adding a new runtime asset-text bridge just for reactions. If implementation instead chooses runtime JSON loading, it must first add a common `BridgeModule.readAssetText(assetPath)` boundary and actual Android/OHOS implementations:
+This avoids adding a new runtime asset-text bridge just for reactions. If
+implementation instead chooses runtime JSON loading, it must first add a common
+KMM-resource text loading boundary and actual Android/OHOS implementations:
 
-- Android must read app assets by relative path, e.g. `reactions/reaction-atlas-v1.json`.
-- OHOS must read `resfile/reactions/reaction-atlas-v1.json`.
+- Android must read the generated `MR.assets.reactions.reaction_atlas_v1_json`
+  resource, or the exact generated equivalent.
+- OHOS must read the same generated resource from the OHOS packaged output.
 - Both platforms must expose the same failure semantics and low-cardinality diagnostics.
 
 Do not implement a common parser that can only pass JVM/unit tests while the real common UI has no way to read the JSON on device.
@@ -286,20 +320,21 @@ KMM string resources can still own generic grammar such as "reaction" or "You re
 
 ## Migration Steps
 
-1. Add the atlas PNG and JSON manifest under `commonMain/assets/reactions/`.
-2. Add Android and OHOS packaging for `assets://reactions/*`; OHOS must place files under `entry/src/main/resources/resfile/reactions/`.
-3. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime `readAssetText` bridge before using a common parser on device.
-4. Add a `ThreadReactionCatalogProvider` that exposes:
+1. Add the atlas PNG and JSON manifest under `commonMain/resources/MR/assets/reactions/`.
+2. Run the KMM Resource spike and document the generated accessors for PNG and JSON on Android/OHOS.
+3. Add a `ThreadReactionAtlasResource` adapter that maps the generated KMM resource to the renderer's image/asset input on Android/OHOS.
+4. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime KMM-resource text reader before using a common parser on device.
+5. Add a `ThreadReactionCatalogProvider` that exposes:
    - `resolve(value)`;
    - `quickReactions()`;
    - `label(value, locale)`.
-5. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
-6. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.value }` or a typed quick reaction model.
-7. Replace `ThreadQuickReactionGlyph` internals:
+6. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
+7. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.value }` or a typed quick reaction model.
+8. Replace `ThreadQuickReactionGlyph` internals:
    - supported sprite -> atlas crop;
    - unsupported/missing asset -> current fallback.
-8. Keep existing exact-value chip layout, counts, selected state, pending state, rollback, and click handling.
-9. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
+9. Keep existing exact-value chip layout, counts, selected state, pending state, rollback, and click handling.
+10. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
 
 ## Tests
 
@@ -319,10 +354,10 @@ Rendering / smoke tests:
 - Existing reaction chips render atlas icons plus counts without changing chip dimensions.
 - Selected chip background and count text remain unchanged.
 - Missing/corrupt manifest falls back to text/legacy glyphs and reaction toggles still call the existing API with the exact value.
-- Missing OHOS `resfile/reactions/*` assets fall back and emit a diagnostic that identifies the missing asset path without crashing.
+- Missing generated KMM resource / OHOS packaged resource falls back and emits a diagnostic that identifies the missing resource without crashing.
 - A message containing `☑️` plus `✅` renders two separate chips if both have count, or one sprite chip plus one text fallback if only `✅` is in the atlas.
 - Android and OHOS shared compile pass after introducing the resource path and source-rect primitive.
-- OHOS packaging check or HAP smoke proves both atlas PNG and catalog are available from `resfile/reactions/`; Kotlin compile alone is not enough.
+- Android and OHOS packaging checks or runtime smokes prove both atlas PNG and catalog JSON are available through the generated KMM resources; Kotlin compile alone is not enough.
 
 Suggested commands for implementation PR:
 
@@ -337,8 +372,9 @@ cd compose
 
 - A checked-in spec defines the atlas and manifest contract.
 - Future implementation has one JSON manifest with stable icon names, exact reaction values, crop rectangles, and labels.
-- Runtime catalog access is explicit: either generated commonMain Kotlin catalog from JSON source of truth, or a common `readAssetText` bridge implemented on Android and OHOS.
-- Android and OHOS resolve the same `assets://reactions/...` URI convention, with OHOS packaging under `resfile/reactions/`.
+- Runtime catalog access is explicit: generated commonMain Kotlin catalog from JSON source of truth, or a common KMM-resource text bridge implemented on Android and OHOS.
+- Android and OHOS consume the same checked-in KMM Resource source files under `commonMain/resources/MR/assets/reactions/`; no checked-in double-copy under app-specific resource folders is required.
+- Any platform URI/path conversion is centralized in `ThreadReactionAtlasResource` or an equivalent adapter, not scattered through Thread UI code.
 - UI reaction add/remove behavior remains compatible with existing server emoji payloads and exact-value React behavior.
 - Quick reaction menu and reaction chips use the same exact-value catalog.
 - Unsupported reactions still render and remain clickable.
