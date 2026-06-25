@@ -196,6 +196,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.yield
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -221,6 +223,7 @@ private const val ThreadFocusedMessageHighlightDurationMs = 2_000L
 private const val ThreadFocusedMessageHighlightFadeMs = 180
 private const val ThreadFocusedMessageCenterAttempts = 6
 private const val ThreadMarkdownAttachmentPreviewMaxChars = 80_000
+private const val ThreadAttachmentUploadConcurrencyLimit = 2
 
 internal fun shouldLogThreadPerformance(durationMs: Long): Boolean =
     DEBUG_THREAD_VIRTUAL_RENDER_LOG || durationMs >= ThreadPerformanceSlowThresholdMs
@@ -2388,6 +2391,9 @@ internal fun SharedThreadRouteContent(
     var attachmentUploadJobs by remember(threadInstanceKey) {
         mutableStateOf<Map<String, Job>>(emptyMap())
     }
+    val attachmentUploadSemaphore = remember(threadInstanceKey) {
+        Semaphore(ThreadAttachmentUploadConcurrencyLimit)
+    }
     var attachmentCommentsDialogState by remember(threadInstanceKey) {
         mutableStateOf<ThreadAttachmentCommentsDialogState?>(null)
     }
@@ -4269,7 +4275,11 @@ internal fun SharedThreadRouteContent(
                             val uploadJob =
                                 coroutineScope.launch(start = CoroutineStart.LAZY) {
                                     try {
-                                        when (val uploadResult = dataSource.uploadAttachments(channelId, listOf(file))) {
+                                        val uploadResult =
+                                            attachmentUploadSemaphore.withPermit {
+                                                dataSource.uploadAttachments(channelId, listOf(file))
+                                            }
+                                        when (uploadResult) {
                                             is DataResult.Content -> {
                                                 val previewUri = file.previewUri?.takeIf { it.isNotBlank() }
                                                 val uploaded =
