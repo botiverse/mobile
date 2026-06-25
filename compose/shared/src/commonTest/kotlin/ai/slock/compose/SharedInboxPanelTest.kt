@@ -8,6 +8,7 @@ import ai.slock.compose.model.InboxItemKind
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MessageId
 import ai.slock.compose.model.SlockTimeContext
+import ai.slock.compose.model.TaskStatus
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.slockEpochDayForDate
 import ai.slock.compose.model.threadIdentity
@@ -173,7 +174,7 @@ class SharedInboxPanelTest {
     }
 
     @Test
-    fun activityPreviewSenderNameComesOnlyFromProfileMap() {
+    fun activityPreviewSenderNameUsesWireNameAndProfileOverride() {
         val item =
             InboxItem(
                 key = "activity-1",
@@ -187,7 +188,8 @@ class SharedInboxPanelTest {
                 latestActivitySenderName = "@agent-one"
             )
 
-        assertEquals("Latest update", item.primaryPreviewText())
+        assertEquals("@agent-one: Latest update", item.primaryPreviewText())
+        assertEquals("@agent-one", item.primaryActivityPreviewText().senderName)
         assertEquals(
             "Agent One: Latest update",
             item.primaryPreviewText(
@@ -200,6 +202,54 @@ class SharedInboxPanelTest {
                         )
                 )
             )
+        )
+    }
+
+    @Test
+    fun activityThreadSecondaryPreviewUsesLatestActivitySenderName() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                parentChannelId = ChannelId("channel-1"),
+                parentChannelName = "general",
+                parentMessageId = MessageId("message-1"),
+                parentMessagePreview = "Parent message preview",
+                latestActivityPreview = "Latest reply",
+                latestActivitySenderName = "Artin",
+                replyCount = 2
+            )
+
+        assertEquals("Parent message preview", item.primaryPreviewText())
+        assertEquals("Artin: Latest reply", item.secondaryPreviewText())
+        assertEquals("Artin", item.secondaryActivityPreviewText()?.senderName)
+    }
+
+    @Test
+    fun activityFooterSlotsMatchReactOrderForThreadRows() {
+        val item =
+            InboxItem(
+                key = "thread:activity-1",
+                kind = InboxItemKind.Thread,
+                channelId = ChannelId("thread-channel-1"),
+                channelName = "thread-stream",
+                replyCount = 12,
+                taskNumber = 177,
+                taskStatus = TaskStatus.InProgress,
+                hasMention = true,
+                unreadCount = 3
+            )
+
+        assertEquals(
+            listOf(
+                SharedActivityFooterSlot.Replies,
+                SharedActivityFooterSlot.Task,
+                SharedActivityFooterSlot.Mention,
+                SharedActivityFooterSlot.New
+            ),
+            item.activityFooterSlots()
         )
     }
 

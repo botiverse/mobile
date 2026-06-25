@@ -82,8 +82,12 @@ import com.tencent.kuikly.compose.ui.layout.positionInRoot
 import com.tencent.kuikly.compose.ui.input.pointer.pointerInput
 import com.tencent.kuikly.compose.ui.platform.LocalActivity
 import com.tencent.kuikly.compose.ui.platform.LocalDensity
+import com.tencent.kuikly.compose.ui.text.AnnotatedString
+import com.tencent.kuikly.compose.ui.text.SpanStyle
+import com.tencent.kuikly.compose.ui.text.buildAnnotatedString
 import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
+import com.tencent.kuikly.compose.ui.text.withStyle
 import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
@@ -829,8 +833,9 @@ private fun SharedActivityRow(
                     if (item.kind == InboxItemKind.Thread) {
                         SlockLucideIcon(SlockLucideIconName.MessageSquare, modifier = Modifier.size(13.dp), color = "#FFFF4B9B")
                     }
+                    val primaryPreview = item.primaryActivityPreviewText(senderProfiles)
                     Text(
-                        text = item.primaryPreviewText(senderProfiles),
+                        text = primaryPreview.toAnnotatedString(),
                         style =
                             if (item.unreadCount > 0) {
                                 SlockType.Body.withSlockFontWeight(FontWeight.Bold).copy(fontSize = 14.sp, lineHeight = 18.sp)
@@ -843,10 +848,10 @@ private fun SharedActivityRow(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                item.secondaryPreviewText(senderProfiles)?.let { secondary ->
+                item.secondaryActivityPreviewText(senderProfiles)?.let { secondary ->
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = secondary,
+                        text = secondary.toAnnotatedString(),
                         style = SlockType.Caption.copy(fontSize = 12.sp, lineHeight = 16.sp),
                         color = if (item.unreadCount > 0) SlockColor.TextBlack else SlockColor.TextBlack.copy(alpha = 0.45f),
                         maxLines = 1,
@@ -889,22 +894,21 @@ private fun SharedActivityFooter(item: InboxItem) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        if (item.taskNumber != null && item.taskStatus != null) {
-            SharedActivityTaskBadge(item)
-        }
-        if (item.kind == InboxItemKind.Thread) {
-            Text(
-                text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
-                style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
-                color = SlockColor.TextBlack.copy(alpha = 0.42f),
-                maxLines = 1
-            )
-        }
-        if (item.hasMention && item.unreadCount > 0) {
-            SharedActivityCountPill("you", iconName = SlockLucideIconName.AtSign, backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
-        }
-        if (item.unreadCount > 0) {
-            SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
+        item.activityFooterSlots().forEach { slot ->
+            when (slot) {
+                SharedActivityFooterSlot.Replies ->
+                    Text(
+                        text = "${item.replyCount} ${if (item.replyCount == 1) "reply" else "replies"}",
+                        style = SlockType.Caption.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                        color = SlockColor.TextBlack.copy(alpha = 0.42f),
+                        maxLines = 1
+                    )
+                SharedActivityFooterSlot.Task -> SharedActivityTaskBadge(item)
+                SharedActivityFooterSlot.Mention ->
+                    SharedActivityCountPill("you", iconName = SlockLucideIconName.AtSign, backgroundColor = SlockColor.BrandYellow, textColor = SlockColor.TextBlack)
+                SharedActivityFooterSlot.New ->
+                    SharedActivityCountPill("${item.unreadCount} new", backgroundColor = SlockColor.AccentPink, textColor = SlockColor.SurfaceWhite)
+            }
         }
     }
 }
@@ -1152,16 +1156,20 @@ private fun InboxItem.senderDisplayName(
         latestActivitySenderId
             ?.let(senderProfiles::get)
             ?.displayName
+            ?: latestActivitySenderName
             ?: lastMessageSenderId
                 ?.let(senderProfiles::get)
                 ?.displayName
+            ?: lastMessageSenderName
     } else {
         lastMessageSenderId
             ?.let(senderProfiles::get)
             ?.displayName
+            ?: lastMessageSenderName
             ?: latestActivitySenderId
                 ?.let(senderProfiles::get)
                 ?.displayName
+            ?: latestActivitySenderName
     }
 
 private fun InboxItem.senderAvatarWireValue(): String? =
@@ -1197,20 +1205,76 @@ private fun InboxItem.previewText(): String =
 internal fun InboxItem.primaryPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): String =
-    if (kind == InboxItemKind.Thread) {
-        previewText()
-    } else {
-        senderDisplayName(senderProfiles)?.let { "$it: ${previewText()}" } ?: previewText()
-    }
+    primaryActivityPreviewText(senderProfiles).fullText
 
 internal fun InboxItem.secondaryPreviewText(
     senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
 ): String? =
+    secondaryActivityPreviewText(senderProfiles)?.fullText
+
+internal data class ActivityPreviewText(
+    val senderName: String?,
+    val body: String
+) {
+    val fullText: String =
+        if (senderName.isNullOrBlank()) {
+            body
+        } else {
+            "$senderName: $body"
+        }
+
+    fun toAnnotatedString(): AnnotatedString =
+        buildAnnotatedString {
+            if (!senderName.isNullOrBlank()) {
+                withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(senderName)
+                    append(": ")
+                }
+            }
+            append(body)
+        }
+}
+
+internal fun InboxItem.primaryActivityPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): ActivityPreviewText =
+    ActivityPreviewText(
+        senderName = if (kind == InboxItemKind.Thread) null else senderDisplayName(senderProfiles),
+        body = previewText()
+    )
+
+internal fun InboxItem.secondaryActivityPreviewText(
+    senderProfiles: Map<String, SharedActivitySenderProfile> = emptyMap()
+): ActivityPreviewText? =
     latestActivityPreview
         ?.takeIf { kind == InboxItemKind.Thread && replyCount > 0 && it != previewText() }
         ?.let { preview ->
-            senderDisplayName(senderProfiles)?.let { "$it: $preview" } ?: preview
+            ActivityPreviewText(senderName = senderDisplayName(senderProfiles), body = preview)
         }
+
+internal enum class SharedActivityFooterSlot {
+    Replies,
+    Task,
+    Mention,
+    New
+}
+
+internal fun InboxItem.activityFooterSlots(): List<SharedActivityFooterSlot> {
+    val slots = mutableListOf<SharedActivityFooterSlot>()
+    if (kind == InboxItemKind.Thread) {
+        slots += SharedActivityFooterSlot.Replies
+    }
+    if (taskNumber != null && taskStatus != null) {
+        slots += SharedActivityFooterSlot.Task
+    }
+    if (hasMention && unreadCount > 0) {
+        slots += SharedActivityFooterSlot.Mention
+    }
+    if (unreadCount > 0) {
+        slots += SharedActivityFooterSlot.New
+    }
+    return slots
+}
 
 private fun ai.slock.compose.model.TaskStatus.activityTaskIconName(): SlockLucideIconName =
     when (this) {
