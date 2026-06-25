@@ -20,6 +20,7 @@ import ai.slock.compose.data.SharedActivityState
 import ai.slock.compose.data.SharedActivityStateCache
 import ai.slock.compose.data.SharedActivityStore
 import ai.slock.compose.data.SlockSharedStoreRegistry
+import ai.slock.compose.data.realtime.RealtimeEventMapper
 import ai.slock.compose.markdown.traceMarkdownSection
 import ai.slock.compose.markdown.traceMarkdownSectionNonComposable
 import ai.slock.compose.model.ChannelId
@@ -87,12 +88,15 @@ import com.tencent.kuikly.compose.ui.unit.Dp
 import com.tencent.kuikly.compose.ui.unit.IntOffset
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.core.nvi.serialization.json.JSONObject
+import com.tencent.kuikly.core.pager.IPagerEventObserver
 import com.tencent.kuikly.core.pager.Pager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private val ActivitySelectedRowShadowOffset = 2.dp
+private const val ActivityRealtimeEvent = "slockRealtimeEvent"
 private const val ActivityNearTopThresholdPx = 50
 private const val ActivityUpdateSignatureWindow = 20
 
@@ -181,6 +185,35 @@ internal fun SharedHomeActivityScreen(
         }
     DisposableEffect(activityStore) {
         onDispose { activityStore.clear() }
+    }
+    val realtimeEventMapper = remember { RealtimeEventMapper() }
+    DisposableEffect(pager, bridge, realtimeEventMapper, authStore, activityStore, scope) {
+        val observer =
+            object : IPagerEventObserver {
+                override fun onPagerEvent(pagerEvent: String, eventData: JSONObject) {
+                    if (pagerEvent != ActivityRealtimeEvent) return
+                    scope.launch {
+                        val event =
+                            decodeSharedShellRealtimeEvent(
+                                eventData = eventData,
+                                mapper = realtimeEventMapper,
+                                log = bridge::log
+                            ) ?: return@launch
+                        val session = authStore.readSession()
+                        val serverId =
+                            resolveSharedShellRealtimeServerId(eventData, event, session) ?: return@launch
+                        val currentServerId =
+                            session
+                                ?.currentServerId
+                                ?.takeIf { it.isNotBlank() }
+                                ?: return@launch
+                        if (currentServerId != serverId) return@launch
+                        activityStore.dispatch(SharedActivityIntent.ApplyRealtimeEvent(event))
+                    }
+                }
+            }
+        pager.addPagerEventObserver(observer)
+        onDispose { pager.removePagerEventObserver(observer) }
     }
     val state by activityStore.state.collectAsState()
     LaunchedEffect(activityStore) {

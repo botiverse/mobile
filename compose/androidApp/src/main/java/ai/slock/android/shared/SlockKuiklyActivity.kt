@@ -737,7 +737,7 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     }
 
     private fun String.isRealtimeBridgeConsumerPage(): Boolean =
-            this == PAGE_APP_SHELL || this == PAGE_THREAD
+            this == PAGE_APP_SHELL || this == PAGE_THREAD || this == PAGE_HOME
 
     private fun sendAppShellLifecycleEvent(event: String) {
         if (pageSpec?.pageName != PAGE_APP_SHELL) return
