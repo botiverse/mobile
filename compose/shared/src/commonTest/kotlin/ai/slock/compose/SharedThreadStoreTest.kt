@@ -471,18 +471,16 @@ class SharedThreadStoreTest {
         val payload = current.withContentPatchFrom(networkPatch)
         val headerDisplay =
             payload.threadHeaderDisplayModel(
-                sharedConversationHeaderState(
-                    listOf(
-                        ConversationSummary(
-                            threadId = ThreadId("dm-1"),
-                            channelId = ChannelId("dm-1"),
-                            kind = ConversationKind.DirectMessage,
-                            name = "artin",
-                            avatar = AvatarReference.Pixel("crown"),
-                            gravatarUrl = "https://www.gravatar.com/avatar/artin"
-                        )
+                payload.conversationHeaderEntryFrom(
+                    ConversationSummary(
+                        threadId = ThreadId("dm-1"),
+                        channelId = ChannelId("dm-1"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "artin",
+                        avatar = AvatarReference.Pixel("crown"),
+                        gravatarUrl = "https://www.gravatar.com/avatar/artin"
                     )
-                ).entryFor(payload)
+                )
             )
 
         assertEquals("Direct Message", payload.title)
@@ -2478,17 +2476,15 @@ class SharedThreadStoreTest {
         assertEquals(null, payload.parentMessageId)
         val headerDisplay =
             payload.threadHeaderDisplayModel(
-                sharedConversationHeaderState(
-                    listOf(
-                        ConversationSummary(
-                            threadId = ThreadId("dm-1"),
-                            channelId = ChannelId("dm-1"),
-                            kind = ConversationKind.DirectMessage,
-                            name = "Cindy",
-                            avatar = AvatarReference.Pixel("cindy")
-                        )
+                payload.conversationHeaderEntryFrom(
+                    ConversationSummary(
+                        threadId = ThreadId("dm-1"),
+                        channelId = ChannelId("dm-1"),
+                        kind = ConversationKind.DirectMessage,
+                        name = "Cindy",
+                        avatar = AvatarReference.Pixel("cindy")
                     )
-                ).entryFor(payload)
+                )
             )
 
         assertEquals("Thread", payload.title)

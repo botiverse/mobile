@@ -18,18 +18,6 @@ internal data class SharedConversationHeaderEntry(
     val gravatarUrl: String? = null
 )
 
-internal data class SharedConversationHeaderState(
-    val entriesById: Map<String, SharedConversationHeaderEntry> = emptyMap()
-) {
-    fun entryFor(payload: KuiklyThreadScreenPayload): SharedConversationHeaderEntry? {
-        if (payload.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) return null
-        return payload.conversationHeaderLookupIds()
-            .firstNotNullOfOrNull { id ->
-                entriesById[id]?.takeIf { entry -> entry.surfaceKind == payload.surfaceKind }
-            }
-    }
-}
-
 internal data class ThreadHeaderDisplayModel(
     val title: String,
     val subtitle: String?,
@@ -126,36 +114,14 @@ internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): 
         else -> title.takeIf { it.isNotBlank() }
     }
 
-internal fun sharedConversationHeaderState(
-    conversations: List<ConversationSummary>
-): SharedConversationHeaderState =
-    SharedConversationHeaderState(
-        entriesById =
-            conversations
-                .mapNotNull { conversation -> conversation.toConversationHeaderEntry() }
-                .flatMap { entry -> entry.ids.map { id -> id to entry } }
-                .toMap()
-    )
-
-internal fun sharedConversationHeaderStateFromDirectory(
-    projections: Collection<SharedConversationDirectoryProjection>
-): SharedConversationHeaderState =
-    SharedConversationHeaderState(
-        entriesById =
-            projections
-                .map { projection -> projection.toConversationHeaderEntry() }
-                .flatMap { entry -> entry.ids.map { id -> id to entry } }
-                .toMap()
-    )
-
-internal fun SharedConversationHeaderState.withDirectoryOverride(
-    directory: SharedConversationHeaderState
-): SharedConversationHeaderState =
-    if (directory.entriesById.isEmpty()) {
-        this
-    } else {
-        SharedConversationHeaderState(entriesById = entriesById + directory.entriesById)
-    }
+internal fun KuiklyThreadScreenPayload.conversationHeaderEntryFrom(
+    conversation: ConversationSummary?
+): SharedConversationHeaderEntry? {
+    val entry = conversation?.toConversationHeaderEntry() ?: return null
+    if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread || entry.surfaceKind != surfaceKind) return null
+    val lookupIds = conversationHeaderLookupIds()
+    return entry.takeIf { lookupIds.any(entry.ids::contains) }
+}
 
 internal fun KuiklyThreadScreenPayload.withConversationHeader(
     entry: SharedConversationHeaderEntry?
@@ -188,8 +154,7 @@ internal fun KuiklyThreadScreenPayload.withConversationHeaderFallback(
     if (surfaceKind == KuiklyThreadSurfaceKind.ReplyThread) {
         return withReplyThreadHeaderFallback(fallback)
     }
-    val headerState = sharedConversationHeaderState(listOf(fallback))
-    val entry = headerState.entryFor(this) ?: return this
+    val entry = conversationHeaderEntryFrom(fallback) ?: return this
     val headerPayload = withConversationHeader(entry)
     return if (!fallback.joined) {
         headerPayload.copy(

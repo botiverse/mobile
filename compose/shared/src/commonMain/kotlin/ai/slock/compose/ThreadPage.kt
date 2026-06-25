@@ -2172,7 +2172,6 @@ internal fun SharedThreadRouteContent(
     membersStore: SharedMembersStore? = null,
     conversationDirectoryStore: SharedConversationDirectoryStore? = null,
     composerDraftPersistSlice: SharedThreadComposerDraftPersistSlice,
-    conversationHeaderState: SharedConversationHeaderState = SharedConversationHeaderState(),
     onBack: () -> Unit,
     onOpenThreadPayload: (KuiklyThreadScreenPayload) -> Unit = {},
     onReplaceThreadPayload: (KuiklyThreadScreenPayload) -> Unit = onOpenThreadPayload,
@@ -2236,15 +2235,10 @@ internal fun SharedThreadRouteContent(
                     }
                 }
         }
-    val legacyConversationHeaderEntry =
-        remember(payload, conversationHeaderState) {
-            conversationHeaderState.entryFor(payload)
-        }
     val headerDisplayModel =
-        remember(payload, directoryConversationProjection, legacyConversationHeaderEntry) {
+        remember(payload, directoryConversationProjection) {
             payload.threadHeaderDisplayModelFromDirectory(
-                projection = directoryConversationProjection,
-                fallbackEntry = legacyConversationHeaderEntry
+                projection = directoryConversationProjection
             )
         }
     val renderedPayload = remember(payload) {
