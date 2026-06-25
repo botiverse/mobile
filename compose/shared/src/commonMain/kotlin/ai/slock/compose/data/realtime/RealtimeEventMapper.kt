@@ -21,6 +21,8 @@ import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.Presence
+import ai.slock.compose.model.RealtimeAgentActivityDetail
+import ai.slock.compose.model.RealtimeAgentActivityEntry
 import ai.slock.compose.model.RealtimeEvent
 import ai.slock.compose.model.RealtimeRefreshRequired
 import ai.slock.compose.model.RealtimeRefreshScope
@@ -45,6 +47,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
@@ -574,6 +577,11 @@ private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
         agentStatus = status,
         statusLabel = projectedActivity.detail,
         serverSeq = serverSeq,
+        activityEntries = entries.toRealtimeAgentActivityEntries(
+            agentId = agentId,
+            timestamp = timestamp,
+            serverSeq = serverSeq
+        ),
     )
 }
 
@@ -624,6 +632,221 @@ private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
     }
 }
 
+private fun List<JsonObject>.toRealtimeAgentActivityEntries(
+    agentId: String,
+    timestamp: JsonElement?,
+    serverSeq: Long?
+): List<RealtimeAgentActivityEntry> {
+    val timestampLabel = timestamp.activityTimestampString()
+    return mapIndexedNotNull { index, entry ->
+        entry.toRealtimeAgentActivityEntry(
+            agentId = agentId,
+            timestamp = timestampLabel,
+            serverSeq = serverSeq,
+            index = index
+        )
+    }
+}
+
+private fun JsonObject.toRealtimeAgentActivityEntry(
+    agentId: String,
+    timestamp: String?,
+    serverSeq: Long?,
+    index: Int
+): RealtimeAgentActivityEntry? {
+    val kind = stringValue("kind")?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    val normalizedKind = kind.lowercase()
+    val id = realtimeAgentActivityId(
+        agentId = agentId,
+        serverSeq = serverSeq,
+        timestamp = timestamp,
+        index = index,
+        kind = normalizedKind,
+        entry = this
+    )
+    fun entry(
+        type: String,
+        title: String,
+        body: String? = null,
+        details: List<Pair<String, String>> = body?.let { listOf("Detail" to it) } ?: emptyList(),
+        toolName: String? = null,
+        toolInput: String? = null,
+        statusActivity: String? = null,
+        statusDetail: String? = null,
+        expandable: Boolean = false,
+        refTextEnabled: Boolean = false
+    ): RealtimeAgentActivityEntry =
+        RealtimeAgentActivityEntry(
+            id = id,
+            type = type,
+            title = title,
+            body = body?.sanitizeActivityText(),
+            timestamp = timestamp,
+            details = details.map { (label, value) ->
+                RealtimeAgentActivityDetail(label = label, value = value.sanitizeActivityText())
+            },
+            toolName = toolName,
+            toolInput = toolInput?.sanitizeActivityText(),
+            statusActivity = statusActivity,
+            statusDetail = statusDetail,
+            expandable = expandable,
+            refTextEnabled = refTextEnabled
+        )
+    return when (normalizedKind) {
+        "thinking" ->
+            entry(
+                type = "thinking",
+                title = "Thinking",
+                body = stringValue("text"),
+                expandable = true
+            )
+        "tool_start" -> {
+            val toolName = stringValue("toolName").orEmpty()
+            if (toolName.shouldHideToolStartInActivityLog()) {
+                null
+            } else {
+                val input = this["toolInput"].toToolInputPreview()
+                entry(
+                    type = "tool_start",
+                    title = toolName.toToolLogLabel(),
+                    body = input,
+                    details = listOfNotNull(
+                        toolName.takeIf { it.isNotBlank() }?.let { "Tool" to it },
+                        input?.let { "Input" to it },
+                    ),
+                    toolName = toolName.takeIf { it.isNotBlank() },
+                    toolInput = input
+                )
+            }
+        }
+        "text" ->
+            entry(
+                type = "text",
+                title = "Output",
+                body = stringValue("text"),
+                expandable = true
+            )
+        "slock_action" ->
+            entry(
+                type = "slock_action",
+                title = stringValue("title")?.takeIf { it.isNotBlank() } ?: "Raft action",
+                body = stringValue("text") ?: stringValue("message"),
+                expandable = true,
+                refTextEnabled = true
+            )
+        "system" ->
+            entry(
+                type = "system",
+                title = stringValue("title")?.takeIf { it.isNotBlank() } ?: "System",
+                body = stringValue("text") ?: stringValue("message"),
+                expandable = true,
+                refTextEnabled = true
+            )
+        "compaction_started" ->
+            entry(
+                type = "compaction_started",
+                title = "Context Compaction Started"
+            )
+        "compaction_finished" ->
+            entry(
+                type = "compaction_finished",
+                title = "Context Compaction Finished"
+            )
+        "status", "agent_status" -> {
+            val activity = stringValue("activity")
+            val detail = stringValue("detail").orEmpty()
+            val display = resolveTrajectoryStatusDisplay(activity, detail)
+            entry(
+                type = "status",
+                title = display.first,
+                body = display.second.takeIf { it.isNotBlank() },
+                statusActivity = activity,
+                statusDetail = stringValue("detail"),
+                refTextEnabled = true
+            )
+        }
+        else ->
+            entry(
+                type = normalizedKind,
+                title = stringValue("summary")
+                    ?: stringValue("activity")?.toAgentActivityTitle()
+                    ?: normalizedKind.toAgentActivityTitle(),
+                body = stringValue("detail")
+                    ?: stringValue("message")
+                    ?: stringValue("text")
+                    ?: stringValue("toolName")
+                    ?: stringValue("name"),
+                details = listOfNotNull(
+                    (stringValue("detail") ?: stringValue("message") ?: stringValue("text"))?.let { "Detail" to it },
+                    stringValue("toolName")?.let { "Tool" to it },
+                ),
+            )
+    }
+}
+
+private fun realtimeAgentActivityId(
+    agentId: String,
+    serverSeq: Long?,
+    timestamp: String?,
+    index: Int,
+    kind: String,
+    entry: JsonObject
+): String {
+    val source = serverSeq?.let { "seq:$it" }
+        ?: "ts:${timestamp.orEmpty()}:h:${entry.toString().stableActivityHash()}"
+    return "realtime:$agentId:$source:$index:$kind"
+}
+
+private fun JsonElement?.activityTimestampString(): String? =
+    (this as? JsonPrimitive)?.contentOrNull?.takeIf { it.isNotBlank() }
+
+private fun JsonElement?.toToolInputPreview(): String? {
+    if (this == null || this is JsonNull) return null
+    val raw =
+        when (this) {
+            is JsonPrimitive -> contentOrNull.orEmpty()
+            is JsonObject -> {
+                val keys =
+                    keys
+                        .filterNot { it.isSensitiveActivityKey() }
+                        .take(4)
+                        .joinToString(", ")
+                if (keys.isBlank()) "Structured input" else "Structured input: $keys"
+            }
+            else -> "Structured input"
+        }
+    return raw.sanitizeActivityText().takeIf { it.isNotBlank() }
+}
+
+private fun resolveTrajectoryStatusDisplay(activity: String?, detail: String): Pair<String, String> {
+    if (activity == "working" && detail == "Starting…") return "Starting" to ""
+    if (activity == "offline") {
+        val primary =
+            when {
+                detail == "Stopped" -> "Stopped"
+                detail == "Machine disconnected" -> "Disconnected"
+                detail.startsWith("Crashed") -> "Crashed"
+                else -> "Offline"
+            }
+        val secondary =
+            if (primary == "Crashed") {
+                detail.removePrefix("Crashed").trim().removeSurrounding("(", ")")
+            } else {
+                ""
+            }
+        return primary to secondary
+    }
+    val primary =
+        when (activity) {
+            "online" -> "Idle"
+            "thinking" -> "Thinking"
+            "working" -> "Working"
+            "error" -> "Error"
+            else -> activity?.toAgentActivityTitle() ?: "Status"
+        }
+    return primary to detail
+}
+
 private fun JsonObject.stringValue(key: String): String? =
     (this[key] as? JsonPrimitive)?.contentOrNull
 
@@ -649,6 +872,72 @@ private fun String.toToolActivityLabel(): String {
 
 private fun String.truncateToolLabel(): String =
     if (length <= 24) this else take(22) + ".."
+
+private fun String.shouldHideToolStartInActivityLog(): Boolean =
+    normalizedToolName() == "send_message"
+
+private fun String.toToolLogLabel(): String {
+    val normalized = normalizedToolName()
+    return when (normalized) {
+        "read_file" -> "Read file"
+        "write_file" -> "Write file"
+        "upload_file" -> "Upload file"
+        "view_file" -> "View file"
+        "schedule_reminder" -> "Schedule reminder"
+        "list_reminders" -> "List reminders"
+        "cancel_reminder" -> "Cancel reminder"
+        "run_command" -> "Run command"
+        else -> normalized.toAgentActivityTitle()
+    }
+}
+
+private fun String.normalizedToolName(): String =
+    trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .ifBlank { trim() }
+
+private fun String.toAgentActivityTitle(): String =
+    replace("_", " ")
+        .replace("-", " ")
+        .replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        .ifBlank { "Agent activity" }
+
+private fun String.isSensitiveActivityKey(): Boolean {
+    val lower = lowercase()
+    return lower == "authorization" ||
+        lower == "cookie" ||
+        lower.contains("token") ||
+        lower.contains("password") ||
+        lower.contains("secret") ||
+        lower.contains("credential")
+}
+
+private fun String.sanitizeActivityText(): String {
+    val trimmed = trim()
+    if (trimmed.isBlank()) return ""
+    val lower = trimmed.lowercase()
+    val credentialLike =
+        "authorization" in lower ||
+            "bearer " in lower ||
+            "cookie" in lower ||
+            "access_token" in lower ||
+            "refresh_token" in lower ||
+            "password" in lower ||
+            "sk_agent_" in lower ||
+            "sk_machine_" in lower
+    if (credentialLike) return "[redacted]"
+    return if (trimmed.length > 1200) trimmed.take(1200) + "…" else trimmed
+}
+
+private fun String.stableActivityHash(): String {
+    var hash = 0
+    for (char in this) {
+        hash = hash * 31 + char.code
+    }
+    return hash.toString()
+}
 
 private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeResponse(
     messages = messages.map { it.toDomain() },
