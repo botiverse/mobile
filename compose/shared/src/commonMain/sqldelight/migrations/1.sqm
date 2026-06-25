@@ -1,0 +1,1 @@
+ALTER TABLE messageReactionEntity ADD COLUMN sortOrder INTEGER NOT NULL DEFAULT 0;
