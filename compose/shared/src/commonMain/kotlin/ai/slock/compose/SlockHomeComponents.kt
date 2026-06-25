@@ -2028,7 +2028,7 @@ private fun DirectMessageRow(name: String, description: String? = null, modifier
                 .then(clickModifier)
                 .then(hoverableModifier)
         ) {
-        if (pressed) {
+        if (selected || pressed) {
             Box(
                 modifier =
                     Modifier
