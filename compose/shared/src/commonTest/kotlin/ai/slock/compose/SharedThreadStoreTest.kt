@@ -1873,6 +1873,45 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun secondarySenderProfileRefreshPatchesAndPersistsAgentAvatar() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val memberRepository =
+            FakeMemberRepository(
+                serverMembers =
+                    listOf(
+                        MemberProfile(
+                            id = MemberId("agent-1"),
+                            displayName = "Product UX",
+                            handle = "product-ux",
+                            kind = MemberKind.Agent,
+                            avatar = AvatarReference.Pixel("tree")
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(bodyText = agentMessagesResponse()),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                memberRepository = memberRepository,
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        assertEquals(listOf(ServerId("server-1")), memberRepository.serverMemberRequests)
+        val message = store.state.value.payload.messages.single()
+        assertEquals("Product-UX-Designer", message.authorName)
+        assertEquals("pixel:tree", message.avatarWireValue)
+        assertEquals(
+            "pixel:tree",
+            localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.author?.avatar?.wireValue
+        )
+        scope.cancel()
+    }
+
+    @Test
     fun taskReplyThreadPayloadDoesNotBlockOnMemberProfileAvatarForOriginBeforeFirstRender() = runBlocking {
         val agentParent =
             message(threadId = "channel-1", id = "m1", seq = 1, body = "agent task parent")
