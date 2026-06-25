@@ -25,6 +25,7 @@ import android.os.Looper
 import android.provider.OpenableColumns
 import android.provider.Settings
 import android.util.Base64
+import android.util.LruCache
 import android.util.Log
 import android.view.KeyEvent
 import android.view.View
@@ -1035,6 +1036,18 @@ internal object SlockKuiklyFontAdapter : IKRFontAdapter {
 private class SlockKuiklyImageAdapter(
         private val context: Context
 ) : IKRImageAdapter {
+    private companion object {
+        private const val NETWORK_BITMAP_CACHE_BYTES = 12 * 1024 * 1024
+        private const val MAX_SINGLE_NETWORK_BITMAP_BYTES = 2 * 1024 * 1024
+
+        private val networkBitmapCache =
+                object : LruCache<String, Bitmap>(NETWORK_BITMAP_CACHE_BYTES) {
+                    override fun sizeOf(key: String, value: Bitmap): Int {
+                        return value.allocationByteCount.coerceAtLeast(value.byteCount)
+                    }
+                }
+    }
+
     override fun fetchDrawable(
             imageLoadOption: HRImageLoadOption,
             callback: (drawable: Drawable?) -> Unit
@@ -1140,13 +1153,16 @@ private class SlockKuiklyImageAdapter(
     ) {
         SlockKuiklyThreadAdapter.executeOnSubThread {
             runCatching {
+                        cachedNetworkBitmap(imageLoadOption.src)?.let { bitmap ->
+                            return@runCatching bitmap.toBitmapDrawable()
+                        }
                         val connection = URL(imageLoadOption.src).openConnection() as HttpURLConnection
                         connection.connectTimeout = 10_000
                         connection.readTimeout = 15_000
                         connection.instanceFollowRedirects = true
                         val contentType = connection.contentType
                         val bytes = connection.inputStream.use { input -> input.readBytes() }
-                        drawableFromBytes(bytes, imageLoadOption, contentType)
+                        drawableFromNetworkBytes(bytes, imageLoadOption, contentType)
                     }
                     .onSuccess { drawable ->
                         callback(drawable)
@@ -1155,6 +1171,34 @@ private class SlockKuiklyImageAdapter(
                         callback(null)
                     }
         }
+    }
+
+    private fun cachedNetworkBitmap(src: String): Bitmap? =
+            synchronized(networkBitmapCache) {
+                networkBitmapCache.get(src)?.takeUnless { it.isRecycled }
+            }
+
+    private fun cacheNetworkBitmap(src: String, bitmap: Bitmap) {
+        val bitmapBytes = bitmap.allocationByteCount.coerceAtLeast(bitmap.byteCount)
+        if (bitmapBytes > MAX_SINGLE_NETWORK_BITMAP_BYTES) {
+            return
+        }
+        synchronized(networkBitmapCache) {
+            networkBitmapCache.put(src, bitmap)
+        }
+    }
+
+    private fun drawableFromNetworkBytes(
+            bytes: ByteArray,
+            imageLoadOption: HRImageLoadOption,
+            contentType: String?
+    ): Drawable? {
+        if (bytes.looksLikeSvg(contentType)) {
+            return svgBitmapDrawable(bytes.toString(StandardCharsets.UTF_8), imageLoadOption)
+        }
+        val bitmap = bitmapFromBytes(bytes) ?: return null
+        cacheNetworkBitmap(imageLoadOption.src, bitmap)
+        return bitmap.toBitmapDrawable()
     }
 
     private fun loadSvg(
@@ -1188,9 +1232,14 @@ private class SlockKuiklyImageAdapter(
     }
 
     private fun bitmapDrawableFromBytes(bytes: ByteArray): Drawable? {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-        return BitmapDrawable(context.resources, bitmap)
+        return bitmapFromBytes(bytes)?.toBitmapDrawable()
     }
+
+    private fun bitmapFromBytes(bytes: ByteArray): Bitmap? =
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+    private fun Bitmap.toBitmapDrawable(): BitmapDrawable =
+            BitmapDrawable(context.resources, this)
 
     private fun svgBitmapDrawable(svgText: String, imageLoadOption: HRImageLoadOption): Drawable {
         val preparedSvg = imageLoadOption.svgColorOverride()
