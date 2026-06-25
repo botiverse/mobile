@@ -140,15 +140,6 @@ data class SharedSettingsAboutSnapshot(
     val gitCommit: String = ""
 )
 
-data class SharedSettingsNetworkProbeSnapshot(
-    val baseUrl: String = "",
-    val statusLabel: String = "Not run",
-    val detail: String = "",
-    val reachable: Boolean = false,
-    val code: Int = 0,
-    val durationMillis: Long = 0L
-)
-
 data class SharedSettingsDeveloperSnapshot(
     val environmentKey: String = "",
     val environmentLabel: String = "",
@@ -180,7 +171,6 @@ internal fun sharedSettingsDefaultApiEnvironmentOptions(): List<SharedSettingsAp
 
 data class SharedSettingsDiagnosticsSnapshot(
     val about: SharedSettingsAboutSnapshot? = null,
-    val networkProbe: SharedSettingsNetworkProbeSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
     val profiler: SharedSettingsRecompositionProfilerSnapshot = SharedSettingsRecompositionProfilerSnapshot(),
     val loadErrorMessage: String? = null
@@ -403,9 +393,6 @@ interface SharedSettingsPlatformCapabilities {
         DataResult.Content(Unit)
 
     suspend fun loadDiagnosticsHost(): DataResult<SharedSettingsDiagnosticsHostSnapshot> =
-        DataResult.Empty(EmptyReason.NoSettingsAvailable)
-
-    suspend fun loadNetworkProbe(): DataResult<SharedSettingsNetworkProbeSnapshot> =
         DataResult.Empty(EmptyReason.NoSettingsAvailable)
 
     suspend fun setRecompositionProfilerEnabled(enabled: Boolean): DataResult<Unit> =
@@ -958,18 +945,10 @@ class SharedSettingsDataSource(
         feedback: String? = null
     ): DataResult<SharedSettingsDiagnosticsSnapshot> {
         val aboutResult = loadAbout()
-        val networkProbeResult = platformCapabilities.loadNetworkProbe()
         val hostResult = platformCapabilities.loadDiagnosticsHost()
         val about =
             when (aboutResult) {
                 is DataResult.Content -> aboutResult.data
-                is DataResult.Empty,
-                is DataResult.Error,
-                is DataResult.NoPermission -> null
-            }
-        val networkProbe =
-            when (networkProbeResult) {
-                is DataResult.Content -> networkProbeResult.data
                 is DataResult.Empty,
                 is DataResult.Error,
                 is DataResult.NoPermission -> null
@@ -984,7 +963,6 @@ class SharedSettingsDataSource(
         val loadErrorMessage =
             listOfNotNull(
                 aboutResult.settingsDiagnosticsErrorLabel("about"),
-                networkProbeResult.settingsDiagnosticsErrorLabel("probe"),
                 hostResult.settingsDiagnosticsErrorLabel("logs")
             ).joinToString("; ").takeIf { it.isNotBlank() }
         val persistedProfilerEnabled = recompositionProfilerPreferenceRepository?.getPreference()?.enabled == true
@@ -1000,7 +978,6 @@ class SharedSettingsDataSource(
         return DataResult.Content(
             SharedSettingsDiagnosticsSnapshot(
                 about = about,
-                networkProbe = networkProbe,
                 entries = entries,
                 profiler = recompositionProfilerController.buildSnapshot(enabled = profilerEnabled, feedback = feedback),
                 loadErrorMessage = loadErrorMessage

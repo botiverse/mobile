@@ -1606,7 +1606,6 @@ internal class SlockKuiklyBridgeModule(
                         "setApiEnvironment" -> setApiEnvironment(request)
                         "apiEnvironmentChanged" -> onApiEnvironmentChanged(request)
                         "loadDiagnostics" -> loadSettingsDiagnostics()
-                        "probeNetwork" -> probeSettingsNetwork()
                         "setRecompositionProfilerEnabled" -> {
                             val enabled = request.optBoolean("enabled", false)
                             SlockDiagnosticsLogger.record(
@@ -2013,54 +2012,6 @@ internal class SlockKuiklyBridgeModule(
         return mapOf("status" to "ok", "entries" to entries)
     }
 
-    private fun probeSettingsNetwork(): Map<String, Any> {
-        val startedAt = System.currentTimeMillis()
-        return runCatching {
-            val baseUrl = AndroidAuthApiFactory.currentBaseUrl(appContext)
-            val connection =
-                    (URL(baseUrl).openConnection() as HttpURLConnection).apply {
-                        requestMethod = "GET"
-                        connectTimeout = 8_000
-                        readTimeout = 8_000
-                        setRequestProperty("Accept", "application/json")
-                    }
-            val code = connection.responseCode
-            val duration = System.currentTimeMillis() - startedAt
-            val detail = connection.responseMessage.orEmpty()
-            connection.disconnect()
-            SlockDiagnosticsLogger.record(
-                    "SlockNetworkProbe",
-                    "baseUrl=${safeUrlForDiagnostics(baseUrl)} code=$code durationMs=$duration"
-            )
-            mapOf(
-                    "status" to "ok",
-                    "baseUrl" to baseUrl,
-                    "reachable" to (code > 0),
-                    "code" to code,
-                    "durationMillis" to duration,
-                    "statusLabel" to if (code > 0) "API host reachable" else "API host unreachable",
-                    "detail" to if (code > 0) "Host responded with HTTP $code${detail.takeIf { it.isNotBlank() }?.let { " $it" }.orEmpty()}" else "No HTTP response"
-            )
-        }.getOrElse { throwable ->
-            val duration = System.currentTimeMillis() - startedAt
-            val errorType = throwable::class.java.simpleName.ifBlank { "Network error" }
-            val detail = throwable.message?.takeIf { it.isNotBlank() }?.let { "$errorType: $it" } ?: errorType
-            SlockDiagnosticsLogger.record(
-                    "SlockNetworkProbe",
-                    "baseUrl=${safeUrlForDiagnostics(AndroidAuthApiFactory.currentBaseUrl(appContext))} failed=${throwable::class.java.simpleName} durationMs=$duration"
-            )
-            mapOf(
-                    "status" to "ok",
-                    "baseUrl" to AndroidAuthApiFactory.currentBaseUrl(appContext),
-                    "reachable" to false,
-                    "code" to 0,
-                    "durationMillis" to duration,
-                    "statusLabel" to "API host unreachable",
-                    "detail" to "Could not reach the configured API host. $detail"
-            )
-        }
-    }
-
     private data class DiagnosticsFeedbackFile(val file: File, val summaryText: String)
 
     private fun buildFeedbackText(diagnosticsFileName: String, summaryText: String): String =
@@ -2134,7 +2085,6 @@ internal class SlockKuiklyBridgeModule(
     private fun buildMergedSettingsDiagnosticsExportText(): String {
         val about = loadSettingsAbout()
         recordSettingsDiagnosticsEnvironment(about)
-        val probe = probeSettingsNetwork()
         return buildString {
             appendLine("Raft diagnostics")
             appendLine()
@@ -2150,14 +2100,6 @@ internal class SlockKuiklyBridgeModule(
             appendDiagnosticsLine("Signed in user", about.stringValue("signedInUserLabel"))
             appendDiagnosticsLine("Selected server", about.stringValue("selectedServerLabel"))
             appendDiagnosticsLine("Socket", about.stringValue("socketStatusLabel"))
-            appendLine()
-            appendLine("Network probe")
-            appendDiagnosticsLine("Base URL", probe.stringValue("baseUrl"))
-            appendDiagnosticsLine("Status", probe.stringValue("statusLabel"))
-            appendDiagnosticsLine("Reachable", probe["reachable"]?.toString())
-            appendDiagnosticsLine("HTTP code", probe["code"]?.takeIf { it != 0 }?.toString())
-            appendDiagnosticsLine("Duration", probe["durationMillis"]?.takeIf { it != 0L }?.let { "${it}ms" })
-            appendDiagnosticsLine("Detail", probe.stringValue("detail"))
             appendLine()
             appendLine("Bugly diagnostics")
             appendDiagnosticsLine("TDLog", if (SlockAndroidBuglyDiagnostics.isDiagnoseInitialized()) "enabled" else "disabled")

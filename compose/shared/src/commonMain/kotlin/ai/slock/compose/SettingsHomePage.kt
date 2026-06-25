@@ -120,7 +120,6 @@ import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.SharedSettingsEffect
 import ai.slock.compose.data.SharedSettingsIntent
-import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import ai.slock.compose.data.SharedSettingsState
 import ai.slock.compose.data.SharedSettingsStorageRow
@@ -7661,7 +7660,7 @@ internal fun SharedSettingsDeveloperSnapshot?.toDeveloperPayload(
                     title = "Diagnostics",
                     rows =
                         listOf(
-                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open auth, network, sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
+                            KuiklySharedSettingsRow("diagnostics", SlockLucideIconName.ClipboardList, "Diagnostics", "Open auth, sanitized logs, profiler, and feedback tools.", status = "Open", enabled = true),
                             KuiklySharedSettingsRow("router", SlockLucideIconName.Route, "Route launcher", "Open Kuikly route launcher and icon compare.", status = "Open", enabled = true)
                         )
                 )
@@ -7689,8 +7688,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
     val profilerBusy = actionState?.action in profilerActionKeys && actionState?.inProgress == true
     val environmentRows =
         snapshot?.about?.toDiagnosticsEnvironmentRows().orEmpty()
-    val networkProbeRows =
-        snapshot?.networkProbe?.toDiagnosticsNetworkProbeRows().orEmpty()
     val loadStatusRows =
         snapshot?.loadErrorMessage
             ?.takeIf { it.isNotBlank() }
@@ -7802,11 +7799,11 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
         detail =
             profiler.actionFeedback
                 ?: if (profiler.supported) {
-                    "Auth, network, sanitized app diagnostics, and Kuikly recomposition profiler"
+                    "Auth, sanitized app diagnostics, and Kuikly recomposition profiler"
                 } else if (profiler.detail.isNotBlank()) {
-                    "Auth, network, sanitized app diagnostics, and Kuikly profiler status"
+                    "Auth, sanitized app diagnostics, and Kuikly profiler status"
                 } else {
-                    "Auth, network, and sanitized app diagnostics"
+                    "Auth and sanitized app diagnostics"
                 },
         heroIconName = SlockLucideIconName.ClipboardList,
         heroLabel = "Diagnostics",
@@ -7814,9 +7811,6 @@ internal fun List<SharedSettingsDiagnosticsEntry>.toDiagnosticsPayload(
             listOfNotNull(
                 environmentRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = "Environment", rows = it)
-                },
-                networkProbeRows.takeIf { it.isNotEmpty() }?.let {
-                    KuiklySharedSettingsSection(title = "Network probe", rows = it)
                 },
                 loadStatusRows.takeIf { it.isNotEmpty() }?.let {
                     KuiklySharedSettingsSection(title = "Load status", rows = it)
@@ -7843,13 +7837,6 @@ private fun SharedSettingsAboutSnapshot.toDiagnosticsEnvironmentRows(): List<Kui
         KuiklySharedSettingsRow("diagnosticsPlatform", SlockLucideIconName.Monitor, "Platform", platformLabel.ifBlank { "Unknown" }, status = deviceLabel.ifBlank { "Device" }),
         KuiklySharedSettingsRow("diagnosticsSession", SlockLucideIconName.User, "Session", signedInUserLabel.ifBlank { "No signed-in user" }, status = sessionStatusLabel.ifBlank { "Unknown" }),
         KuiklySharedSettingsRow("diagnosticsServer", SlockLucideIconName.Server, "Selected server", selectedServerLabel.ifBlank { "Unknown" }, status = socketStatusLabel.ifBlank { "Socket" })
-    )
-
-private fun SharedSettingsNetworkProbeSnapshot.toDiagnosticsNetworkProbeRows(): List<KuiklySharedSettingsRow> =
-    listOf(
-        KuiklySharedSettingsRow("diagnosticsProbeStatus", SlockLucideIconName.Activity, "Status", detail.ifBlank { "No detail returned." }, status = statusLabel.ifBlank { if (reachable) "Reachable" else "Unavailable" }),
-        KuiklySharedSettingsRow("diagnosticsProbeBaseUrl", SlockLucideIconName.Globe, "Base URL", baseUrl.ifBlank { "Unknown" }, status = if (reachable) "Reachable" else "Unavailable"),
-        KuiklySharedSettingsRow("diagnosticsProbeHttp", SlockLucideIconName.Hash, "HTTP probe", listOfNotNull(code.takeIf { it > 0 }?.let { "HTTP $it" }, durationMillis.takeIf { it > 0L }?.let { "${it}ms" }).joinToString(" | ").ifBlank { "No HTTP response metadata." }, status = if (code > 0) code.toString() else "None")
     )
 
 private fun settingsDestinationTitle(destination: String): String =
