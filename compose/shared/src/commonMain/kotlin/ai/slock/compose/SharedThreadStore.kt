@@ -4286,12 +4286,6 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
             patch.memberCandidates.isNotEmpty()
     return copy(
         instanceId = if (patchResolvesReplyThreadStream) patch.instanceId else instanceId,
-        // Header display is owned by the conversation resolver/directory SSOT.
-        // Content refreshes must not publish title/avatar candidates through this legacy payload merge.
-        title = title,
-        subtitle = subtitle,
-        surfaceKind = patch.surfaceKind,
-        channelKind = patch.channelKind,
         sourceThreadId = patch.sourceThreadId,
         streamChannelId = patch.streamChannelId,
         parentChannelId = patch.parentChannelId,

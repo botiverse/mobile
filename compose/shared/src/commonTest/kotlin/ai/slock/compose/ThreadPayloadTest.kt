@@ -1837,7 +1837,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun contentSliceReplacesThreadChromeWhenRouteChangesToChannel() {
+    fun contentSliceDoesNotReplaceThreadChromeWhenPatchChangesRoute() {
         val current =
             KuiklyThreadScreenPayload(
                 instanceId = "shared-shell-thread-reply-stream-1",
@@ -1906,8 +1906,10 @@ class ThreadPayloadTest {
 
         val payload = current.withContentSliceFrom(patch)
 
-        assertEquals(KuiklyThreadSurfaceKind.Channel, payload.surfaceKind)
-        assertEquals("public", payload.channelKind)
+        assertEquals(ThreadReplyPageTitle, payload.title)
+        assertEquals("#general", payload.subtitle)
+        assertEquals(KuiklyThreadSurfaceKind.ReplyThread, payload.surfaceKind)
+        assertEquals("channel", payload.channelKind)
         assertEquals("channel-1", payload.sourceThreadId)
         assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
