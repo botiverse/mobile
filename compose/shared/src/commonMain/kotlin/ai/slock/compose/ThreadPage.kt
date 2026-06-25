@@ -1269,6 +1269,7 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(): Map<String, T
                 put(messageId, task)
             }
             task.id.value.trim().takeIf { it.isNotBlank() }?.let { taskId ->
+                putIfAbsentCompat(taskId, task)
                 putIfAbsentCompat(ThreadTaskIdLookupPrefix + taskId, task)
             }
             task.taskNumber?.let { taskNumber ->
@@ -1287,6 +1288,7 @@ internal fun List<TaskSummary>.threadLinkedTasksByMessageLookup(
 
 private fun TaskSummary.matchesThreadLinkedTaskReferences(references: ThreadLinkedTaskReferences): Boolean =
     messageId?.value?.trim()?.takeIf { it.isNotBlank() }?.let { it in references.messageIds } == true ||
+        id.value.trim().takeIf { it.isNotBlank() }?.let { it in references.messageIds } == true ||
         id.value.trim().takeIf { it.isNotBlank() }?.let { it in references.taskIds } == true ||
         taskNumber?.let { it in references.taskNumbers } == true
 
@@ -6972,7 +6974,7 @@ private fun ThreadMessagesList(
             )
         }
         actionMessageId?.let { messageId ->
-            payload.threadActionMessage(messageId)?.let { message ->
+            payload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
                 val isFailedLocalSend = message.isFailedLocalSend()
                 ThreadMessageActionMenu(
                     message = message,
@@ -7012,7 +7014,7 @@ private fun ThreadMessagesList(
             }
         }
         taskStatusMenuMessageId?.let { messageId ->
-            payload.threadActionMessage(messageId)?.let { message ->
+            payload.threadActionMessage(messageId, linkedTasksByMessageLookup)?.let { message ->
                 val selectedStatus = message.taskStatus.threadTaskStatusOption()
                 SlockBaseMenuOverlay(
                     anchor = taskStatusMenuAnchor,
@@ -7158,9 +7160,15 @@ internal fun KuiklyThreadMessageItem.threadActionCardSignature(): ThreadMessageA
 internal fun KuiklyThreadMessageItem.threadActionCard(): ThreadActionCard? =
     actionCardFromMessageMetadata(metadata)
 
-private fun KuiklyThreadScreenPayload.threadActionMessage(messageId: String): KuiklyThreadMessageItem? =
-    messages.firstOrNull { it.id == messageId }
-        ?: originMessage?.takeIf { originStatus != "none" && it.id == messageId }
+internal fun KuiklyThreadScreenPayload.threadActionMessage(
+    messageId: String,
+    linkedTasksByMessageLookup: Map<String, TaskSummary> = emptyMap()
+): KuiklyThreadMessageItem? =
+    (messages.firstOrNull { it.id == messageId }
+        ?: originMessage?.takeIf { originStatus != "none" && it.id == messageId })
+        ?.let { message ->
+            message.withLinkedTask(linkedTasksByMessageLookup.threadLinkedTaskForMessage(message))
+        }
 
 internal fun formatThreadMessageQuote(text: String): String =
     text.replace("\r\n", "\n")

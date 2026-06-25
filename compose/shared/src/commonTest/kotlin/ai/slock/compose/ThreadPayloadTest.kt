@@ -3610,6 +3610,35 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun threadActionMessageUsesLinkedTaskProjectionForHistoricalTasks() {
+        val message =
+            KuiklyThreadMessageItem(
+                id = "message-240",
+                authorId = "user_artin",
+                authorName = "Artin",
+                body = "historical task"
+            )
+        val task =
+            TaskSummary(
+                id = TaskId("message-240"),
+                title = "historical task",
+                status = TaskStatus.InReview,
+                taskNumber = 240,
+                messageId = null,
+                assignee = null,
+                updatedAtLabel = ""
+            )
+        val payload = KuiklyThreadScreenPayload(messages = listOf(message))
+        val linkedTasks = listOf(task).threadLinkedTasksByMessageLookup(payload.threadLinkedTaskReferences())
+
+        val actionMessage = payload.threadActionMessage("message-240", linkedTasks)
+
+        assertEquals("message-240", actionMessage?.taskId)
+        assertEquals("InReview", actionMessage?.taskStatus)
+        assertEquals(240, actionMessage?.taskNumber)
+    }
+
+    @Test
     fun linkedTaskProjectionIsOnlyAuthoritativeAfterTasksLoadSettles() {
         val references =
             KuiklyThreadScreenPayload(
