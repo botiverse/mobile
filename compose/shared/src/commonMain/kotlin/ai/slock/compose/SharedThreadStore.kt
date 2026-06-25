@@ -1994,6 +1994,7 @@ internal class SharedThreadStore(
     val state: StateFlow<SharedThreadState> = _state.asStateFlow()
     private var loadJob: Job? = null
     private var secondaryTimelineRefreshJob: Job? = null
+    private var backgroundMembersHydrationJob: Job? = null
     private var readAllInFlightMarker: ThreadReadAllMarker? = null
     private var pendingReadAllMarker: ThreadReadAllMarker? = null
     private var lastCompletedReadAllMarker: ThreadReadAllMarker? = null
@@ -2005,6 +2006,8 @@ internal class SharedThreadStore(
                 loadJob?.cancel()
                 secondaryTimelineRefreshJob?.cancel()
                 secondaryTimelineRefreshJob = null
+                backgroundMembersHydrationJob?.cancel()
+                backgroundMembersHydrationJob = null
                 loadJob =
                     scope.launch {
                         accept(intent)
@@ -2109,6 +2112,8 @@ internal class SharedThreadStore(
         loadJob = null
         secondaryTimelineRefreshJob?.cancel()
         secondaryTimelineRefreshJob = null
+        backgroundMembersHydrationJob?.cancel()
+        backgroundMembersHydrationJob = null
         readAllInFlightMarker = null
         pendingReadAllMarker = null
         lastCompletedReadAllMarker = null
@@ -2311,6 +2316,9 @@ internal class SharedThreadStore(
         if (visiblePayload != null && nextPayload.hasRenderableThreadContent()) {
             launchSecondaryTimelineRefresh(basePayload)
         }
+        if (nextPayload.hasRenderableThreadContent()) {
+            launchBackgroundMembersHydration(basePayload)
+        }
     }
 
     private fun launchSecondaryTimelineRefresh(routePayload: KuiklyThreadScreenPayload) {
@@ -2318,6 +2326,21 @@ internal class SharedThreadStore(
         secondaryTimelineRefreshJob =
             scope.launch {
                 refreshSecondaryTimelineData(routePayload)
+            }
+    }
+
+    private fun launchBackgroundMembersHydration(routePayload: KuiklyThreadScreenPayload) {
+        backgroundMembersHydrationJob?.cancel()
+        backgroundMembersHydrationJob =
+            scope.launch {
+                val latest = _state.value.payload
+                if (!routeStillCurrent(routePayload, "thread_members_background_load", "start", latest)) {
+                    return@launch
+                }
+                if (!latest.hasRenderableThreadContent()) {
+                    return@launch
+                }
+                loadMembers(force = true)
             }
     }
 
