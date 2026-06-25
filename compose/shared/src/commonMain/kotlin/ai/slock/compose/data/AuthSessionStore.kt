@@ -31,9 +31,20 @@ interface SlockAuthSessionStore {
     suspend fun clearSession()
 }
 
+interface SlockAuthServerSelectionMemory {
+    suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection?
+    suspend fun saveRememberedServerSelection(user: StoredAuthUser, selection: StoredAuthServerSelection?)
+}
+
 interface SlockAuthSessionInvalidationSource {
     val sessionInvalidations: SharedFlow<Unit>
 }
+
+@Serializable
+data class StoredAuthServerSelection(
+    val serverId: String,
+    val serverSlug: String? = null
+)
 
 @Serializable
 data class StoredAuthSession(
@@ -140,10 +151,11 @@ data class StoredAuthServer(
 
 class InMemorySlockAuthSessionStore(
     initialSession: StoredAuthSession? = null
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     private var session: StoredAuthSession? = initialSession
+    private val rememberedSelections = mutableMapOf<String, StoredAuthServerSelection>()
 
     override val sessionInvalidations: SharedFlow<Unit> = invalidations.asSharedFlow()
 
@@ -162,7 +174,21 @@ class InMemorySlockAuthSessionStore(
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
         mutex.withLock {
-            session = session?.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
+            session =
+                session?.let { current ->
+                    current.user.accountServerSelectionKey()?.let { accountKey ->
+                        val remembered =
+                            serverId?.takeIf { it.isNotBlank() }?.let {
+                                StoredAuthServerSelection(serverId = it, serverSlug = serverSlug)
+                            }
+                        if (remembered == null) {
+                            rememberedSelections.remove(accountKey)
+                        } else {
+                            rememberedSelections[accountKey] = remembered
+                        }
+                    }
+                    current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug)
+                }
         }
     }
 
@@ -170,11 +196,30 @@ class InMemorySlockAuthSessionStore(
         mutex.withLock { session = null }
         invalidations.emit(Unit)
     }
+
+    override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =
+        mutex.withLock {
+            user.accountServerSelectionKey()?.let(rememberedSelections::get)
+        }
+
+    override suspend fun saveRememberedServerSelection(
+        user: StoredAuthUser,
+        selection: StoredAuthServerSelection?
+    ) {
+        mutex.withLock {
+            val accountKey = user.accountServerSelectionKey() ?: return
+            if (selection == null || selection.serverId.isBlank()) {
+                rememberedSelections.remove(accountKey)
+            } else {
+                rememberedSelections[accountKey] = selection
+            }
+        }
+    }
 }
 
 class KuiklyMMKVAuthSessionStore(
     private val store: SlockKeyValueStore
-) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource {
+) : SlockAuthSessionStore, SlockAuthSessionInvalidationSource, SlockAuthServerSelectionMemory {
     private val mutex = Mutex()
     private val invalidations = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
@@ -198,6 +243,12 @@ class KuiklyMMKVAuthSessionStore(
 
     override suspend fun updateSelectedServer(serverId: String?, serverSlug: String?) {
         val current = readSession() ?: return
+        saveRememberedServerSelection(
+            current.user,
+            serverId?.takeIf { it.isNotBlank() }?.let {
+                StoredAuthServerSelection(serverId = it, serverSlug = serverSlug)
+            }
+        )
         saveSession(current.copy(selectedServerId = serverId, selectedServerSlug = serverSlug))
     }
 
@@ -208,13 +259,55 @@ class KuiklyMMKVAuthSessionStore(
         invalidations.emit(Unit)
     }
 
+    override suspend fun readRememberedServerSelection(user: StoredAuthUser): StoredAuthServerSelection? =
+        mutex.withLock {
+            val key = user.rememberedServerSelectionStoreKey() ?: return@withLock null
+            store.getString(key)?.decodeRememberedServerSelectionOrNull()
+        }
+
+    override suspend fun saveRememberedServerSelection(
+        user: StoredAuthUser,
+        selection: StoredAuthServerSelection?
+    ) {
+        mutex.withLock {
+            val key = user.rememberedServerSelectionStoreKey() ?: return
+            val value =
+                selection
+                    ?.takeIf { it.serverId.isNotBlank() }
+                    ?.let { authSessionStoreJson.encodeToString(it) }
+            store.putString(key, value)
+        }
+    }
+
     private fun String.decodeStoredSessionOrNull(): StoredAuthSession? =
         runCatching {
             authSessionStoreJson.decodeFromString(StoredAuthSession.serializer(), this)
+        }.getOrNull()
+
+    private fun String.decodeRememberedServerSelectionOrNull(): StoredAuthServerSelection? =
+        runCatching {
+            authSessionStoreJson.decodeFromString(StoredAuthServerSelection.serializer(), this)
         }.getOrNull()
 }
 
 private val authSessionStoreJson = Json {
     ignoreUnknownKeys = true
     encodeDefaults = true
+}
+
+private fun StoredAuthUser.rememberedServerSelectionStoreKey(): String? =
+    accountServerSelectionKey()?.let { "rememberedServerSelection:$it" }
+
+private fun StoredAuthUser.accountServerSelectionKey(): String? {
+    val raw =
+        id.trim().takeIf { it.isNotBlank() }?.let { "id:$it" }
+            ?: email.trim().lowercase().takeIf { it.isNotBlank() }?.let { "email:$it" }
+            ?: return null
+    return raw.map { character ->
+        when {
+            character.isLetterOrDigit() -> character
+            character == ':' || character == '-' || character == '_' || character == '.' -> character
+            else -> '_'
+        }
+    }.joinToString(separator = "")
 }

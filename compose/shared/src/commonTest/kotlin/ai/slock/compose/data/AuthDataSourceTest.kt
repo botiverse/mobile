@@ -39,6 +39,54 @@ class AuthDataSourceTest {
     }
 
     @Test
+    fun loginReusesRememberedServerSelectionForSameAccount() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        store.saveRememberedServerSelection(
+            StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+            StoredAuthServerSelection(serverId = "server-1", serverSlug = "slock")
+        )
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+        assertEquals("slock", store.readSession()?.selectedServerSlug)
+    }
+
+    @Test
+    fun loginDoesNotReuseRememberedServerSelectionForDifferentAccount() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        store.saveRememberedServerSelection(
+            StoredAuthUser(id = "user-2", email = "other@slock.ai"),
+            StoredAuthServerSelection(serverId = "server-1", serverSlug = "slock")
+        )
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(null, store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerSlug)
+    }
+
+    @Test
+    fun loginIgnoresRememberedServerSelectionWhenServerIsUnavailable() = runBlocking {
+        val store = InMemorySlockAuthSessionStore()
+        store.saveRememberedServerSelection(
+            StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+            StoredAuthServerSelection(serverId = "server-old", serverSlug = "old")
+        )
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
+
+        val result = source.login("user@slock.ai", "password")
+
+        assertTrue(result is SharedAuthResult.Success)
+        assertEquals(null, store.readSession()?.selectedServerId)
+        assertEquals(null, store.readSession()?.selectedServerSlug)
+    }
+
+    @Test
     fun loginMapsHttpFailureWithoutWritingSession() = runBlocking {
         val store = InMemorySlockAuthSessionStore()
         val source =
@@ -457,6 +505,34 @@ class AuthDataSourceTest {
         assertTrue(result is SharedAuthResult.Success)
         assertEquals("server-2", store.readSession()?.selectedServerId)
         assertEquals("ops", store.readSession()?.selectedServerSlug)
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-2", serverSlug = "ops"),
+            store.readRememberedServerSelection(StoredAuthUser(id = "user-1", email = "user@slock.ai"))
+        )
+    }
+
+    @Test
+    fun logoutKeepsRememberedServerSelectionForNextLogin() = runBlocking {
+        val store =
+            InMemorySlockAuthSessionStore(
+                StoredAuthSession(
+                    user = StoredAuthUser(id = "user-1", email = "user@slock.ai"),
+                    accessToken = "access-token",
+                    refreshToken = "refresh-token",
+                    selectedServerId = "server-1",
+                    selectedServerSlug = "slock",
+                    servers = listOf(StoredAuthServer(id = "server-1", name = "Slock", slug = "slock"))
+                )
+            )
+        val source = SharedAuthDataSource(transport = FakeAuthApi(), sessionStore = store)
+
+        val loggedOut = source.logout()
+        val loggedIn = source.login("user@slock.ai", "password")
+
+        assertTrue(loggedOut is SharedAuthResult.Success)
+        assertTrue(loggedIn is SharedAuthResult.Success)
+        assertEquals("server-1", store.readSession()?.selectedServerId)
+        assertEquals("slock", store.readSession()?.selectedServerSlug)
     }
 
     @Test
