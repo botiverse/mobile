@@ -19,6 +19,8 @@ class SharedAuthDataSource(
     private val sessionStore: SlockAuthSessionStore,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) {
+    private val serverSelectionMemory = sessionStore as? SlockAuthServerSelectionMemory
+
     constructor(
         transport: SlockAuthTransport,
         sessionStore: SlockAuthSessionStore,
@@ -84,15 +86,16 @@ class SharedAuthDataSource(
                     emptyList()
                 }
             }
-        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=false")
         val session =
             StoredAuthSession(
                 user = login.user,
                 accessToken = login.accessToken,
                 refreshToken = login.refreshToken,
                 servers = servers
-            )
-        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=false")
+            ).withValidatedServerSelection(servers, serverSelectionMemory)
+        val selectedServerPresent = !session.selectedServerId.isNullOrBlank()
+        diagnosticsLogger("auth_selected_server_persist_start serverIdPresent=$selectedServerPresent")
+        diagnosticsLogger("auth_session_persist_start userPresent=${login.user.id.isNotBlank()} serversCount=${servers.size} selectedServer=$selectedServerPresent")
         runCatchingPreservingCancellation { sessionStore.saveSession(session) }
             .getOrElse { throwable ->
                 diagnosticsLogger(
@@ -101,9 +104,9 @@ class SharedAuthDataSource(
                 return loginStageFailure("session_persist", "Could not save session locally.")
             }
         diagnosticsLogger("auth_session_persist_result result=success stage=session_persist")
-        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=false")
+        diagnosticsLogger("auth_selected_server_persist_result result=success serverIdPresent=$selectedServerPresent")
         diagnosticsLogger(
-            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=false"
+            "auth_login_result provider=password result=success serversCount=${servers.size} selectedServer=$selectedServerPresent"
         )
         return SharedAuthResult.Success(session)
     }
@@ -173,7 +176,7 @@ class SharedAuthDataSource(
                 accessToken = tokens.accessToken,
                 refreshToken = tokens.refreshToken,
                 servers = servers
-            )
+            ).withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(session)
         return SharedAuthResult.Success(session)
     }
@@ -212,7 +215,7 @@ class SharedAuthDataSource(
                 accessToken = register.accessToken,
                 refreshToken = register.refreshToken,
                 servers = servers
-            )
+            ).withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(session)
         return SharedAuthResult.Success(session)
     }
@@ -448,7 +451,7 @@ class SharedAuthDataSource(
         servers: List<StoredAuthServer>,
         source: String
     ): SharedAuthResult<StoredAuthSession> {
-        val updated = session.withValidatedServerSelection(servers)
+        val updated = session.withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         diagnosticsLogger(
             "auth_servers_load_result result=success source=$source serversCount=${servers.size} selectedServer=${!updated.selectedServerId.isNullOrBlank()}"
@@ -461,6 +464,7 @@ class SharedAuthDataSource(
         val selected = session.servers.firstOrNull { it.id == serverId }
             ?: return SharedAuthResult.Failure(SharedAuthErrorCode.Unknown, "Server not found.")
         val updated = session.copy(selectedServerId = selected.id, selectedServerSlug = selected.slug)
+        updated.rememberSelectedServer(serverSelectionMemory)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
@@ -508,6 +512,7 @@ class SharedAuthDataSource(
                 selectedServerId = selected.id,
                 selectedServerSlug = selected.slug
             )
+        updated.rememberSelectedServer(serverSelectionMemory)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
@@ -518,6 +523,7 @@ class SharedAuthDataSource(
             runCatchingPreservingCancellation {
                 api.logout(session.refreshToken)
             }
+            session.rememberSelectedServer(serverSelectionMemory)
         }
         sessionStore.clearSession()
         return SharedAuthResult.Success(Unit)
@@ -543,18 +549,34 @@ class SharedAuthDataSource(
                 is AuthApiResult.Success -> response.data
                 is AuthApiResult.Failure -> session.servers
             }
-        val updated = session.copy(user = user).withValidatedServerSelection(servers)
+        val updated = session.copy(user = user).withValidatedServerSelection(servers, serverSelectionMemory)
         sessionStore.saveSession(updated)
         return SharedAuthResult.Success(updated)
     }
 }
 
-private fun StoredAuthSession.withValidatedServerSelection(servers: List<StoredAuthServer>): StoredAuthSession {
-    val selected = selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
+private suspend fun StoredAuthSession.withValidatedServerSelection(
+    servers: List<StoredAuthServer>,
+    serverSelectionMemory: SlockAuthServerSelectionMemory?
+): StoredAuthSession {
+    val selected =
+        selectedServerId?.let { selectedId -> servers.firstOrNull { it.id == selectedId } }
+            ?: serverSelectionMemory?.readRememberedServerSelection(user)?.let { remembered ->
+                servers.firstOrNull { it.id == remembered.serverId }
+            }
     return copy(
         servers = servers,
         selectedServerId = selected?.id,
         selectedServerSlug = selected?.slug
+    )
+}
+
+private suspend fun StoredAuthSession.rememberSelectedServer(serverSelectionMemory: SlockAuthServerSelectionMemory?) {
+    val selectedId = selectedServerId?.takeIf { it.isNotBlank() } ?: return
+    val selectedSlug = servers.firstOrNull { it.id == selectedId }?.slug ?: selectedServerSlug
+    serverSelectionMemory?.saveRememberedServerSelection(
+        user,
+        StoredAuthServerSelection(serverId = selectedId, serverSlug = selectedSlug)
     )
 }
 

@@ -24,9 +24,17 @@ class AuthSessionStoreTest {
 
         store.updateSelectedServer("server-2", "work")
         assertEquals("server-2", store.readSession()?.currentServerId)
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
+            store.readRememberedServerSelection(sampleSession().user)
+        )
 
         store.clearSession()
         assertNull(store.readSession())
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
+            store.readRememberedServerSelection(sampleSession().user)
+        )
     }
 
     @Test
@@ -39,9 +47,17 @@ class AuthSessionStoreTest {
 
         store.updateSelectedServer("server-2", "work")
         assertEquals("server-2", store.readSession()?.currentServerId)
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
+            store.readRememberedServerSelection(sampleSession().user)
+        )
 
         store.clearSession()
         assertNull(store.readSession())
+        assertEquals(
+            StoredAuthServerSelection(serverId = "server-2", serverSlug = "work"),
+            store.readRememberedServerSelection(sampleSession().user)
+        )
     }
 
     private fun sampleSession(): StoredAuthSession =
