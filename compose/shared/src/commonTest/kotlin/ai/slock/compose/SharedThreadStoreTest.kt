@@ -3984,7 +3984,15 @@ class SharedThreadStoreTest {
         )
 
         assertEquals(
-            listOf(KuiklyThreadReactionItem("👀", count = 1, selected = true)),
+            listOf(
+                KuiklyThreadReactionItem(
+                    "👀",
+                    count = 1,
+                    selected = true,
+                    reactorIds = listOf("u1"),
+                    reactorNames = listOf("Artin")
+                )
+            ),
             store.state.value.payload.messages.single().reactions
         )
 
@@ -4361,7 +4369,17 @@ class SharedThreadStoreTest {
         assertEquals("🔥", reaction.emoji)
         assertEquals(1, reaction.count)
         assertEquals(true, reaction.selected)
-        assertEquals("reactable body", localStore.readThread(ThreadId("channel-1"))?.messages?.single()?.body)
+        assertEquals(listOf("u1"), reaction.reactorIds)
+        assertEquals(listOf("Artin"), reaction.reactorNames)
+        val cachedMessage = localStore.readThread(ThreadId("channel-1"))?.messages?.single()
+        assertEquals("reactable body", cachedMessage?.body)
+        val cachedReaction = cachedMessage?.reactions?.single()
+        assertEquals("🔥", cachedReaction?.emoji)
+        assertEquals(1, cachedReaction?.count)
+        assertEquals(listOf("u1"), cachedReaction?.reactorIds)
+        assertEquals(listOf("Artin"), cachedReaction?.reactorNames)
+        val readback = dataSource.readCachedPayload(basePayload(), trimToLatestThreadWindow = false)
+        assertEquals(true, readback?.messages?.single()?.reactions?.single()?.selected)
         scope.cancel()
     }
 

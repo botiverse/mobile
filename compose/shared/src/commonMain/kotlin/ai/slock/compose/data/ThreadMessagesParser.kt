@@ -295,7 +295,9 @@ private fun WireReaction.toReactionItem(currentUserId: String?): KuiklyThreadRea
     KuiklyThreadReactionItem(
         emoji = emoji,
         count = count,
-        selected = currentUserId != null && currentUserId in reactorIds
+        selected = currentUserId != null && currentUserId in reactorIds,
+        reactorIds = reactorIds,
+        reactorNames = reactorNames
     )
 
 private fun WireAttachment.toAttachmentItem(index: Int): KuiklyThreadAttachmentItem =

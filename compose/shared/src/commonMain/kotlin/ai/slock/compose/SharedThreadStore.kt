@@ -271,7 +271,12 @@ internal class SharedThreadDataSource(
 
     suspend fun writeCachedPayload(payload: KuiklyThreadScreenPayload) {
         val cacheablePayload = payload.withoutTransientLocalSendingMessages()
-        val snapshot = cacheablePayload.toThreadSnapshot() ?: return
+        val session = readSession()
+        val snapshot =
+            cacheablePayload.toThreadSnapshot(
+                currentUserId = session?.user?.id,
+                currentUserName = session?.user?.bestDisplayName
+            ) ?: return
         localWriteThrough?.writeThreadResult(
             result = DataResult.Content(snapshot),
             source = "shared_thread_data_source",
@@ -3513,7 +3518,12 @@ private fun List<KuiklyThreadReactionItem>.withSelectedReactionsFrom(
         val incoming = byEmoji[previousReaction.emoji]
         if (incoming == null || !incoming.selected || incoming.count <= 0) {
             byEmoji[previousReaction.emoji] =
-                incoming?.copy(count = maxOf(incoming.count, previousReaction.count), selected = true)
+                incoming?.copy(
+                    count = maxOf(incoming.count, previousReaction.count),
+                    selected = true,
+                    reactorIds = (incoming.reactorIds + previousReaction.reactorIds).distinct(),
+                    reactorNames = (incoming.reactorNames + previousReaction.reactorNames).distinct()
+                )
                     ?: previousReaction
             changed = true
         }
@@ -4409,7 +4419,9 @@ private fun List<MessageReactionSummary>.toThreadReactionItems(currentUserId: St
         KuiklyThreadReactionItem(
             emoji = emoji,
             count = count,
-            selected = currentUserId != null && currentUserId in reaction.reactorIds
+            selected = currentUserId != null && currentUserId in reaction.reactorIds,
+            reactorIds = reaction.reactorIds,
+            reactorNames = reaction.reactorNames
         )
     }
 
@@ -4420,7 +4432,9 @@ private fun List<MessageReaction>?.toRealtimeThreadReactionItems(currentUserId: 
         KuiklyThreadReactionItem(
             emoji = emoji,
             count = count,
-            selected = currentUserId != null && currentUserId in reaction.reactorIds
+            selected = currentUserId != null && currentUserId in reaction.reactorIds,
+            reactorIds = reaction.reactorIds,
+            reactorNames = reaction.reactorNames
         )
     }
 
@@ -4925,7 +4939,10 @@ private fun ConversationSummary.headerFallbackIds(): Set<String> =
         thread?.streamChannelId?.value
     ).filter { it.isNotBlank() }.toSet()
 
-private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
+private fun KuiklyThreadScreenPayload.toThreadSnapshot(
+    currentUserId: String? = null,
+    currentUserName: String? = null
+): ThreadSnapshot? {
     if (!hasRenderableThreadContent()) return null
     val threadIdValue = cacheThreadId() ?: return null
     val threadId = ThreadId(threadIdValue)
@@ -4976,9 +4993,23 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
         } else {
             threadId
         }
-    val parent = originMessage?.toMessage(threadId = parentThread, channelId = parentChannel)
+    val parent =
+        originMessage?.toMessage(
+            threadId = parentThread,
+            channelId = parentChannel,
+            currentUserId = currentUserId,
+            currentUserName = currentUserName
+        )
     val snapshotMessages =
-        (listOfNotNull(parent) + messages.map { item -> item.toMessage(threadId, channelId) })
+        (listOfNotNull(parent) +
+            messages.map { item ->
+                item.toMessage(
+                    threadId = threadId,
+                    channelId = channelId,
+                    currentUserId = currentUserId,
+                    currentUserName = currentUserName
+                )
+            })
             .distinctBy { it.id }
     return ThreadSnapshot(
         conversation = conversation,
@@ -4992,7 +5023,9 @@ private fun KuiklyThreadScreenPayload.toThreadSnapshot(): ThreadSnapshot? {
 
 internal fun KuiklyThreadMessageItem.toMessage(
     threadId: ThreadId,
-    channelId: ChannelId
+    channelId: ChannelId,
+    currentUserId: String? = null,
+    currentUserName: String? = null
 ): Message {
     val taskSummary =
         if (taskId != null || taskNumber != null) {
@@ -5037,9 +5070,37 @@ internal fun KuiklyThreadMessageItem.toMessage(
         unreadReplyCount = unreadReplyCount,
         firstUnreadReplyMessageId = firstUnreadReplyMessageId?.let(::MessageId),
         isSaved = isSaved,
+        reactions = reactions.toMessageReactions(currentUserId, currentUserName),
         commentRef = commentRef?.toMessageCommentRef()
     )
 }
+
+private fun List<KuiklyThreadReactionItem>.toMessageReactions(
+    currentUserId: String?,
+    currentUserName: String?
+): List<MessageReaction>? =
+    mapNotNull { reaction ->
+        val emoji = reaction.emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+        val count = reaction.count.takeIf { it > 0 } ?: return@mapNotNull null
+        val reactorIds =
+            reaction.reactorIds
+                .plus(if (reaction.selected && currentUserId != null) listOf(currentUserId) else emptyList())
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+        val reactorNames =
+            reaction.reactorNames
+                .plus(if (reaction.selected && !currentUserName.isNullOrBlank()) listOf(currentUserName) else emptyList())
+                .map { it.trim() }
+                .filter { it.isNotBlank() }
+                .distinct()
+        MessageReaction(
+            emoji = emoji,
+            count = count,
+            reactorIds = reactorIds,
+            reactorNames = reactorNames
+        )
+    }.takeIf { it.isNotEmpty() }
 
 private fun KuiklyThreadMessageItem.toMemberProfile(): MemberProfile {
     val cleanAuthorDeletedAt = authorDeletedAt?.takeIf { it.isNotBlank() }

@@ -948,7 +948,9 @@ internal data class KuiklyThreadMessageCommentHostSource(
 internal data class KuiklyThreadReactionItem(
     val emoji: String,
     val count: Int = 0,
-    val selected: Boolean = false
+    val selected: Boolean = false,
+    val reactorIds: List<String> = emptyList(),
+    val reactorNames: List<String> = emptyList()
 )
 
 @Serializable

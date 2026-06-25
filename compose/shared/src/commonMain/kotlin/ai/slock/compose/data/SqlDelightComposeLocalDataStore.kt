@@ -14,6 +14,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.MessageType
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
@@ -29,6 +30,7 @@ import ai.slock.compose.model.threadIdentity
 import ai.slock.shared.data.local.AttachmentEntity
 import ai.slock.shared.data.local.ChannelEntity
 import ai.slock.shared.data.local.MessageEntity
+import ai.slock.shared.data.local.MessageReactionEntity
 import ai.slock.shared.data.local.SlockDatabaseQueries
 import ai.slock.shared.data.local.TaskSummaryEntity
 import kotlinx.coroutines.flow.Flow
@@ -191,6 +193,10 @@ internal class SqlDelightComposeLocalDataStore(
                         sortOrder = index.toLong()
                     )
                 }
+                queries.deleteReactionsForMessage(message.id.value)
+                message.reactions.orEmpty().forEach { reaction ->
+                    reaction.writeMessageReaction(message.id.value, now)
+                }
                 message.task?.writeTaskSummary(serverId, now)
             }
             snapshot.tasks.forEach { task ->
@@ -226,6 +232,10 @@ internal class SqlDelightComposeLocalDataStore(
             database.queries.selectAttachmentsForMessage(id)
                 .executeAsList()
                 .map { it.toAttachment() }
+        val reactions =
+            database.queries.selectReactionsForMessage(id)
+                .executeAsList()
+                .toMessageReactions()
         val task =
             database.queries.selectTaskReferencesForMessage(serverId.value, id, id)
                 .executeAsList()
@@ -247,9 +257,47 @@ internal class SqlDelightComposeLocalDataStore(
             task = task,
             replyCount = replyCount.toInt(),
             parentMessageId = parentMessageId?.let(::MessageId),
-            updatedAtLabel = updatedAtLabel
+            updatedAtLabel = updatedAtLabel,
+            reactions = reactions
         )
     }
+
+    private fun MessageReaction.writeMessageReaction(messageId: String, now: Long) {
+        val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return
+        if (count <= 0) return
+        reactorIds
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .forEach { reactorId ->
+                database.queries.upsertMessageReaction(
+                    messageId = messageId,
+                    reactorKind = MessageReactionReactorKindUser,
+                    reactorId = reactorId,
+                    emoji = cleanEmoji,
+                    createdAtMs = null,
+                    lastSyncedAtMs = now
+                )
+            }
+    }
+
+    private fun List<MessageReactionEntity>.toMessageReactions(): List<MessageReaction>? =
+        groupBy { it.emoji }
+            .mapNotNull { (emoji, rows) ->
+                val cleanEmoji = emoji.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val reactorIds =
+                    rows.map { it.reactorId }
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                val count = reactorIds.size
+                if (count <= 0) return@mapNotNull null
+                MessageReaction(
+                    emoji = cleanEmoji,
+                    count = count,
+                    reactorIds = reactorIds
+                )
+            }
+            .takeIf { it.isNotEmpty() }
 
     private fun MessageEntity.toAuthorProfile(): MemberProfile =
         MemberProfile(
@@ -539,3 +587,5 @@ internal class SqlDelightComposeLocalDataStore(
             TaskStatus.Closed -> "closed"
         }
 }
+
+private const val MessageReactionReactorKindUser = "user"

@@ -12,6 +12,7 @@ import ai.slock.compose.model.MemberProfile
 import ai.slock.compose.model.Message
 import ai.slock.compose.model.MessageDeliveryState
 import ai.slock.compose.model.MessageId
+import ai.slock.compose.model.MessageReaction
 import ai.slock.compose.model.Presence
 import ai.slock.compose.model.ServerId
 import ai.slock.compose.model.ServerSummary
@@ -75,6 +76,14 @@ class SqlDelightComposeLocalDataStoreTest {
                             timestampLabel = "21:00",
                             body = "cached body",
                             metadata = mapOf("source" to "test"),
+                            reactions =
+                                listOf(
+                                    MessageReaction(
+                                        emoji = "👍",
+                                        count = 1,
+                                        reactorIds = listOf("user-1")
+                                    )
+                                ),
                             attachments =
                                 listOf(
                                     Attachment(
@@ -103,6 +112,10 @@ class SqlDelightComposeLocalDataStoreTest {
         val message = restored.messages.single()
         assertEquals("cached body", message.body)
         assertEquals("test", message.metadata["source"])
+        val reaction = message.reactions?.single()
+        assertEquals("👍", reaction?.emoji)
+        assertEquals(1, reaction?.count)
+        assertEquals(listOf("user-1"), reaction?.reactorIds)
         assertEquals("trace.txt", message.attachments.single().name)
         assertEquals("wire local-first thread cache", message.task?.title)
         assertEquals(TaskStatus.InReview, message.task?.status)
