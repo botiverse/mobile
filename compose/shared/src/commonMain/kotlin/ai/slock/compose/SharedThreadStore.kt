@@ -4765,8 +4765,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
     val channelKind =
         if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
             conversation.resolveThreadRouteIdentity().channelKind
-                ?: base.resolveThreadRouteIdentity().channelKind
-                ?: base.channelKind
+                .withRouteChannelKindFallback(base.resolveThreadRouteIdentity().channelKind ?: base.channelKind)
         } else {
             base.channelKind
         }
@@ -4909,6 +4908,16 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
                 conversation.gravatarUrl.takeIf { isDirectMessage }
             }
     ).withOriginReplyCountAtLeastLoadedReplies()
+}
+
+private fun String?.withRouteChannelKindFallback(routeKind: String?): String? {
+    val normalized = normalizedThreadChannelKind()
+    val route = routeKind.normalizedThreadChannelKind()
+    return if (normalized == KuiklyThreadSurfaceKind.Channel && route != null && route != KuiklyThreadSurfaceKind.Channel) {
+        route
+    } else {
+        normalized ?: route
+    }
 }
 
 private fun resolveDirectMessagePeerAvatar(

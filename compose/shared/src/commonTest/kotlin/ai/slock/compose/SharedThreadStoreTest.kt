@@ -2603,6 +2603,49 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun fetchThreadPayloadKeepsRouteJointChannelKindOverGenericRepositoryKind() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResult =
+                    DataResult.Content(
+                        threadSnapshot(
+                            threadId = "joint-1",
+                            body = "repository body",
+                            conversation =
+                                ConversationSummary(
+                                    threadId = ThreadId("joint-1"),
+                                    channelId = ChannelId("joint-1"),
+                                    channelType = "channel",
+                                    kind = ConversationKind.Channel,
+                                    name = "partner"
+                                )
+                        )
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository
+            )
+        val base =
+            basePayload().copy(
+                sourceThreadId = "joint-1",
+                streamChannelId = "joint-1",
+                channelKind = "joint"
+            )
+
+        val payload = (dataSource.fetchThreadPayload(base) as DataResult.Content).data
+
+        assertEquals(listOf(ThreadId("joint-1")), repository.getThreadRequests)
+        assertEquals(0, api.channelMessageCalls)
+        assertEquals("joint", payload.channelKind)
+        assertEquals(SlockLucideIconName.GitBranch, payload.channelKind.threadChannelHeaderIcon())
+        assertEquals("repository body", payload.messages.single().body)
+    }
+
+    @Test
     fun repositoryThreadPayloadDoesNotBlockOnMemberProfileAvatarBeforeFirstRender() = runBlocking {
         val repository =
             FakeConversationRepository(
