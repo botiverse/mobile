@@ -14,11 +14,11 @@ import kotlin.test.assertTrue
 
 class RealtimeRoutePolicyTest {
     @Test
-    fun activeThreadDoesNotReceivePresenceEvents() {
+    fun activeThreadReceivesPresenceEvents() {
         val event = agentPresence()
 
-        assertFalse(RealtimeRoutePolicy.shouldForwardToActiveThread(event))
-        assertFalse(RealtimeRoutePolicy.shouldEmitRouteMarker(event, activeThread = true))
+        assertTrue(RealtimeRoutePolicy.shouldForwardToActiveThread(event))
+        assertTrue(RealtimeRoutePolicy.shouldEmitRouteMarker(event, activeThread = true))
         assertTrue(RealtimeRoutePolicy.shouldEmitRouteMarker(event, activeThread = false))
     }
 
