@@ -174,7 +174,7 @@ Add `AppDiagnosticsFileStore` under Android host code:
 Suggested JSONL line:
 
 ```json
-{"ts":1782264596123,"level":"warn","tag":"SlockNetworkProbe","message":"baseUrl=https://... code=200 durationMs=84","thread":"main","session":"optional-short-id"}
+{"ts":1782264596123,"level":"info","tag":"SlockDiagnostics","message":"diagnostics_bundle_prepared sizeBytes=24576","thread":"main","session":"optional-short-id"}
 ```
 
 Do not include body text, bearer tokens, raw URLs with query secrets, request payloads, or full emails.
@@ -331,7 +331,7 @@ Files included: active + 3 rotated
 ...
 
 --- logs ---
-1782264596123 SlockNetworkProbe: baseUrl=https://... code=200 durationMs=84
+1782264596123 SlockDiagnostics: diagnostics_bundle_prepared sizeBytes=24576
 ...
 ```
 

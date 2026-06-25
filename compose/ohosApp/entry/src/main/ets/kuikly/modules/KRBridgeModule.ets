@@ -483,10 +483,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
           callback({ "status": "ok", "enabled": enabled });
           return;
         }
-        case "probeNetwork": {
-          callback(await this.probeNetworkCapability());
-          return;
-        }
         case "copyDiagnostics": {
           callback(this.copyDiagnosticsCapability());
           return;
@@ -679,55 +675,6 @@ export class KRBridgeModule extends KuiklyRenderBaseModule {
       };
     });
     return { "status": "ok", "entries": entries };
-  }
-
-  private async probeNetworkCapability(): Promise<Record<string, Object>> {
-    const request = http.createHttp();
-    const startedAt = Date.now();
-    const baseUrl = SlockOhosApiEnvironmentStore.current(this).apiBaseUrl;
-    try {
-      const response = await request.request(baseUrl, {
-        method: http.RequestMethod.GET,
-        header: {
-          "Accept": "application/json"
-        },
-        connectTimeout: 8000,
-        readTimeout: 8000
-      });
-      const responseCode = Number(response.responseCode ?? 0);
-      const duration = Date.now() - startedAt;
-      SlockOhosDiagnostics.record(
-        "SlockNetworkProbe",
-        `baseUrl=${this.safeUrlForDiagnostics(baseUrl)} code=${responseCode} durationMs=${duration}`
-      );
-      return {
-        "status": "ok",
-        "baseUrl": baseUrl,
-        "reachable": responseCode > 0,
-        "code": responseCode,
-        "durationMillis": duration,
-        "statusLabel": responseCode > 0 ? "API host reachable" : "Network probe failed",
-        "detail": responseCode > 0 ? `Host responded with HTTP ${responseCode}` : "No HTTP response"
-      };
-    } catch (error) {
-      const businessError = error as BusinessError;
-      const duration = Date.now() - startedAt;
-      SlockOhosDiagnostics.record(
-        "SlockNetworkProbe",
-        `baseUrl=${this.safeUrlForDiagnostics(baseUrl)} failed=${businessError.code ?? "unknown"} durationMs=${duration}`
-      );
-      return {
-        "status": "ok",
-        "baseUrl": baseUrl,
-        "reachable": false,
-        "code": 0,
-        "durationMillis": duration,
-        "statusLabel": "Network probe failed",
-        "detail": businessError.message ?? `${error}`
-      };
-    } finally {
-      request.destroy();
-    }
   }
 
   private copyDiagnosticsCapability(): Record<string, Object> {

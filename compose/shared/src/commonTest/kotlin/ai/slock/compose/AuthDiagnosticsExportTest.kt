@@ -2,14 +2,13 @@ package ai.slock.compose
 
 import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
-import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
 
 class AuthDiagnosticsExportTest {
     @Test
-    fun exportIncludesEnvironmentProbeAndRedactsSecrets() {
+    fun exportIncludesEnvironmentAndRedactsSecrets() {
         val text =
             buildAuthDiagnosticsExportText(
                 about =
@@ -25,15 +24,6 @@ class AuthDiagnosticsExportTest {
                         deviceLabel = "OHOS Phone",
                         platformLabel = "HarmonyOS"
                     ),
-                probe =
-                    SharedSettingsNetworkProbeSnapshot(
-                        baseUrl = "https://api.raft.build/api/",
-                        statusLabel = "Network error",
-                        detail = "authorization: Bearer access-token-123",
-                        reachable = false,
-                        code = 0,
-                        durationMillis = 250
-                    ),
                 entries =
                     listOf(
                         SharedSettingsDiagnosticsEntry(
@@ -42,17 +32,14 @@ class AuthDiagnosticsExportTest {
                             message = "refresh_token=refresh-token-123 password=secret user=artin@slock.ai"
                         )
                     ),
-                errorMessage = "probe error: settings_network_probe_exception"
+                errorMessage = "diagnostics error: settings_diagnostics_exception"
             )
 
         assertContains(text, "Raft auth diagnostics")
         assertContains(text, "Platform: HarmonyOS")
         assertContains(text, "Source: auth-bootstrap-diagnostics/e36bc138+")
-        assertContains(text, "Base URL: https://api.raft.build/api/")
-        assertContains(text, "Status: Network error")
         assertContains(text, "SlockAuthNetwork")
         assertContains(text, "[redacted]")
-        assertFalse(text.contains("access-token-123"))
         assertFalse(text.contains("refresh-token-123"))
         assertFalse(text.contains("secret"))
         assertFalse(text.contains("artin@slock.ai"))

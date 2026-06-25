@@ -22,7 +22,6 @@ import ai.slock.compose.data.SharedSettingsAboutSnapshot
 import ai.slock.compose.data.SharedSettingsDataSource
 import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsEntry
-import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SlockSharedStoreRegistry
 import ai.slock.compose.data.runCatchingPreservingCancellation
 import ai.slock.compose.network.SlockNetworkModule
@@ -484,7 +483,6 @@ private fun AuthDeveloperScreen() {
 private data class AuthDiagnosticsUiState(
     val loading: Boolean = true,
     val about: SharedSettingsAboutSnapshot? = null,
-    val probe: SharedSettingsNetworkProbeSnapshot? = null,
     val entries: List<SharedSettingsDiagnosticsEntry> = emptyList(),
     val errorMessage: String? = null
 )
@@ -516,20 +514,15 @@ private fun AuthDiagnosticsScreen() {
         val diagnosticsResult = runCatchingPreservingCancellation { settingsCapabilities.loadDiagnosticsHost() }.getOrElse {
             DataResult.Error(ai.slock.compose.data.ScreenError("settings_diagnostics_exception"))
         }
-        val probeResult = runCatchingPreservingCancellation { settingsCapabilities.loadNetworkProbe() }.getOrElse {
-            DataResult.Error(ai.slock.compose.data.ScreenError("settings_network_probe_exception"))
-        }
         state =
             AuthDiagnosticsUiState(
                 loading = false,
                 about = (aboutResult as? DataResult.Content)?.data,
-                probe = (probeResult as? DataResult.Content)?.data,
                 entries = (diagnosticsResult as? DataResult.Content)?.data?.entries.orEmpty(),
                 errorMessage =
                     listOf(
                         aboutResult.authDiagnosticsErrorLabel("about"),
-                        diagnosticsResult.authDiagnosticsErrorLabel("diagnostics"),
-                        probeResult.authDiagnosticsErrorLabel("probe")
+                        diagnosticsResult.authDiagnosticsErrorLabel("diagnostics")
                     ).filterNotNull().joinToString("; ").takeIf { it.isNotBlank() }
             )
     }
@@ -539,7 +532,6 @@ private fun AuthDiagnosticsScreen() {
             settingsCapabilities.bridgeCopyToClipboard(
                 buildAuthDiagnosticsExportText(
                     about = state.about,
-                    probe = state.probe,
                     entries = state.entries,
                     errorMessage = state.errorMessage
                 )
@@ -551,7 +543,7 @@ private fun AuthDiagnosticsScreen() {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
         SlockTopPageHeader(
             title = "Diagnostics",
-            subtitle = "Auth and network",
+            subtitle = "Auth diagnostics",
             iconName = SlockLucideIconName.Activity,
             leadingContent = {
                 SlockBrutalIconButton(
@@ -605,18 +597,6 @@ private fun AuthDiagnosticsScreen() {
                 item {
                     AuthDiagnosticsPanel("Load status") {
                         AuthDiagnosticsValue("Error", error)
-                    }
-                }
-            }
-            item {
-                AuthDiagnosticsPanel("Network probe") {
-                    val probe = state.probe
-                    AuthDiagnosticsValue("Status", probe?.statusLabel ?: if (state.loading) "Loading" else "Unavailable")
-                    AuthDiagnosticsValue("Base URL", probe?.baseUrl.orEmpty().ifBlank { "Unknown" })
-                    AuthDiagnosticsValue("HTTP code", probe?.code?.takeIf { it > 0 }?.toString() ?: "--")
-                    AuthDiagnosticsValue("Duration", probe?.durationMillis?.takeIf { it > 0L }?.let { "${it}ms" } ?: "--")
-                    probe?.detail?.takeIf { it.isNotBlank() }?.let { detail ->
-                        AuthDiagnosticsValue("Detail", detail)
                     }
                 }
             }
@@ -720,7 +700,6 @@ private fun <T> DataResult<T>.authDiagnosticsErrorLabel(label: String): String? 
 
 internal fun buildAuthDiagnosticsExportText(
     about: SharedSettingsAboutSnapshot?,
-    probe: SharedSettingsNetworkProbeSnapshot?,
     entries: List<SharedSettingsDiagnosticsEntry>,
     errorMessage: String? = null
 ): String =
@@ -739,14 +718,6 @@ internal fun buildAuthDiagnosticsExportText(
             appendDiagnosticsLine("Session", about?.sessionStatusLabel)
             appendDiagnosticsLine("Signed in user", about?.signedInUserLabel)
             appendDiagnosticsLine("Selected server", about?.selectedServerLabel)
-            appendLine()
-            appendLine("Network probe")
-            appendDiagnosticsLine("Base URL", probe?.baseUrl)
-            appendDiagnosticsLine("Status", probe?.statusLabel)
-            appendDiagnosticsLine("Reachable", probe?.reachable?.toString())
-            appendDiagnosticsLine("HTTP code", probe?.code?.takeIf { it > 0 }?.toString())
-            appendDiagnosticsLine("Duration", probe?.durationMillis?.takeIf { it > 0L }?.let { "${it}ms" })
-            appendDiagnosticsLine("Detail", probe?.detail)
             errorMessage?.takeIf { it.isNotBlank() }?.let {
                 appendLine()
                 appendLine("Load errors")

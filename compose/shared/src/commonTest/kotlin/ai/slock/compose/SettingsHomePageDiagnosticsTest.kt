@@ -7,7 +7,6 @@ import ai.slock.compose.data.SharedSettingsDeveloperSnapshot
 import ai.slock.compose.data.SharedSettingsDiagnosticsSnapshot
 import ai.slock.compose.data.DEVELOPER_ACTION_API_ENVIRONMENT
 import ai.slock.compose.data.DIAGNOSTICS_ACTION_PROFILER_ENABLED
-import ai.slock.compose.data.SharedSettingsNetworkProbeSnapshot
 import ai.slock.compose.data.SharedSettingsRecompositionProfilerSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,7 +32,7 @@ class SettingsHomePageDiagnosticsTest {
                 actionState = null
             )
 
-        assertEquals("Auth, network, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
+        assertEquals("Auth, sanitized app diagnostics, and Kuikly profiler status", payload.detail)
         assertEquals(
             listOf("Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
@@ -45,7 +44,7 @@ class SettingsHomePageDiagnosticsTest {
     }
 
     @Test
-    fun diagnosticsPayloadIncludesMergedAuthEnvironmentAndNetworkProbe() {
+    fun diagnosticsPayloadIncludesMergedAuthEnvironment() {
         val payload =
             emptyList<ai.slock.compose.data.SharedSettingsDiagnosticsEntry>().toDiagnosticsPayload(
                 state =
@@ -61,15 +60,6 @@ class SettingsHomePageDiagnosticsTest {
                                     sessionStatusLabel = "Signed in",
                                     socketStatusLabel = "Host active"
                                 ),
-                            networkProbe =
-                                SharedSettingsNetworkProbeSnapshot(
-                                    baseUrl = "https://api.raft.build/api/",
-                                    statusLabel = "API host reachable",
-                                    detail = "Host responded with HTTP 401 Unauthorized",
-                                    reachable = true,
-                                    code = 401,
-                                    durationMillis = 37L
-                                ),
                             profiler = SharedSettingsRecompositionProfilerSnapshot(supported = false)
                         )
                     ),
@@ -77,15 +67,12 @@ class SettingsHomePageDiagnosticsTest {
             )
 
         assertEquals(
-            listOf("Environment", "Network probe", "Recomposition profiler", "Actions"),
+            listOf("Environment", "Recomposition profiler", "Actions"),
             payload.sections.map { it.title }
         )
         val environmentRows = payload.sections.first { it.title == "Environment" }.rows.associateBy { it.key }
         assertEquals("Artin", environmentRows.getValue("diagnosticsSession").detail)
         assertEquals("Botiverse", environmentRows.getValue("diagnosticsServer").detail)
-        val probeRows = payload.sections.first { it.title == "Network probe" }.rows.associateBy { it.key }
-        assertEquals("https://api.raft.build/api/", probeRows.getValue("diagnosticsProbeBaseUrl").detail)
-        assertEquals("HTTP 401 | 37ms", probeRows.getValue("diagnosticsProbeHttp").detail)
     }
 
     @Test
@@ -101,7 +88,7 @@ class SettingsHomePageDiagnosticsTest {
         assertEquals(listOf("diagnostics", "router"), rows.map { it.key })
         assertEquals("Diagnostics", rows.first().title)
         assertTrue(rows.first().detail.contains("auth"))
-        assertTrue(rows.first().detail.contains("network"))
+        assertFalse(rows.first().detail.contains("network"))
     }
 
     @Test
