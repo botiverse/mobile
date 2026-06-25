@@ -87,6 +87,7 @@ import kotlinx.coroutines.launch
 
 private val ActivitySelectedRowShadowOffset = 2.dp
 private const val ActivityNearTopThresholdPx = 50
+private const val ActivityUpdateSignatureWindow = 20
 
 @Composable
 internal fun SharedHomeActivityScreen(
@@ -477,6 +478,7 @@ private fun SharedActivityList(
     var menuAnchor by remember { mutableStateOf(Offset.Zero) }
     var selectedItemKey by remember { mutableStateOf<String?>(null) }
     var previousTopItemKey by remember { mutableStateOf<String?>(null) }
+    var previousUpdateSignature by remember { mutableStateOf<String?>(null) }
     var pendingUpdateCount by remember { mutableStateOf(0) }
     val scrollScope = rememberCoroutineScope()
     val pullToRefreshState = rememberPullToRefreshState(pullRefreshing)
@@ -488,7 +490,14 @@ private fun SharedActivityList(
     }
     LaunchedEffect(snapshot.items) {
         val nearTop = listState.isActivityNearTop()
-        val increment = activityPendingUpdateIncrement(previousTopItemKey, snapshot.items, nearTop)
+        val currentSignature = activityUpdateSignature(snapshot.items)
+        val increment =
+            activityPendingUpdateIncrement(
+                previousTopItemKey = previousTopItemKey,
+                previousUpdateSignature = previousUpdateSignature,
+                currentItems = snapshot.items,
+                nearTop = nearTop
+            )
         if (increment > 0) {
             pendingUpdateCount += increment
         }
@@ -497,6 +506,7 @@ private fun SharedActivityList(
             listState.scrollToItem(0)
         }
         previousTopItemKey = snapshot.items.firstOrNull()?.key
+        previousUpdateSignature = currentSignature
     }
     LaunchedEffect(listState) {
         snapshotFlow { listState.isActivityNearTop() }
@@ -1085,15 +1095,34 @@ private fun LazyListState.isActivityNearTop(): Boolean =
 
 internal fun activityPendingUpdateIncrement(
     previousTopItemKey: String?,
+    previousUpdateSignature: String?,
     currentItems: List<InboxItem>,
     nearTop: Boolean
 ): Int {
-    if (nearTop || previousTopItemKey == null) return 0
+    if (nearTop || previousTopItemKey == null || previousUpdateSignature == null) return 0
     val currentTopItemKey = currentItems.firstOrNull()?.key ?: return 0
-    if (currentTopItemKey == previousTopItemKey) return 0
+    if (currentTopItemKey == previousTopItemKey) {
+        return if (activityUpdateSignature(currentItems) != previousUpdateSignature) 1 else 0
+    }
     val previousTopIndex = currentItems.indexOfFirst { it.key == previousTopItemKey }
     return if (previousTopIndex > 0) previousTopIndex else 1
 }
+
+internal fun activityUpdateSignature(items: List<InboxItem>): String =
+    items
+        .take(ActivityUpdateSignatureWindow)
+        .joinToString(separator = "|") { item ->
+            listOf(
+                item.key,
+                item.unreadCount.toString(),
+                item.hasMention.toString(),
+                item.firstUnreadMessageId?.value.orEmpty(),
+                item.latestActivityMessageId?.value.orEmpty(),
+                item.latestActivityAt.orEmpty(),
+                item.lastMessageId?.value.orEmpty(),
+                item.taskStatus?.name.orEmpty()
+            ).joinToString(separator = ":")
+        }
 
 internal fun InboxItem.toConversationSummary(): ConversationSummary {
     val streamChannelId = resolveInboxStreamChannelId()

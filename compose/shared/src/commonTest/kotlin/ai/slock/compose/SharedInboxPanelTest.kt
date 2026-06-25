@@ -29,6 +29,13 @@ class SharedInboxPanelTest {
             2,
             activityPendingUpdateIncrement(
                 previousTopItemKey = "channel:channel-old-top",
+                previousUpdateSignature =
+                    activityUpdateSignature(
+                        listOf(
+                            activityItem(key = "channel:channel-old-top"),
+                            activityItem(key = "channel:channel-old-next")
+                        )
+                    ),
                 currentItems = items,
                 nearTop = false
             )
@@ -43,6 +50,8 @@ class SharedInboxPanelTest {
             0,
             activityPendingUpdateIncrement(
                 previousTopItemKey = "channel:channel-old-top",
+                previousUpdateSignature =
+                    activityUpdateSignature(listOf(activityItem(key = "channel:channel-old-top"))),
                 currentItems = items,
                 nearTop = true
             )
@@ -57,6 +66,51 @@ class SharedInboxPanelTest {
             1,
             activityPendingUpdateIncrement(
                 previousTopItemKey = "channel-old-top",
+                previousUpdateSignature =
+                    activityUpdateSignature(listOf(activityItem(key = "channel-old-top"))),
+                currentItems = items,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementDetectsUnreadChangeWhenTopKeyIsStable() {
+        val oldItems =
+            listOf(
+                activityItem(key = "channel:channel-top", unreadCount = 0),
+                activityItem(key = "channel:channel-next", unreadCount = 0)
+            )
+        val newItems =
+            listOf(
+                activityItem(key = "channel:channel-top", unreadCount = 1, firstUnreadMessageId = "first-unread"),
+                activityItem(key = "channel:channel-next", unreadCount = 0)
+            )
+
+        assertEquals(
+            1,
+            activityPendingUpdateIncrement(
+                previousTopItemKey = "channel:channel-top",
+                previousUpdateSignature = activityUpdateSignature(oldItems),
+                currentItems = newItems,
+                nearTop = false
+            )
+        )
+    }
+
+    @Test
+    fun activityPendingUpdateIncrementIgnoresStableTopWindow() {
+        val items =
+            listOf(
+                activityItem(key = "channel:channel-top", unreadCount = 1, firstUnreadMessageId = "first-unread"),
+                activityItem(key = "channel:channel-next", unreadCount = 0)
+            )
+
+        assertEquals(
+            0,
+            activityPendingUpdateIncrement(
+                previousTopItemKey = "channel:channel-top",
+                previousUpdateSignature = activityUpdateSignature(items),
                 currentItems = items,
                 nearTop = false
             )
@@ -318,13 +372,17 @@ class SharedInboxPanelTest {
     private fun activityItem(
         key: String = "activity-1",
         latestActivityAt: String? = null,
-        lastMessageAt: String? = null
+        lastMessageAt: String? = null,
+        unreadCount: Int = 0,
+        firstUnreadMessageId: String? = null
     ): InboxItem =
         InboxItem(
             key = key,
             kind = InboxItemKind.Channel,
             channelId = ChannelId("channel-1"),
             channelName = "general",
+            unreadCount = unreadCount,
+            firstUnreadMessageId = firstUnreadMessageId?.let(::MessageId),
             lastMessageAt = lastMessageAt,
             latestActivityAt = latestActivityAt
         )
