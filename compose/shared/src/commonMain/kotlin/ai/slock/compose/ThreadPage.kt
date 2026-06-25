@@ -50,7 +50,6 @@ import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
 import ai.slock.compose.data.SharedMembersMemberSuggestion
-import ai.slock.compose.data.SharedMembersState
 import ai.slock.compose.data.SharedMembersStore
 import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.SharedServerMembersStore
@@ -2103,7 +2102,7 @@ private fun ThreadMessageVisualCard(
                 ThreadMessageStaticAvatar(
                     avatarLabel = message.avatarLabel,
                     avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                    status = message.threadAgentStatusIndicatorState()
+                    status = null
                 )
                 Column(
                     modifier = Modifier.weight(1f),
@@ -2441,10 +2440,6 @@ internal fun SharedThreadRouteContent(
             ?.distinctUntilChanged()
             ?: emptyChannelSuggestionsFlow
     }
-    val emptyMembersStateFlow = remember { MutableStateFlow(SharedMembersState()) }
-    val membersState by remember(membersStore) {
-        membersStore?.state ?: emptyMembersStateFlow
-    }.collectAsState(SharedMembersState())
     val emptyServerMembersStateFlow = remember { MutableStateFlow(SharedServerMembersState()) }
     val serverMembersState by remember(serverMembersStore) {
         serverMembersStore?.state ?: emptyServerMembersStateFlow
@@ -2660,15 +2655,17 @@ internal fun SharedThreadRouteContent(
     var deferredAttachmentSend by remember(threadInstanceKey) {
         mutableStateOf<ThreadDeferredAttachmentSend?>(null)
     }
+    val threadAgentStatusLookup =
+        remember(serverMembersState, currentSession?.currentServerId) {
+            ThreadAgentStatusLookup.from(
+                serverMembersState = serverMembersState,
+                serverId = currentSession?.currentServerId
+            )
+        }
     val routeUiState =
-        remember(renderedPayload, membersState, serverMembersState, currentSession?.currentServerId, threadState.membersLoadStatus) {
+        remember(renderedPayload, threadState.membersLoadStatus) {
             ThreadRouteUiState(
-                thread =
-                    renderedPayload.withMembersAgentStatusProjection(
-                        membersState = membersState,
-                        serverMembersState = serverMembersState,
-                        serverId = currentSession?.currentServerId
-                    ),
+                thread = renderedPayload,
                 membersLoadStatus = threadState.membersLoadStatus
             )
         }
@@ -3298,6 +3295,7 @@ internal fun SharedThreadRouteContent(
             onDownloadFilesAttachment = { attachment -> openAttachmentExternally(attachment) },
             onOpenMemberProfile = { memberId -> onOpenMemberProfile(renderedThread, memberId) },
             highlightedMentions = threadState.highlightedMentions,
+            agentStatusResolver = threadAgentStatusLookup::indicatorStateForMemberId,
             diagnosticsLogger = { bridge.log(it) },
             pendingActionCardIds = pendingActionCardIds,
             attachmentOpenStates = attachmentOpenStates,
@@ -5445,6 +5443,7 @@ private fun ThreadPageContent(
     onDownloadFilesAttachment: (KuiklyThreadAttachmentItem) -> Unit,
     onOpenMemberProfile: (String) -> Unit,
     highlightedMentions: Set<String>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     diagnosticsLogger: (String) -> Unit = {},
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
@@ -5543,6 +5542,7 @@ private fun ThreadPageContent(
                         taskChannelId = taskChannelId,
                         composerKeyboardInsetDp = composerKeyboardInsetDp,
                         highlightedMentions = highlightedMentions,
+                        agentStatusResolver = agentStatusResolver,
                         pendingActionCardIds = pendingActionCardIds,
                         attachmentOpenStates = attachmentOpenStates,
                         attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6048,6 +6048,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
     taskChannelId: ChannelId?,
     composerKeyboardInsetDp: Float,
     highlightedMentions: Set<String>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -6101,6 +6102,7 @@ private fun ThreadChatTabWithLinkedTasksProjection(
         composerKeyboardInsetDp = composerKeyboardInsetDp,
         linkedTasksByMessageLookup = linkedTasksByMessageLookup,
         highlightedMentions = highlightedMentions,
+        agentStatusResolver = agentStatusResolver,
         pendingActionCardIds = pendingActionCardIds,
         attachmentOpenStates = attachmentOpenStates,
         attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6124,6 +6126,7 @@ private fun ThreadChatTab(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -6147,6 +6150,7 @@ private fun ThreadChatTab(
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
+                    agentStatusResolver = agentStatusResolver,
                     pendingActionCardIds = pendingActionCardIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6180,6 +6184,7 @@ private fun ThreadChatTab(
                     composerKeyboardInsetDp = composerKeyboardInsetDp,
                     linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                     highlightedMentions = highlightedMentions,
+                    agentStatusResolver = agentStatusResolver,
                     pendingActionCardIds = pendingActionCardIds,
                     attachmentOpenStates = attachmentOpenStates,
                     attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6207,6 +6212,7 @@ private fun ThreadChatTab(
                 composerKeyboardInsetDp = composerKeyboardInsetDp,
                 linkedTasksByMessageLookup = linkedTasksByMessageLookup,
                 highlightedMentions = highlightedMentions,
+                agentStatusResolver = agentStatusResolver,
                 pendingActionCardIds = pendingActionCardIds,
                 attachmentOpenStates = attachmentOpenStates,
                 attachmentCommentsEnabled = attachmentCommentsEnabled,
@@ -6231,6 +6237,7 @@ private fun ThreadMessagesList(
     composerKeyboardInsetDp: Float,
     linkedTasksByMessageLookup: Map<String, TaskSummary>,
     highlightedMentions: Set<String>,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     pendingActionCardIds: Set<String> = emptySet(),
     attachmentOpenStates: Map<String, ThreadAttachmentOpenUiState> = emptyMap(),
     attachmentCommentsEnabled: Boolean = false,
@@ -6664,6 +6671,7 @@ private fun ThreadMessagesList(
                             taskStatusMenuAnchor = anchor
                         },
                         onMentionAuthor = onMentionAuthor,
+                        agentStatusResolver = agentStatusResolver,
                         onOpenMarkdownTag = onOpenMarkdownTag,
                         onOpenMarkdownUrl = onOpenMarkdownUrl
                     )
@@ -6771,6 +6779,7 @@ private fun ThreadMessagesList(
                             messageIndex = index,
                             diagnosticsLogger = diagnosticsLogger,
                             highlightedMentions = highlightedMentions,
+                            agentStatusResolver = agentStatusResolver,
                             focused = activeFocusedMessageId == message.id,
                             alignOwnMessageRight = payload.alignOwnMessagesRight && message.isOwn,
                             showReplyAction = payload.showReplyActions,
@@ -7767,6 +7776,7 @@ private fun ThreadMessageCard(
     messageIndex: Int = -1,
     diagnosticsLogger: (String) -> Unit = {},
     highlightedMentions: Set<String> = emptySet(),
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     alignOwnMessageRight: Boolean = false,
     showReplyAction: Boolean = true,
     resolvedTaskAssigneeName: String? = null,
@@ -7803,6 +7813,7 @@ private fun ThreadMessageCard(
         if (alignOwnMessageRight) Arrangement.spacedBy(12.dp, Alignment.End) else Arrangement.spacedBy(12.dp)
     val contentAlignment = if (alignOwnMessageRight) Alignment.End else Alignment.Start
     val messageMaxWidthFraction = if (alignOwnMessageRight) 0.82f else 1f
+    val agentStatus = if (message.showsAgentStatusIndicator()) agentStatusResolver(message.authorId) else null
     val focusAlpha by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = ThreadFocusedMessageHighlightFadeMs),
@@ -7838,7 +7849,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        status = message.threadAgentStatusIndicatorState(),
+                        status = agentStatus,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -8007,7 +8018,7 @@ private fun ThreadMessageCard(
                     ThreadMessageAvatar(
                         avatarLabel = message.avatarLabel,
                         avatarWireValue = message.resolvedThreadAvatarWireValue(),
-                        status = message.threadAgentStatusIndicatorState(),
+                        status = agentStatus,
                         onClick = { if (message.canOpenThreadAuthorProfile()) onOpenMember(message.authorId) },
                         onLongPress = { message.threadMentionHandle()?.let(onMentionAuthor) }
                     )
@@ -8504,55 +8515,39 @@ internal fun KuiklyThreadMessageItem.threadAuthorBadgeLabel(): String? =
 internal fun KuiklyThreadMessageItem.canOpenThreadAuthorProfile(): Boolean =
     threadAuthorBadgeLabel() == null
 
-internal fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
-    membersState: SharedMembersState
-): KuiklyThreadScreenPayload {
-    val projections = membersState.threadAgentStatusProjections()
-    return withMembersAgentStatusProjection(projections)
-}
-
-internal fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
-    membersState: SharedMembersState,
-    serverMembersState: SharedServerMembersState,
-    serverId: String?
-): KuiklyThreadScreenPayload {
-    val projections =
-        membersState.threadAgentStatusProjections() +
-            serverMembersState.threadAgentStatusProjections(serverId)
-    return withMembersAgentStatusProjection(projections)
-}
-
-private fun KuiklyThreadScreenPayload.withMembersAgentStatusProjection(
-    projections: List<ThreadMembersAgentStatusProjection>
-): KuiklyThreadScreenPayload {
-    if (projections.isEmpty()) return this
-    val nextMessages = messages.map { it.withMembersAgentStatusProjection(projections) }
-    val nextOriginMessage = originMessage?.withMembersAgentStatusProjection(projections)
-    if (nextMessages == messages && nextOriginMessage == originMessage) return this
-    return copy(messages = nextMessages, originMessage = nextOriginMessage)
-}
-
-private data class ThreadMembersAgentStatusProjection(
-    val memberId: String?,
-    val handle: String?,
-    val status: AgentStatus
-)
-
-private fun SharedMembersState.threadAgentStatusProjections(): List<ThreadMembersAgentStatusProjection> =
-    (
-        memberSuggestions +
-            memberSuggestionSlices.values.flatMap { slice -> slice.suggestions }
-    ).mapNotNull { suggestion ->
-        val status = suggestion.agentStatus ?: return@mapNotNull null
-        if (suggestion.kind != MemberKind.Agent) return@mapNotNull null
-        ThreadMembersAgentStatusProjection(
-            memberId = suggestion.memberId.threadProjectionMemberId(),
-            handle = suggestion.handle.threadProjectionHandle(),
-            status = status
+internal data class ThreadAgentStatusLookup(
+    private val statusByMemberId: Map<String, AgentStatus>
+) {
+    fun indicatorStateForMemberId(memberId: String?): SlockAgentStatusIndicatorState? {
+        val status = memberId.threadProjectionMemberId()?.let(statusByMemberId::get) ?: return null
+        return slockAgentStatusIndicatorState(
+            status = status,
+            presence = status.presence
         )
     }
 
-private fun SharedServerMembersState.threadAgentStatusProjections(serverId: String?): List<ThreadMembersAgentStatusProjection> {
+    companion object {
+        fun from(
+            serverMembersState: SharedServerMembersState,
+            serverId: String?
+        ): ThreadAgentStatusLookup {
+            val statusByMemberId = linkedMapOf<String, AgentStatus>()
+            serverMembersState.recordThreadAgentStatuses(serverId, statusByMemberId)
+            return ThreadAgentStatusLookup(
+                statusByMemberId = statusByMemberId.toMap()
+            )
+        }
+    }
+}
+
+private fun SharedServerMembersState.recordThreadAgentStatuses(
+    serverId: String?,
+    statusByMemberId: MutableMap<String, AgentStatus>
+) {
+    presenceByMemberId.forEach { (memberId, event) ->
+        val status = event.agentStatus ?: return@forEach
+        memberId.threadProjectionMemberId()?.let { statusByMemberId[it] = status }
+    }
     val cleanServerId = serverId.threadProjectionMemberId()
     val entries =
         if (cleanServerId != null) {
@@ -8560,44 +8555,22 @@ private fun SharedServerMembersState.threadAgentStatusProjections(serverId: Stri
         } else {
             entriesByServerId.values.toList()
         }
-    return entries
+    entries
         .flatMap { entry -> entry.members }
-        .mapNotNull { member ->
-            val status = member.agentStatus ?: return@mapNotNull null
-            if (member.kind != MemberKind.Agent) return@mapNotNull null
-            ThreadMembersAgentStatusProjection(
-                memberId = member.id.value.threadProjectionMemberId(),
-                handle = member.handle.threadProjectionHandle(),
-                status = status
-            )
+        .forEach { member ->
+            val status = presenceFor(member.id.value)?.agentStatus ?: member.agentStatus ?: return@forEach
+            if (member.kind != MemberKind.Agent) return@forEach
+            member.id.value.threadProjectionMemberId()?.let { memberId ->
+                if (memberId !in statusByMemberId) {
+                    statusByMemberId[memberId] = status
+                }
+            }
         }
-}
-
-private fun KuiklyThreadMessageItem.withMembersAgentStatusProjection(
-    projections: List<ThreadMembersAgentStatusProjection>
-): KuiklyThreadMessageItem {
-    if (!isThreadAgentAuthor()) return this
-    val authorMemberId = authorId.threadProjectionMemberId()
-    val authorHandle = authorHandle.threadProjectionHandle()
-    val status =
-        projections.firstOrNull { projection ->
-            (authorMemberId != null && projection.memberId == authorMemberId) ||
-                (authorHandle != null && projection.handle == authorHandle)
-        }?.status ?: return this
-    if (authorAgentStatus == status.name) return this
-    return copy(authorAgentStatus = status.name)
 }
 
 private fun String?.threadProjectionMemberId(): String? =
     this
         ?.trim()
-        ?.takeIf { it.isNotBlank() }
-
-private fun String?.threadProjectionHandle(): String? =
-    this
-        ?.trim()
-        ?.removePrefix("@")
-        ?.lowercase()
         ?.takeIf { it.isNotBlank() }
 
 private fun KuiklyThreadMessageItem.threadMentionHandle(): String? =
@@ -9408,6 +9381,7 @@ private fun ThreadOriginCard(
     onShowActions: (KuiklyThreadMessageItem, Offset) -> Unit,
     onOpenTaskStatusMenu: (KuiklyThreadMessageItem, Offset) -> Unit,
     onMentionAuthor: (String) -> Unit,
+    agentStatusResolver: (String?) -> SlockAgentStatusIndicatorState? = { null },
     onOpenMarkdownTag: (ThreadMarkdownTag) -> Unit,
     onOpenMarkdownUrl: (String) -> Unit
 ) {
@@ -9461,6 +9435,7 @@ private fun ThreadOriginCard(
                             hasReplyDraft = false,
                             actionCard = originActionCard,
                             highlightedMentions = highlightedMentions,
+                            agentStatusResolver = agentStatusResolver,
                             showReplyAction = false,
                             resolvedTaskAssigneeName =
                                 linkedTaskAssigneeName
@@ -9585,14 +9560,6 @@ private fun ThreadMessageStaticAvatar(
 
 private fun KuiklyThreadMessageItem.showsAgentStatusIndicator(): Boolean =
     isThreadAgentAuthor() && threadAuthorBadgeLabel() == null
-
-private fun KuiklyThreadMessageItem.threadAgentStatusIndicatorState(): SlockAgentStatusIndicatorState? {
-    if (!showsAgentStatusIndicator()) return null
-    return slockAgentStatusIndicatorState(
-        statusValue = authorAgentStatus,
-        fallbackPresence = AgentStatus.fromWireValue(authorAgentStatus)?.presence ?: ai.slock.compose.model.Presence.Active
-    )
-}
 
 @Composable
 private fun ThreadPixelAvatar(spec: ThreadPixelAvatarSpec) {

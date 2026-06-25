@@ -31,10 +31,17 @@ data class SharedServerMembersEntry(
 }
 
 data class SharedServerMembersState(
-    val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap()
+    val entriesByServerId: Map<String, SharedServerMembersEntry> = emptyMap(),
+    val presenceByMemberId: Map<String, MemberPresenceUpdated> = emptyMap()
 ) {
     fun entryFor(serverId: ServerId): SharedServerMembersEntry? =
         entriesByServerId[serverId.value.trim()]
+
+    fun presenceFor(memberId: String?): MemberPresenceUpdated? =
+        memberId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { presenceByMemberId[it] }
 }
 
 /**
@@ -58,12 +65,13 @@ class SharedServerMembersStore(
     fun seed(snapshot: MemberSnapshot) {
         val key = snapshot.server.id.value.trim()
         if (key.isBlank()) return
+        val presenceFacts = _state.value.presenceByMemberId
         putEntry(
             key,
             SharedServerMembersEntry(
                 serverId = key,
                 server = snapshot.server,
-                members = snapshot.members,
+                members = snapshot.members.withServerMemberPresenceFacts(presenceFacts),
                 status = SharedServerMembersLoadStatus.Loaded,
                 errorCode = null
             )
@@ -74,6 +82,13 @@ class SharedServerMembersStore(
         val memberId = event.memberId.value.trim()
         if (memberId.isBlank()) return
         val current = _state.value
+        val previousFact = current.presenceByMemberId[memberId]
+        val nextPresenceFacts =
+            if (event.shouldReplacePresenceFact(previousFact)) {
+                current.presenceByMemberId + (memberId to event)
+            } else {
+                current.presenceByMemberId
+            }
         var changed = false
         val nextEntries =
             current.entriesByServerId.mapValues { (_, entry) ->
@@ -97,8 +112,12 @@ class SharedServerMembersStore(
                     entry
                 }
             }
-        if (!changed) return
-        _state.value = current.copy(entriesByServerId = nextEntries)
+        if (!changed && nextPresenceFacts == current.presenceByMemberId) return
+        _state.value =
+            current.copy(
+                entriesByServerId = nextEntries,
+                presenceByMemberId = nextPresenceFacts
+            )
     }
 
     suspend fun loadMembers(
@@ -135,20 +154,25 @@ class SharedServerMembersStore(
             when (result) {
                 is DataResult.Content -> {
                     val normalizedKey = result.data.server.id.value.trim().ifBlank { key }
+                    val snapshot =
+                        result.data.copy(
+                            members = result.data.members.withServerMemberPresenceFacts(_state.value.presenceByMemberId)
+                        )
                     putEntry(
                         normalizedKey,
                         SharedServerMembersEntry(
                             serverId = normalizedKey,
-                            server = result.data.server,
-                            members = result.data.members,
+                            server = snapshot.server,
+                            members = snapshot.members,
                             status = SharedServerMembersLoadStatus.Loaded,
                             errorCode = null
                         )
                     )
                     if (normalizedKey != key) removeEntry(key)
                     logger(
-                        "shared_server_members_load_result serverId=$normalizedKey result=content members=${result.data.members.size}"
+                        "shared_server_members_load_result serverId=$normalizedKey result=content members=${snapshot.members.size}"
                     )
+                    return@withLock DataResult.Content(snapshot)
                 }
                 is DataResult.Empty -> {
                     putEntry(
@@ -214,3 +238,24 @@ class SharedServerMembersStore(
             )
     }
 }
+
+private fun MemberPresenceUpdated.shouldReplacePresenceFact(previous: MemberPresenceUpdated?): Boolean =
+    when {
+        previous == null -> true
+        serverSeq != null && previous.serverSeq != null -> serverSeq >= previous.serverSeq
+        serverSeq != null && previous.serverSeq == null -> true
+        else -> true
+    }
+
+private fun List<MemberProfile>.withServerMemberPresenceFacts(
+    presenceFacts: Map<String, MemberPresenceUpdated>
+): List<MemberProfile> =
+    map { member ->
+        val event = presenceFacts[member.id.value.trim()]
+            ?.takeIf { member.kind == MemberKind.Agent }
+            ?: return@map member
+        member.copy(
+            presence = event.presence,
+            agentStatus = event.agentStatus ?: member.agentStatus
+        )
+    }

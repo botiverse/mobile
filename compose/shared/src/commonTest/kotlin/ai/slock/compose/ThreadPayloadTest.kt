@@ -29,8 +29,6 @@ import ai.slock.compose.data.StoredAuthServer
 import ai.slock.compose.data.StoredAuthSession
 import ai.slock.compose.data.StoredAuthUser
 import ai.slock.compose.data.SharedConversationDirectoryProjection
-import ai.slock.compose.data.SharedMembersMemberSuggestion
-import ai.slock.compose.data.SharedMembersState
 import ai.slock.compose.data.SharedServerMembersEntry
 import ai.slock.compose.data.SharedServerMembersState
 import ai.slock.compose.data.TasksUiState
@@ -197,7 +195,7 @@ class ThreadPayloadTest {
     }
 
     @Test
-    fun membersStoreStateProjectsAgentStatusIntoVisibleThreadMessages() {
+    fun serverMembersRosterResolvesAgentStatusWithoutMutatingThreadMessages() {
         val payload =
             KuiklyThreadScreenPayload(
                 originMessage =
@@ -228,29 +226,44 @@ class ThreadPayloadTest {
                         )
                     )
             )
-        val membersState =
-            SharedMembersState(
-                memberSuggestions =
-                    listOf(
-                        SharedMembersMemberSuggestion(
-                            displayName = "Agent",
-                            handle = "agent",
-                            kind = MemberKind.Agent,
-                            agentStatus = AgentStatus.Thinking,
-                            memberId = "agent-1"
-                        )
+        val serverMembersState =
+            SharedServerMembersState(
+                entriesByServerId =
+                    mapOf(
+                        "server-1" to
+                            SharedServerMembersEntry(
+                                serverId = "server-1",
+                                members =
+                                    listOf(
+                                        MemberProfile(
+                                            id = MemberId("agent-1"),
+                                            displayName = "Agent",
+                                            handle = "agent",
+                                            kind = MemberKind.Agent,
+                                            presence = AgentStatus.Thinking.presence,
+                                            agentStatus = AgentStatus.Thinking
+                                        )
+                                    )
+                            )
                     )
             )
 
-        val projected = payload.withMembersAgentStatusProjection(membersState)
+        val lookup =
+            ThreadAgentStatusLookup.from(
+                serverMembersState = serverMembersState,
+                serverId = "server-1"
+            )
 
-        assertEquals(AgentStatus.Thinking.name, projected.originMessage?.authorAgentStatus)
-        assertEquals(AgentStatus.Thinking.name, projected.messages[0].authorAgentStatus)
-        assertEquals(null, projected.messages[1].authorAgentStatus)
+        val originMessage = payload.originMessage!!
+        assertEquals(AgentStatus.Thinking, lookup.indicatorStateForMemberId(originMessage.authorId)?.status)
+        assertEquals(AgentStatus.Thinking, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
+        assertEquals(null, lookup.indicatorStateForMemberId(payload.messages[1].authorId))
+        assertEquals(AgentStatus.Online.name, originMessage.authorAgentStatus)
+        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
     }
 
     @Test
-    fun serverMembersStoreStateProjectsAgentStatusIntoVisibleThreadMessages() {
+    fun serverMembersPresenceFactResolvesAgentStatusWithoutLoadedRoster() {
         val payload =
             KuiklyThreadScreenPayload(
                 messages =
@@ -267,34 +280,26 @@ class ThreadPayloadTest {
             )
         val serverMembersState =
             SharedServerMembersState(
-                entriesByServerId =
+                presenceByMemberId =
                     mapOf(
-                        "server-1" to
-                            SharedServerMembersEntry(
-                                serverId = "server-1",
-                                members =
-                                    listOf(
-                                        MemberProfile(
-                                            id = MemberId("agent-1"),
-                                            displayName = "Agent",
-                                            handle = "agent",
-                                            kind = MemberKind.Agent,
-                                            presence = AgentStatus.Working.presence,
-                                            agentStatus = AgentStatus.Working
-                                        )
-                                    )
+                        "agent-1" to
+                            MemberPresenceUpdated(
+                                memberId = MemberId("agent-1"),
+                                presence = AgentStatus.Working.presence,
+                                kind = MemberKind.Agent,
+                                agentStatus = AgentStatus.Working
                             )
                     )
             )
 
-        val projected =
-            payload.withMembersAgentStatusProjection(
-                membersState = SharedMembersState(),
+        val lookup =
+            ThreadAgentStatusLookup.from(
                 serverMembersState = serverMembersState,
                 serverId = "server-1"
             )
 
-        assertEquals(AgentStatus.Working.name, projected.messages[0].authorAgentStatus)
+        assertEquals(AgentStatus.Working, lookup.indicatorStateForMemberId(payload.messages[0].authorId)?.status)
+        assertEquals(AgentStatus.Online.name, payload.messages[0].authorAgentStatus)
     }
 
     @Test

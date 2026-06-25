@@ -78,6 +78,31 @@ class SharedServerMembersStoreTest {
         assertEquals(MemberKind.Human, members.single { it.id.value == "u1" }.kind)
     }
 
+    @Test
+    fun applyPresenceRetainsFactBeforeRosterLoads() = runBlocking {
+        val repository = FakeMemberRepository()
+        val store = SharedServerMembersStore(repository)
+
+        store.applyPresence(
+            MemberPresenceUpdated(
+                memberId = MemberId("agent-1"),
+                presence = AgentStatus.Working.presence,
+                kind = MemberKind.Agent,
+                agentStatus = AgentStatus.Working
+            )
+        )
+
+        assertEquals(AgentStatus.Working, store.state.value.presenceFor("agent-1")?.agentStatus)
+        repository.membersByServer["server-1"] =
+            listOf(member("agent-1", "Agent").copy(kind = MemberKind.Agent, agentStatus = AgentStatus.Online))
+
+        val result = store.loadMembers(ServerId("server-1"))
+
+        assertIs<DataResult.Content<MemberSnapshot>>(result)
+        assertEquals(AgentStatus.Working, result.data.members.single { it.id.value == "agent-1" }.agentStatus)
+        assertEquals(AgentStatus.Working.presence, result.data.members.single { it.id.value == "agent-1" }.presence)
+    }
+
     private class FakeMemberRepository : MemberRepository {
         val membersByServer = mutableMapOf("server-1" to listOf(member("u1", "Cindy")))
         var getMembersCalls = 0
