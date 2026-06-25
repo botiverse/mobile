@@ -338,6 +338,17 @@ private val ThreadHeaderActionLabelMinWidth = 46.dp
 private val ThreadHeaderChannelTileSize = 34.dp
 private val ThreadHeaderChannelIconSize = 16.dp
 
+private object ThreadReactionGlyphDiagnostics {
+    private val loggedKeys = mutableSetOf<String>()
+
+    fun logOnce(path: String, emoji: String, detail: String) {
+        val key = "$path:$emoji:$detail"
+        if (loggedKeys.add(key)) {
+            Utils.logToNative("thread_reaction_glyph path=$path emoji=$emoji $detail")
+        }
+    }
+}
+
 internal fun threadComposerBottomPadding(keyboardInsetDp: Float, bottomSafeArea: Dp): Dp {
     val keyboardInset = keyboardInsetDp.coerceAtLeast(0f).dp
     val safeAreaInset = if (keyboardInsetDp > 0f) 0.dp else bottomSafeArea
@@ -8853,6 +8864,11 @@ private fun ThreadQuickReactionGlyph(
         ThreadReactionSpriteGlyph(sprite = sprite, modifier = modifier)
         return
     }
+    ThreadReactionGlyphDiagnosticLog(
+        path = "legacy_no_sprite",
+        emoji = emoji,
+        detail = "reason=no_manifest_match"
+    )
     ThreadLegacyQuickReactionGlyph(emoji = emoji, modifier = modifier)
 }
 
@@ -8864,9 +8880,19 @@ private fun ThreadReactionSpriteGlyph(
     val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
     val imageReady = image.width > 0 && image.height > 0
     if (!imageReady) {
+        ThreadReactionGlyphDiagnosticLog(
+            path = "sprite_atlas_not_ready",
+            emoji = sprite.value,
+            detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
+        )
         ThreadLegacyQuickReactionGlyph(emoji = sprite.value, modifier = modifier)
         return
     }
+    ThreadReactionGlyphDiagnosticLog(
+        path = "sprite_atlas_draw",
+        emoji = sprite.value,
+        detail = "sprite=${sprite.name} atlas=${ThreadReactionSpriteCatalogV1.atlas.imageName}"
+    )
     val rect = sprite.rect
     Canvas(modifier = modifier) {
         drawImage(
@@ -8876,6 +8902,17 @@ private fun ThreadReactionSpriteGlyph(
             dstOffset = IntOffset.Zero,
             dstSize = size.toIntSize()
         )
+    }
+}
+
+@Composable
+private fun ThreadReactionGlyphDiagnosticLog(
+    path: String,
+    emoji: String,
+    detail: String
+) {
+    SideEffect {
+        ThreadReactionGlyphDiagnostics.logOnce(path = path, emoji = emoji, detail = detail)
     }
 }
 
