@@ -2457,6 +2457,18 @@ internal class SharedThreadStore(
         persist: Boolean = true
     ) {
         val existing = _state.value.payload
+        val rawMerged =
+            existing.applyRealtimeEvent(
+                event = event,
+                currentUserId = dataSource.readSession()?.user?.id,
+                activeReplyParentMessageId = activeReplyParentMessageId
+            )
+        val merged =
+            if (rawMerged === existing) {
+                rawMerged
+            } else {
+                dataSource.enrichCachedSenderProfiles(rawMerged)
+            }
         if (persist) {
             runCatching {
                 if (existing.hasRenderableThreadContent()) {
@@ -2476,20 +2488,35 @@ internal class SharedThreadStore(
                     "thread_realtime_persist_failed events=1 type=${throwable::class.simpleName} message=${throwable.message.orEmpty()}"
                 )
             }
-            applyRealtimeCacheSnapshot(existing)
-        } else {
-            val rawMerged =
-                existing.applyRealtimeEvent(
-                    event = event,
-                    currentUserId = dataSource.readSession()?.user?.id,
-                    activeReplyParentMessageId = activeReplyParentMessageId
-                )
-            val merged =
-                if (rawMerged === existing) {
-                    rawMerged
-                } else {
-                    dataSource.enrichCachedSenderProfiles(rawMerged)
+            val cached =
+                dataSource
+                    .readCachedPayload(existing, trimToLatestThreadWindow = false)
+                    ?.withRouteContext(existing)
+            val selected =
+                cached
+                    ?.takeIf { candidate -> candidate.coversRealtimeProjection(previous = existing, direct = merged) }
+                    ?: merged
+            val stableSelected = selected.preserveStableTimelineFrom(existing)
+            val emitted =
+                reducePayloadPatch(cachePayload = true) { currentPayload ->
+                    if (!routeStillCurrent(existing, "thread_realtime_event", "apply", currentPayload)) {
+                        return@reducePayloadPatch currentPayload
+                    }
+                    currentPayload.withContentPatchFrom(stableSelected)
                 }
+            diagnosticsLogger?.invoke(
+                "thread_realtime_apply_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                    "source=${if (selected === cached) "cache" else "direct"} emitted=$emitted " +
+                    "messages=${stableSelected.messages.size}"
+            )
+            if (cached != null) {
+                diagnosticsLogger?.invoke(
+                    "thread_realtime_cache_result threadId=${existing.sourceThreadId.orEmpty()} " +
+                        "hit=true emitted=$emitted messages=${cached.messages.size} " +
+                        cached.originDiagnostics()
+                )
+            }
+        } else {
             val stableMerged = merged.preserveStableTimelineFrom(existing)
             reducePayloadPatch(cachePayload = true) { currentPayload ->
                 currentPayload.withContentPatchFrom(stableMerged)
@@ -2514,8 +2541,59 @@ internal class SharedThreadStore(
             "thread_realtime_cache_result threadId=${routePayload.sourceThreadId.orEmpty()} " +
                 "hit=true emitted=$emitted messages=${cached.messages.size} " +
                 cached.originDiagnostics()
-        )
+            )
     }
+
+    private fun KuiklyThreadScreenPayload.coversRealtimeProjection(
+        previous: KuiklyThreadScreenPayload,
+        direct: KuiklyThreadScreenPayload
+    ): Boolean {
+        if (direct === previous) {
+            return true
+        }
+        val previousById = previous.messages.associateBy { message -> message.id }
+        val candidateById = messages.associateBy { message -> message.id }
+        return direct.messages.all { directMessage ->
+            val previousMessage = previousById[directMessage.id]
+            val candidateMessage = candidateById[directMessage.id] ?: return@all false
+            when {
+                previousMessage == null -> candidateMessage.coversRealtimeFieldsFrom(directMessage)
+                previousMessage == directMessage -> true
+                else -> candidateMessage.coversRealtimeFieldsFrom(directMessage)
+            }
+        }
+    }
+
+    private fun KuiklyThreadMessageItem.coversRealtimeFieldsFrom(direct: KuiklyThreadMessageItem): Boolean =
+        id == direct.id &&
+            authorId == direct.authorId &&
+            authorName == direct.authorName &&
+            authorHandle == direct.authorHandle &&
+            authorKind == direct.authorKind &&
+            isOwn == direct.isOwn &&
+            timestampLabel == direct.timestampLabel &&
+            seq == direct.seq &&
+            messageType == direct.messageType &&
+            systemEventType == direct.systemEventType &&
+            metadata == direct.metadata &&
+            body == direct.body &&
+            threadChannelId == direct.threadChannelId &&
+            replyCount == direct.replyCount &&
+            unreadReplyCount == direct.unreadReplyCount &&
+            firstUnreadReplyMessageId == direct.firstUnreadReplyMessageId &&
+            isSaved == direct.isSaved &&
+            taskId == direct.taskId &&
+            taskNumber == direct.taskNumber &&
+            taskStatus == direct.taskStatus &&
+            taskAssigneeId == direct.taskAssigneeId &&
+            taskAssigneeName == direct.taskAssigneeName &&
+            reactions == direct.reactions &&
+            attachments == direct.attachments &&
+            commentRef == direct.commentRef &&
+            deliveryState == direct.deliveryState &&
+            pendingSendContext == direct.pendingSendContext &&
+            pendingSendErrorCode == direct.pendingSendErrorCode &&
+            pendingSendErrorMessage == direct.pendingSendErrorMessage
 
     private suspend fun markVisibleReadAll() {
         val marker = _state.value.payload.readAllMarker() ?: return

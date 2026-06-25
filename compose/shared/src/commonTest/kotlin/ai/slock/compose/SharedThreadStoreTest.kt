@@ -3415,6 +3415,38 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageNewMergesVisiblePayloadWhenPersistentCacheMissesEvent() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = null
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "realtime body"
+                    )
+                )
+            )
+        )
+
+        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeMessageNewDoesNotCrossContextWindowNewerGap() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val dataSource =
@@ -3679,7 +3711,7 @@ class SharedThreadStoreTest {
             )
         )
 
-        assertEquals(listOf("cached body"), store.state.value.payload.messages.map { it.body })
+        assertEquals(listOf("cached body", "realtime body"), store.state.value.payload.messages.map { it.body })
         assertTrue(logs.any { it.startsWith("thread_realtime_persist_failed") })
         scope.cancel()
     }
