@@ -504,7 +504,8 @@ class SharedSettingsDataSource(
     }
 
     suspend fun loadComputerDetail(machineId: String, forceComputers: Boolean = false): DataResult<SettingsComputerDetailSnapshot> {
-        val serverId = sessionStore.readSession()?.currentServerId
+        val session = sessionStore.readSession()
+        val serverId = session?.currentServerId
         val sharedComputer =
             if (serverId != null && computersSource != null) {
                 computersSource.loadSettingsComputerSnapshotForServer(
@@ -530,7 +531,7 @@ class SharedSettingsDataSource(
             is DataResult.Error -> DataResult.Error(sharedComputer.error)
             is DataResult.NoPermission -> DataResult.NoPermission(sharedComputer.blocker)
             null -> settingsRepository?.getComputerDetail(machineId) ?: DataResult.Empty(EmptyReason.NoSettingsAvailable)
-        }
+        }.withComputerManageGate(session.canManageCurrentServer())
     }
 
     suspend fun renameComputer(request: SettingsComputerRenameRequest): DataResult<SettingsComputerSnapshot> =
@@ -2295,6 +2296,16 @@ private fun DataResult<SettingsComputersSnapshot>.withAddComputerGate(
                         if (canManageServer) null else data.addComputerUnavailableReason ?: "server_admin_required"
                 )
             )
+        is DataResult.Empty -> this
+        is DataResult.Error -> this
+        is DataResult.NoPermission -> this
+    }
+
+private fun DataResult<SettingsComputerDetailSnapshot>.withComputerManageGate(
+    canManageServer: Boolean
+): DataResult<SettingsComputerDetailSnapshot> =
+    when (this) {
+        is DataResult.Content -> DataResult.Content(data.copy(canManageMachines = canManageServer))
         is DataResult.Empty -> this
         is DataResult.Error -> this
         is DataResult.NoPermission -> this

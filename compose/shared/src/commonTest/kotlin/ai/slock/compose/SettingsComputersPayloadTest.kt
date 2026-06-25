@@ -1,5 +1,8 @@
 package ai.slock.compose
 
+import ai.slock.compose.data.ScreenLoadState
+import ai.slock.compose.data.SettingsComputerDetailSnapshot
+import ai.slock.compose.data.SettingsComputerSnapshot
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
@@ -77,6 +80,28 @@ class SettingsComputersPayloadTest {
 
         assertEquals(true, withDecoded.canManageMachines)
         assertEquals(false, withoutDecoded.canManageMachines)
+    }
+
+    @Test
+    fun computerDetailPayloadMapperThreadsCanManageMachines() {
+        val snapshot =
+            SettingsComputerDetailSnapshot(
+                computer =
+                    SettingsComputerSnapshot(
+                        id = "machine-1",
+                        name = "Builder Mac",
+                        daemonVersion = "0.53.0",
+                        online = true
+                    ),
+                workspaces = emptyList(),
+                agents = emptyList(),
+                sections = emptyList(),
+                canManageMachines = true
+            )
+
+        val payload = ScreenLoadState.Content(snapshot).toComputerDetailPayload("machine-1", null)
+
+        assertEquals(true, payload.canManageMachines)
     }
 
     @Test

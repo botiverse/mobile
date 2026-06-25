@@ -833,7 +833,30 @@ class SharedSettingsStoreTest {
         val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
         assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
         assertEquals("machine-42", detail.computer.id)
+        assertEquals(true, detail.canManageMachines)
         assertEquals(listOf("computerDetail:machine-42"), repository.calls)
+        scope.cancel()
+    }
+
+    @Test
+    fun openComputerKeepsManageActionsHiddenForNonAdmins() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val repository = FakeSettingsRepository(computerDetailResult = DataResult.Content(computerDetailSnapshot("machine-42")))
+        val store =
+            SharedSettingsStore(
+                dataSource =
+                    SharedSettingsDataSource(
+                        sessionStore = InMemorySlockAuthSessionStore(sampleSession(role = "member")),
+                        settingsRepository = repository
+                    ),
+                scope = scope
+            )
+
+        store.accept(SharedSettingsIntent.OpenComputer("machine-42"))
+
+        val detail = assertIs<ScreenLoadState.Content<SettingsComputerDetailSnapshot>>(store.state.value.computerDetail).data
+        assertEquals(false, detail.canManageMachines)
+        assertEquals(SharedSettingsRoute(SharedSettingsDestination.ComputerDetail, "machine-42"), store.state.value.route)
         scope.cancel()
     }
 
@@ -2726,7 +2749,7 @@ class SharedSettingsStoreTest {
         override val unavailableDetail: String = "Recomposition profiler is available only in shared debug builds."
     ) : SharedSettingsRecompositionProfilerDebugGate
 
-    private fun sampleSession(): StoredAuthSession =
+    private fun sampleSession(role: String = "owner"): StoredAuthSession =
         StoredAuthSession(
             user = StoredAuthUser(id = "user-1", email = "artin@slock.ai", displayName = "Artin"),
             accessToken = "token-a",
@@ -2734,7 +2757,7 @@ class SharedSettingsStoreTest {
             selectedServerId = "server-1",
             servers =
                 listOf(
-                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = "owner", plan = "team")
+                    StoredAuthServer(id = "server-1", name = "Slock Community", slug = "slock", role = role, plan = "team")
                 )
         )
 

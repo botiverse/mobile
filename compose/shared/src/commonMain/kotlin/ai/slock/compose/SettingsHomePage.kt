@@ -221,6 +221,7 @@ import ai.slock.compose.data.SettingsConnectedAppRegisterRequest
 import ai.slock.compose.data.SettingsConnectedAppSecretSnapshot
 import ai.slock.compose.data.SettingsConnectedAppUpdateRequest
 import ai.slock.compose.data.SettingsConnectedAppsSnapshot
+import ai.slock.compose.data.SettingsComputersSnapshot
 import ai.slock.compose.data.SettingsDiagnosticsFeedbackDraft
 import ai.slock.compose.data.SettingsMobileSelectionSnapshot
 import ai.slock.compose.data.SettingsMobileSelectionOptionSnapshot
@@ -2740,7 +2741,20 @@ private fun SettingsAppShellContent(
                 SettingsDestinationApiEnvironment -> onDestinationChange(SettingsDestinationDeveloper)
                 else -> onDestinationChange(SettingsDestinationHome)
             }
-        }
+        },
+        trailingContent =
+            if (selectedDestination == SettingsDestinationComputers && settingsState.computers.canShowAddComputerHeaderAction()) {
+                {
+                    SlockBrutalIconButton(
+                        iconName = SlockLucideIconName.Plus,
+                        onClick = { onSettingsIntent(SharedSettingsIntent.ShowAddComputerDialog) },
+                        size = 36.dp,
+                        shadowOffset = 3.dp
+                    )
+                }
+            } else {
+                null
+            }
     ) {
         when (selectedDestination) {
             SettingsDestinationAccount ->
@@ -6173,6 +6187,7 @@ private fun SettingsDetailShell(
     subtitle: String,
     iconName: SlockLucideIconName,
     onBack: () -> Unit,
+    trailingContent: (@Composable () -> Unit)? = null,
     content: @Composable () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize().background(SlockColor.SurfaceWhite)) {
@@ -6183,6 +6198,11 @@ private fun SettingsDetailShell(
             backgroundColor = SlockColor.SurfaceWhite,
             leadingContent = {
                 SettingsDetailBackButton(onBack)
+            },
+            trailingContent = if (trailingContent != null) {
+                { trailingContent() }
+            } else {
+                null
             }
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -6190,6 +6210,9 @@ private fun SettingsDetailShell(
         }
     }
 }
+
+private fun ScreenLoadState<SettingsComputersSnapshot>.canShowAddComputerHeaderAction(): Boolean =
+    (this as? ScreenLoadState.Content)?.data?.canAddComputer == true
 
 @Composable
 private fun SettingsDetailBackButton(onBack: () -> Unit) {
