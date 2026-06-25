@@ -5237,6 +5237,53 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun applyTaskStatusPromotesServerTaskIdOverStaleMessageTaskId() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val localStore = InMemoryComposeLocalDataStore()
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = FakeThreadApi(failChannelMessages = true),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(localStore)
+            )
+        val stalePayload =
+            contentPayload("task body").copy(
+                messages =
+                    listOf(
+                        contentPayload("task body").messages.single().copy(
+                            taskId = "local-stale-task",
+                            taskNumber = 77,
+                            taskStatus = "Todo"
+                        )
+                    ),
+                tasks =
+                    listOf(
+                        KuiklyThreadTaskItem(
+                            id = "local-stale-task",
+                            title = "Cached task",
+                            status = "Todo",
+                            taskNumber = 77,
+                            messageId = "m1"
+                        )
+                    )
+            )
+        dataSource.cachePayload(stalePayload)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.ApplyTaskStatus("m1", TaskStatus.Done.name))
+
+        val message = store.state.value.payload.messages.single()
+        assertEquals("m1", message.taskId)
+        assertEquals("Done", message.taskStatus)
+        assertEquals("Done", store.state.value.payload.tasks.single().status)
+        val cached = localStore.readThread(ThreadId("channel-1"))
+        assertEquals("m1", cached?.messages?.single()?.task?.id?.value)
+        assertEquals(TaskStatus.Done, cached?.messages?.single()?.task?.status)
+        scope.cancel()
+    }
+
+    @Test
     fun createOrOpenReplyThreadFetchesReplyChannelAndPreservesOrigin() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("reply body", id = "reply-1", seq = 11, channelId = "thread-m1"))
         val dataSource =

@@ -4275,12 +4275,20 @@ internal fun KuiklyThreadScreenPayload.withTaskStatus(taskId: String, status: Ta
 
 internal fun KuiklyThreadScreenPayload.withTaskStatusLabel(taskId: String, statusLabel: String?): KuiklyThreadScreenPayload =
     run {
-        val referenceTask = tasks.firstOrNull { task -> task.id == taskId }
+        val taskMessages = messages + listOfNotNull(originMessage)
+        val referenceMessage = taskMessages.firstOrNull { message -> message.matchesTaskRequestKey(taskId) }
+        val referenceTask =
+            tasks.firstOrNull { task -> task.matchesTaskRequestKey(taskId) }
+                ?: referenceMessage?.let { message -> tasks.firstOrNull { task -> task.matchesMessage(message) } }
         copy(
             messages = messages.map { message -> message.withTaskStatusTarget(taskId, statusLabel, referenceTask) },
             originMessage = originMessage?.withTaskStatusTarget(taskId, statusLabel, referenceTask),
             tasks = tasks.map { task ->
-                if (task.id == taskId && statusLabel != null) task.copy(status = statusLabel) else task
+                if (statusLabel != null && task.matchesTaskStatusTarget(taskId, referenceTask, referenceMessage)) {
+                    task.copy(status = statusLabel)
+                } else {
+                    task
+                }
             }
         )
     }
@@ -4744,8 +4752,15 @@ private fun KuiklyThreadMessageItem.withTaskStatusTarget(
     referenceTask: KuiklyThreadTaskItem?
 ): KuiklyThreadMessageItem {
     if (!matchesTaskTarget(taskId, referenceTask)) return this
+    val resolvedTaskId =
+        when {
+            taskId.isNotBlank() && matchesTaskRequestKey(taskId) -> taskId
+            !referenceTask?.id.isNullOrBlank() -> referenceTask.id
+            taskId.isNotBlank() -> taskId
+            else -> this.taskId
+        }
     return copy(
-        taskId = this.taskId ?: referenceTask?.id ?: taskId,
+        taskId = resolvedTaskId,
         taskNumber = taskNumber ?: referenceTask?.taskNumber,
         taskStatus = statusLabel,
         taskAssigneeId = taskAssigneeId ?: referenceTask?.assigneeId,
@@ -4757,9 +4772,12 @@ private fun KuiklyThreadMessageItem.matchesTaskTarget(
     taskId: String,
     referenceTask: KuiklyThreadTaskItem?
 ): Boolean =
-    this.taskId == taskId ||
-        id == taskId ||
+    matchesTaskRequestKey(taskId) ||
         referenceTask?.matchesMessage(this) == true
+
+private fun KuiklyThreadMessageItem.matchesTaskRequestKey(taskId: String): Boolean =
+    this.taskId == taskId ||
+        id == taskId
 
 private fun KuiklyThreadTaskItem.matchesMessage(message: KuiklyThreadMessageItem): Boolean =
     id == message.taskId ||
@@ -4773,6 +4791,19 @@ private fun KuiklyThreadTaskItem.matchesTaskReference(referenceTask: KuiklyThrea
         (messageId != null && messageId == referenceTask.id) ||
         (referenceTask.messageId != null && id == referenceTask.messageId) ||
         (taskNumber != null && taskNumber == referenceTask.taskNumber)
+
+private fun KuiklyThreadTaskItem.matchesTaskRequestKey(taskId: String): Boolean =
+    id == taskId ||
+        messageId == taskId
+
+private fun KuiklyThreadTaskItem.matchesTaskStatusTarget(
+    taskId: String,
+    referenceTask: KuiklyThreadTaskItem?,
+    referenceMessage: KuiklyThreadMessageItem?
+): Boolean =
+    matchesTaskRequestKey(taskId) ||
+        referenceTask?.let { matchesTaskReference(it) } == true ||
+        referenceMessage?.let { matchesMessage(it) } == true
 
 private fun KuiklyThreadTaskItem.mergeTaskReference(incomingTask: KuiklyThreadTaskItem): KuiklyThreadTaskItem =
     incomingTask.copy(
