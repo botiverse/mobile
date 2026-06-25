@@ -253,20 +253,26 @@ internal data class CreateAgentDropdownItem(
 )
 
 private const val DEFAULT_CREATE_AGENT_DESCRIPTION_MAX_LENGTH = 3000
+internal const val CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR =
+    "Selected computer has no runtime data. Refresh computers or choose another computer."
+
+private fun normalizeCreateAgentRuntimeIds(runtimeIds: List<String>): List<String> =
+    runtimeIds
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
 
 internal fun createAgentRuntimeDropdownItems(
-    machineRuntimeIds: List<String> = emptyList()
+    machineRuntimeIds: List<String> = emptyList(),
+    allowStaticFallback: Boolean = true
 ): List<CreateAgentDropdownItem> {
     val knownSupportedRuntimes = RUNTIMES.filter { it.supported }
-    val machineRuntimeIdsNormalized =
-        machineRuntimeIds
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+    val machineRuntimeIdsNormalized = normalizeCreateAgentRuntimeIds(machineRuntimeIds)
     val sourceIds =
         machineRuntimeIdsNormalized
             .takeIf { it.isNotEmpty() }
-            ?: knownSupportedRuntimes.map { it.id }
+            ?: knownSupportedRuntimes.map { it.id }.takeIf { allowStaticFallback }
+            ?: emptyList()
     return sourceIds.map { runtimeId ->
         val knownRuntime = knownSupportedRuntimes.firstOrNull { it.id == runtimeId }
         CreateAgentDropdownItem(
@@ -275,6 +281,17 @@ internal fun createAgentRuntimeDropdownItems(
         )
     }
 }
+
+internal fun createAgentRuntimeAvailabilityError(
+    selectedMachineId: String?,
+    machineRuntimeIds: List<String>,
+    external: Boolean
+): String? =
+    if (!external && !selectedMachineId.isNullOrBlank() && normalizeCreateAgentRuntimeIds(machineRuntimeIds).isEmpty()) {
+        CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR
+    } else {
+        null
+    }
 
 internal fun createAgentMachineDropdownItems(
     machines: List<SharedCreateAgentMachineOption>,
@@ -454,12 +471,13 @@ internal fun SharedCreateAgentDialog(
     val customModelMissing = !external && customModelMode && customModelName.trim().isBlank()
     val selectedMachine = machines.firstOrNull { it.id == selectedMachineId }
     val selectedMachineRuntimeIds =
-        selectedMachine
-            ?.runtimes
-            .orEmpty()
-            .map { it.trim() }
-            .filter { it.isNotBlank() }
-            .distinct()
+        normalizeCreateAgentRuntimeIds(selectedMachine?.runtimes.orEmpty())
+    val runtimeAvailabilityError =
+        createAgentRuntimeAvailabilityError(
+            selectedMachineId = selectedMachine?.id,
+            machineRuntimeIds = selectedMachineRuntimeIds,
+            external = external
+        )
     val selectedMachineBlocked = !external &&
         (selectedMachine == null ||
             selectedMachine.status != "online" ||
@@ -470,7 +488,8 @@ internal fun SharedCreateAgentDialog(
         !customModelMissing &&
         !atLimit &&
         !submitting &&
-        !selectedMachineBlocked
+        !selectedMachineBlocked &&
+        runtimeAvailabilityError == null
     val showMachinePicker = !external
 
     LaunchedEffect(selectedMachineId, selectedMachineRuntimeIds, runtime) {
@@ -623,6 +642,7 @@ internal fun SharedCreateAgentDialog(
                             onCustomModelNameChange = { customModelName = it },
                             runtimeModelsOverride = runtimeModelsByMachineAndRuntime[selectedMachineId to runtime].orEmpty(),
                             machineRuntimeIds = selectedMachineRuntimeIds,
+                            runtimeAvailabilityError = runtimeAvailabilityError,
                             enabled = !submitting,
                             providerMode = providerMode,
                             onProviderModeChange = { providerMode = it },
@@ -816,6 +836,7 @@ internal fun AdvancedRuntimeSection(
     onCustomModelNameChange: (String) -> Unit,
     runtimeModelsOverride: List<SharedCreateAgentRuntimeModelOption>,
     machineRuntimeIds: List<String> = emptyList(),
+    runtimeAvailabilityError: String? = null,
     enabled: Boolean,
     providerMode: RuntimeProviderMode,
     onProviderModeChange: (RuntimeProviderMode) -> Unit,
@@ -837,7 +858,11 @@ internal fun AdvancedRuntimeSection(
     val supportedRuntimes = RUNTIMES.filter { it.supported }
     val runtimeInfo = supportedRuntimes.firstOrNull { it.id == runtime } ?: supportedRuntimes.first()
     val modelOptions = createAgentModelDropdownItems(runtime, runtimeModelsOverride)
-    val runtimeOptions = createAgentRuntimeDropdownItems(machineRuntimeIds)
+    val runtimeOptions = createAgentRuntimeDropdownItems(
+        machineRuntimeIds = machineRuntimeIds,
+        allowStaticFallback = runtimeAvailabilityError == null
+    )
+    val runtimeEnabled = enabled && runtimeAvailabilityError == null && runtimeOptions.isNotEmpty()
     val providerUrlRequired = supportsRuntimeApiUrl(runtime) && providerMode == RUNTIME_PROVIDER_MODE_CUSTOM
     val providerUrlInvalid = providerUrlRequired &&
         !Regex("^https?://", RegexOption.IGNORE_CASE).containsMatchIn(providerApiUrl.trim())
@@ -848,12 +873,23 @@ internal fun AdvancedRuntimeSection(
         SlockBrutalSelectField(
             options = runtimeOptions.toBrutalSelectOptions(),
             selectedId = runtime,
-            selectedLabel = runtimeOptions.firstOrNull { it.id == runtime }?.label ?: getRuntimeDisplayName(runtime),
+            selectedLabel =
+                runtimeOptions.firstOrNull { it.id == runtime }?.label
+                    ?: runtime.takeIf { runtimeAvailabilityError == null }?.let { getRuntimeDisplayName(it) }
+                    ?: "No runtimes available",
             placeholder = "Select runtime",
-            enabled = enabled,
+            enabled = runtimeEnabled,
             rowHeight = 36.dp,
             onSelect = { option -> onRuntimeChange(option.id) }
         )
+        runtimeAvailabilityError?.let { error ->
+            Text(
+                text = error,
+                style = SlockType.Caption.withSlockFontWeight(FontWeight.Bold).copy(color = SlockColor.AccentRed),
+                color = SlockColor.AccentRed
+            )
+        }
+        if (runtimeAvailabilityError == null) {
         if (supportsRuntimeApiUrl(runtime)) {
             SlockBrutalSectionLabel(label = "Provider", required = false)
             val providerOptions = createAgentProviderDropdownItems()
@@ -1038,6 +1074,7 @@ internal fun AdvancedRuntimeSection(
                     )
                 }
             }
+        }
         }
     }
 }

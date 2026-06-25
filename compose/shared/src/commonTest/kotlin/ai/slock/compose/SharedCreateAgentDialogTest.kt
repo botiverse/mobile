@@ -36,6 +36,45 @@ class SharedCreateAgentDialogTest {
     }
 
     @Test
+    fun runtimeDropdownCanDisableStaticFallbackForMachineWithNoRuntimeData() {
+        val items =
+            createAgentRuntimeDropdownItems(
+                machineRuntimeIds = listOf(" ", ""),
+                allowStaticFallback = false
+            )
+
+        assertTrue(items.isEmpty())
+    }
+
+    @Test
+    fun selectedMachineWithoutRuntimeDataProducesBlockingError() {
+        assertEquals(
+            CREATE_AGENT_NO_MACHINE_RUNTIMES_ERROR,
+            createAgentRuntimeAvailabilityError(
+                selectedMachineId = "machine-empty",
+                machineRuntimeIds = listOf(" ", ""),
+                external = false
+            )
+        )
+        assertEquals(
+            null,
+            createAgentRuntimeAvailabilityError(
+                selectedMachineId = null,
+                machineRuntimeIds = emptyList(),
+                external = false
+            )
+        )
+        assertEquals(
+            null,
+            createAgentRuntimeAvailabilityError(
+                selectedMachineId = "machine-external",
+                machineRuntimeIds = emptyList(),
+                external = true
+            )
+        )
+    }
+
+    @Test
     fun machineDropdownDisablesOfflineAndNonRequiredComputers() {
         val items =
             createAgentMachineDropdownItems(
