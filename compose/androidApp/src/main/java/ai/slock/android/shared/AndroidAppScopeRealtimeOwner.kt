@@ -667,8 +667,13 @@ internal object AndroidAppScopeRealtimeOwner {
     private fun isUnreadNotificationPreferenceEnabled(context: Context): Boolean =
         runCatching {
             SlockKuiklyMMKVModule.ensureInitialized(context.applicationContext)
-            MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
-                .decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true") == "true"
+            val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+            val value =
+                store.decodeString(
+                    AndroidRealtimeKeepAliveController.localPreferenceKey(NOTIFICATION_ENABLED_PREFERENCE_KEY),
+                    null
+                ) ?: store.decodeString(NOTIFICATION_ENABLED_PREFERENCE_KEY, "true")
+            value == "true"
         }.getOrElse { error ->
             SlockDiagnosticsLogger.w(
                 LOG_TAG,

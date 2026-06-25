@@ -185,7 +185,10 @@ internal class SlockKuiklyMMKVModule(context: Context) : KuiklyRenderBaseModule(
 
     private fun maybeUpdateForegroundKeepAlive(mmapID: String?, key: String, value: String?) {
         if (mmapID != SlockLocalPreferenceStore.KuiklyNamespace ||
-            key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+            key != NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY &&
+            key != AndroidRealtimeKeepAliveController.localPreferenceKey(
+                NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY
+            )
         ) {
             return
         }

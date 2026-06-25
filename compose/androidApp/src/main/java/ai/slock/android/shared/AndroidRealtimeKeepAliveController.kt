@@ -68,8 +68,13 @@ internal object AndroidRealtimeKeepAliveController {
         runCatching {
             val appContext = context.applicationContext
             SlockKuiklyMMKVModule.ensureInitialized(appContext)
-            MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
-                .decodeString(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false") == "true"
+            val store = MMKV.mmkvWithID(SlockLocalPreferenceStore.KuiklyNamespace)
+            val value =
+                store.decodeString(
+                    localPreferenceKey(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY),
+                    null
+                ) ?: store.decodeString(NOTIFICATION_FOREGROUND_KEEP_ALIVE_ENABLED_PREFERENCE_KEY, "false")
+            value == "true"
         }.getOrElse { error ->
             SlockDiagnosticsLogger.w(
                 LOG_TAG,
@@ -77,4 +82,7 @@ internal object AndroidRealtimeKeepAliveController {
             )
             false
         }
+
+    internal fun localPreferenceKey(key: String): String =
+        "${SlockLocalPreferenceStore.KuiklyNamespace}:$key"
 }
