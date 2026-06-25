@@ -5141,6 +5141,57 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun replyThreadUpdatedReplyCountGapSyncsFromVisiblePayloadTail() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText =
+                    messagesResponse(
+                        "current body",
+                        id = "m10",
+                        seq = 10,
+                        historyLimited = false,
+                        channelId = "thread-m1"
+                    ),
+                newerBodyText =
+                    syncResponse(
+                        body = "recovered body",
+                        id = "m11",
+                        seq = 11,
+                        channelId = "thread-m1"
+                    )
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val route = replyPayload(parentMessageId = "m1", threadId = "thread-m1").copy(canLoadMoreAfter = false)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(route))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                ThreadUpdated(
+                    threadChannelId = ChannelId("thread-m1"),
+                    parentMessageId = MessageId("m1"),
+                    replyCount = 2,
+                    lastReplyAt = "2026-05-19T16:02:00Z",
+                    participantIds = emptyList()
+                ),
+                activeReplyParentMessageId = MessageId("m1")
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "recovered body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeGapRecoverySkipsWhenVisiblePayloadAlreadyCaughtUp() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
@@ -6220,13 +6271,15 @@ class SharedThreadStoreTest {
         private fun syncResponse(
             body: String,
             id: String = "m1",
-            seq: Long = 10
+            seq: Long = 10,
+            channelId: String = "channel-1"
         ): String =
             """
             [
               {
                 "id": "$id",
                 "seq": $seq,
+                "channelId": "$channelId",
                 "content": "$body",
                 "createdAt": "2026-05-19T16:00:00Z",
                 "senderId": "u1",
