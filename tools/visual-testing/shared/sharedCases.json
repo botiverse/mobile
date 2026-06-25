@@ -5234,7 +5234,7 @@
       "category": "app/settings",
       "group": "screens-settings",
       "status": "baseline",
-      "notes": "Real React SettingsPanel DangerZoneSection modal and KMP SlockUnifiedDialog safe open state; destructive submit stays disabled and no delete action is invoked.",
+      "notes": "Real React SettingsPanel DangerZoneSection modal and KMP SettingsServerDeleteConfirmationDialog safe open state; destructive submit stays disabled and no delete action is invoked.",
       "providers": [
         {
           "id": "react",
@@ -5253,7 +5253,8 @@
           "source": "kmp-shared",
           "components": [
             "SettingsVisualServerFocusedContent",
-            "SlockUnifiedDialog"
+            "SettingsServerDeleteConfirmationDialog",
+            "Modal"
           ],
           "path": "compose/shared/src/commonMain/kotlin/ai/slock/compose/SettingsHomePage.kt",
           "fixture": "KmpVisualScreenshotCaptureTest.captureSettingsServerDangerModal",

@@ -5087,7 +5087,7 @@ private fun SettingsServerDeleteConfirmationDialog(
                 modifier =
                     Modifier
                         .padding(horizontal = 18.dp)
-                        .offset(y = (-36).dp)
+                        .offset(x = (-10).dp, y = (-36).dp)
                         .widthIn(max = 360.dp)
                         .clickable(enabled = false, onClick = {})
             ) {
@@ -12695,7 +12695,7 @@ private fun SettingsServerDangerModalVisualContent() {
                 )
             }
             Box(modifier = Modifier.fillMaxWidth().height(2.dp).background(SlockColor.BorderBlack))
-            Box(modifier = Modifier.fillMaxSize().padding(20.dp)) {
+            Box(modifier = Modifier.fillMaxSize().padding(start = 20.dp, top = 43.dp, end = 20.dp, bottom = 20.dp)) {
                 SettingsServerProfileBackdropCard(snapshot)
             }
         }
@@ -12719,7 +12719,7 @@ private fun SettingsServerProfileBackdropCard(snapshot: SettingsServerSnapshot) 
     Column(
         modifier =
             Modifier
-                .fillMaxWidth()
+                .width(350.dp)
                 .background(SlockColor.SurfaceCream)
                 .border(SlockStroke.Default, SlockColor.BorderBlack)
                 .padding(16.dp),
