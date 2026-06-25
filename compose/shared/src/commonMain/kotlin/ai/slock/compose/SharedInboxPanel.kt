@@ -295,27 +295,38 @@ private fun SharedActivityPanelContent(
         var contentWidthPx by remember { mutableStateOf(0f) }
         val density = LocalDensity.current
         val maxPreviewOffsetPx = with(density) { SlockTopTabBarDefaults.SwipePreviewMaxOffset.toPx() }
-        val previewOffsetPx =
-            slockSwipePreviewOffset(
-                horizontalDistance = dragDistancePx,
-                maxOffsetPx = maxPreviewOffsetPx,
-                hasPrevious = selectedSwipeIndex > 0,
-                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeFilters.lastIndex,
-                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
-            )
         val activeSettleTransition = settleTransition
         val settleTravelWidthPx =
             slockSwipeTravelWidth(
                 containerWidthPx = contentWidthPx,
                 fallbackWidthPx = maxPreviewOffsetPx
             )
+        val dragVisualOffsetPx =
+            slockSwipeDragOffset(
+                horizontalDistance = dragDistancePx,
+                travelWidthPx = settleTravelWidthPx,
+                fallbackOffsetPx = maxPreviewOffsetPx,
+                hasPrevious = selectedSwipeIndex > 0,
+                hasNext = selectedSwipeIndex >= 0 && selectedSwipeIndex < swipeFilters.lastIndex,
+                edgeResistance = SlockTopTabBarDefaults.SwipeEdgeResistance
+            )
+        val activeDragTransition =
+            if (activeSettleTransition == null && dragActive) {
+                slockSwipeDragTransition(
+                    items = swipeFilters,
+                    selected = state.selectedFilter,
+                    visualOffsetPx = dragVisualOffsetPx
+                )
+            } else {
+                null
+            }
         val visualTargetOffsetPx =
             activeSettleTransition?.let {
                 slockSwipeSettleTargetOffset(
                     travelWidthPx = settleTravelWidthPx,
                     directionSign = it.directionSign
                 )
-            } ?: previewOffsetPx
+            } ?: dragVisualOffsetPx
         val settleSpec: FiniteAnimationSpec<Float> =
             if (dragActive) snap() else tween(durationMillis = SlockTopTabBarDefaults.SwipeSettleAnimationMs)
         val visualOffsetPx by key(state.selectedFilter) {
@@ -393,7 +404,7 @@ private fun SharedActivityPanelContent(
                         }
                     )
         ) {
-            if (activeSettleTransition == null) {
+            if (activeSettleTransition == null && activeDragTransition == null) {
                 SlockSwipeSelectionPreview(
                     previous = swipePreviewTabs.getOrNull(selectedSwipeIndex - 1),
                     next = swipePreviewTabs.getOrNull(selectedSwipeIndex + 1),
@@ -404,6 +415,7 @@ private fun SharedActivityPanelContent(
             SlockSwipeSlidingContent(
                 selected = state.selectedFilter,
                 transition = activeSettleTransition,
+                dragTransition = activeDragTransition,
                 visualOffsetPx = visualOffsetPx,
                 travelWidthPx = settleTravelWidthPx,
                 content = activityContent
