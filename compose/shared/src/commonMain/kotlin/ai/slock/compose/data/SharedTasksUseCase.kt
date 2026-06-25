@@ -24,7 +24,7 @@ class SharedTasksUseCase(
 
     suspend fun refreshTasks(request: TasksLoadRequest): DataResult<TaskSnapshot> {
         val serverId = selectedServerIdOrError() ?: return selectedServerMissing()
-        return repository.refreshTasks(serverId, scope, request.filter)
+        return repository.refreshTasks(serverId, scope, request.filter, request.priority)
     }
 
     suspend fun currentServerId(): ServerId? =

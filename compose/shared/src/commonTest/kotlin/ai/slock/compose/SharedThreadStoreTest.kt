@@ -2953,6 +2953,50 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun secondaryRefreshBackfillsFollowedSummariesWithoutBlockingInitialFetch() = runBlocking {
+        val api = FakeThreadApi(bodyText = messagesResponse("network body"))
+        val repository =
+            FakeConversationRepository(
+                threadResultProvider = { _, includeFollowedSummaries, _ ->
+                    DataResult.Content(
+                        threadSnapshot(
+                            body = if (includeFollowedSummaries) "followed body" else "initial body",
+                            messages =
+                                listOf(
+                                    message(
+                                        threadId = "channel-1",
+                                        id = "m1",
+                                        seq = 10,
+                                        body = if (includeFollowedSummaries) "followed body" else "initial body",
+                                        threadChannelId = "thread-m1",
+                                        replyCount = if (includeFollowedSummaries) 7 else 0
+                                    )
+                                )
+                        )
+                    )
+                }
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                conversationRepository = repository,
+                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
+            )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        delay(1L)
+
+        assertEquals(listOf(false, true), repository.getThreadIncludeFollowedSummaries)
+        assertEquals("followed body", store.state.value.payload.messages.single().body)
+        assertEquals(7, store.state.value.payload.messages.single().replyCount)
+        assertEquals(0, api.channelMessageCalls)
+        scope.cancel()
+    }
+
+    @Test
     fun fetchThreadPayloadCarriesRepositoryJointChannelKind() = runBlocking {
         val api = FakeThreadApi(bodyText = messagesResponse("network body"))
         val repository =
@@ -4874,6 +4918,42 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun visibleReadAllCoalescesImmediateSameChannelCompletion() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api = FakeThreadApi(failChannelMessages = true).also { it.failReadAll = false }
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession()),
+                localWriteThrough = ComposeLocalWriteThrough(InMemoryComposeLocalDataStore())
+            )
+        dataSource.cachePayload(contentPayload("cached body"))
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+
+        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    Message(
+                        id = MessageId("m2"),
+                        threadId = ThreadId("channel-1"),
+                        channelId = ChannelId("channel-1"),
+                        seq = 11L,
+                        author = member("u2", "Stdrc"),
+                        timestampLabel = "2026-05-19T16:01:00Z",
+                        body = "fresh body"
+                    )
+                )
+            )
+        )
+        store.accept(SharedThreadIntent.MarkVisibleReadAll)
+
+        assertEquals(listOf("channel-1"), api.readAllChannels)
+        scope.cancel()
+    }
+
+    @Test
     fun applyReplyThreadReadClearsParentUnreadProjectionAndCache() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api = FakeThreadApi(failChannelMessages = true)
@@ -6379,6 +6459,7 @@ class SharedThreadStoreTest {
     private class FakeConversationRepository(
         var threadResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
         var threadResultsById: Map<ThreadId, DataResult<ThreadSnapshot>> = emptyMap(),
+        var threadResultProvider: ((ThreadId, Boolean, Int) -> DataResult<ThreadSnapshot>)? = null,
         var olderResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "older repo body", id = "m5", seq = 5)),
         var newerResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot(body = "newer repo body", id = "m12", seq = 12)),
         var messageContextResult: DataResult<ThreadSnapshot> = DataResult.Content(threadSnapshot()),
@@ -6415,7 +6496,9 @@ class SharedThreadStoreTest {
             getThreadRequests += threadId
             getThreadIncludeFollowedSummaries += includeFollowedSummaries
             getThreadLimits += limit
-            return threadResultsById[threadId] ?: threadResult
+            return threadResultProvider?.invoke(threadId, includeFollowedSummaries, limit)
+                ?: threadResultsById[threadId]
+                ?: threadResult
         }
 
         override suspend fun getReplyThread(

@@ -33,10 +33,11 @@ class SharedTasksDataSource(
 
     override suspend fun loadTasks(
         serverId: ServerId,
-        filter: TaskFilter
+        filter: TaskFilter,
+        priority: DataRequestPriority
     ): DataResult<TaskSnapshot> =
         try {
-            typedApi.serverTasks(serverId, DataRequestPriority.Visible, filter)
+            typedApi.serverTasks(serverId, priority, filter)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
@@ -45,10 +46,11 @@ class SharedTasksDataSource(
 
     override suspend fun loadChannelTasks(
         channelId: ChannelId,
-        filter: TaskFilter
+        filter: TaskFilter,
+        priority: DataRequestPriority
     ): DataResult<TaskSnapshot> =
         try {
-            typedApi.channelTasks(channelId, DataRequestPriority.Visible, filter)
+            typedApi.channelTasks(channelId, priority, filter)
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Throwable) {
