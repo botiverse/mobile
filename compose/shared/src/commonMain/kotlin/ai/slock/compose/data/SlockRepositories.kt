@@ -143,13 +143,13 @@ interface SettingsServerManagementRepository {
 interface ConversationRepository {
     suspend fun getThread(
         threadId: ThreadId,
-        includeFollowedSummaries: Boolean = true,
+        includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
     suspend fun getReplyThread(
         parentChannelId: ChannelId,
         parentMessageId: MessageId,
-        includeFollowedSummaries: Boolean = true,
+        includeFollowedSummaries: Boolean = false,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
     suspend fun getMessageContext(messageId: MessageId): DataResult<ThreadSnapshot>

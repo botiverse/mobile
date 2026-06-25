@@ -85,9 +85,9 @@ private suspend fun SlockNetworkClient.messageSync(
 private suspend fun SlockNetworkClient.channelThreads(
     priority: DataRequestPriority,
     channelId: ChannelId,
-    limit: Int
+    limit: Int? = null
 ): HomeNetworkResponse =
-    request(priority, "channels/${channelId.value}/threads", query = listOf("limit" to limit.toString()))
+    request(priority, "channels/${channelId.value}/threads", query = listOfNotNull(limit?.let { "limit" to it.toString() }))
 
 private suspend fun SlockNetworkClient.followedThreads(
     priority: DataRequestPriority,
@@ -568,7 +568,7 @@ class RealConversationRepository(
         messageLimit: Int,
         block: suspend () -> HomeNetworkResponse,
         source: String,
-        includeFollowedSummaries: Boolean = true
+        includeFollowedSummaries: Boolean = false
     ): DataResult<ThreadSnapshot> = coroutineScope {
         val loadStartedAt = TimeSource.Monotonic.markNow()
         warningLogger(
@@ -606,7 +606,7 @@ class RealConversationRepository(
                 val branchStartedAt = TimeSource.Monotonic.markNow()
                 val result = executeConversation(
                     emptyReason = EmptyReason.NoInboxItems,
-                    block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value), MESSAGE_PAGE_LIMIT) },
+                    block = { networkClient.channelThreads(DataRequestPriority.Visible, ChannelId(threadId.value)) },
                     emptyWhen = { false },
                     source = "${source}_thread_summaries",
                     mapper = { bodyText -> parseChannelThreadListSnapshotFromBody(bodyText, context) }

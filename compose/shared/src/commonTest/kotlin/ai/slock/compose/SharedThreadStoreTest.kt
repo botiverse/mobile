@@ -2947,6 +2947,7 @@ class SharedThreadStoreTest {
         val payload = (dataSource.fetchThreadPayload(basePayload()) as DataResult.Content).data
 
         assertEquals(listOf(ThreadId("channel-1")), repository.getThreadRequests)
+        assertEquals(listOf(false), repository.getThreadIncludeFollowedSummaries)
         assertEquals(0, api.channelMessageCalls)
         assertEquals("repository body", payload.messages.single().body)
     }
@@ -3331,6 +3332,7 @@ class SharedThreadStoreTest {
             listOf(ChannelId("channel-1") to MessageId("m1"), ChannelId("channel-1") to MessageId("m1")),
             repository.getReplyThreadRequests
         )
+        assertEquals(listOf(false, false), repository.getReplyThreadIncludeFollowedSummaries)
     }
 
     @Test
@@ -6391,6 +6393,7 @@ class SharedThreadStoreTest {
             )
     ) : ConversationRepository {
         val getThreadRequests: MutableList<ThreadId> = mutableListOf()
+        val getThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getThreadLimits: MutableList<Int> = mutableListOf()
         val olderRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val olderLimits: MutableList<Int> = mutableListOf()
@@ -6401,6 +6404,7 @@ class SharedThreadStoreTest {
         val getMessageContextRequests: MutableList<MessageId> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
         val getReplyThreadRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
+        val getReplyThreadIncludeFollowedSummaries: MutableList<Boolean> = mutableListOf()
         val getReplyThreadLimits: MutableList<Int> = mutableListOf()
 
         override suspend fun getThread(
@@ -6409,6 +6413,7 @@ class SharedThreadStoreTest {
             limit: Int
         ): DataResult<ThreadSnapshot> {
             getThreadRequests += threadId
+            getThreadIncludeFollowedSummaries += includeFollowedSummaries
             getThreadLimits += limit
             return threadResultsById[threadId] ?: threadResult
         }
@@ -6420,6 +6425,7 @@ class SharedThreadStoreTest {
             limit: Int
         ): DataResult<ThreadSnapshot> {
             getReplyThreadRequests += parentChannelId to parentMessageId
+            getReplyThreadIncludeFollowedSummaries += includeFollowedSummaries
             getReplyThreadLimits += limit
             val resolvedThreadId = (createThreadResult as? DataResult.Content)?.data?.threadChannelId
             val resolvedResult = resolvedThreadId?.let { threadResultsById[ThreadId(it.value)] } ?: threadResult

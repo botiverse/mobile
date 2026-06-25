@@ -33,8 +33,7 @@ class ConversationRepositoryDataSourceTest {
                                 "firstUnreadMessageId": "reply-2"
                               }
                             }
-                            """.trimIndent(),
-                        "GET channels/threads/followed" to """{"threads":[]}"""
+                            """.trimIndent()
                     )
             )
         val repository = RealConversationRepository(sampleStore(), network)
@@ -51,7 +50,52 @@ class ConversationRepositoryDataSourceTest {
         assertEquals(
             listOf(
                 RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
-                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads", listOf("limit" to "50")),
+                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads")
+            ),
+            network.requests
+        )
+    }
+
+    @Test
+    fun getThreadCanOptIntoFollowedSummariesForBackgroundCompletion() = runBlocking {
+        val network =
+            FakeConversationNetworkClient(
+                responses =
+                    mapOf(
+                        "GET messages/channel/channel-1" to
+                            """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
+                        "GET channels/channel-1/threads" to """{}""",
+                        "GET channels/threads/followed" to
+                            """
+                            {
+                              "threads": [
+                                {
+                                  "threadChannelId": "thread-1",
+                                  "parentChannelId": "channel-1",
+                                  "parentMessageId": "parent-1",
+                                  "replyCount": 4,
+                                  "unreadCount": 1,
+                                  "firstUnreadMessageId": "reply-4",
+                                  "lastActivityAt": "2026-05-22T10:05:00.000Z"
+                                }
+                              ]
+                            }
+                            """.trimIndent()
+                    )
+            )
+        val repository = RealConversationRepository(sampleStore(), network)
+
+        val result = repository.getThread(ThreadId("channel-1"), includeFollowedSummaries = true)
+
+        val message = assertIs<DataResult.Content<ThreadSnapshot>>(result).data.messages.single()
+        assertEquals("thread-1", message.threadChannelId?.value)
+        assertEquals(4, message.replyCount)
+        assertEquals(1, message.unreadReplyCount)
+        assertEquals("reply-4", message.firstUnreadReplyMessageId?.value)
+        assertEquals(
+            listOf(
+                RecordedConversationRequest(DataRequestPriority.Foreground, "GET", "messages/channel/channel-1", listOf("limit" to "30")),
+                RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/channel-1/threads"),
                 RecordedConversationRequest(DataRequestPriority.Visible, "GET", "channels/threads/followed", listOf("limit" to "50"))
             ),
             network.requests
@@ -173,8 +217,7 @@ class ConversationRepositoryDataSourceTest {
                     mapOf(
                         "GET messages/channel/channel-1" to
                             """{"messages":[${messageJson("parent-1", "channel-1")}],"historyLimited":false}""",
-                        "GET channels/channel-1/threads" to """{"threads":[]}""",
-                        "GET channels/threads/followed" to """{"threads":[]}"""
+                        "GET channels/channel-1/threads" to """{}"""
                     )
             )
         val repository = RealConversationRepository(sampleStore(), network, warningLogger = logs::add)
