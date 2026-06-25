@@ -913,6 +913,33 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun threadContentProjectionAppliesTasksOutsideContentSlice() {
+        val currentTask =
+            KuiklyThreadTaskItem(
+                id = "current-task",
+                title = "Current task",
+                status = "Todo",
+                taskNumber = 1
+            )
+        val networkTask =
+            KuiklyThreadTaskItem(
+                id = "network-task",
+                title = "Network task",
+                status = "InReview",
+                taskNumber = 2
+            )
+        val current = contentPayload("cached body").copy(tasks = listOf(currentTask))
+        val networkPatch = contentPayload("network body").copy(tasks = listOf(networkTask))
+
+        val contentOnly = current.withContentSliceFrom(networkPatch)
+        val projected = current.withThreadContentProjectionFrom(networkPatch)
+
+        assertEquals(listOf("current-task"), contentOnly.tasks.map { it.id })
+        assertEquals(listOf("network-task"), projected.tasks.map { it.id })
+        assertEquals("network body", projected.messages.single().body)
+    }
+
+    @Test
     fun startUsesHomeAccessFallbackWithoutRewritingHeaderPayload() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()

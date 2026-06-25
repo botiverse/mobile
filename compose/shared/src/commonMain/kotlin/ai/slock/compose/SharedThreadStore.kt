@@ -4347,7 +4347,6 @@ internal fun KuiklyThreadScreenPayload.withContentSliceFrom(patch: KuiklyThreadS
         originParentMessageId = patch.originParentMessageId,
         originStatus = patch.originStatus,
         originErrorCode = patch.originErrorCode,
-        tasks = patch.tasks,
         knownMarkdownChannelNames =
             patch.knownMarkdownChannelNames.ifEmpty { knownMarkdownChannelNames },
         canLoadMoreBefore = patch.canLoadMoreBefore,
@@ -4370,6 +4369,10 @@ internal fun KuiklyThreadScreenPayload.withThreadContentProjectionFrom(
 ): KuiklyThreadScreenPayload =
     withResolvedReplyThreadIdentityFrom(patch)
         .withContentSliceFrom(patch)
+        .withTaskSliceFrom(patch)
+
+internal fun KuiklyThreadScreenPayload.withTaskSliceFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
+    copy(tasks = patch.tasks)
 
 internal fun KuiklyThreadScreenPayload.withResolvedReplyThreadIdentityFrom(
     patch: KuiklyThreadScreenPayload
