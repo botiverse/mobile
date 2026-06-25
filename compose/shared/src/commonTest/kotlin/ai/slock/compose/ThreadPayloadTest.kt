@@ -721,7 +721,7 @@ class ThreadPayloadTest {
         assertEquals("artin", headerDisplay.title)
         assertEquals("pixel:crown", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("AR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
+        assertEquals("https://www.gravatar.com/avatar/artin", headerDisplay.dmPeerGravatarUrl)
         assertEquals(false, payload.showMembersAction)
         assertEquals(false, payload.showSettingsAction)
     }
@@ -875,8 +875,10 @@ class ThreadPayloadTest {
                 sourceThreadId = "dm-1",
                 streamChannelId = "dm-1",
                 surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerMemberId = "agent-1",
                 dmPeerName = null,
-                dmPeerAvatarUrl = null
+                dmPeerAvatarUrl = null,
+                dmPeerGravatarUrl = "https://www.gravatar.com/avatar/agent"
             )
         val projection =
             SharedConversationDirectoryProjection(
@@ -888,6 +890,7 @@ class ThreadPayloadTest {
                 title = "Product-UX-Designer",
                 avatarWireValue = "pixel:robot",
                 avatarLabel = "PR",
+                peerMemberId = "agent-1",
                 agentStatus = AgentStatus.Online
             )
 
@@ -896,7 +899,8 @@ class ThreadPayloadTest {
         assertEquals("Product-UX-Designer", headerDisplay.title)
         assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
         assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
-        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
+        assertEquals("agent-1", headerDisplay.dmPeerMemberId)
+        assertEquals("https://www.gravatar.com/avatar/agent", headerDisplay.dmPeerGravatarUrl)
         assertEquals("Direct Message", payload.title)
         assertEquals(null, payload.dmPeerName)
         assertEquals(null, payload.dmPeerAvatarUrl)

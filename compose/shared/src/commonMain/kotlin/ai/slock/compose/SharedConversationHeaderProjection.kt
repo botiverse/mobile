@@ -15,6 +15,7 @@ internal data class SharedConversationHeaderEntry(
     val subtitle: String? = null,
     val avatarWireValue: String? = null,
     val avatarLabel: String = title.take(2).uppercase(),
+    val dmPeerMemberId: String? = null,
     val gravatarUrl: String? = null
 )
 
@@ -25,6 +26,7 @@ internal data class ThreadHeaderDisplayModel(
     val channelKind: String,
     val dmPeerAvatarWireValue: String? = null,
     val dmPeerAvatarLabel: String = title.take(2).uppercase(),
+    val dmPeerMemberId: String? = null,
     val dmPeerGravatarUrl: String? = null
 )
 
@@ -49,6 +51,7 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
                     header?.avatarLabel?.takeIf { it.isNotBlank() }
                         ?: dmPeerAvatarLabel?.takeIf { it.isNotBlank() }
                         ?: displayTitle.take(2).uppercase(),
+                dmPeerMemberId = header?.dmPeerMemberId ?: dmPeerMemberId,
                 dmPeerGravatarUrl = header?.gravatarUrl ?: dmPeerGravatarUrl
             )
         }
@@ -85,10 +88,12 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
                 subtitle = null,
                 surfaceKind = surfaceKind,
                 channelKind = directory.channelKind,
-                dmPeerAvatarWireValue = directory.avatarWireValue,
+                dmPeerAvatarWireValue = directory.avatarWireValue ?: dmPeerAvatarUrl,
                 dmPeerAvatarLabel =
                     directory.avatarLabel.takeIf { it.isNotBlank() }
-                        ?: displayTitle.take(2).uppercase()
+                        ?: displayTitle.take(2).uppercase(),
+                dmPeerMemberId = directory.peerMemberId ?: dmPeerMemberId,
+                dmPeerGravatarUrl = dmPeerGravatarUrl
             )
         }
         KuiklyThreadSurfaceKind.Channel ->
@@ -144,6 +149,7 @@ internal fun KuiklyThreadScreenPayload.withConversationHeader(
             copy(
                 title = entry.title,
                 subtitle = entry.subtitle,
+                dmPeerMemberId = entry.dmPeerMemberId,
                 dmPeerName = entry.title,
                 dmPeerAvatarUrl = entry.avatarWireValue,
                 dmPeerAvatarLabel = entry.avatarLabel,
@@ -207,7 +213,8 @@ private fun SharedConversationDirectoryProjection.toConversationHeaderEntry(): S
         title = title,
         subtitle = subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = avatarWireValue?.takeIf { it.isNotBlank() },
-        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(2).uppercase()
+        avatarLabel = avatarLabel.takeIf { it.isNotBlank() } ?: title.take(2).uppercase(),
+        dmPeerMemberId = peerMemberId?.takeIf { it.isNotBlank() }
     )
 
 private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationHeaderEntry? {
@@ -227,6 +234,12 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
     if (ids.isEmpty()) return null
     val displayName = safeDisplayNameOrNull() ?: threadHeaderFallbackTitle(surfaceKind)
     val avatar = avatarSlotResolution()
+    val acceptedGravatarUrl =
+        gravatarUrl
+            ?.takeUnless {
+                surfaceKind == KuiklyThreadSurfaceKind.DirectMessage &&
+                    directMessagePeerType.equals("agent", ignoreCase = true)
+            }
     return SharedConversationHeaderEntry(
         ids = ids,
         surfaceKind = surfaceKind,
@@ -235,7 +248,8 @@ private fun ConversationSummary.toConversationHeaderEntry(): SharedConversationH
         subtitle = if (surfaceKind == KuiklyThreadSurfaceKind.DirectMessage) null else subtitle?.takeIf { it.isNotBlank() },
         avatarWireValue = avatar.effectiveAvatarWireValue,
         avatarLabel = displayName.take(2).uppercase(),
-        gravatarUrl = avatar.gravatarHash?.toGravatarAvatarUrl()
+        dmPeerMemberId = presenceMemberId?.value,
+        gravatarUrl = acceptedGravatarUrl ?: avatar.gravatarHash?.toGravatarAvatarUrl()
     )
 }
 

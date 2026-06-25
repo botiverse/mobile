@@ -4766,6 +4766,7 @@ private fun ThreadSnapshot.toKuiklyThreadPayload(
         if (surfaceKind == KuiklyThreadSurfaceKind.Channel) {
             conversation.resolveThreadRouteIdentity().channelKind
                 .withRouteChannelKindFallback(base.resolveThreadRouteIdentity().channelKind ?: base.channelKind)
+                ?: base.channelKind
         } else {
             base.channelKind
         }

@@ -506,6 +506,7 @@ internal data class KuiklyThreadScreenPayload(
     val showTaskOpenActions: Boolean = true,
     val showTaskStatusActions: Boolean = true,
     val joinLabel: String = "Join channel",
+    val dmPeerMemberId: String? = null,
     val dmPeerName: String? = null,
     val dmPeerAvatarUrl: String? = null,
     val dmPeerAvatarLabel: String? = null,
@@ -1862,6 +1863,7 @@ private fun ThreadHeaderVisualScreen() {
             payload = payload,
             onBack = {},
             onOpenInChannel = {},
+            onOpenMemberProfile = {},
             onShowMembers = {},
             onShowSettings = {}
         )
@@ -5606,6 +5608,7 @@ private fun ThreadPageContent(
                 onOpenInChannel = {
                     onThreadEvent("openParentMessage", payload.originParentMessageId, null, null)
                 },
+                onOpenMemberProfile = onOpenMemberProfile,
                 onShowMembers = {
                     activeModal = "members"
                     onThreadEvent("loadMembers", null, null, null)
@@ -5734,6 +5737,7 @@ private fun ThreadPageHeader(
     headerDisplay: ThreadHeaderDisplayModel = payload.threadHeaderDisplayModel(null),
     onBack: () -> Unit,
     onOpenInChannel: () -> Unit,
+    onOpenMemberProfile: (String) -> Unit,
     onShowMembers: () -> Unit,
     onShowSettings: () -> Unit
 ) {
@@ -5756,7 +5760,11 @@ private fun ThreadPageHeader(
                 ThreadDmPeerAvatarTile(
                     avatarWireValue = headerDisplay.dmPeerAvatarWireValue,
                     avatarLabel = headerDisplay.dmPeerAvatarLabel,
-                    gravatarUrl = headerDisplay.dmPeerGravatarUrl
+                    gravatarUrl = headerDisplay.dmPeerGravatarUrl,
+                    onClick =
+                        headerDisplay.dmPeerMemberId
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { memberId -> { onOpenMemberProfile(memberId) } }
                 )
             } else if (payload.showModeTabs) {
                 ThreadChannelTile(headerDisplay.channelKind)
@@ -5827,15 +5835,23 @@ internal fun String?.threadChannelHeaderIcon(): SlockLucideIconName =
 private fun ThreadDmPeerAvatarTile(
     avatarWireValue: String?,
     avatarLabel: String,
-    gravatarUrl: String? = null
+    gravatarUrl: String? = null,
+    onClick: (() -> Unit)? = null
 ) {
-    SlockAvatar(
-        avatarWireValue = avatarWireValue,
-        label = avatarLabel,
-        avatarSize = ThreadHeaderChannelTileSize,
-        borderWidth = SlockStroke.Default,
-        gravatarUrl = gravatarUrl
-    )
+    Box(
+        modifier =
+            Modifier
+                .size(ThreadHeaderChannelTileSize)
+                .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    ) {
+        SlockAvatar(
+            avatarWireValue = avatarWireValue,
+            label = avatarLabel,
+            avatarSize = ThreadHeaderChannelTileSize,
+            borderWidth = SlockStroke.Default,
+            gravatarUrl = gravatarUrl
+        )
+    }
 }
 
 @Composable
