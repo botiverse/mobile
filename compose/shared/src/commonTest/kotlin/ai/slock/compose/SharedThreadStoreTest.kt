@@ -521,7 +521,15 @@ class SharedThreadStoreTest {
             replyPayload(parentMessageId = "m1", threadId = "thread-m1")
                 .copy(
                     instanceId = "shared-shell-thread-thread-m1",
-                    messages = listOf(KuiklyThreadMessageItem(id = "reply-1", body = "network body"))
+                    messages =
+                        listOf(
+                            KuiklyThreadMessageItem(
+                                id = "reply-1",
+                                authorId = "u1",
+                                authorName = "Artin",
+                                body = "network body"
+                            )
+                        )
                 )
 
         val contentOnly = current.withContentSliceFrom(networkPatch)

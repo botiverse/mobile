@@ -448,7 +448,7 @@ private fun MessageWireDto.toDomain(): Message {
     // `thread:updated` events and REST responses, not via `message:*` events.
     return Message(
         id = MessageId(id),
-        threadId = ThreadId(threadId ?: channelIdValue ?: id),
+        threadId = ThreadId(channelIdValue ?: threadId ?: id),
         channelId = channelIdValue?.let(::ChannelId),
         threadChannelId = null,
         seq = seq,

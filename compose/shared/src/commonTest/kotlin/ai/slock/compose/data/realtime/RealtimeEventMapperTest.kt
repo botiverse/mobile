@@ -76,6 +76,30 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun messageUpdatedPrefersChannelIdForTimelineIdentityWhenThreadIdIsReplyStream() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.MessageUpdated,
+                """
+                {
+                  "id": "parent-message-1",
+                  "threadId": "reply-stream-1",
+                  "channelId": "parent-channel-1",
+                  "senderType": "user",
+                  "senderId": "u1",
+                  "senderName": "Artin",
+                  "content": "parent edited"
+                }
+                """.trimIndent()
+            )
+
+        val updated = assertIs<MessageUpdated>(event)
+        assertEquals("parent-channel-1", updated.message.threadId.value)
+        assertEquals("parent-channel-1", updated.message.channelId?.value)
+        assertNull(updated.message.threadChannelId)
+    }
+
+    @Test
     fun messageNewRawPayloadMapsWithFullFields() {
         val event =
             RealtimeEventMapper().map(
