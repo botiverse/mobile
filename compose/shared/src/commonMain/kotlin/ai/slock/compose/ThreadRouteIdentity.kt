@@ -37,20 +37,27 @@ internal fun KuiklyThreadScreenPayload.resolveThreadRouteIdentity(): ThreadRoute
 }
 
 internal fun ConversationSummary.resolveThreadRouteIdentity(): ThreadRouteIdentity {
+    val isReplyThread = kind == ConversationKind.Thread
     val surface =
         when (kind) {
             ConversationKind.DirectMessage -> KuiklyThreadSurfaceKind.DirectMessage
             ConversationKind.Thread -> KuiklyThreadSurfaceKind.ReplyThread
             else -> KuiklyThreadSurfaceKind.Channel
         }
+    val streamChannelId =
+        if (isReplyThread) {
+            messageStreamChannelId().value
+        } else {
+            channelId?.value ?: threadId.value
+        }
     return resolveThreadRouteIdentity(
         surfaceKind = surface,
         channelKind = conversationThreadChannelKind(),
         instanceId = null,
         sourceThreadId = threadId.value,
-        streamChannelId = messageStreamChannelId().value,
-        parentChannelId = thread?.parentChannelId?.value,
-        parentMessageId = thread?.parentMessageId?.value
+        streamChannelId = streamChannelId,
+        parentChannelId = if (isReplyThread) thread?.parentChannelId?.value else null,
+        parentMessageId = if (isReplyThread) thread?.parentMessageId?.value else null
     )
 }
 

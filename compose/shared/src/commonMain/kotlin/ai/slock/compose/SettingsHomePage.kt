@@ -12322,9 +12322,15 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
     anchorMessageId: String? = null
 ): WireThreadLaunchPayload {
     val surfaceKind = conversation.threadSurfaceKind()
-    val streamChannelId = conversation.threadStreamChannelId()
-    val parentMessageId = conversation.threadParentMessageId()
     val isReplyThread = surfaceKind == KuiklyThreadSurfaceKind.ReplyThread
+    val streamChannelId =
+        if (isReplyThread) {
+            conversation.threadStreamChannelId()
+        } else {
+            conversation.channelId?.value ?: conversation.threadId.value
+        }
+    val parentChannelId = if (isReplyThread) conversation.threadParentChannelId() else null
+    val parentMessageId = if (isReplyThread) conversation.threadParentMessageId() else null
     return WireThreadLaunchPayload(
         instanceId = "shared-shell-thread-${conversation.threadId.value}",
         surfaceKind = surfaceKind,
@@ -12337,7 +12343,7 @@ internal fun buildStandaloneConversationThreadLaunchPayload(
             },
         sourceThreadId = streamChannelId,
         streamChannelId = streamChannelId,
-        parentChannelId = conversation.threadParentChannelId(),
+        parentChannelId = parentChannelId,
         parentMessageId = parentMessageId,
         parentSurfaceKind = if (isReplyThread) conversation.threadParentSurfaceKind() ?: KuiklyThreadSurfaceKind.Channel else null,
         parentChannelKind = if (isReplyThread) conversation.threadParentChannelKind() else null,

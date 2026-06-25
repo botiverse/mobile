@@ -2433,6 +2433,54 @@ class ThreadPayloadTest {
     }
 
     @Test
+    fun standaloneChannelLaunchIgnoresReplyThreadMetadataOnSummary() {
+        val conversation =
+            ConversationSummary(
+                threadId = ThreadId("channel-1"),
+                channelId = ChannelId("channel-1"),
+                channelType = "channel",
+                kind = ConversationKind.Channel,
+                name = "general",
+                thread =
+                    ThreadConversation(
+                        parentChannelId = ChannelId("channel-1"),
+                        parentMessageId = MessageId("parent-1"),
+                        streamChannelId = ChannelId("reply-thread-1")
+                    )
+            )
+        val launch =
+            buildStandaloneConversationThreadLaunchPayload(
+                conversation,
+                timeContext = null
+            )
+        val routeIdentity = conversation.resolveThreadRouteIdentity()
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, routeIdentity.surfaceKind)
+        assertEquals("channel-1", routeIdentity.timelineChannelId)
+        assertEquals("channel:channel-1", routeIdentity.instanceKey)
+        assertEquals(KuiklyThreadSurfaceKind.Channel, launch.surfaceKind)
+        assertEquals(null, launch.threadId)
+        assertEquals("channel-1", launch.sourceThreadId)
+        assertEquals("channel-1", launch.streamChannelId)
+        assertEquals(null, launch.parentChannelId)
+        assertEquals(null, launch.parentMessageId)
+        assertEquals(null, launch.originParentMessageId)
+
+        val initialPayload =
+            parseThreadScreenPayload(
+                payload = launchJson.encodeToString(launch),
+                instanceId = "fallback"
+            )
+
+        assertEquals(KuiklyThreadSurfaceKind.Channel, initialPayload.surfaceKind)
+        assertEquals("channel-1", initialPayload.sourceThreadId)
+        assertEquals("channel-1", initialPayload.streamChannelId)
+        assertEquals(null, initialPayload.parentChannelId)
+        assertEquals(null, initialPayload.parentMessageId)
+        assertEquals(null, initialPayload.originParentMessageId)
+    }
+
+    @Test
     fun standaloneUnresolvedReplyLaunchCarriesOnlyParentPairUntilResolved() {
         val launch =
             buildStandaloneConversationThreadLaunchPayload(
