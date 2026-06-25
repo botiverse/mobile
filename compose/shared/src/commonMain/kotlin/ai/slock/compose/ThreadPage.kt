@@ -45,6 +45,7 @@ import ai.slock.compose.data.SharedComputersIntent
 import ai.slock.compose.data.SharedComputersLoadStatus
 import ai.slock.compose.data.SharedComputersPickerSlice
 import ai.slock.compose.data.SharedComputersStore
+import ai.slock.compose.data.SharedConversationDirectoryProjection
 import ai.slock.compose.data.SharedConversationDirectoryStore
 import ai.slock.compose.data.SharedMembersIntent
 import ai.slock.compose.data.SharedMembersChannelSuggestion
@@ -2205,8 +2206,9 @@ internal fun SharedThreadRouteContent(
         remember(payload.sourceThreadId, payload.streamChannelId, payload.parentChannelId) {
             payload.conversationHeaderLookupIds()
         }
-    val emptyConversationHeaderStateFlow = remember { MutableStateFlow(SharedConversationHeaderState()) }
-    val directoryConversationHeaderState by remember(
+    val emptyConversationDirectoryProjectionFlow =
+        remember { MutableStateFlow(emptyMap<String, SharedConversationDirectoryProjection>()) }
+    val directoryConversationProjections by remember(
         conversationDirectoryStore,
         currentSession?.currentServerId,
         payload.surfaceKind,
@@ -2221,22 +2223,29 @@ internal fun SharedThreadRouteContent(
         ) {
             conversationDirectoryStore
                 .projectionFlow(serverId, conversationDirectoryLookupIds)
-                .map { projections -> sharedConversationHeaderStateFromDirectory(projections.values) }
         } else {
-            emptyConversationHeaderStateFlow
+            emptyConversationDirectoryProjectionFlow
         }
-    }.collectAsState(SharedConversationHeaderState())
-    val effectiveConversationHeaderState =
-        remember(conversationHeaderState, directoryConversationHeaderState) {
-            conversationHeaderState.withDirectoryOverride(directoryConversationHeaderState)
+    }.collectAsState(emptyMap())
+    val directoryConversationProjection =
+        remember(payload, conversationDirectoryLookupIds, directoryConversationProjections) {
+            conversationDirectoryLookupIds
+                .firstNotNullOfOrNull { id ->
+                    directoryConversationProjections[id]?.takeIf { projection ->
+                        projection.surfaceKind == payload.surfaceKind
+                    }
+                }
         }
-    val conversationHeaderEntry =
-        remember(payload, effectiveConversationHeaderState) {
-            effectiveConversationHeaderState.entryFor(payload)
+    val legacyConversationHeaderEntry =
+        remember(payload, conversationHeaderState) {
+            conversationHeaderState.entryFor(payload)
         }
     val headerDisplayModel =
-        remember(payload, conversationHeaderEntry) {
-            payload.threadHeaderDisplayModel(conversationHeaderEntry)
+        remember(payload, directoryConversationProjection, legacyConversationHeaderEntry) {
+            payload.threadHeaderDisplayModelFromDirectory(
+                projection = directoryConversationProjection,
+                fallbackEntry = legacyConversationHeaderEntry
+            )
         }
     val renderedPayload = remember(payload) {
         payload

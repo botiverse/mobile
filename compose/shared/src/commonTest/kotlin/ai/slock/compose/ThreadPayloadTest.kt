@@ -787,22 +787,18 @@ class ThreadPayloadTest {
                 streamChannelId = "channel-1",
                 surfaceKind = KuiklyThreadSurfaceKind.Channel
             )
-        val headerState =
-            sharedConversationHeaderStateFromDirectory(
-                listOf(
-                    SharedConversationDirectoryProjection(
-                        serverId = "server-1",
-                        canonicalChannelId = "channel-1",
-                        aliases = setOf("channel-1", "stream-channel-1"),
-                        surfaceKind = KuiklyThreadSurfaceKind.Channel,
-                        channelKind = "private",
-                        title = "ops-room",
-                        subtitle = "Operations"
-                    )
-                )
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "channel-1",
+                aliases = setOf("channel-1", "stream-channel-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.Channel,
+                channelKind = "private",
+                title = "ops-room",
+                subtitle = "Operations"
             )
 
-        val headerDisplay = payload.threadHeaderDisplayModel(headerState.entryFor(payload))
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
 
         assertEquals("ops-room", headerDisplay.title)
         assertEquals("Operations", headerDisplay.subtitle)
@@ -814,6 +810,44 @@ class ThreadPayloadTest {
         assertEquals("channel-1", payload.streamChannelId)
         assertEquals(null, payload.parentChannelId)
         assertEquals(null, payload.parentMessageId)
+    }
+
+    @Test
+    fun directoryProjectionDrivesDmHeaderAvatarWithoutChangingRouteIdentity() {
+        val payload =
+            KuiklyThreadScreenPayload(
+                instanceId = "dm-1",
+                title = "Direct Message",
+                sourceThreadId = "dm-1",
+                streamChannelId = "dm-1",
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                dmPeerName = null,
+                dmPeerAvatarUrl = null
+            )
+        val projection =
+            SharedConversationDirectoryProjection(
+                serverId = "server-1",
+                canonicalChannelId = "dm-1",
+                aliases = setOf("dm-1", "agent-1"),
+                surfaceKind = KuiklyThreadSurfaceKind.DirectMessage,
+                channelKind = "dm",
+                title = "Product-UX-Designer",
+                avatarWireValue = "pixel:robot",
+                avatarLabel = "PR",
+                agentStatus = AgentStatus.Online
+            )
+
+        val headerDisplay = payload.threadHeaderDisplayModelFromDirectory(projection)
+
+        assertEquals("Product-UX-Designer", headerDisplay.title)
+        assertEquals("pixel:robot", headerDisplay.dmPeerAvatarWireValue)
+        assertEquals("PR", headerDisplay.dmPeerAvatarLabel)
+        assertEquals(null, headerDisplay.dmPeerGravatarUrl)
+        assertEquals("Direct Message", payload.title)
+        assertEquals(null, payload.dmPeerName)
+        assertEquals(null, payload.dmPeerAvatarUrl)
+        assertEquals("dm-1", payload.sourceThreadId)
+        assertEquals("dm-1", payload.streamChannelId)
     }
 
     @Test

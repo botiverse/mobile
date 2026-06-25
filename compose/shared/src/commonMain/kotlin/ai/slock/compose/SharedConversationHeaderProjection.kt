@@ -83,6 +83,37 @@ internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModel(
     }
 }
 
+internal fun KuiklyThreadScreenPayload.threadHeaderDisplayModelFromDirectory(
+    projection: SharedConversationDirectoryProjection?,
+    fallbackEntry: SharedConversationHeaderEntry? = null
+): ThreadHeaderDisplayModel {
+    val directory = projection?.takeIf { it.surfaceKind == surfaceKind }
+    if (directory == null) return threadHeaderDisplayModel(fallbackEntry)
+    return when (surfaceKind) {
+        KuiklyThreadSurfaceKind.DirectMessage -> {
+            val displayTitle = threadHeaderDisplayTitle(directory.title, surfaceKind)
+            ThreadHeaderDisplayModel(
+                title = displayTitle,
+                subtitle = null,
+                surfaceKind = surfaceKind,
+                channelKind = directory.channelKind,
+                dmPeerAvatarWireValue = directory.avatarWireValue,
+                dmPeerAvatarLabel =
+                    directory.avatarLabel.takeIf { it.isNotBlank() }
+                        ?: displayTitle.take(2).uppercase()
+            )
+        }
+        KuiklyThreadSurfaceKind.Channel ->
+            ThreadHeaderDisplayModel(
+                title = threadHeaderDisplayTitle(directory.title, surfaceKind),
+                subtitle = directory.subtitle?.takeIf { it.isNotBlank() },
+                surfaceKind = surfaceKind,
+                channelKind = directory.channelKind
+            )
+        else -> threadHeaderDisplayModel(fallbackEntry)
+    }
+}
+
 internal fun ThreadHeaderDisplayModel.threadComposerMentionScopeChannelLabel(): String? =
     when (surfaceKind) {
         KuiklyThreadSurfaceKind.ReplyThread ->
