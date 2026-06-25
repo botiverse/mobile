@@ -1,5 +1,6 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.AvatarReference
 import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.ConversationKind
 import ai.slock.compose.model.ConversationSummary
@@ -53,14 +54,16 @@ class ComposeLocalWriteThroughTest {
     }
 
     @Test
-    fun writeHomeResultPreservesStoredDirectMessagePresence() = runBlocking {
+    fun writeHomeResultPreservesStoredDirectMessageMetadata() = runBlocking {
         val store = InMemoryComposeLocalDataStore()
         val writer = ComposeLocalWriteThrough(store)
         val dm = ConversationSummary(
             threadId = ThreadId("dm-1"),
             channelId = ChannelId("dm-1"),
             kind = ConversationKind.DirectMessage,
-            name = "Agent",
+            name = "Cindy",
+            subtitle = "Onboarding Assistant",
+            avatar = AvatarReference.Pixel("heart"),
             presence = Presence.Active,
             presenceMemberId = MemberId("agent-1")
         )
@@ -72,6 +75,9 @@ class ComposeLocalWriteThroughTest {
                     directMessages =
                         listOf(
                             dm.copy(
+                                name = "dm-1",
+                                subtitle = null,
+                                avatar = null,
                                 presence = null,
                                 presenceMemberId = null,
                                 lastMessagePreview = "new"
@@ -83,6 +89,9 @@ class ComposeLocalWriteThroughTest {
         )
 
         val cached = store.readHome(serverId)?.directMessages?.single()
+        assertEquals("Cindy", cached?.name)
+        assertEquals("Onboarding Assistant", cached?.subtitle)
+        assertEquals("pixel:heart", cached?.avatar?.wireValue)
         assertEquals(Presence.Active, cached?.presence)
         assertEquals(MemberId("agent-1"), cached?.presenceMemberId)
         assertEquals("new", cached?.lastMessagePreview)

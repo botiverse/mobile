@@ -60,7 +60,7 @@ class ComposeLocalWriteThrough(
         val previous = store.readHome(snapshot.server.id)
         val updatedSnapshot =
             snapshot
-                .withStoredDirectMessagePresence(previous)
+                .withStoredDirectMessageMetadata(previous)
                 .preserveStableRowsFrom(previous)
         if (updatedSnapshot == previous) {
             logger("write_home_skip source=$source reason=unchanged serverId=${snapshot.server.id.value}")
@@ -770,7 +770,7 @@ internal fun ConversationSummary.withResolvedReplyThreadMetadata(
     }
 }
 
-private fun HomeSnapshot.withStoredDirectMessagePresence(previous: HomeSnapshot?): HomeSnapshot {
+private fun HomeSnapshot.withStoredDirectMessageMetadata(previous: HomeSnapshot?): HomeSnapshot {
     if (previous == null) return this
     val previousDirectMessages =
         previous.directMessages.associateBy { it.channelId?.value ?: it.threadId.value }
@@ -782,7 +782,18 @@ private fun HomeSnapshot.withStoredDirectMessagePresence(previous: HomeSnapshot?
                 if (previousConversation == null) {
                     conversation
                 } else {
+                    val nameLooksSparse = conversation.nameIsBlankOrIdentity()
                     conversation.copy(
+                        name =
+                            if (nameLooksSparse && !previousConversation.nameIsBlankOrIdentity()) {
+                                previousConversation.name
+                            } else {
+                                conversation.name
+                            },
+                        subtitle = conversation.subtitle ?: previousConversation.subtitle,
+                        avatarUrl = conversation.avatarUrl ?: previousConversation.avatarUrl,
+                        avatar = conversation.avatar ?: previousConversation.avatar,
+                        gravatarUrl = conversation.gravatarUrl ?: previousConversation.gravatarUrl,
                         directMessagePeerType =
                             conversation.directMessagePeerType ?: previousConversation.directMessagePeerType,
                         presence = conversation.presence ?: previousConversation.presence,

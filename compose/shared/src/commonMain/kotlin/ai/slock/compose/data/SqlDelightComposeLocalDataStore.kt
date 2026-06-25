@@ -26,6 +26,7 @@ import ai.slock.compose.model.TaskSummary
 import ai.slock.compose.model.ThreadConversation
 import ai.slock.compose.model.ThreadId
 import ai.slock.compose.model.messageStreamChannelId
+import ai.slock.compose.model.nameIsBlankOrIdentity
 import ai.slock.compose.model.parentMessageIdOrNull
 import ai.slock.compose.model.threadIdentity
 import ai.slock.shared.data.local.AttachmentEntity
@@ -469,18 +470,46 @@ internal class SqlDelightComposeLocalDataStore(
         canonicalChannelId: String = channel.messageStreamChannelId().value,
         replyCount: Long = 0L
     ) {
+        val existing = selectChannel(serverId, canonicalChannelId).executeAsOneOrNull()
+        val incomingType = channel.toChannelType()
+        val incomingName = channel.name.ifBlank { canonicalChannelId }
+        val incomingAvatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl
+        val incomingPresenceMemberId = channel.presenceMemberId?.value
+        val existingDirectMessage =
+            existing?.takeIf { incomingType == "dm" && it.type == "dm" }
+        val shouldPreserveDmMetadata = existingDirectMessage != null
+        val existingNameLooksConcrete =
+            existingDirectMessage?.name?.isBlankOrDirectoryIdentity(
+                canonicalChannelId = canonicalChannelId,
+                channel = channel
+            ) == false
+        val nameLooksSparse =
+            shouldPreserveDmMetadata &&
+                channel.nameIsBlankOrIdentity(additionalIdentityIds = setOf(canonicalChannelId)) &&
+                existingNameLooksConcrete
+        val storedName = if (nameLooksSparse) existingDirectMessage.name else incomingName
+        val storedAvatarUrl =
+            if (shouldPreserveDmMetadata) incomingAvatarUrl ?: existingDirectMessage.avatarUrl else incomingAvatarUrl
+        val storedDescription =
+            if (shouldPreserveDmMetadata) channel.subtitle ?: existingDirectMessage.description else channel.subtitle
+        val storedPresence =
+            if (shouldPreserveDmMetadata) channel.presence?.name ?: existingDirectMessage.presence else channel.presence?.name
+        val storedAgentStatus =
+            if (shouldPreserveDmMetadata) channel.agentStatus?.name ?: existingDirectMessage.agentStatus else channel.agentStatus?.name
+        val storedPresenceMemberId =
+            if (shouldPreserveDmMetadata) incomingPresenceMemberId ?: existingDirectMessage.presenceMemberId else incomingPresenceMemberId
         upsertChannel(
             serverId = serverId,
             channelId = canonicalChannelId,
-            type = channel.toChannelType(),
-            name = channel.name.ifBlank { canonicalChannelId },
-            description = channel.subtitle,
+            type = incomingType,
+            name = storedName,
+            description = storedDescription,
             parentChannelId = channel.thread?.parentChannelId?.value,
             parentMessageId = channel.thread?.parentMessageId?.value,
-            avatarUrl = channel.avatar?.wireValue ?: channel.avatarUrl,
-            presence = channel.presence?.name,
-            agentStatus = channel.agentStatus?.name,
-            presenceMemberId = channel.presenceMemberId?.value,
+            avatarUrl = storedAvatarUrl,
+            presence = storedPresence,
+            agentStatus = storedAgentStatus,
+            presenceMemberId = storedPresenceMemberId,
             joined = channel.joined.toLongFlag(),
             archived = channel.archived.toLongFlag(),
             memberCount = channel.memberCount?.toLong(),
@@ -506,7 +535,14 @@ internal class SqlDelightComposeLocalDataStore(
             serverId = serverId,
             canonicalChannelId = canonicalChannelId
         )
-        channel.conversationAliases(canonicalChannelId).forEach { alias ->
+        val aliases =
+            buildSet {
+                addAll(channel.conversationAliases(canonicalChannelId))
+                storedPresenceMemberId
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { add(StoredConversationAlias(it, SharedConversationAliasKind.PresenceMember)) }
+            }
+        aliases.forEach { alias ->
             upsertConversationAlias(
                 serverId = serverId,
                 aliasId = alias.id,
@@ -515,6 +551,17 @@ internal class SqlDelightComposeLocalDataStore(
                 lastSyncedAtMs = now
             )
         }
+    }
+
+    private fun String?.isBlankOrDirectoryIdentity(
+        canonicalChannelId: String,
+        channel: ConversationSummary
+    ): Boolean {
+        val value = this?.takeIf { it.isNotBlank() } ?: return true
+        return value == canonicalChannelId ||
+            value == channel.threadId.value ||
+            value == channel.channelId?.value ||
+            value == channel.thread?.streamChannelId?.value
     }
 
     private data class StoredConversationAlias(
