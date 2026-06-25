@@ -2784,6 +2784,7 @@ private fun MembersDetailHeader(
                 statusSize = 10.dp,
                 statusDisplayState = agentStatusDisplayState,
                 statusIndicatorState = agentStatusIndicatorState,
+                showStatusOverlay = false,
                 modifier = if (avatarClick != null) {
                     Modifier.clickable(onClick = avatarClick)
                 } else {
