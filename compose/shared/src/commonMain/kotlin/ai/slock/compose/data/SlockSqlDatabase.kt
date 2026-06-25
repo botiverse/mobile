@@ -105,7 +105,7 @@ internal class SlockSqlDatabase(
     }
 
     companion object {
-        const val DatabaseName: String = "slock_shared.db"
+        const val DatabaseName: String = "slock_shared_v2.db"
 
         val Schema = SlockDatabase.Schema
     }
