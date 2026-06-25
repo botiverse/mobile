@@ -3372,6 +3372,59 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeMessageNewDoesNotCrossContextWindowNewerGap() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi =
+                    FakeThreadApi(
+                        bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
+                    ),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload()))
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
+
+        store.accept(
+            SharedThreadIntent.ApplyRealtimeEvent(
+                MessageNew(
+                    message(id = "m12", seq = 12, body = "latest across gap")
+                )
+            )
+        )
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("m10"), payload.messages.map { it.id })
+        assertTrue(payload.canLoadMoreAfter)
+        scope.cancel()
+    }
+
+    @Test
+    fun prepareForLocalSendClearsFocusedNewerContext() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi =
+                    FakeThreadApi(
+                        bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false)
+                    ),
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(focusedMessageId = "m10")))
+        store.accept(SharedThreadIntent.SetPagingAvailability(canLoadMoreBefore = true, canLoadMoreAfter = true))
+
+        store.accept(SharedThreadIntent.PrepareForLocalSend)
+
+        val payload = store.state.value.payload
+        assertEquals(null, payload.focusedMessageId)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
     fun realtimeCacheSnapshotReadsPersistentThreadStateWithoutEventProjection() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val localStore = InMemoryComposeLocalDataStore()
@@ -4520,7 +4573,7 @@ class SharedThreadStoreTest {
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
-                newerBodyText = syncResponse("newer body", id = "m12", seq = 12)
+                newerBodyText = messagesResponse("newer body", id = "m12", seq = 12, historyLimited = false)
             )
         val dataSource =
             SharedThreadDataSource(
@@ -4534,7 +4587,8 @@ class SharedThreadStoreTest {
 
         val payload = store.state.value.payload
         assertEquals(listOf("current body", "newer body"), payload.messages.map { it.body })
-        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(listOf(10L), api.afterSeqs)
+        assertEquals(emptyList(), api.syncSinceSeqs)
         assertEquals(false, payload.canLoadMoreAfter)
         assertEquals("idle", payload.newerMessagesStatus)
         scope.cancel()
@@ -4590,13 +4644,13 @@ class SharedThreadStoreTest {
     }
 
     @Test
-    fun loadNewerMessagesMergesSystemRowsFromSyncRecovery() = runBlocking {
+    fun loadNewerMessagesMergesSystemRowsFromChannelAfter() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
             FakeThreadApi(
                 bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
                 newerBodyText =
-                    syncSystemResponse(
+                    systemMessagesResponse(
                         body = "released #252 \"Implement Thread timeline system-message rendering\"",
                         id = "sys-release-1",
                         seq = 12
@@ -4618,7 +4672,8 @@ class SharedThreadStoreTest {
         assertEquals("System", systemRow.messageType)
         assertEquals("system", systemRow.authorKind)
         assertEquals("released #252 \"Implement Thread timeline system-message rendering\"", systemRow.body)
-        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(listOf(10L), api.afterSeqs)
+        assertEquals(emptyList(), api.syncSinceSeqs)
         scope.cancel()
     }
 
@@ -4635,6 +4690,7 @@ class SharedThreadStoreTest {
         var activeReadAllCalls: Int = 0
         var maxConcurrentReadAllCalls: Int = 0
         val beforeSeqs: MutableList<Long> = mutableListOf()
+        val afterSeqs: MutableList<Long> = mutableListOf()
         val syncSinceSeqs: MutableList<Long> = mutableListOf()
         val channelMessageLimits: MutableList<Int> = mutableListOf()
         val syncLimits: MutableList<Int> = mutableListOf()
@@ -4653,11 +4709,16 @@ class SharedThreadStoreTest {
         var channelMessagesStarted: CompletableDeferred<Unit>? = null
         var releaseChannelMessages: CompletableDeferred<Unit>? = null
 
-        override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse {
+        override suspend fun channelMessages(
+            threadId: String,
+            limit: Int,
+            beforeSeq: Long?,
+            afterSeq: Long?
+        ): HomeNetworkResponse {
             channelMessageCalls += 1
             channelIds += threadId
             channelMessageLimits += limit
-            if (beforeSeq == null) {
+            if (beforeSeq == null && afterSeq == null) {
                 channelMessagesStarted?.complete(Unit)
                 channelMessagesStartedByThreadId[threadId]?.complete(Unit)
                 releaseChannelMessages?.await()
@@ -4665,11 +4726,16 @@ class SharedThreadStoreTest {
             }
             if (failChannelMessages) throw IllegalStateException("offline")
             val responseBody = bodyTextByThreadId[threadId] ?: bodyText
-            return if (beforeSeq != null) {
-                beforeSeqs += beforeSeq
-                HomeNetworkResponse(code = 200, bodyText = olderBodyText)
-            } else {
-                HomeNetworkResponse(code = 200, bodyText = responseBody)
+            return when {
+                beforeSeq != null -> {
+                    beforeSeqs += beforeSeq
+                    HomeNetworkResponse(code = 200, bodyText = olderBodyText)
+                }
+                afterSeq != null -> {
+                    afterSeqs += afterSeq
+                    HomeNetworkResponse(code = 200, bodyText = newerBodyText)
+                }
+                else -> HomeNetworkResponse(code = 200, bodyText = responseBody)
             }
         }
 
@@ -5067,6 +5133,8 @@ class SharedThreadStoreTest {
         val olderLimits: MutableList<Int> = mutableListOf()
         val newerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
         val newerLimits: MutableList<Int> = mutableListOf()
+        val syncNewerRequests: MutableList<Pair<ThreadId, Long>> = mutableListOf()
+        val syncNewerLimits: MutableList<Int> = mutableListOf()
         val getMessageContextRequests: MutableList<MessageId> = mutableListOf()
         val createOrOpenRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
         val getReplyThreadRequests: MutableList<Pair<ChannelId, MessageId>> = mutableListOf()
@@ -5139,6 +5207,16 @@ class SharedThreadStoreTest {
         ): DataResult<ThreadSnapshot> {
             newerRequests += threadId to afterSeq
             newerLimits += limit
+            return newerResult
+        }
+
+        override suspend fun syncNewerMessages(
+            threadId: ThreadId,
+            sinceSeq: Long,
+            limit: Int
+        ): DataResult<ThreadSnapshot> {
+            syncNewerRequests += threadId to sinceSeq
+            syncNewerLimits += limit
             return newerResult
         }
 

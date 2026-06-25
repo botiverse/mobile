@@ -37,7 +37,12 @@ private val threadApiJson = Json {
  * `hasMore`/`hasNextPage`/`downloadUrl` speculation.
  */
 internal interface SlockThreadApi {
-    suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): ThreadApiResult<ThreadMessagesPage>
+    suspend fun channelMessages(
+        threadId: String,
+        limit: Int = 50,
+        beforeSeq: Long? = null,
+        afterSeq: Long? = null
+    ): ThreadApiResult<ThreadMessagesPage>
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): ThreadApiResult<ThreadMessagesPage>
     suspend fun sendMessage(
         channelId: String,
@@ -65,8 +70,13 @@ internal class SlockThreadApiClient(
     private val transport: SharedThreadNetworkApi,
     private val diagnosticsLogger: (String) -> Unit = {}
 ) : SlockThreadApi {
-    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): ThreadApiResult<ThreadMessagesPage> =
-        transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq)
+    override suspend fun channelMessages(
+        threadId: String,
+        limit: Int,
+        beforeSeq: Long?,
+        afterSeq: Long?
+    ): ThreadApiResult<ThreadMessagesPage> =
+        transport.channelMessages(threadId = threadId, limit = limit, beforeSeq = beforeSeq, afterSeq = afterSeq)
             .mapThreadBody(
                 contractCode = "thread_messages_contract_mismatch",
                 serializer = ChannelMessagesResponseDto.serializer(),
@@ -202,13 +212,19 @@ internal class SlockThreadApiClient(
 internal class NetworkSlockThreadApi(
     private val networkClient: SlockNetworkClient
 ) : SharedThreadNetworkApi {
-    override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
+    override suspend fun channelMessages(
+        threadId: String,
+        limit: Int,
+        beforeSeq: Long?,
+        afterSeq: Long?
+    ): HomeNetworkResponse =
         networkClient.request(
             priority = DataRequestPriority.Visible,
             path = "messages/channel/${threadId.trim()}",
             query = listOfNotNull(
                 "limit" to limit.toString(),
-                beforeSeq?.let { "before" to it.toString() }
+                beforeSeq?.let { "before" to it.toString() },
+                afterSeq?.let { "after" to it.toString() }
             )
         )
 

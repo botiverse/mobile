@@ -565,6 +565,15 @@ class MockConversationRepository(
             MockSeedData.threadSnapshot.copy(canLoadMoreAfter = afterSeq < 1004)
         }
 
+    override suspend fun syncNewerMessages(
+        threadId: ThreadId,
+        sinceSeq: Long,
+        limit: Int
+    ): DataResult<ThreadSnapshot> =
+        resultFor(scenario, EmptyReason.NoMessages) {
+            MockSeedData.threadSnapshot.copy(canLoadMoreAfter = sinceSeq < 1004)
+        }
+
     override suspend fun getChannelThreads(channelId: ChannelId, limit: Int): DataResult<ThreadListSnapshot> =
         resultFor(scenario, EmptyReason.NoInboxItems) {
             ThreadListSnapshot(

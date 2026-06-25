@@ -322,6 +322,7 @@ class ThreadApiTest {
         val api = SlockThreadApiClient(NetworkSlockThreadApi(networkClient))
 
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.channelMessages("thread-1", limit = 25, beforeSeq = 99))
+        assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.channelMessages("thread-1", limit = 25, afterSeq = 100))
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(api.messageSync("channel-1", sinceSeq = 10, limit = 30))
         assertIs<ThreadApiResult.Success<ThreadMessagesPage>>(
             api.sendMessage("channel-1", "hello", asTask = true, attachmentIds = listOf("att-1"))
@@ -343,6 +344,7 @@ class ThreadApiTest {
         assertEquals(
             listOf(
                 "GET messages/channel/thread-1 priority=Visible query=limit=25&before=99 server= body=",
+                "GET messages/channel/thread-1 priority=Visible query=limit=25&after=100 server= body=",
                 "GET messages/sync priority=Visible query=since_seq=10&limit=30&channel_id=channel-1 server= body=",
                 """POST messages priority=Foreground query= server= body={"channelId":"channel-1","content":"hello","attachmentIds":["att-1"],"asTask":true}""",
                 "GET attachments/att-1/url priority=Visible query=disposition=inline server= body=",
@@ -373,7 +375,12 @@ class ThreadApiTest {
     ) : SharedThreadNetworkApi {
         val unsavedMessageIds = mutableListOf<String>()
         var lastMentionActionBody: String? = null
-        override suspend fun channelMessages(threadId: String, limit: Int, beforeSeq: Long?): HomeNetworkResponse =
+        override suspend fun channelMessages(
+            threadId: String,
+            limit: Int,
+            beforeSeq: Long?,
+            afterSeq: Long?
+        ): HomeNetworkResponse =
             HomeNetworkResponse(code = 200, bodyText = channelMessagesBody)
 
         override suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int): HomeNetworkResponse =

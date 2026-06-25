@@ -172,11 +172,21 @@ class SlockApiClient(
                 before?.let { "before" to it }
             )
         )
-    suspend fun channelMessages(priority: SlockRequestPriority, channelId: String, limit: Int, beforeSeq: Long? = null): KmpHttpResponse =
+    suspend fun channelMessages(
+        priority: SlockRequestPriority,
+        channelId: String,
+        limit: Int,
+        beforeSeq: Long? = null,
+        afterSeq: Long? = null
+    ): KmpHttpResponse =
         get(
             priority,
             "messages/channel/$channelId",
-            listOfNotNull("limit" to limit.toString(), beforeSeq?.let { "before" to it.toString() })
+            listOfNotNull(
+                "limit" to limit.toString(),
+                beforeSeq?.let { "before" to it.toString() },
+                afterSeq?.let { "after" to it.toString() }
+            )
         )
     suspend fun messageContext(priority: SlockRequestPriority, messageId: String, channelId: String? = null): KmpHttpResponse =
         get(priority, "messages/context/$messageId", listOfNotNull(channelId?.let { "channelId" to it }))

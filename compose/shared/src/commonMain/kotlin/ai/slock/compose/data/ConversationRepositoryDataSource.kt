@@ -44,12 +44,18 @@ private suspend fun SlockNetworkClient.channelMessages(
     priority: DataRequestPriority,
     channelId: ChannelId,
     limit: Int,
-    beforeSeq: Long? = null
+    beforeSeq: Long? = null,
+    afterSeq: Long? = null
 ): HomeNetworkResponse =
     request(
         priority = priority,
         path = "messages/channel/${channelId.value}",
-        query = listOfNotNull("limit" to limit.toString(), beforeSeq?.let { "before" to it.toString() })
+        query =
+            listOfNotNull(
+                "limit" to limit.toString(),
+                beforeSeq?.let { "before" to it.toString() },
+                afterSeq?.let { "after" to it.toString() }
+            )
     )
 
 private suspend fun SlockNetworkClient.messageContext(
@@ -238,13 +244,44 @@ class RealConversationRepository(
         limit: Int
     ): DataResult<ThreadSnapshot> {
         currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
+        return executeConversation(
+            emptyReason = EmptyReason.NoMessages,
+            block = {
+                networkClient.channelMessages(
+                    DataRequestPriority.Visible,
+                    ChannelId(threadId.value),
+                    messageLimit,
+                    afterSeq = afterSeq
+                )
+            },
+            emptyWhen = { it.messages.isEmpty() },
+            source = "messages_channel_newer",
+            mapper = { bodyText ->
+                val payload = parseSharedChannelMessages(bodyText, threadId)
+                buildSharedThreadSnapshot(
+                    payload = payload,
+                    threadId = threadId,
+                    canLoadMoreAfter = payload.messages.size >= messageLimit
+                )
+            }
+        )
+    }
+
+    override suspend fun syncNewerMessages(
+        threadId: ThreadId,
+        sinceSeq: Long,
+        limit: Int
+    ): DataResult<ThreadSnapshot> {
+        currentContext() ?: return authRequired()
+        val messageLimit = limit.coerceAtLeast(1)
         return executeConversation(
             emptyReason = EmptyReason.NoMessages,
             block = {
                 networkClient.messageSync(
                     DataRequestPriority.Visible,
-                    sinceSeq = afterSeq,
-                    limit = limit.coerceAtLeast(1),
+                    sinceSeq = sinceSeq,
+                    limit = messageLimit,
                     channelId = ChannelId(threadId.value)
                 )
             },
@@ -252,7 +289,11 @@ class RealConversationRepository(
             source = "messages_sync",
             mapper = { bodyText ->
                 val payload = parseSharedSyncMessages(bodyText, threadId)
-                buildSharedThreadSnapshot(payload = payload, threadId = threadId)
+                buildSharedThreadSnapshot(
+                    payload = payload,
+                    threadId = threadId,
+                    canLoadMoreAfter = payload.messages.size >= messageLimit
+                )
             }
         )
     }

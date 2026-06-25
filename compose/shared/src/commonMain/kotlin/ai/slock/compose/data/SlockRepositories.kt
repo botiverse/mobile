@@ -163,6 +163,11 @@ interface ConversationRepository {
         afterSeq: Long,
         limit: Int = DEFAULT_PAGE_LIMIT
     ): DataResult<ThreadSnapshot>
+    suspend fun syncNewerMessages(
+        threadId: ThreadId,
+        sinceSeq: Long,
+        limit: Int = DEFAULT_PAGE_LIMIT
+    ): DataResult<ThreadSnapshot>
     suspend fun getChannelThreads(channelId: ChannelId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun getFollowedThreads(serverId: ServerId, limit: Int = DEFAULT_PAGE_LIMIT): DataResult<ThreadListSnapshot>
     suspend fun createOrOpenThread(channelId: ChannelId, parentMessageId: MessageId): DataResult<ThreadActionResult>

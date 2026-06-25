@@ -972,7 +972,18 @@ internal class SharedThreadDataSource(
             basePayload = basePayload,
             source = "newer",
             repositoryCall = { repository, threadId -> repository.loadNewerMessages(threadId, afterSeq, SharedThreadPaging.pageSize) },
-            call = { threadId -> api.messageSync(threadId, sinceSeq = afterSeq, limit = SharedThreadPaging.pageSize) }
+            call = { threadId -> api.channelMessages(threadId, limit = SharedThreadPaging.pageSize, afterSeq = afterSeq) }
+        )
+
+    suspend fun fetchRealtimeGapThreadPayload(
+        basePayload: KuiklyThreadScreenPayload,
+        sinceSeq: Long
+    ): DataResult<KuiklyThreadScreenPayload> =
+        fetchThreadPage(
+            basePayload = basePayload,
+            source = "realtime_gap",
+            repositoryCall = { repository, threadId -> repository.syncNewerMessages(threadId, sinceSeq, SharedThreadPaging.pageSize) },
+            call = { threadId -> api.messageSync(threadId, sinceSeq = sinceSeq, limit = SharedThreadPaging.pageSize) }
         )
 
     suspend fun sendMessage(
@@ -1873,6 +1884,7 @@ internal sealed interface SharedThreadIntent {
     ) : SharedThreadIntent
     data class DismissLocalFailedSend(val messageId: String) : SharedThreadIntent
     data class ReplaceLocalSendWithSentPage(val messageId: String, val page: ThreadMessagesPage) : SharedThreadIntent
+    data object PrepareForLocalSend : SharedThreadIntent
     data class ConsumeComposerSeedForSend(
         val sentBody: String,
         val sentAttachmentIds: Set<String>
@@ -1953,6 +1965,7 @@ internal class SharedThreadStore(
             is SharedThreadIntent.ApplyLocalSendFailure,
             is SharedThreadIntent.DismissLocalFailedSend,
             is SharedThreadIntent.ReplaceLocalSendWithSentPage,
+            SharedThreadIntent.PrepareForLocalSend,
             is SharedThreadIntent.ConsumeComposerSeedForSend,
             is SharedThreadIntent.ApplyMessageReactionSelection,
             is SharedThreadIntent.ApplyMessageReactions,
@@ -2006,6 +2019,7 @@ internal class SharedThreadStore(
                 applyLocalSendFailure(intent.messageId, intent.errorCode, intent.errorMessage)
             is SharedThreadIntent.DismissLocalFailedSend -> dismissLocalFailedSend(intent.messageId)
             is SharedThreadIntent.ReplaceLocalSendWithSentPage -> replaceLocalSendWithSentPage(intent.messageId, intent.page)
+            SharedThreadIntent.PrepareForLocalSend -> prepareForLocalSend()
             is SharedThreadIntent.ConsumeComposerSeedForSend ->
                 consumeComposerSeedForSend(intent.sentBody, intent.sentAttachmentIds)
             is SharedThreadIntent.ApplyMessageReactionSelection ->
@@ -2567,7 +2581,7 @@ internal class SharedThreadStore(
             ) ?: return
         reducePayloadPatch { currentPayload -> currentPayload.copy(newerMessagesStatus = "loading", errorCode = null) }
         while (true) {
-            val result = dataSource.fetchNewerThreadPayload(_state.value.payload, nextRequest.sinceSeq)
+            val result = dataSource.fetchRealtimeGapThreadPayload(_state.value.payload, nextRequest.sinceSeq)
             val latest = _state.value.payload
             if (!routeStillCurrent(initial, "thread_realtime_gap", "after_fetch", latest)) {
                 return
@@ -2809,6 +2823,16 @@ internal class SharedThreadStore(
             it.copy(
                 canLoadMoreBefore = canLoadMoreBefore,
                 canLoadMoreAfter = canLoadMoreAfter
+            )
+        }
+    }
+
+    private fun prepareForLocalSend() {
+        reducePayloadPatch {
+            it.copy(
+                focusedMessageId = null,
+                canLoadMoreAfter = false,
+                newerMessagesStatus = "idle"
             )
         }
     }
@@ -3496,9 +3520,16 @@ private fun KuiklyThreadScreenPayload.applyRealtimeMessages(
     currentUserId: String?,
     activeReplyParentMessageId: MessageId?
 ): KuiklyThreadScreenPayload {
+    val currentMaxSeq = this.messages.mapNotNull { it.seq }.maxOrNull() ?: 0L
+    val existingIds = this.messages.mapTo(mutableSetOf()) { it.id }
     val relevant =
         messages.filter { message ->
             message.matchesSharedThread(this, activeReplyParentMessageId)
+        }.filter { message ->
+            if (!canLoadMoreAfter) return@filter true
+            if (message.id.value in existingIds) return@filter true
+            val seq = message.seq ?: return@filter true
+            currentMaxSeq <= 0L || seq <= currentMaxSeq + 1L
         }
     if (relevant.isEmpty()) return this
     val incoming = relevant.map { message -> message.toKuiklyThreadMessageItem(currentUserId) }

@@ -73,7 +73,6 @@ import ai.slock.compose.data.summaryCounts
 import ai.slock.compose.network.SlockNetworkModule
 import ai.slock.compose.model.AgentStatus
 import ai.slock.compose.model.AvatarReference
-import ai.slock.compose.model.Heartbeat
 import ai.slock.compose.model.MemberId
 import ai.slock.compose.model.MemberKind
 import ai.slock.compose.model.MemberProfile
@@ -1420,11 +1419,6 @@ internal data class SharedThreadRealtimeEventSignal(
     val event: RealtimeEvent
 )
 
-internal data class SharedThreadRealtimeGapSignal(
-    val sequence: Long,
-    val serverSeq: Long
-)
-
 private fun ThreadRealtimeCacheInvalidationSignal.matchesThreadRoute(
     payload: KuiklyThreadScreenPayload
 ): Boolean {
@@ -1488,8 +1482,6 @@ private fun ThreadPageScreen() {
     val threadPageCoroutineScope = rememberCoroutineScope()
     var threadRealtimeEventSequence by remember { mutableStateOf(0L) }
     var threadRealtimeEventSignal by remember { mutableStateOf<SharedThreadRealtimeEventSignal?>(null) }
-    var threadRealtimeGapSequence by remember { mutableStateOf(0L) }
-    var threadRealtimeGapSignal by remember { mutableStateOf<SharedThreadRealtimeGapSignal?>(null) }
     var threadRealtimeCacheInvalidationSequence by remember { mutableStateOf(0L) }
     DisposableEffect(pager, realtimeEventMapper, authStore, threadPageCoroutineScope) {
         val observer =
@@ -1506,15 +1498,6 @@ private fun ThreadPageScreen() {
                                 ?.takeIf { it.isNotBlank() }
                                 ?: return@launch
                         if (currentServerId != serverId) return@launch
-                        if (event is Heartbeat) {
-                            threadRealtimeGapSequence += 1
-                            threadRealtimeGapSignal =
-                                SharedThreadRealtimeGapSignal(
-                                    sequence = threadRealtimeGapSequence,
-                                    serverSeq = event.seq
-                                )
-                            return@launch
-                        }
                         if (!RealtimeRoutePolicy.shouldForwardToActiveThread(event)) return@launch
                         threadRealtimeEventSequence += 1
                         threadRealtimeEventSignal =
@@ -1734,7 +1717,6 @@ private fun ThreadPageScreen() {
             routerModule.openPage(LOGIN_PAGE, JSONObject().apply { put("pageName", LOGIN_PAGE) })
         },
         realtimeEventSignal = threadRealtimeEventSignal,
-        realtimeGapSignal = threadRealtimeGapSignal,
         realtimeCacheInvalidationSequence = threadRealtimeCacheInvalidationSequence,
         onOpenMemberProfile = { currentPayload, memberId ->
             val pageData = currentPayload.toThreadMemberDetailPageData(memberId)
@@ -2071,7 +2053,6 @@ internal fun SharedThreadRouteContent(
     onOpenParentThread: () -> Boolean = { false },
     onAuthRequired: (String) -> Unit = {},
     realtimeEventSignal: SharedThreadRealtimeEventSignal? = null,
-    realtimeGapSignal: SharedThreadRealtimeGapSignal? = null,
     realtimeCacheInvalidationSequence: Long = 0L,
     active: Boolean = true,
     onResolvedAuxiliaryThreadIdChanged: (String?) -> Unit = {},
@@ -2391,10 +2372,6 @@ internal fun SharedThreadRouteContent(
     LaunchedEffect(realtimeCacheInvalidationSequence, threadInstanceKey) {
         if (realtimeCacheInvalidationSequence <= 0L) return@LaunchedEffect
         threadViewModel.dispatch(SharedThreadIntent.ApplyRealtimeCacheSnapshot)
-    }
-    LaunchedEffect(realtimeGapSignal?.sequence, threadInstanceKey) {
-        val signal = realtimeGapSignal ?: return@LaunchedEffect
-        threadViewModel.dispatch(SharedThreadIntent.RecoverRealtimeGap(signal.serverSeq))
     }
     LaunchedEffect(threadTimelineKey, payload.tasks) {
         if (tasksViewModel != null && payload.tasks.isNotEmpty()) {
@@ -3716,6 +3693,7 @@ internal fun SharedThreadRouteContent(
                     if (!message.canRetryLocalSend()) {
                         return@ThreadPageContent
                     }
+                    threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyLocalSendStarted(
                             message.copy(
@@ -3827,6 +3805,7 @@ internal fun SharedThreadRouteContent(
                             memberScopedMentions = payload.memberScopedMentions
                         )
                     val localMessageId = ThreadLocalSendNextId.value(composerInstanceId)
+                    threadViewModel.dispatch(SharedThreadIntent.PrepareForLocalSend)
                     threadViewModel.dispatch(
                         SharedThreadIntent.ApplyLocalSendStarted(
                             buildThreadPendingSendMessage(

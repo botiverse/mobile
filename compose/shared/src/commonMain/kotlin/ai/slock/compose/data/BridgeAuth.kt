@@ -362,7 +362,12 @@ internal class BridgeSettingsPlatformCapabilities(
 }
 
 internal interface SharedThreadNetworkApi {
-    suspend fun channelMessages(threadId: String, limit: Int = 50, beforeSeq: Long? = null): HomeNetworkResponse
+    suspend fun channelMessages(
+        threadId: String,
+        limit: Int = 50,
+        beforeSeq: Long? = null,
+        afterSeq: Long? = null
+    ): HomeNetworkResponse
     suspend fun messageSync(channelId: String, sinceSeq: Long, limit: Int = 50): HomeNetworkResponse
     suspend fun sendMessage(
         channelId: String,
