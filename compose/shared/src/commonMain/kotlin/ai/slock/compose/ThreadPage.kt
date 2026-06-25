@@ -8878,21 +8878,6 @@ private fun ThreadReactionSpriteGlyph(
     modifier: Modifier = Modifier
 ) {
     val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
-    // Android can report generated asset dimensions as 0 on the first visible
-    // frame. Switching from legacy glyphs to atlas sprites after that frame
-    // reads as a reaction flash, so keep the initial render mode for this chip.
-    val drawAtlasForLifetime = remember(sprite.name) {
-        image.width > 0 && image.height > 0
-    }
-    if (!drawAtlasForLifetime) {
-        ThreadReactionGlyphDiagnosticLog(
-            path = "sprite_atlas_deferred_legacy",
-            emoji = sprite.value,
-            detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
-        )
-        ThreadLegacyQuickReactionGlyph(emoji = sprite.value, modifier = modifier)
-        return
-    }
     val imageReady = image.width > 0 && image.height > 0
     if (!imageReady) {
         ThreadReactionGlyphDiagnosticLog(
