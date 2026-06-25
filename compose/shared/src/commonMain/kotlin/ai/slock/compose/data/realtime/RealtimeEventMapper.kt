@@ -390,6 +390,7 @@ private data class AgentActivityDto(
     val agentId: String,
     val activity: String? = null,
     val detail: String? = null,
+    val entries: List<JsonObject> = emptyList(),
     val timestamp: String? = null,
     val serverSeq: Long? = null,
 )
@@ -560,16 +561,94 @@ private fun TaskInfoWireDto.toDomain(envelopeChannelId: String? = null): TaskSum
 )
 
 private fun AgentActivityDto.toDomain(): MemberPresenceUpdated {
-    val status = AgentStatus.fromWireValue(activity)
+    val projectedActivity = entries.latestAgentActivityProjection()
+        ?: AgentActivityProjection(
+            status = AgentStatus.fromWireValue(activity),
+            detail = detail
+        )
+    val status = projectedActivity.status
     return MemberPresenceUpdated(
         memberId = MemberId(agentId),
         presence = status?.presence ?: Presence.Offline,
         kind = MemberKind.Agent,
         agentStatus = status,
-        statusLabel = detail,
+        statusLabel = projectedActivity.detail,
         serverSeq = serverSeq,
     )
 }
+
+private data class AgentActivityProjection(
+    val status: AgentStatus?,
+    val detail: String?
+)
+
+private fun List<JsonObject>.latestAgentActivityProjection(): AgentActivityProjection? {
+    for (index in indices.reversed()) {
+        val projection = this[index].toAgentActivityProjection()
+        if (projection != null) return projection
+    }
+    return null
+}
+
+private fun JsonObject.toAgentActivityProjection(): AgentActivityProjection? {
+    val kind = stringValue("kind")?.trim()?.lowercase() ?: return null
+    return when (kind) {
+        "thinking" ->
+            AgentActivityProjection(
+                status = AgentStatus.Thinking,
+                detail = stringValue("text")?.takeIf { it.isNotBlank() } ?: "Thinking..."
+            )
+        "tool_start" ->
+            AgentActivityProjection(
+                status = AgentStatus.Working,
+                detail = stringValue("toolName")?.toToolActivityLabel() ?: "Working"
+            )
+        "compaction_started" ->
+            AgentActivityProjection(
+                status = AgentStatus.Working,
+                detail = "Compacting context..."
+            )
+        "compaction_finished" ->
+            AgentActivityProjection(
+                status = AgentStatus.Online,
+                detail = ""
+            )
+        "status", "agent_status" -> {
+            val status = AgentStatus.fromWireValue(stringValue("activity")) ?: return null
+            AgentActivityProjection(
+                status = status,
+                detail = stringValue("detail") ?: ""
+            )
+        }
+        else -> null
+    }
+}
+
+private fun JsonObject.stringValue(key: String): String? =
+    (this[key] as? JsonPrimitive)?.contentOrNull
+
+private fun String.toToolActivityLabel(): String {
+    val normalized = trim()
+        .substringAfterLast("__")
+        .substringAfterLast("/")
+        .substringAfterLast(".")
+        .takeIf { it.isNotBlank() }
+        ?: return "Working"
+    return when (normalized) {
+        "read_file" -> "Reading file..."
+        "write_file" -> "Writing file..."
+        "upload_file" -> "Uploading file..."
+        "view_file" -> "Viewing file..."
+        "schedule_reminder" -> "Scheduling reminder..."
+        "list_reminders" -> "Listing reminders..."
+        "cancel_reminder" -> "Canceling reminder..."
+        "run_command" -> "Running command..."
+        else -> "Using ${normalized.truncateToolLabel()}..."
+    }
+}
+
+private fun String.truncateToolLabel(): String =
+    if (length <= 24) this else take(22) + ".."
 
 private fun SyncResumeResponseDto.toDomain(): SyncResumeResponse = SyncResumeResponse(
     messages = messages.map { it.toDomain() },

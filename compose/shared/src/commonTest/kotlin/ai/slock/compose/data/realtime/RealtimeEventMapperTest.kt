@@ -338,6 +338,77 @@ class RealtimeEventMapperTest {
     }
 
     @Test
+    fun agentActivityCompactionEntryProjectsWorkingStatus() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-1",
+                  "activity": "online",
+                  "detail": "",
+                  "entries": [
+                    { "kind": "compaction_started" }
+                  ],
+                  "serverSeq": 43
+                }
+                """.trimIndent()
+            )
+
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals("agent-1", presence.memberId.value)
+        assertEquals(Presence.Active, presence.presence)
+        assertEquals(AgentStatus.Working, presence.agentStatus)
+        assertEquals("Compacting context...", presence.statusLabel)
+        assertEquals(43L, presence.serverSeq)
+    }
+
+    @Test
+    fun agentActivityStatusEntryProjectsWorkingStatus() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-2",
+                  "activity": "online",
+                  "detail": "",
+                  "entries": [
+                    { "kind": "status", "activity": "working", "detail": "Running extension" }
+                  ]
+                }
+                """.trimIndent()
+            )
+
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals("agent-2", presence.memberId.value)
+        assertEquals(Presence.Active, presence.presence)
+        assertEquals(AgentStatus.Working, presence.agentStatus)
+        assertEquals("Running extension", presence.statusLabel)
+    }
+
+    @Test
+    fun agentActivityDetailLikeWireValueProjectsWorkingStatus() {
+        val event =
+            RealtimeEventMapper().map(
+                RealtimeSocketEvents.AgentActivity,
+                """
+                {
+                  "agentId": "agent-3",
+                  "activity": "running_extension",
+                  "detail": "Running extension"
+                }
+                """.trimIndent()
+            )
+
+        val presence = assertIs<MemberPresenceUpdated>(event)
+        assertEquals("agent-3", presence.memberId.value)
+        assertEquals(Presence.Active, presence.presence)
+        assertEquals(AgentStatus.Working, presence.agentStatus)
+        assertEquals("Running extension", presence.statusLabel)
+    }
+
+    @Test
     fun serverWireEventsIncludeWebRealtimeContractEvents() {
         val events = RealtimeSocketEvents.ServerWireEvents
 

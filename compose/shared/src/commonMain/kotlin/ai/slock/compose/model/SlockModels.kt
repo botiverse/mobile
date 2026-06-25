@@ -148,7 +148,7 @@ enum class AgentStatus {
         fun fromWireValue(value: String?): AgentStatus? =
             when (value?.trim()?.lowercase()?.replace('-', '_')) {
                 "online", "active", "available", "connected" -> Online
-                "working", "running", "busy" -> Working
+                "working", "running", "running_extension", "busy", "compacting", "compacting_context" -> Working
                 "thinking" -> Thinking
                 "idle", "away" -> Idle
                 "disconnected", "not_connected", "notconnected" -> Disconnected
