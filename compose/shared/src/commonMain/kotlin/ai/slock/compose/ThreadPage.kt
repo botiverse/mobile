@@ -2911,24 +2911,71 @@ internal fun SharedThreadRouteContent(
     }
     fun openAttachmentExternally(attachment: KuiklyThreadAttachmentItem) {
         if (attachment.id.isBlank() || attachmentOpenStates[attachment.id].threadAttachmentIsOpening()) return
+        val downloadId = attachment.threadAttachmentDownloadId()
         attachmentOpenStates =
             attachmentOpenStates +
-                (attachment.id to ThreadAttachmentOpenUiState(status = "downloading"))
+                (attachment.id to ThreadAttachmentOpenUiState(
+                    status = "downloading",
+                    downloadId = downloadId,
+                    progress = SlockFilePreviewInitialDownloadProgress.copy(downloadId = downloadId)
+                ))
         coroutineScope.launch {
             val result =
                 openSharedThreadAttachment(
                     bridge = bridge,
                     dataSource = dataSource,
-                    attachment = attachment
+                    attachment = attachment,
+                    downloadId = downloadId,
+                    onProgress = { progress ->
+                        if (progress.downloadId.isNotBlank() && progress.downloadId != downloadId) return@openSharedThreadAttachment
+                        val current = attachmentOpenStates[attachment.id]
+                        if (current?.downloadId != downloadId) return@openSharedThreadAttachment
+                        attachmentOpenStates =
+                            attachmentOpenStates +
+                                (attachment.id to current.copy(
+                                    status = if (progress.status == "paused") "paused" else "downloading",
+                                    progress = progress.copy(downloadId = progress.downloadId.ifBlank { downloadId })
+                                ))
+                    }
                 )
             if (result.status == "opened") {
                 attachmentOpenStates = attachmentOpenStates - attachment.id
             } else {
                 attachmentOpenStates =
                     attachmentOpenStates +
-                        (attachment.id to ThreadAttachmentOpenUiState(status = result.status, message = result.message))
-                bridge.toast(result.message.ifBlank { "Unable to open attachment" })
+                        (attachment.id to ThreadAttachmentOpenUiState(
+                            status = result.status,
+                            message = result.message,
+                            downloadId = downloadId
+                        ))
+                if (result.status != "cancelled") {
+                    bridge.toast(result.message.ifBlank { "Unable to open attachment" })
+                }
             }
+        }
+    }
+    fun requestAttachmentDownloadControl(attachment: KuiklyThreadAttachmentItem, action: String) {
+        val current = attachmentOpenStates[attachment.id] ?: return
+        val downloadId = current.downloadId.ifBlank { attachment.threadAttachmentDownloadId() }
+        attachmentOpenStates =
+            when (action) {
+                "pause" ->
+                    attachmentOpenStates +
+                        (attachment.id to current.copy(status = "paused", downloadId = downloadId))
+                "resume" ->
+                    attachmentOpenStates +
+                        (attachment.id to current.copy(status = "downloading", downloadId = downloadId))
+                "stop" ->
+                    attachmentOpenStates +
+                        (attachment.id to ThreadAttachmentOpenUiState(
+                            status = "cancelled",
+                            message = "Download stopped",
+                            downloadId = downloadId
+                        ))
+                else -> attachmentOpenStates
+            }
+        coroutineScope.launch {
+            bridge.attachmentDownloadControl(downloadId = downloadId, action = action)
         }
     }
     fun openAttachmentNoPreview(attachment: KuiklyThreadAttachmentItem) {
@@ -4177,6 +4224,9 @@ internal fun SharedThreadRouteContent(
                 openState = attachmentOpenStates[preview.attachment.id],
                 onDismiss = { attachmentNoPreviewState = null },
                 onOpenWithSystem = { openAttachmentExternally(preview.attachment) },
+                onPauseDownload = { requestAttachmentDownloadControl(preview.attachment, "pause") },
+                onResumeDownload = { requestAttachmentDownloadControl(preview.attachment, "resume") },
+                onStopDownload = { requestAttachmentDownloadControl(preview.attachment, "stop") },
                 onOpenUrl = { bridge.openUrl(it, null) }
             )
         }
@@ -4311,7 +4361,9 @@ internal fun SharedThreadRouteContent(
 private suspend fun openSharedThreadAttachment(
     bridge: ai.slock.compose.base.BridgeModule,
     dataSource: SharedThreadDataSource,
-    attachment: KuiklyThreadAttachmentItem
+    attachment: KuiklyThreadAttachmentItem,
+    downloadId: String? = null,
+    onProgress: ((ai.slock.compose.base.BridgeAttachmentDownloadProgress) -> Unit)? = null
 ): ThreadAttachmentOpenResult {
     val attachmentId = attachment.id.takeIf { it.isNotBlank() }
         ?: return ThreadAttachmentOpenResult(status = "failed", message = "Unable to open attachment")
@@ -4322,10 +4374,17 @@ private suspend fun openSharedThreadAttachment(
                     url = response.data.url,
                     attachmentId = attachmentId,
                     fileName = attachment.name.ifBlank { "attachment-${attachmentId.take(8)}" },
-                    mimeType = attachment.mimeType
+                    mimeType = attachment.mimeType,
+                    downloadId = downloadId,
+                    onProgress = onProgress
                 )
             when (nativeResult?.optString("status").orEmpty()) {
                 "opened" -> ThreadAttachmentOpenResult(status = "opened")
+                "cancelled" ->
+                    ThreadAttachmentOpenResult(
+                        status = "cancelled",
+                        message = nativeResult?.optString("message").orEmpty().ifBlank { "Download stopped" }
+                    )
                 "no_app" ->
                     ThreadAttachmentOpenResult(
                         status = "no_app",
@@ -4847,10 +4906,14 @@ private fun ThreadAttachmentNoPreviewOverlay(
     openState: ThreadAttachmentOpenUiState?,
     onDismiss: () -> Unit,
     onOpenWithSystem: () -> Unit,
+    onPauseDownload: () -> Unit,
+    onResumeDownload: () -> Unit,
+    onStopDownload: () -> Unit,
     onOpenUrl: (String) -> Unit
 ) {
     val attachment = state.attachment
     val isOpening = openState.threadAttachmentIsOpening()
+    val isPaused = openState?.status == "paused"
     val isMarkdown = attachment.isMarkdownAttachment()
     SlockFilePreviewPageScaffold(
         title = attachment.name.ifBlank { "Attachment" },
@@ -4892,10 +4955,18 @@ private fun ThreadAttachmentNoPreviewOverlay(
                 message = "No preview is available for this file type.",
                 statusLabel = openState.threadAttachmentStatusLabel(),
                 showProgress = isOpening,
-                actionLabel = if (isOpening) "Downloading..." else "Download",
-                actionIcon = if (isOpening) SlockLucideIconName.Loader else SlockLucideIconName.Download,
+                progressPercent = openState?.progress?.percent ?: if (isOpening) 0 else null,
+                actionLabel = if (isOpening) null else "Download",
+                actionIcon = if (isOpening) null else SlockLucideIconName.Download,
                 actionEnabled = !isOpening,
                 onAction = onOpenWithSystem,
+                downloadPaused = isPaused,
+                onToggleDownload = if (isOpening) {
+                    if (isPaused) onResumeDownload else onPauseDownload
+                } else {
+                    null
+                },
+                onStopDownload = if (isOpening) onStopDownload else null,
                 modifier = Modifier.fillMaxSize()
             )
         }
@@ -9876,6 +9947,13 @@ internal fun KuiklyThreadAttachmentItem.genericAttachmentMetaLine(): String =
     listOf(sizeLabel, mimeType)
         .filter { it.isNotBlank() }
         .joinToString(" · ")
+
+private fun KuiklyThreadAttachmentItem.threadAttachmentDownloadId(): String =
+    listOf("thread_attachment", id.ifBlank { name.ifBlank { "attachment" } }, name.ifBlank { "attachment" })
+        .joinToString(":")
+        .filter { it.isLetterOrDigit() || it == '-' || it == '_' || it == ':' || it == '.' }
+        .take(160)
+        .ifBlank { "thread-attachment-download" }
 
 internal fun KuiklyThreadAttachmentItem.threadAttachmentChipMetaLine(): String =
     listOf(

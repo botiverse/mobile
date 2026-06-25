@@ -1,5 +1,6 @@
 package ai.slock.compose
 
+import ai.slock.compose.base.BridgeAttachmentDownloadProgress
 import ai.slock.compose.components.SlockBrutalActionButton
 import ai.slock.compose.components.SlockBrutalIconButton
 import androidx.compose.runtime.Composable
@@ -53,15 +54,18 @@ internal data class KuiklyThreadFileItem(
 
 internal data class ThreadAttachmentOpenUiState(
     val status: String,
-    val message: String = ""
+    val message: String = "",
+    val downloadId: String = "",
+    val progress: BridgeAttachmentDownloadProgress? = null
 )
 
 internal fun ThreadAttachmentOpenUiState?.threadAttachmentIsOpening(): Boolean =
-    this?.status == "downloading"
+    this?.status == "downloading" || this?.status == "paused"
 
 internal fun ThreadAttachmentOpenUiState?.threadAttachmentStatusLabel(): String? =
     when (this?.status) {
-        "downloading" -> "Downloading..."
+        "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(progress, this.status)
+        "cancelled" -> message.ifBlank { "Download stopped" }
         "no_app" -> "No app can open this file"
         "storage_failed" -> "Storage unavailable"
         "failed" -> "Download failed"

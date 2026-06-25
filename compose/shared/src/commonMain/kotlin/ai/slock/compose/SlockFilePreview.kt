@@ -341,18 +341,19 @@ private fun SlockFilePreviewStandalonePageContent() {
             }
         }
     ) {
+        val downloadActive = downloadStatus == "downloading" || downloadStatus == "paused"
         SlockFilePreviewPayloadContent(
             payload = payload,
             onOpenUrl = {},
             downloadStatusLabel =
                 when (downloadStatus) {
-                    "downloading", "paused" -> slockFilePreviewDownloadStatusLabel(downloadProgress)
+                    "downloading", "paused" -> slockFilePreviewActiveDownloadStatusLabel(downloadProgress, downloadStatus)
                     "failed" -> downloadMessage.ifBlank { "Download failed" }
                     else -> null
             },
-            downloadInProgress = downloadStatus == "downloading" || downloadStatus == "paused",
+            downloadInProgress = downloadActive,
             downloadPaused = downloadStatus == "paused",
-            downloadProgressPercent = downloadProgress?.percent,
+            downloadProgressPercent = downloadProgress?.percent ?: if (downloadActive) 0 else null,
             downloadCached = attachmentCacheState,
             onDownload = if (canOpenWith) ::requestExternalOpen else null,
             onPauseDownload = { requestDownloadControl("pause") },
@@ -849,17 +850,9 @@ internal fun SlockFilePreviewPayloadContent(
                     statusLabel = downloadStatusLabel,
                     showProgress = downloadInProgress,
                     progressPercent = downloadProgressPercent,
-                    actionLabel = if (onDownload != null) {
-                        if (downloadInProgress) {
-                            downloadStatusLabel ?: "Downloading..."
-                        } else {
-                            slockFilePreviewPrimaryActionLabel(payload, downloadCached)
-                        }
-                    } else {
-                        null
-                    },
-                    actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
-                    actionEnabled = !downloadInProgress,
+                    actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                    actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                    actionEnabled = true,
                     onAction = onDownload,
                     downloadPaused = downloadPaused,
                     onToggleDownload = onToggleDownload,
@@ -888,17 +881,9 @@ internal fun SlockFilePreviewPayloadContent(
                 statusLabel = downloadStatusLabel,
                 showProgress = downloadInProgress,
                 progressPercent = downloadProgressPercent,
-                actionLabel = if (onDownload != null) {
-                    if (downloadInProgress) {
-                        downloadStatusLabel ?: "Downloading..."
-                    } else {
-                        slockFilePreviewPrimaryActionLabel(payload, downloadCached)
-                    }
-                } else {
-                    null
-                },
-                actionIcon = if (downloadInProgress) SlockLucideIconName.Loader else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
-                actionEnabled = !downloadInProgress,
+                actionLabel = onDownload?.takeIf { !downloadInProgress }?.let { slockFilePreviewPrimaryActionLabel(payload, downloadCached) },
+                actionIcon = if (downloadInProgress) null else slockFilePreviewPrimaryActionIcon(payload, downloadCached),
+                actionEnabled = true,
                 onAction = onDownload,
                 downloadPaused = downloadPaused,
                 onToggleDownload = onToggleDownload,
@@ -1011,6 +996,18 @@ internal fun slockFilePreviewDownloadStatusLabel(progress: BridgeAttachmentDownl
             else -> "$verb..."
         }
     return listOfNotNull(primary, speedLabel).joinToString(" · ")
+}
+
+internal fun slockFilePreviewActiveDownloadStatusLabel(
+    progress: BridgeAttachmentDownloadProgress?,
+    status: String
+): String {
+    val activeProgress =
+        progress
+            ?: SlockFilePreviewInitialDownloadProgress.copy(
+                status = if (status == "paused") "paused" else "progress"
+            )
+    return slockFilePreviewDownloadStatusLabel(activeProgress)
 }
 
 internal val SlockFilePreviewInitialDownloadProgress =
@@ -1196,10 +1193,20 @@ internal fun SlockFilePreviewGenericCard(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center
         )
-        statusLabel?.let {
+        if (showProgress) {
+            Box(modifier = Modifier.height(SlockSpacing.Md))
+            SlockFilePreviewDownloadStatusBar(
+                statusLabel = statusLabel ?: "Downloading 0%",
+                showProgress = true,
+                progressPercent = progressPercent ?: 0,
+                downloadPaused = downloadPaused,
+                onToggleDownload = onToggleDownload,
+                onStopDownload = onStopDownload
+            )
+        } else if (statusLabel != null) {
             Box(modifier = Modifier.height(SlockSpacing.Sm))
             Text(
-                text = it,
+                text = statusLabel,
                 style = SlockType.Caption,
                 color = SlockColor.TextMutedGray,
                 maxLines = 1,
@@ -1207,11 +1214,7 @@ internal fun SlockFilePreviewGenericCard(
                 textAlign = TextAlign.Center
             )
         }
-        if (showProgress) {
-            Box(modifier = Modifier.height(SlockSpacing.Md))
-            SlockFilePreviewProgressBar(progressPercent = progressPercent)
-        }
-        if (actionLabel != null && onAction != null) {
+        if (!showProgress && actionLabel != null && onAction != null) {
             Box(modifier = Modifier.height(SlockSpacing.Lg))
             SlockBrutalActionButton(
                 label = actionLabel,
@@ -1220,14 +1223,6 @@ internal fun SlockFilePreviewGenericCard(
                 leadingIcon = actionIcon,
                 minWidth = 132.dp,
                 minHeight = 40.dp
-            )
-        }
-        if (showProgress && onToggleDownload != null && onStopDownload != null) {
-            Box(modifier = Modifier.height(SlockSpacing.Sm))
-            SlockFilePreviewDownloadControls(
-                paused = downloadPaused,
-                onToggle = onToggleDownload,
-                onStop = onStopDownload
             )
         }
     }

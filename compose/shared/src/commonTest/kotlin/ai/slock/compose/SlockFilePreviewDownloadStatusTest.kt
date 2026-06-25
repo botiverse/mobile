@@ -59,6 +59,34 @@ class SlockFilePreviewDownloadStatusTest {
     }
 
     @Test
+    fun activeDownloadStatusFallsBackToZeroPercentBeforeNativeProgress() {
+        val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "downloading")
+
+        assertEquals("Downloading 0%", label)
+    }
+
+    @Test
+    fun pausedDownloadStatusFallsBackToZeroPercentBeforeNativeProgress() {
+        val label = slockFilePreviewActiveDownloadStatusLabel(progress = null, status = "paused")
+
+        assertEquals("Paused 0%", label)
+    }
+
+    @Test
+    fun threadAttachmentOpeningStatusUsesVisibleZeroPercentFallback() {
+        val label = ThreadAttachmentOpenUiState(status = "downloading").threadAttachmentStatusLabel()
+
+        assertEquals("Downloading 0%", label)
+    }
+
+    @Test
+    fun threadAttachmentPausedStatusUsesVisibleZeroPercentFallback() {
+        val label = ThreadAttachmentOpenUiState(status = "paused").threadAttachmentStatusLabel()
+
+        assertEquals("Paused 0%", label)
+    }
+
+    @Test
     fun primaryActionShowsDownloadBeforeCacheExists() {
         val label =
             slockFilePreviewPrimaryActionLabel(
