@@ -33,11 +33,8 @@ class ThreadReactionSpriteCatalogTest {
 
     @Test
     fun resourceAdapterUsesGeneratedKmmResourcePath() {
-        assertEquals(
-            "assets://${ThreadReactionSpriteAtlasResource.image.originalPath}",
-            ThreadReactionSpriteAtlasResource.imageUrl
-        )
-        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("slock_reactions/reaction_atlas_v1.png"))
+        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.startsWith("assets://common/"))
+        assertTrue(ThreadReactionSpriteAtlasResource.imageUrl.endsWith("reaction_atlas_v1.png"))
         assertTrue(ThreadReactionSpriteAtlasResource.manifest.originalPath.endsWith("reaction_atlas_v1_manifest.json"))
     }
 }

@@ -116,7 +116,6 @@ import com.tencent.kuikly.compose.animation.core.infiniteRepeatable
 import com.tencent.kuikly.compose.animation.core.rememberInfiniteTransition
 import com.tencent.kuikly.compose.animation.core.tween
 import com.tencent.kuikly.compose.foundation.Canvas
-import com.tencent.kuikly.compose.foundation.Image
 import com.tencent.kuikly.compose.foundation.background
 import com.tencent.kuikly.compose.foundation.border
 import com.tencent.kuikly.compose.foundation.clickable
@@ -124,7 +123,6 @@ import com.tencent.kuikly.compose.foundation.gestures.detectHorizontalDragGestur
 import com.tencent.kuikly.compose.foundation.gestures.detectTapGestures
 import com.tencent.kuikly.compose.foundation.layout.Arrangement
 import com.tencent.kuikly.compose.foundation.layout.Box
-import com.tencent.kuikly.compose.foundation.layout.BoxWithConstraints
 import com.tencent.kuikly.compose.foundation.layout.Column
 import com.tencent.kuikly.compose.foundation.layout.PaddingValues
 import com.tencent.kuikly.compose.foundation.layout.Row
@@ -146,12 +144,11 @@ import com.tencent.kuikly.compose.foundation.lazy.rememberLazyListState
 import com.tencent.kuikly.compose.foundation.shape.RoundedCornerShape
 import com.tencent.kuikly.compose.extension.bouncesEnable
 import com.tencent.kuikly.compose.material3.Text
-import com.tencent.kuikly.compose.resources.painterResource
+import com.tencent.kuikly.compose.resources.imageResource
 import com.tencent.kuikly.compose.setContent
 import com.tencent.kuikly.compose.ui.Alignment
 import com.tencent.kuikly.compose.ui.Modifier
 import com.tencent.kuikly.compose.ui.draw.alpha
-import com.tencent.kuikly.compose.ui.draw.clipToBounds
 import com.tencent.kuikly.compose.ui.geometry.Offset
 import com.tencent.kuikly.compose.ui.geometry.Size
 import com.tencent.kuikly.compose.ui.graphics.Color
@@ -172,8 +169,11 @@ import com.tencent.kuikly.compose.ui.text.font.FontWeight
 import com.tencent.kuikly.compose.ui.text.style.TextOverflow
 import com.tencent.kuikly.compose.ui.unit.Density
 import com.tencent.kuikly.compose.ui.unit.Dp
+import com.tencent.kuikly.compose.ui.unit.IntOffset
+import com.tencent.kuikly.compose.ui.unit.IntSize
 import com.tencent.kuikly.compose.ui.unit.dp
 import com.tencent.kuikly.compose.ui.unit.sp
+import com.tencent.kuikly.compose.ui.unit.toIntSize
 import com.tencent.kuikly.core.annotations.Page
 import com.tencent.kuikly.core.manager.PagerManager
 import com.tencent.kuikly.core.module.PerformanceModule
@@ -8880,23 +8880,30 @@ private fun ThreadReactionSpriteGlyph(
     sprite: ThreadReactionSprite,
     modifier: Modifier = Modifier
 ) {
+    val image = imageResource(ThreadReactionSpriteAtlasDrawableResource)
+    val imageReady = image.width > 0 && image.height > 0
+    if (!imageReady) {
+        ThreadReactionGlyphDiagnosticLog(
+            path = "sprite_atlas_not_ready",
+            emoji = sprite.value,
+            detail = "sprite=${sprite.name} imageWidth=${image.width} imageHeight=${image.height}"
+        )
+        ThreadLegacyQuickReactionGlyph(emoji = sprite.value, modifier = modifier)
+        return
+    }
     ThreadReactionGlyphDiagnosticLog(
         path = "sprite_atlas_draw",
         emoji = sprite.value,
         detail = "sprite=${sprite.name} atlas=${ThreadReactionSpriteCatalogV1.atlas.imageName}"
     )
     val rect = sprite.rect
-    val spriteIndex = rect.x / rect.width
-    val spriteCount = ThreadReactionSpriteCatalogV1.reactions.size
-    BoxWithConstraints(modifier = modifier.clipToBounds()) {
-        Image(
-            painter = painterResource(ThreadReactionSpriteAtlasDrawableResource),
-            contentDescription = null,
-            modifier = Modifier
-                .size(maxWidth * spriteCount, maxHeight)
-                .offset(x = -(maxWidth * spriteIndex)),
-            alignment = Alignment.TopStart,
-            contentScale = ContentScale.FillBounds
+    Canvas(modifier = modifier) {
+        drawImage(
+            image = image,
+            srcOffset = IntOffset(rect.x, rect.y),
+            srcSize = IntSize(rect.width, rect.height),
+            dstOffset = IntOffset.Zero,
+            dstSize = size.toIntSize()
         )
     }
 }
