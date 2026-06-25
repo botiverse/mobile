@@ -100,6 +100,9 @@ class SqlDelightComposeLocalDataStoreTest {
                         )
                     ),
                 tasks = listOf(task),
+                canLoadMoreBefore = true,
+                canLoadMoreAfter = true,
+                historyLimited = true,
                 lastSeq = 7
             )
 
@@ -109,6 +112,9 @@ class SqlDelightComposeLocalDataStoreTest {
         assertEquals("general", restored.conversation.name)
         assertEquals(3, restored.conversation.unreadCount)
         assertEquals(1, restored.conversation.mentionCount)
+        assertEquals(true, restored.canLoadMoreBefore)
+        assertEquals(true, restored.canLoadMoreAfter)
+        assertEquals(true, restored.historyLimited)
         assertEquals(7, restored.lastSeq)
         val message = restored.messages.single()
         assertEquals("cached body", message.body)

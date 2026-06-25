@@ -89,6 +89,7 @@ internal class SqlDelightComposeLocalDataStore(
     override suspend fun readThread(threadId: ThreadId): ThreadSnapshot? {
         val queries = database.queries
         val preferredServerId = currentServerId()
+        val fallbackSnapshot = fallback.readThread(threadId)
         val resolved =
             preferredServerId?.let { serverId ->
                 queries.readThreadChannel(serverId, threadId)?.let { channel -> serverId to channel }
@@ -98,7 +99,7 @@ internal class SqlDelightComposeLocalDataStore(
                     ?.let { serverId ->
                         queries.readThreadChannel(serverId, threadId)?.let { channel -> serverId to channel }
                     }
-                ?: return fallback.readThread(threadId)
+                ?: return fallbackSnapshot
         val serverId = resolved.first
         val channel = resolved.second
         val messages =
@@ -123,6 +124,22 @@ internal class SqlDelightComposeLocalDataStore(
             parentMessage = parentMessage,
             tasks = tasks,
             lastSeq = messages.maxOfOrNull { it.seq ?: 0L } ?: 0L
+        ).withPagingMetadataFrom(fallbackSnapshot)
+    }
+
+    private fun ThreadSnapshot.withPagingMetadataFrom(fallbackSnapshot: ThreadSnapshot?): ThreadSnapshot {
+        if (fallbackSnapshot == null) return this
+        val sameThread =
+            fallbackSnapshot.conversation.threadId == conversation.threadId ||
+                fallbackSnapshot.conversation.messageStreamChannelId() == conversation.messageStreamChannelId()
+        if (!sameThread) return this
+        return copy(
+            canLoadMoreBefore = fallbackSnapshot.canLoadMoreBefore,
+            canLoadMoreAfter = fallbackSnapshot.canLoadMoreAfter,
+            hasGap = fallbackSnapshot.hasGap,
+            historyLimited = fallbackSnapshot.historyLimited,
+            highlightedMessageId = fallbackSnapshot.highlightedMessageId,
+            newUpdateCount = fallbackSnapshot.newUpdateCount
         )
     }
 
