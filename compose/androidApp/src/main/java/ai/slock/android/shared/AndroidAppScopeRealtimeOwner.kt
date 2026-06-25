@@ -1,6 +1,8 @@
 package ai.slock.android.shared
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import ai.slock.android.core.data.auth.AndroidAuthApiFactory
@@ -31,6 +33,9 @@ import ai.slock.compose.data.realtime.RealtimeCursorPolicy
 import ai.slock.compose.data.realtime.RealtimeConnectRequest
 import ai.slock.compose.data.realtime.RealtimeSocketEvents
 import ai.slock.compose.model.ConversationKind
+import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventName
+import com.tencent.kuikly.core.render.android.expand.module.getKuiklyEventParams
+import com.tencent.kuikly.core.render.android.expand.module.registerKuiklyBroadcastReceiver
 import com.tencent.kuikly.core.render.android.expand.module.sendKuiklyEvent
 import com.tencent.mmkv.MMKV
 import kotlinx.coroutines.CoroutineScope
@@ -45,9 +50,12 @@ import org.json.JSONObject
 internal object AndroidAppScopeRealtimeOwner {
     private const val LOG_TAG = "SlockKuiklyRealtime"
     private const val REALTIME_EVENT_NAME = "slockRealtimeEvent"
+    private const val REALTIME_ROOMS_EVENT_NAME = "slockRealtimeRooms"
+    private const val ROOM_ACTION_JOIN_CHANNEL = "joinChannel"
+    private const val KEY_ACTION = "action"
+    private const val KEY_CHANNEL_ID = "channelId"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val surfaceRooms = linkedMapOf<String, Set<ChannelId>>()
     private val joinedRooms = linkedSetOf<ChannelId>()
 
     private var realtimeRepository: RealtimeRepository? = null
@@ -62,10 +70,12 @@ internal object AndroidAppScopeRealtimeOwner {
     private var appVisibility: AppVisibility = AppVisibility.Background
     private var backgroundKeepAliveEnabled = false
     private var networkCallbackInstalled = false
+    private var realtimeRoomsNotifyReceiver: BroadcastReceiver? = null
 
     fun install(context: Context) {
-        if (networkCallbackInstalled) return
         val appContext = context.applicationContext
+        installRealtimeRoomsNotifyReceiver(appContext)
+        if (networkCallbackInstalled) return
         val connectivityManager =
             appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
                 ?: return
@@ -94,6 +104,30 @@ internal object AndroidAppScopeRealtimeOwner {
         }
     }
 
+    private fun installRealtimeRoomsNotifyReceiver(appContext: Context) {
+        synchronized(this) {
+            if (realtimeRoomsNotifyReceiver != null) return
+            val receiver =
+                object : BroadcastReceiver() {
+                    override fun onReceive(context: Context?, intent: Intent?) {
+                        val eventIntent = intent ?: return
+                        if (eventIntent.getKuiklyEventName() != REALTIME_ROOMS_EVENT_NAME) return
+                        handleRealtimeRoomsNotify(eventIntent.getKuiklyEventParams())
+                    }
+                }
+            runCatching {
+                appContext.registerKuiklyBroadcastReceiver(receiver)
+                realtimeRoomsNotifyReceiver = receiver
+                SlockDiagnosticsLogger.d(LOG_TAG, "room_notify_receiver_installed")
+            }.onFailure { error ->
+                SlockDiagnosticsLogger.w(
+                    LOG_TAG,
+                    "room_notify_receiver_install_failed message=${error.message.orEmpty()}"
+                )
+            }
+        }
+    }
+
     fun onAppShown(
         context: Context,
         source: String = "unknown"
@@ -101,7 +135,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Foreground
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=shown source=$source declared_room_surfaces=${surfaceRooms.size}"
+            "app_scope_lifecycle event=shown source=$source joined_rooms=${joinedRooms.size}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -114,7 +148,7 @@ internal object AndroidAppScopeRealtimeOwner {
         appVisibility = AppVisibility.Background
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "app_scope_lifecycle event=hidden source=$source declared_room_surfaces=${surfaceRooms.size}"
+            "app_scope_lifecycle event=hidden source=$source joined_rooms=${joinedRooms.size}"
         )
     }
 
@@ -125,7 +159,7 @@ internal object AndroidAppScopeRealtimeOwner {
         backgroundKeepAliveEnabled = true
         SlockDiagnosticsLogger.d(
             LOG_TAG,
-            "background_keep_alive_enabled source=$source visibility=$appVisibility declared_room_surfaces=${surfaceRooms.size}"
+            "background_keep_alive_enabled source=$source visibility=$appVisibility joined_rooms=${joinedRooms.size}"
         )
         healthCheckRealtimeConnection(
             context = context.applicationContext,
@@ -199,9 +233,6 @@ internal object AndroidAppScopeRealtimeOwner {
                             requestedLastSeq = requestedLastSeq,
                             forceReconnect = false
                         )
-                    if (result is DataResult.Content) {
-                        joinDeclaredRooms()
-                    }
                 } finally {
                     realtimeConnectJob = null
                 }
@@ -240,9 +271,6 @@ internal object AndroidAppScopeRealtimeOwner {
                             requestedLastSeq = requestedLastSeq,
                             forceReconnect = forceReconnect
                         )
-                    if (result is DataResult.Content) {
-                        joinDeclaredRooms()
-                    }
                 } finally {
                     realtimeConnectJob = null
                 }
@@ -296,7 +324,6 @@ internal object AndroidAppScopeRealtimeOwner {
                 LOG_TAG,
                 "realtime_health_check_reconnect reason=heartbeat_silent trigger=$reason serverId=${serverId.value}"
             )
-            joinDeclaredRooms()
             return
         }
         when (val state = client.state) {
@@ -308,7 +335,6 @@ internal object AndroidAppScopeRealtimeOwner {
                     LOG_TAG,
                     "realtime_health_check_skip reason=already_connected trigger=$reason state=${state::class.simpleName} serverId=${serverId.value}"
                 )
-                joinDeclaredRooms()
             }
             RealtimeConnectionState.Connecting ->
                 SlockDiagnosticsLogger.d(
@@ -335,7 +361,6 @@ internal object AndroidAppScopeRealtimeOwner {
         realtimeAccessToken = null
         realtimeLastSeq = 0L
         backgroundKeepAliveEnabled = false
-        surfaceRooms.clear()
         joinedRooms.clear()
         SlockDiagnosticsLogger.d(
             LOG_TAG,
@@ -343,22 +368,23 @@ internal object AndroidAppScopeRealtimeOwner {
         )
     }
 
-    fun declareKuiklySurfaceRooms(surfaceId: String, rooms: Set<ChannelId>) {
-        if (rooms.isEmpty()) {
-            surfaceRooms.remove(surfaceId)
-        } else {
-            surfaceRooms[surfaceId] = rooms
-        }
-        SlockDiagnosticsLogger.d(
-            LOG_TAG,
-            "kuikly_surface_rooms_declared surfaceId=$surfaceId rooms=${rooms.size} roomIds=${rooms.joinToString(",") { it.value }}"
-        )
-        joinDeclaredRooms()
-    }
-
     fun joinChannel(channelId: ChannelId) {
         if (channelId.value.isBlank()) return
         joinRoom(channelId, reason = "direct")
+    }
+
+    private fun handleRealtimeRoomsNotify(eventData: JSONObject) {
+        when (eventData.optString(KEY_ACTION)) {
+            ROOM_ACTION_JOIN_CHANNEL -> {
+                val channelId = eventData.optString(KEY_CHANNEL_ID).takeIf { it.isNotBlank() }
+                if (channelId == null) {
+                    SlockDiagnosticsLogger.w(LOG_TAG, "room_notify_skip reason=missing_channel_id")
+                    return
+                }
+                SlockDiagnosticsLogger.d(LOG_TAG, "room_notify_join channelId=$channelId")
+                joinChannel(ChannelId(channelId))
+            }
+        }
     }
 
     private fun ensureRealtimeRepository(context: Context): RealtimeRepository {
@@ -397,7 +423,7 @@ internal object AndroidAppScopeRealtimeOwner {
                             }
                     SlockDiagnosticsLogger.d(
                         LOG_TAG,
-                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} declared_room_surfaces=${surfaceRooms.size} joined_rooms=${joinedRooms.size}"
+                        "native_event_received event=${event.nativeRealtimeEventName()} serverId=${serverId.value} joined_rooms=${joinedRooms.size}"
                     )
                     realtimeLastSeq = realtimeLastSeq.updateFrom(event)
                     if (event is DirectMessageCreated) {
@@ -437,14 +463,10 @@ internal object AndroidAppScopeRealtimeOwner {
                 ?: return DataResult.Error(ScreenError(code = "realtime_client_missing"))
         val nextSessionKey = "$accessToken|${serverId.value}"
         val previousSessionKey = realtimeSessionKey
-        val previousServerId = realtimeServerId
         val resumeSeq =
             if (previousSessionKey != null && previousSessionKey != nextSessionKey) {
                 realtimeLastSeq = 0L
                 joinedRooms.clear()
-                if (previousServerId != null && previousServerId != serverId) {
-                    surfaceRooms.clear()
-                }
                 0L
             } else {
                 maxOf(requestedLastSeq, realtimeLastSeq)
@@ -508,19 +530,10 @@ internal object AndroidAppScopeRealtimeOwner {
                         LOG_TAG,
                         "foreground_reconnect_result state=${state::class.simpleName} serverId=${serverId.value} result=${result::class.simpleName}"
                     )
-                    if (result is DataResult.Content) {
-                        joinDeclaredRooms()
-                    }
                 } finally {
                     realtimeConnectJob = null
                 }
             }
-    }
-
-    private fun joinDeclaredRooms() {
-        surfaceRooms.values.flatten().distinct().forEach { channelId ->
-            joinRoom(channelId, reason = "declared")
-        }
     }
 
     private fun joinRoom(channelId: ChannelId, reason: String) {

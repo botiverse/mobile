@@ -1564,6 +1564,18 @@ private fun ThreadPageScreen() {
     var threadRealtimeCacheInvalidationSequence by remember { mutableStateOf(0L) }
     var sharedThreadCacheInvalidation by remember { mutableStateOf<ThreadRealtimeCacheInvalidationSignal?>(null) }
     val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
+    LaunchedEffect(
+        realtimeEvents,
+        payload.sourceThreadId,
+        payload.streamChannelId
+    ) {
+        realtimeEvents.joinChannels(
+            listOfNotNull(
+                payload.sourceThreadId,
+                payload.streamChannelId
+            )
+        )
+    }
     DisposableEffect(realtimeEvents, realtimeEventMapper, authStore, threadPageCoroutineScope) {
         val callbackRef =
             realtimeEvents.addListener { eventData ->
@@ -2238,6 +2250,7 @@ internal fun SharedThreadRouteContent(
     onOpenMemberProfile: (KuiklyThreadScreenPayload, String) -> Unit = { _, _ -> }
 ) {
     val pager = LocalActivity.current.getPager() as Pager
+    val realtimeEvents = remember(pager) { KuiklyRealtimeEvents(pager) }
     PerformanceSceneEffect(bridge, "kuikly_thread", active = active)
     val initialRouteIdentity = remember(initialPayload) {
         initialPayload.resolveThreadRouteIdentity()
@@ -4021,7 +4034,7 @@ internal fun SharedThreadRouteContent(
                         when (val result = dataSource.joinChannel(channelId)) {
                             is DataResult.Content -> {
                                 threadViewModel.dispatch(SharedThreadIntent.ApplyChannelJoined(result.data.channelId.value))
-                                bridge.realtimeJoinChannel(result.data.channelId.value)
+                                realtimeEvents.joinChannel(result.data.channelId.value)
                                 bridge.toast("Joined channel")
                             }
                             is DataResult.Empty,

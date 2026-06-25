@@ -66,7 +66,6 @@ import ai.slock.android.core.data.storage.StorageManagementSnapshot
 import ai.slock.compose.data.KuiklyMMKVAuthSessionStore
 import ai.slock.compose.data.SharedAuthDataSource
 import ai.slock.compose.data.SharedAuthResult
-import ai.slock.android.core.model.ChannelId
 import ai.slock.android.core.model.MemberKind
 import ai.slock.android.core.model.Presence
 import ai.slock.android.core.model.ServerId
@@ -116,9 +115,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     private var inputFontLayoutListener: ViewTreeObserver.OnGlobalLayoutListener? = null
     private var pendingThreadAttachmentUpload: PendingThreadAttachmentUpload? = null
     private val googleSocialAuthGateway = GoogleSocialAuthGateway()
-    private val realtimeSurfaceId: String by lazy {
-        "$pageName:${System.identityHashCode(this)}"
-    }
     private val kuiklySystemBackCallback =
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
@@ -153,14 +149,9 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
         SlockPerformanceDiagnostics.updateOperation(container, "kuikly_attach")
         kuiklyRenderViewDelegator.onAttach(container, "", spec.pageName, spec.pageData.toKuiklyMap())
         SlockAndroidBuglyDiagnostics.reportAppFullLaunch()
-        declareForegroundRealtimeRooms()
     }
 
     override fun onDestroy() {
-        AndroidAppScopeRealtimeOwner.declareKuiklySurfaceRooms(
-                surfaceId = realtimeSurfaceId,
-                rooms = emptySet()
-        )
         removeSlockInputFontBridge()
         super.onDestroy()
         kuiklyRenderViewDelegator.onDetach()
@@ -186,7 +177,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
             context = applicationContext,
             source = "activity_on_resume"
         )
-        declareForegroundRealtimeRooms()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -692,35 +682,6 @@ class SlockKuiklyActivity : ComponentActivity(), KuiklyRenderViewBaseDelegatorDe
     internal fun requestRealtimeDisconnect(reason: String) {
         AndroidRealtimeKeepAliveController.stop(applicationContext, reason)
         AndroidAppScopeRealtimeOwner.disconnectForSessionEnd(reason)
-    }
-
-    internal fun requestRealtimeJoinChannel(channelId: String) {
-        if (channelId.isBlank()) return
-        AndroidAppScopeRealtimeOwner.joinChannel(ChannelId(channelId))
-    }
-
-    private fun declareForegroundRealtimeRooms() {
-        if (pageName != PAGE_THREAD) return
-        AndroidAppScopeRealtimeOwner.declareKuiklySurfaceRooms(
-            surfaceId = realtimeSurfaceId,
-            rooms = foregroundThreadRealtimeChannelIds().map(::ChannelId).toSet()
-        )
-    }
-
-    private fun foregroundThreadRealtimeChannelIds(): List<String> {
-        val data = runCatching { JSONObject(pageSpec?.pageData?.text.orEmpty()) }.getOrNull() ?: return emptyList()
-        val payload =
-                data.optString("payload")
-                        .takeIf { it.isNotBlank() }
-                        ?.let { payloadText -> runCatching { JSONObject(payloadText) }.getOrNull() }
-        return listOf("sourceThreadId", "streamChannelId", "threadId")
-                .flatMap { key ->
-                    listOfNotNull(
-                            data.optString(key).takeIf { it.isNotBlank() },
-                            payload?.optString(key)?.takeIf { it.isNotBlank() }
-                    )
-                }
-                .distinct()
     }
 
     private fun sendAppShellLifecycleEvent(event: String) {
@@ -1462,10 +1423,6 @@ internal class SlockKuiklyBridgeModule(
             "disconnect" ->
                     (activity as? SlockKuiklyActivity)?.requestRealtimeDisconnect(
                             request.optString("reason").ifBlank { "shared_disconnect" }
-                    )
-            "joinChannel" ->
-                    (activity as? SlockKuiklyActivity)?.requestRealtimeJoinChannel(
-                            request.optString("channelId")
                     )
         }
     }
