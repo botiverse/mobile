@@ -90,6 +90,35 @@ class SharedConversationDirectoryStoreTest {
     }
 
     @Test
+    fun replyThreadParentChannelIdDoesNotBecomeUniqueAliasWhenApiEchoesParentChannel() = runBlocking {
+        val logs = mutableListOf<String>()
+        val store = createStore(logger = logs::add)
+
+        store.upsertConversation(
+            serverId = serverId,
+            conversation = channelSummary(id = "parent-channel", name = "all"),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+        store.upsertConversation(
+            serverId = serverId,
+            conversation =
+                replyThreadSummary(
+                    id = "reply-stream-1",
+                    parentChannelId = "parent-channel",
+                    name = "Thread one",
+                    summaryChannelId = "parent-channel"
+                ),
+            source = SharedConversationDirectorySource.FreshApi
+        )
+
+        val state = store.observeServer(serverId).first()
+        assertEquals(emptyMap(), state.duplicateAliases)
+        assertTrue(logs.none { it.contains("conversation_directory_alias_conflict") })
+        assertEquals("all", assertNotNull(store.resolveProjection(serverId, "parent-channel")).title)
+        assertEquals("Thread one", assertNotNull(store.resolveProjection(serverId, "reply-stream-1")).title)
+    }
+
+    @Test
     fun projectionFlowEmitsWhenChannelEntityChanges() = runBlocking {
         val store = createStore()
         store.upsertConversation(
@@ -128,10 +157,15 @@ class SharedConversationDirectoryStoreTest {
             name = name
         )
 
-    private fun replyThreadSummary(id: String, parentChannelId: String, name: String): ConversationSummary =
+    private fun replyThreadSummary(
+        id: String,
+        parentChannelId: String,
+        name: String,
+        summaryChannelId: String = id
+    ): ConversationSummary =
         ConversationSummary(
             threadId = ThreadId(id),
-            channelId = ChannelId(id),
+            channelId = ChannelId(summaryChannelId),
             thread =
                 ThreadConversation(
                     parentChannelId = ChannelId(parentChannelId),

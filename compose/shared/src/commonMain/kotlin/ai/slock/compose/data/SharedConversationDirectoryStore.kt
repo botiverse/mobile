@@ -329,7 +329,11 @@ private fun ConversationSummary.toChannelEntityDraft(canonicalChannelId: String)
 private fun ConversationSummary.aliases(canonicalChannelId: String): Set<ConversationDirectoryAlias> =
     buildSet {
         add(ConversationDirectoryAlias(canonicalChannelId, SharedConversationAliasKind.Stream))
-        channelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Channel)) }
+        channelId
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+            ?.takeIf { kind != ConversationKind.Thread || it == canonicalChannelId }
+            ?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Channel)) }
         threadId.value.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Thread)) }
         thread?.streamChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.Stream)) }
         thread?.parentChannelId?.value?.takeIf { it.isNotBlank() }?.let { add(ConversationDirectoryAlias(it, SharedConversationAliasKind.ParentChannel)) }
