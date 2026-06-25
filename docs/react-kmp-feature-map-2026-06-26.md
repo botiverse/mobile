@@ -234,6 +234,334 @@ React source: third_party/slock-source HEAD detached `46f889b6f fix(search): sup
 
 ---
 
+## Feature Points Inventory (per @artin 01:48 "功能点也要分析出来呀")
+
+(per main 06-23 → 06-26 commit log, 抓出实际实现的功能点 per slice)
+
+### Slice 1: Auth — 功能点
+- `feat(auth)` login / register / forgot / choose-server / create-server 5 个 route 全部接通
+- 记住上次选择的 server per account (MMKV-backed per-account)
+- `rememberSelectedServerPerAccount` `pinServerRecoverySignOut` `protectServerSelectionFromTokenRaces` (server 切换竞态 保护)
+- `makeServerChooserScrollable` (server 选列表 滚动)
+- `alignAuthCopyCasing` (Copy 大小写统一)
+- `addLargeCreateAccountButton` (large variant button)
+- `tuneRaftTopLogoSize` `enlargeRaftTopBarLogo` `reduceRaftLogoIntrinsicSize` (logo size 多次调整)
+- `renderRaftLogoFromSvgAsset` (SVG asset 渲染)
+- `packageRaftLogoWithOhosAssets` (OHOS asset bundle)
+- `reuseSharedMmkvSessionStore` `storeSharedSessionInAuthMmkv` (session 持久化)
+- `packageSharedAuthTransport` (transport 抽象)
+- `addLoginLegalLinks` `addResetPasswordLegalLinks` `matchResetPasswordLegalCopy` (legal acceptance)
+- `hideMobileSocialEntryPoints` (per #308 隐藏 social connect)
+- `defaultActionButtonsToLarge` (button variant)
+
+**未接 (KMP 缺)**: EmailVerification / ResetPassword / InviteAccept / SocialAuthCallback / Device login / Human setup
+
+### Slice 2: Home — 功能点
+- `wireNotificationCenterThroughShell` (notification center route)
+- `showServerUnreadCountsInSwitcher` (server switcher 显示 unread)
+- `showActivityAndSavedBadges` (badges on activity / saved entries)
+- `sourceActivityBadgeFromInbox` (badge source = inbox)
+- `refreshActivityBadgeAfterReadActions` (read → badge 更新)
+- `refreshActivityBadgeSummaries` (summary refresh)
+- `refreshBadgesOnServerSwitch` / `clearBadgesBeforeServerRefresh` (server 切换 refresh)
+- `clampSavedCountAtHundred` (saved count cap 100)
+- `expandSavedCountPreload` (saved 预加载)
+- `seedStandaloneActivityFromPreload` / `seedStandaloneSavedFromPreload` (预加载 seed)
+- `refreshSecondaryHomePanels` (Home 次级 panel)
+- `routeSecondaryPanesThroughPager` (次级 panel → pager route)
+- `routeRealtimeAnnouncementsToNotifications` (realtime announcement → notification)
+- `restoreSidebarPullBounce` / `unifyPullRefreshIndicator` / `enablePrimaryPullRefresh` (pull refresh)
+- `removePullRefreshAffordance` (per #250 删除 pull-refresh, header spinner 替代)
+- `simplifyHeaderRefreshSpinner` / `lightenHeaderRefreshSpinner` (header spinner 简化)
+- `showHeaderRefreshAffordance` (header spinner 引入)
+- `normalizeSidebarSectionSpacing` (section spacing)
+- `keepRestoreLandingCentered` (landing page center)
+- `liftRestoreLandingBrandBlock` (brand block 位置)
+- `keepSelectedDmRowContentSize` (DM row 选中态不缩放)
+- `guardRapidConversationRowOpens` (rapid click 防爆)
+- `showBackButtonOnShellServerChooser` (server chooser back button)
+- `homeUnifyPullRefreshIndicator` (pull indicator 统一)
+- `parallelizeIndependentBootstrapRequests` (并行 bootstrap)
+- `keepActivityTotalOutOfUnreadBadge` (badge 数字规则)
+- `homeProjectRowsFromConversationDirectory` (rows source = directory)
+- `homeProjectDraftsFromComposerStore` (drafts source)
+- `homeScrollSecondaryPanelsToTopFromTitles` (title tap → scroll top)
+- `homeHandleSystemScrollToTop` (system scroll to top)
+- `homeRefineActivityCountAndSwitcherGestures` (switcher gestures)
+
+### Slice 3: Thread — 功能点 (核心: 状态 收敛)
+- `keepActionChromeOutOfContentSlice` (chrome 跟 content 分离)
+- `keepMembersOutOfContentSlice` / `keepRouteChromeOutOfContentSlice` (slice 拆分)
+- `splitTasksFromContentSlice` / `splitRouteIdentityFromContentSlice` (identity vs content)
+- `keepTaskStateByMessageIdentity` / `bindTaskStateByMessageIdentity` (task identity 绑定)
+- `projectLinkedTasksFromSharedStore` / `projectLinkedTaskStateIntoChat` (linked tasks 共享 store)
+- `useLinkedTaskProjectionForTaskActions` (task actions 走 linked projection)
+- `projectAgentStatusFromMembersStore` (agent status 走 members store)
+- `unifyMentionAgentStatus` (mention + agent status 统一)
+- `resolveAgentStatusByMemberStore` (member store 作为 source of truth)
+- `centerSystemMessageRows` / `alignSystemMessageContentRow` / `restoreCompactSystemMessageStyle` (system message 样式)
+- `topAlignTallFocusedMessages` (focused message top-align, per #395 滚动方向)
+- `softenFocusedRowCentering` (滚动定位缓和)
+- `showHeaderRefreshSpinner` (silent refresh indicator)
+- `applyTaskStatusPatchResponse` / `hydrateReplyTaskStatusFromParentChannel` (task status patch)
+- `promoteRepairedTaskIdOnStatusUpdate` (task id repair)
+- `preserveLinkedTaskStateOnRefresh` (refresh 不丢 task state)
+- `keepReplySendConfirmationInContent` / `anchorLocalSendsToBottom` (local send 锚定底部)
+- `allowSendingFirstReplyAfterStreamResolves` (stream 解析后允许 first send)
+- `revealFirstLocalReplySendImmediately` (本地 send 立即可见)
+- `persistFailedLocalSends` / `showReadableLocalSendFailureMessages` / `classifySendExceptions` (failed send 处理)
+- `addFailedSendMessageActions` (重试 UI)
+- `renderEmptyReplyThreadsAsEmpty` (空 reply thread 不显示 loading)
+- `renderEmptyDmRefreshAsEmptyState` (DM refresh 不 spinning)
+- `keepOlderPaginationStatusIconless` / `keepNewerLoadActionIconless` (分页 status icon 移除)
+- `openMemberProfilesFromAvatars` / `routeAvatarsToMemberDetail` / `openDmHeaderAvatarProfile` (avatar tap)
+- `preferPixelAvatarsForAgentMessages` / `preferAgentPixelAvatarsOverFallback` (avatar pixel)
+- `centralizeAvatarSlotResolution` (avatar slot 中心化)
+- `markInactiveMessageAuthors` (作者 inactive 标记)
+- `enrichAgentAvatarsBeforeFirstRender` (avatar 预渲染)
+- `projectRealtimeThroughSharedDomainOwner` (realtime 走 shared domain owner)
+- `routeTaskRealtimeByEventIdentity` (task realtime by event identity)
+- `recoverReplyCountRealtimeGaps` / `recoverVisibleGapsFromHeartbeatSeq` (gap recovery)
+- `syncRealtimeNewerGaps` (newer gaps sync)
+- `applyRealtimeToServerMemberStore` (presence 应用)
+- `keyThreadStateByRouteIdentity` / `carrySurfaceKindInRouteIdentity` (route identity)
+- `openReplyParentFromStandaloneThread` (reply parent)
+- `openMarkdownChannelRefs` (markdown refs)
+- `compileSendTargetDiagnostics` / `showSendFailureReason` (诊断)
+- `keepSystemTimestampInline` (时间戳 inline)
+- `keepWarmTaskProjectionDuringReload` (reload 保持 warm projection)
+- `stabilizeReactionUpdateOrdering` (reaction 顺序)
+- `preserveSelectedReactionsAcrossRefresh` (跨 refresh 保持 selected reactions)
+
+### Slice 4: Members — 功能点
+- `membersWireAgentProfileActions` (profile actions wired)
+- `membersUsePlainProfilePencilActions` (edit actions plain)
+- `membersSurfaceAgentRuntimeErrors` (runtime errors 展示)
+- `membersParseRuntimeModelCatalogs` / `membersLoadCreateAgentRuntimeModels` (runtime model loading)
+- `membersStreamSocketActivityTrajectoryEntries` (activity streaming)
+- `membersStreamAgentDetailActivityRows` (activity rows streaming)
+- `membersSerializeRuntimeConfigWithKindTags` (config + kind)
+- `membersSeedAgentDetailFromSharedCache` (seed from cache)
+- `membersRouteListRowsToDetailPage` (route list → detail)
+- `membersRouteHumanDetailByMemberKind` (route human detail)
+- `membersResolveAgentStatusDisplayOnce` (display once)
+- `membersRemoveSubtitleFromMembersPageHeader` (subtitle 移除)
+- `membersRemoveDuplicateProfileStatusAffordances` (dedup)
+- `membersRemoveDuplicateAgentProfileEditLabels` (dedup edit)
+- `membersRemoveAgent404HumanFallback` (404 fallback 移除)
+- `membersPulseStatusIndicators` (per #86 AD-4)
+- `membersPreserveCreatedAgentAvatars` (preserve avatar)
+- `membersPreserveCreateAgentSubmitFields` (preserve form fields)
+- `membersPreserveAgentDetailHeaderActions` (preserve actions)
+- `membersShowDetailLoadFailureState` (error state)
+- `membersShowAgentProfileDescription` / `showAgentCreatedDate` (per #91 done)
+- `membersStreamlineWorkspaceFilePreview` (workspace file preview)
+- `membersMakeReadOnlyLinkFieldsPannable` (read-only links pannable)
+- `membersLoadDetailRouteWithoutMembersHop` (direct detail)
+- `membersNoOpMissingDetailRoute` (no-op missing route)
+- `membersMatchAgentHeaderMenuActions` (per #71 three-dot icon)
+- `membersKeepDetailHeaderAvatarOverlayHidden` (avatar overlay hidden)
+- `membersKeepActivityLogScrollPinned` (activity log scroll pinned)
+- `membersInlineAvatarManagementVisual` (per #57 inline avatar)
+- `membersGuardAgentReasoningConfigByRuntime` (reasoning config guard)
+- `membersGuardAgentActivityFreshness` (activity freshness guard, per #74)
+- `membersFlattenAgentActivityTab` (activity tab 扁平)
+- `membersEditAgentRuntimeConfig` (runtime config edit)
+- `membersCopyFullInviteJoinUrl` / `membersCopyDisplayedInviteJoinLink` (invite copy)
+- `membersAlignReminderVisualFixture` (per #66 done)
+- `membersAlignProfileEditHeadings` (per #53 done)
+- `membersAlignInviteHumanDialogWithReact` (invite dialog)
+- `membersAlignDetailHeaderHeight` (header height)
+- `membersAlignChannelSourceBadges` (channel source badges)
+- `membersAlignAgentProfileSections` (profile sections)
+- `membersAlignAgentDetailMetadata` (detail metadata)
+- `membersAlignActivityEmptyState` (activity empty state)
+- `membersAlignActionMenuToTriggerEdge` (action menu alignment)
+- `feat(agent-detail)` add Permissions tab spec (per #89 AD-3 done)
+- `membersUnframeAgentActivityList` (activity list unframed)
+
+### Slice 5: Settings — 功能点
+- `settingsRouteComputerDetailThroughStore` (computer detail via store)
+- `settingsShareReadOnlyFieldAppearance` (read-only field)
+- `settingsUpdateSubtitleForMembersPageToWorkspaceMembers` (subtitle)
+- `settingsRestoreApiEnvironmentPresets` (API env presets)
+- `settingsRemoveWrongTypeFilterInSystemChannelParser` (type filter fix)
+- `settingsRemoveSubtitlesFromMembersAndSettingsHeaders` (subtitle 移除)
+- `settingsRemoveSecondaryPageIntroCards` (intro cards 移除)
+- `settingsRemoveDiagnosticsLogPreview` (diagnostics preview)
+- `settingsRemoveAccountAvatarUploadCopy` (avatar upload copy)
+- `settingsPruneDiagnosticsProfilerDetailSections` (diagnostics prune)
+- `settingsPrefixAccountHeaderHandle` (handle prefix)
+- `settingsPolishAccountProfileDetails` (account polish)
+- `settingsMoveApiEnvironmentSwitchingToFormPage` (env switcher)
+- `settingsMergeAuthDiagnosticsIntoDiagnostics` (diagnostics merge)
+- `settingsImportJsonParser` (JSON parser import)
+- `settingsHonorConfiguredWebUrls` (web URLs)
+- `settingsClarifyDeveloperEnvironmentSwitcher` (dev env switcher clarify)
+- `settingsCentralizeApiEnvironmentStore` (env store centralize)
+- `settingsBrutalizeComputersListControls` (brutal style)
+- `settingsBackStandaloneRoutesWithSharedStore` (standalone routes with shared store)
+- `settingsAttachDiagnosticsDraftToChannelComposer` (diagnostics draft to composer)
+- `settingsAlignTabIcons1:1ToReact` (tab icons alignment)
+- `settingsAlignServerProfileBrutalVisuals` (server profile brutal)
+- `settingsAlignNotificationToggleDefault` (notification toggle default)
+- `settingsAlignBillingAndDangerVisuals` (billing/danger visuals, per #232 done)
+- `settingsAlignAccountCardWithReact` (account card)
+- `settingsAlignAccountAvatarProviders` (avatar providers)
+- `feat(settings)` add Computers header + button + AddMachineDialog flow
+- `feat(settings)` declutter Server Profile page (only Profile section)
+- `feat(settings)` add System Channels section to Administration tab
+- `feat(settings)` reorder tabs 1:1 to React + add Administration tab
+
+### Slice 6: Tasks — 功能点
+- `threadHydrateReplyTaskStatusFromParentChannel` (task status hydration, per #49843b0f)
+- `threadKeepScopedTasksInSync` (scoped tasks sync)
+- `threadProjectLinkedTasksFromSharedStore` / `projectLinkedTaskStateIntoChat` (shared store)
+- `threadUseLinkedTaskProjectionForTaskActions` (linked tasks projection)
+- `threadApplyTaskStatusPatchResponse` (patch response apply)
+- `threadKeepWarmTaskProjectionDuringReload` (warm reload)
+- `threadMatchLinkedTasksByTaskIdentity` (task identity match)
+- `threadHideTaskToggleInReplyComposer` (hide task toggle in reply)
+- `threadClampJointReplyLaunchTaskActions` (joint reply clamp)
+- `threadIsolateTasksJoinState` (per #318 Codex-Kuikly-MP)
+- `threadHideUnresolvedTaskAssigneeChips` (hide unresolved assignee chips)
+- `threadKeepJointChannelTaskActionsHidden` (joint task actions hidden)
+- `threadRepairStaleTaskCacheFromServerDeltas` (stale cache repair)
+- `threadRestoreChannelTasksFromSqlCache` (restore from SQL cache)
+- `membersParseRuntimeModelCatalogs` (runtime model parsing)
+
+### Slice 7: Search — 功能点
+- `fix(search)` support multiple sender filters (per #285 in_progress, slock-source HEAD 46f889b6f)
+- `visualTestingAlignThreadMessageRowFixture` (fixture alignment)
+- `visualTestingUseRealSearchFilterPopover` (popover use real)
+- `homeShowSearchingStateForLiveSearch` (searching state)
+- `homeImportConversationStreamHelper` (stream helper)
+- `homeUnifyPullRefreshIndicator` (pull refresh unified)
+- `homeProjectRowsFromConversationDirectory` (rows source)
+- `homeClampSavedCountAtHundred` (saved cap 100)
+
+### Slice 8: Saved — 功能点
+- `homeClampSavedCountAtHundred` (cap 100 + 99+ display, per #304 done)
+- `homeExpandSavedCountPreload` (preload expand)
+- `homeSeedStandaloneSavedFromPreload` (seed from preload)
+- `homeSimplifySavedLoadingState` (saved loading simple)
+- `homeRefreshActivityBadgeAfterReadActions` (badge refresh after read)
+- `homeClampSavedCountAtHundred` (saved count cap)
+- `savedShowGenericDownloadControls` (file preview in saved)
+- `savedRightIcon` (right icon alignment, per @artin 23:14 feedback 待 React parity)
+
+### Slice 9: Activity (Inbox / Threads) — 功能点
+- `activityShareActivityStoreAcrossShells` (per #6a890a94 main HEAD, shared store across shells)
+- `activityRouteStandaloneRefreshThroughShellStore` (route standalone refresh)
+- `activitySubscribeStandaloneRealtime` (subscribe standalone realtime)
+- `activityDetectHiddenUnreadUpdates` (detect hidden updates)
+- `activitySurfaceNewUpdateJump` (new update jump)
+- `activityClearUnreadCacheOnOpen` (clear unread on open)
+- `activityResolveSenderNamesFromMembers` (resolve sender names)
+- `activityKeepSenderNamesSourcedFromProfiles` (sourced from profiles)
+- `activityUseProfileNamesForPreviews` (use profile names for previews)
+- `activityRefreshSecondaryHomePanels` (refresh secondary home)
+- `activityRoundUnreadChips` (unread chips round)
+- `activityKeepActivityTotalOutOfUnreadBadge` (badge count rule)
+- `activityRefreshActivityBadgeAfterReadActions` (badge refresh after read)
+- `activityRefreshActivityBadgeSummaries` (badge summary refresh)
+- `sourceActivityBadgeFromInbox` (badge source)
+- `homeTrustLoadedActivityUnreadBadge` (trust loaded badge)
+
+### Slice 10: Realtime — 功能点
+- `nativeSurfaceForegroundRealtimeNotifications` (foreground realtime)
+- `nativeRetryRealtimeOwnerAfterAuthRestore` (retry after auth restore)
+- `nativeRetainRealtimeRoomsWhilePaused` (rooms while paused)
+- `nativePostUnreadNotificationsFromBackgroundRealtime` (background notif)
+- `nativeLimitRealtimeFanoutToForeground` (fanout limited)
+- `nativeObserveNamespacedKeepalivePreference` (keepalive pref, per #112 done)
+- `nativeGateRealtimeKeepaliveBehindSetting` (gate keepalive, per #105 done)
+- `threadProjectRealtimeThroughSharedDomainOwner` (shared domain owner, per #370 Cindy done)
+- `threadRefactorNativeRealtimeIntoAppScopeOwnerWithKuiklyFanout` (per #371 Codex-Kuikly-KMP)
+- `threadCompileSendTargetDiagnostics` (send target diagnostics)
+- `threadApplyTaskStatusPatchResponse` (patch response)
+- `threadRecoverVisibleGapsFromHeartbeatSeq` (heartbeat recovery)
+- `threadRecoverReplyCountRealtimeGaps` (reply count gap)
+- `threadSyncRealtimeNewerGaps` (newer gaps sync)
+- `threadUpdateBoundaryReplyCountFromLiveReplies` (boundary reply count)
+- `threadMapRealtimeMessagesToOwningChannel` (realtime → owning channel)
+- `threadKeepRealtimeVisibleWhenCacheIsStale` (visible when cache stale)
+- `threadKeepRealtimeParentUpdatesOutOfReplies` (parent updates not in replies)
+- `threadStopConsumingRawRealtimeEvents` (stop raw consume)
+- `threadBroadcastCacheInvalidationsThroughNotify` (broadcast cache invalidations)
+- `membersStreamSocketActivityTrajectoryEntries` (socket activity streaming)
+- `membersGuardAgentActivityFreshness` (activity freshness guard, per #74 AD-4 in_progress)
+- `realtimeKeepAlive` (per #105 done)
+
+### Slice 11: VisualTesting / Diagnostics / Owner onboarding / Release notes / Announcements / Reminders — 功能点
+- `feat(#100)` Android host consumer of `bridge.appBadge` for launcher icon badge (per #100 done, #103 done)
+- `chore(visual-testing)` capture auth screens (06-24 per #218 done)
+- `chore(visual-testing)` capture server danger modal (per #209)
+- `chore(visual-testing)` prefix component fixture cases
+- `chore(visual-testing)` split component and screen coverage (per #214 Cindy done, #218 done)
+- `chore(visual-testing)` activate members agent detail tabs (per #229 done)
+- `chore(visual-testing)` activate members activity route case
+- `chore(visual-testing)` activate composer suggestion cases
+- `chore(visual-testing)` align thread message row fixture
+- `chore(visual-testing)` use thumbs-up reaction fixture
+- `chore(visual-testing)` use real search filter popover
+- `chore(visual-testing)` unify register input fixture
+- `chore(visual-testing)` align settings danger modal
+- `chore(visual-testing)` align agent lifecycle action case
+- `chore(visual-testing)` activate members agent detail tabs
+- `chore(visual-testing)` activate members activity route case
+- `chore(visual-testing)` activate composer suggestion cases
+- `chore(visual-testing)` activate agent detail tabs (per #218 done)
+- `feat(native)` keep realtime alive in background (per #105 done)
+- `feat(ohos)` export Bugly diagnostics feedback archive (per #111 done)
+- `feat(android)` attach diagnostics to Bugly (per #111 done)
+- `feat(android)` export feedback from Bugly diagnose logs (per #111 done)
+- `feat(native)` expand android bugly diagnostics (per #111 done)
+- `feat(native)` add Kuikly MMKV preference backend (per #96 done, #98 done)
+- `feat(settings)` add Computers header + button + AddMachineDialog flow
+- `feat(settings)` declutter Server Profile page
+- `feat(settings)` add System Channels section to Administration tab
+- `feat(settings)` reorder tabs 1:1 to React + add Administration tab
+
+### Slice 12: Native — 功能点
+- `feat(native)` keep realtime alive in background (per #105 done)
+- `feat(native)` add Kuikly MMKV preference backend (per #96 done)
+- `feat(native)` expand android bugly diagnostics (per #111 done)
+- `feat(native)` surface foreground realtime notifications (per #103 done)
+- `feat(ohos)` add activity and agent widgets (per #283 done)
+- `feat(android)` add raft launcher widgets (per #110 done)
+- `feat(gradle)` add toolchain configuration for multiple platforms
+- `feat(android)` attach diagnostics to Bugly (per #111 done)
+- `feat(android)` export feedback from Bugly diagnose logs
+- `feat(ohos)` export Bugly diagnostics feedback archive
+- `feat(ohos)` add activity and agent widgets
+- `feat(android)` add raft launcher widgets
+- `feat(#100)` Android host consumer of `bridge.appBadge` for launcher icon badge (per #100 done)
+- `filePreviewShowGenericDownloadControls` / `showDownloadProgressImmediately` / `showDownloadProgressAndSpeed` / `streamAttachmentDownloadControls` / `manageDownloadedAttachmentCache` / `routeUnsupportedAttachmentsUniformly` / `polishFileIconsAndInstallFlow` / `generateCommonFileIcons`
+- `nativePreviewTextLikeFiles` (per #421 Pi-Worker1 in_progress)
+- `nativePostUnreadNotificationsFromBackgroundRealtime`
+- `nativeSurfaceForegroundRealtimeNotifications`
+- `nativeRemoveForegroundHomeNotifications`
+- `nativeRetainRealtimeRoomsWhilePaused`
+- `nativeRetryRealtimeOwnerAfterAuthRestore`
+- `nativeRequireMmkvPreferenceBackend` (per #96 done)
+- `nativeLimitRealtimeFanoutToForeground`
+- `nativeAvoidPullRefreshBridgeCrash`
+- `androidUseTdlogAsDiagnosticsSink` (Bugly TDLog, per #111 done)
+- `androidUseImageLauncherForeground` / `regenerateLauncherIcons` / `shrinkLauncherIconMark` / `shrinkAdaptiveLauncherForeground` / `restoreWhiteLauncherIconFill` / `insetAdaptiveLauncherForeground` (launcher icon polish per #95 #110 done)
+- `androidRegisterMmkvModuleAndExtractNativeLibs` (MMKV module registration)
+- `androidRegisterKuiklyModulesEagerly` / `androidRegisterKuiklyVideoViewAdapter` (Kuikly module registration, per #112 done)
+- `androidUse16kbAlignedNativeDeps` / `androidCenterKuiklyTextGlyphMetrics` / `androidAlignKuiklyTextBaseline` / `androidAlignCjkTextBaseline` (Kuikly baseline fixes)
+- `androidRequestNotificationPermissionBeforeTestPush` / `androidGateVerboseTraceLogging`
+- `androidOpenUnreadNotificationsInThread` / `androidBackgroundAppShellOnRootBack` (notifications + root back)
+- `androidPreserveGestureNavBottomInset` (gesture nav inset)
+- `androidObserveNamespacedKeepalivePreference` / `androidGateRealtimeKeepaliveBehindSetting` (keepalive, per #105 #112 done)
+- `androidAddRaftLauncherWidgets` (per #110 done)
+- `androidAvoidDoubleBottomSafeArea` (per #101 done)
+- `ohosUnblockSharedAndHapBuilds` / `ohosSupportApiEnvironmentSwitching` / `ohosStreamAttachmentDownloadProgress` / `ohosForwardRealtimeEventsThroughSharedMapper` / `ohosDensifyDesktopWidgets` / `ohosCacheOpenedAttachments` / `ohosAvoidRuntimeConfigRegexInitCrash` / `ohosAddStartWindowFieldsToConfigAbility` (OHOS platform fixes)
+
+---
+
 ## Slice 11: VisualTesting / Diagnostics / Owner onboarding / Release notes / Announcements / Reminders
 
 **React 現状**:
