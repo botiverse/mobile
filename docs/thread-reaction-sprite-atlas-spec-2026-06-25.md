@@ -56,7 +56,25 @@ compose/shared/src/commonMain/assets/reactions/reaction-atlas-v1.png
 compose/shared/src/commonMain/assets/reactions/reaction-atlas-v1.json
 ```
 
-If a target cannot crop from `commonMain/assets` directly, the platform bridge may copy/package the same files into the platform resource system. The source of truth remains the shared asset path and JSON schema above.
+Runtime URI convention:
+
+```text
+assets://reactions/reaction-atlas-v1.png
+assets://reactions/reaction-atlas-v1.json
+```
+
+The source of truth is the shared asset path and JSON schema above. Platform packaging must preserve the `reactions/` relative path so common code never builds Android-only or OHOS-only resource strings.
+
+Android packaging requirement:
+
+- `compose/shared/src/commonMain/assets` must be included in the Android app assets.
+- Atlas lookup should resolve `assets://reactions/reaction-atlas-v1.png` to the Android packaged asset.
+
+OHOS packaging requirement:
+
+- The same files must be copied or generated into `compose/ohosApp/entry/src/main/resources/resfile/reactions/`.
+- Runtime lookup should resolve `assets://reactions/reaction-atlas-v1.png` to `resfile/reactions/reaction-atlas-v1.png`.
+- `compileKotlinOhosArm64` alone is not sufficient proof. Implementation acceptance must include either an HAP/runtime smoke or a deterministic file-existence/package check for both atlas PNG and catalog under `resfile/reactions/`.
 
 ## Manifest Schema
 
@@ -139,6 +157,23 @@ The first manifest should cover every current quick reaction and current Canvas 
 
 The quick reaction row should be derived from catalog order, not a hard-coded emoji list. If product wants different quick reactions later, update manifest order or add an explicit `quickOrder` array.
 
+## Catalog Loading Boundary
+
+The recommended first implementation is **build-time generated Kotlin catalog**:
+
+1. Keep `reaction-atlas-v1.json` as the source of truth.
+2. Add a Gradle or checked-in generation step that validates the JSON and emits a commonMain Kotlin catalog, for example `GeneratedThreadReactionCatalog.kt`.
+3. Common UI reads the generated catalog synchronously and does not need runtime asset-text IO.
+4. Unit tests parse the JSON source directly to verify it still matches the generated Kotlin catalog.
+
+This avoids adding a new runtime asset-text bridge just for reactions. If implementation instead chooses runtime JSON loading, it must first add a common `BridgeModule.readAssetText(assetPath)` boundary and actual Android/OHOS implementations:
+
+- Android must read app assets by relative path, e.g. `reactions/reaction-atlas-v1.json`.
+- OHOS must read `resfile/reactions/reaction-atlas-v1.json`.
+- Both platforms must expose the same failure semantics and low-cardinality diagnostics.
+
+Do not implement a common parser that can only pass JVM/unit tests while the real common UI has no way to read the JSON on device.
+
 ## Runtime Model
 
 Add commonMain catalog types near Thread presentation code or a small `reaction` package:
@@ -167,12 +202,20 @@ Use this boundary:
 - UI input: `KuiklyThreadReactionItem.emoji` or quick menu selected sprite.
 - Lookup: `catalog.resolve(reaction.emoji)`.
 - Render: if lookup succeeds, draw the atlas crop; otherwise use existing fallback.
-- Toggle: always send `sprite.apiValue` for quick reactions and the original `reaction.emoji` for existing message reaction chips unless the resolved sprite explicitly normalizes aliases to `apiValue`.
+- Toggle: resolved catalog reactions use the alias normalization rule below; unknown reactions keep current raw `reaction.emoji` behavior.
 
-Alias normalization recommendation:
+Alias normalization rule:
 
-- For quick reactions, use `apiValue` directly.
-- For incoming message reactions, display the resolved sprite for any alias, but preserve the original stored value when toggling an already-present chip. This avoids changing semantics for historical data until the backend confirms normalization.
+- `ThreadReactionSprite.name` is the presentation grouping key.
+- Incoming message reactions that resolve to the same `name` must be merged into one visible chip.
+- The visible chip count is the sum of alias-equivalent reaction counts.
+- The visible chip `selected` state is true if any alias-equivalent raw reaction is selected by the current user.
+- Quick reaction selected-state detection must compare by `name`, not raw emoji.
+- Quick reaction toggle payload should use `apiValue`.
+- If a visible alias group contains selected raw aliases and the user taps the quick reaction to remove their reaction, remove every selected raw alias in that group or call the canonical remove flow repeatedly for each selected raw value the local model can prove. If the API only supports one removal and selected alias identity is ambiguous, prefer removing the canonical `apiValue` and then refresh the message rather than leaving duplicate selected chips.
+- Pending/rollback keys must be based on `(messageId, sprite.name)` for resolved catalog reactions, not `(messageId, rawEmoji)`. Unknown reactions keep the existing `(messageId, rawEmoji)` key.
+
+This rule prevents a message with both `☑️` and `✅` from rendering two identical Done chips after atlas migration. It also prevents the quick row from adding canonical `✅` while an alias-equivalent selected `☑️` is already present.
 
 ## Rendering Contract
 
@@ -190,7 +233,7 @@ fun ThreadReactionSpriteIcon(
 
 Expected behavior:
 
-1. Load/remember the manifest once per process or app shell.
+1. Load/remember the generated catalog once per process or app shell. If runtime JSON loading is chosen, read and validate the manifest through the explicit common bridge from the Catalog Loading Boundary section.
 2. Resolve `value` through alias map.
 3. Draw the atlas region into the given bounds with `ContentScale.Fit`.
 4. Use transparent background; chip/menu background remains owned by existing components.
@@ -231,18 +274,20 @@ KMM string resources can still own generic grammar such as "reaction" or "You re
 ## Migration Steps
 
 1. Add the atlas PNG and JSON manifest under `commonMain/assets/reactions/`.
-2. Add a common manifest parser/validator with unit tests using the initial catalog.
-3. Add a `ThreadReactionCatalogProvider` that exposes:
+2. Add Android and OHOS packaging for `assets://reactions/*`; OHOS must place files under `entry/src/main/resources/resfile/reactions/`.
+3. Add a manifest validator and generated commonMain Kotlin catalog, or add the explicit runtime `readAssetText` bridge before using a common parser on device.
+4. Add a `ThreadReactionCatalogProvider` that exposes:
    - `resolve(value)`;
    - `quickReactions()`;
    - `label(value, locale)`.
-4. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
-5. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.apiValue }` or a typed quick reaction model.
-6. Replace `ThreadQuickReactionGlyph` internals:
+5. Add alias-equivalent merge logic for message reaction chips and quick-row selected detection.
+6. Add `ThreadReactionSpriteIcon` and platform source-rect drawing support.
+7. Replace `ThreadQuickReactionEmojis` with `catalog.quickReactions().map { it.apiValue }` or a typed quick reaction model.
+8. Replace `ThreadQuickReactionGlyph` internals:
    - supported sprite -> atlas crop;
    - unsupported/missing asset -> current fallback.
-7. Keep existing chip layout, counts, selected state, and click handling.
-8. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
+9. Keep existing chip layout, counts, selected state, and click handling.
+10. Remove hand-drawn Canvas glyph branches only after screenshots confirm atlas parity.
 
 ## Tests
 
@@ -251,6 +296,9 @@ Unit tests:
 - Manifest parser rejects duplicate `name`, duplicate alias, missing `en`, out-of-bounds rect, and unsupported `schemaVersion`.
 - Current quick reactions resolve to the expected `name` and `apiValue`.
 - Existing aliases (`❤`, `☑️`, `✔️`, `✓`) resolve to the intended sprite.
+- Alias-equivalent incoming reactions merge into one visible chip by `ThreadReactionSprite.name`.
+- Quick reaction selected detection treats alias-equivalent selected reactions as already selected.
+- Pending and rollback keys use `(messageId, sprite.name)` for resolved catalog reactions and do not duplicate alias/canonical toggles.
 - Locale lookup falls back exact -> script -> language -> `en` -> `name`.
 - Quick reaction order is stable.
 - Unknown reaction values fall back without crashing.
@@ -261,7 +309,10 @@ Rendering / smoke tests:
 - Existing reaction chips render atlas icons plus counts without changing chip dimensions.
 - Selected chip background and count text remain unchanged.
 - Missing/corrupt manifest falls back to text/legacy glyphs and reaction toggles still call the existing API.
+- Missing OHOS `resfile/reactions/*` assets fall back and emit a diagnostic that identifies the missing asset path without crashing.
+- A message containing both alias and canonical values, e.g. `☑️` plus `✅`, renders one Done chip with merged count/selected state.
 - Android and OHOS shared compile pass after introducing the resource path and source-rect primitive.
+- OHOS packaging check or HAP smoke proves both atlas PNG and catalog are available from `resfile/reactions/`; Kotlin compile alone is not enough.
 
 Suggested commands for implementation PR:
 
@@ -276,7 +327,10 @@ cd compose
 
 - A checked-in spec defines the atlas and manifest contract.
 - Future implementation has one JSON manifest with stable names, crop rectangles, aliases, API values, and labels.
+- Runtime catalog access is explicit: either generated commonMain Kotlin catalog from JSON source of truth, or a common `readAssetText` bridge implemented on Android and OHOS.
+- Android and OHOS resolve the same `assets://reactions/...` URI convention, with OHOS packaging under `resfile/reactions/`.
 - UI reaction add/remove behavior remains compatible with existing server emoji payloads.
+- Alias-equivalent reactions use one visible chip and quick-row selected/toggle logic is keyed by catalog `name`.
 - Quick reaction menu and reaction chips use the same catalog.
 - Unsupported reactions still render and remain clickable.
 - No per-icon coordinates are hard-coded in `ThreadPage.kt`.
