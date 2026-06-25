@@ -401,6 +401,7 @@ internal fun SharedCreateAgentDialog(
     onDismiss: () -> Unit,
     onSubmit: (SharedCreateAgentDialogSubmit) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var name by remember(initialName) { mutableStateOf(initialName) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var runtime by remember(initialRuntime) { mutableStateOf(initialRuntime.ifBlank { RUNTIMES.first().id }) }
@@ -575,6 +576,7 @@ internal fun SharedCreateAgentDialog(
                             enabled = !submitting,
                             onSelect = { id ->
                                 if (requiredComputer.isNullOrBlank() || id == requiredComputer) {
+                                    focusManager.clearFocus(force = true)
                                     selectedMachineId = id
                                     resetRuntimeForMachine(id)
                                 }
@@ -904,7 +906,10 @@ internal fun AdvancedRuntimeSection(
             placeholder = "Select runtime",
             enabled = runtimeEnabled,
             rowHeight = 36.dp,
-            onSelect = { option -> onRuntimeChange(option.id) }
+            onSelect = { option ->
+                focusManager.clearFocus(force = true)
+                onRuntimeChange(option.id)
+            }
         )
         runtimeAvailabilityError?.let { error ->
             Text(
@@ -925,6 +930,7 @@ internal fun AdvancedRuntimeSection(
                 enabled = enabled,
                 rowHeight = 36.dp,
                 onSelect = { option ->
+                    focusManager.clearFocus(force = true)
                     onProviderModeChange(option.id)
                     if (option.id != RUNTIME_PROVIDER_MODE_CUSTOM) {
                         onProviderApiUrlChange("")
@@ -1046,6 +1052,7 @@ internal fun AdvancedRuntimeSection(
                 enabled = enabled,
                 rowHeight = 36.dp,
                 onSelect = { option ->
+                    focusManager.clearFocus(force = true)
                     onReasoningEffortChange(
                         if (option.id == CREATE_AGENT_DEFAULT_REASONING_ID) null else option.id
                     )
@@ -1073,7 +1080,10 @@ internal fun AdvancedRuntimeSection(
         }
         AdvancedToggleButton(
             open = advancedOpen,
-            onToggle = { onAdvancedOpenChange(!advancedOpen) }
+            onToggle = {
+                focusManager.clearFocus(force = true)
+                onAdvancedOpenChange(!advancedOpen)
+            }
         )
         if (advancedOpen) {
             Column(
