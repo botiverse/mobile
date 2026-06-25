@@ -4130,6 +4130,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         patch.membersCount > 0 ||
             patch.members.isNotEmpty() ||
             patch.memberCandidates.isNotEmpty()
+    val mergedChannelKind = mergedThreadChannelKind(patch)
     val nextSubtitle =
         patch.subtitle
             ?: if (patch.surfaceKind == KuiklyThreadSurfaceKind.ReplyThread && !patch.showModeTabs) {
@@ -4142,7 +4143,7 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         title = patch.title,
         subtitle = nextSubtitle,
         surfaceKind = patch.surfaceKind,
-        channelKind = patch.channelKind,
+        channelKind = mergedChannelKind,
         sourceThreadId = patch.sourceThreadId,
         streamChannelId = patch.streamChannelId,
         parentChannelId = patch.parentChannelId,
@@ -4197,6 +4198,28 @@ internal fun KuiklyThreadScreenPayload.withContentPatchFrom(patch: KuiklyThreadS
         dmPeerGravatarUrl = patch.dmPeerGravatarUrl
     ).withOriginReplyCountAtLeastLoadedReplies()
 }
+
+private fun KuiklyThreadScreenPayload.mergedThreadChannelKind(patch: KuiklyThreadScreenPayload): String {
+    if (surfaceKind != KuiklyThreadSurfaceKind.Channel || patch.surfaceKind != KuiklyThreadSurfaceKind.Channel) {
+        return patch.channelKind
+    }
+    if (!isUsableCachedPayloadForRoute(patch)) {
+        return patch.channelKind
+    }
+    val currentKind = channelKind.trim()
+    val patchKind = patch.channelKind.trim()
+    return if (currentKind.isSpecificThreadChannelKind() && patchKind.isDefaultThreadChannelKind()) {
+        channelKind
+    } else {
+        patch.channelKind
+    }
+}
+
+private fun String.isDefaultThreadChannelKind(): Boolean =
+    isBlank() || equals("channel", ignoreCase = true)
+
+private fun String.isSpecificThreadChannelKind(): Boolean =
+    isNotBlank() && !isDefaultThreadChannelKind()
 
 internal fun KuiklyThreadScreenPayload.withMembersPatchFrom(patch: KuiklyThreadScreenPayload): KuiklyThreadScreenPayload =
     copy(
