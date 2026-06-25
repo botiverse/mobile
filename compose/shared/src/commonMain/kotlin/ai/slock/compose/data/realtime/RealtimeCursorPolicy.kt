@@ -1,6 +1,7 @@
 package ai.slock.compose.data.realtime
 
 import ai.slock.compose.model.Heartbeat
+import ai.slock.compose.model.ChannelId
 import ai.slock.compose.model.MessageNew
 import ai.slock.compose.model.MessageUpdated
 import ai.slock.compose.model.RealtimeEvent
@@ -57,6 +58,31 @@ object RealtimeCursorPolicy {
         return copy(
             appliedLastSeq = applied,
             serverMaxSeq = maxOf(serverMaxSeq, applied),
+        )
+    }
+}
+
+data class RealtimeVisibleStreamGapRequest(
+    val channelId: ChannelId,
+    val sinceSeq: Long,
+    val serverSeq: Long
+)
+
+object RealtimeVisibleStreamGapPolicy {
+    fun syncRequest(
+        channelId: ChannelId?,
+        visibleMaxSeq: Long,
+        serverSeq: Long,
+        loading: Boolean = false
+    ): RealtimeVisibleStreamGapRequest? {
+        if (loading) return null
+        val streamId = channelId ?: return null
+        val sinceSeq = visibleMaxSeq.takeIf { it > 0L } ?: return null
+        if (serverSeq <= sinceSeq) return null
+        return RealtimeVisibleStreamGapRequest(
+            channelId = streamId,
+            sinceSeq = sinceSeq,
+            serverSeq = serverSeq
         )
     }
 }

@@ -46,6 +46,41 @@ class RealtimeCursorPolicyTest {
         assertEquals(45L, afterResume.resumeLastSeq)
     }
 
+    @Test
+    fun visibleGapRequestUsesVisibleStreamSeq() {
+        val request =
+            RealtimeVisibleStreamGapPolicy.syncRequest(
+                channelId = ChannelId("channel-1"),
+                visibleMaxSeq = 10,
+                serverSeq = 90
+            )
+
+        assertEquals(ChannelId("channel-1"), request?.channelId)
+        assertEquals(10L, request?.sinceSeq)
+        assertEquals(90L, request?.serverSeq)
+    }
+
+    @Test
+    fun visibleGapRequestSkipsWhenVisibleStreamCaughtUpOrLoading() {
+        assertEquals(
+            null,
+            RealtimeVisibleStreamGapPolicy.syncRequest(
+                channelId = ChannelId("channel-1"),
+                visibleMaxSeq = 90,
+                serverSeq = 90
+            )
+        )
+        assertEquals(
+            null,
+            RealtimeVisibleStreamGapPolicy.syncRequest(
+                channelId = ChannelId("channel-1"),
+                visibleMaxSeq = 10,
+                serverSeq = 90,
+                loading = true
+            )
+        )
+    }
+
     private fun message(seq: Long): Message =
         Message(
             id = MessageId("message-$seq"),

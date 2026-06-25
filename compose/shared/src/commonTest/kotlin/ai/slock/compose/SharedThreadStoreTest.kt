@@ -4509,6 +4509,55 @@ class SharedThreadStoreTest {
     }
 
     @Test
+    fun realtimeGapRecoverySyncsFromVisiblePayloadSeqWhenPagingGateIsClosed() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("gap body", id = "m12", seq = 12)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 90))
+
+        val payload = store.state.value.payload
+        assertEquals(listOf("current body", "gap body"), payload.messages.map { it.body })
+        assertEquals(listOf(10L), api.syncSinceSeqs)
+        assertEquals(false, payload.canLoadMoreAfter)
+        assertEquals("idle", payload.newerMessagesStatus)
+        scope.cancel()
+    }
+
+    @Test
+    fun realtimeGapRecoverySkipsWhenVisiblePayloadAlreadyCaughtUp() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val api =
+            FakeThreadApi(
+                bodyText = messagesResponse("current body", id = "m10", seq = 10, historyLimited = false),
+                newerBodyText = syncResponse("unused", id = "m12", seq = 12)
+            )
+        val dataSource =
+            SharedThreadDataSource(
+                networkApi = api,
+                sessionStore = InMemorySlockAuthSessionStore(sampleSession())
+            )
+        val store = SharedThreadStore(dataSource = dataSource, scope = scope)
+        store.accept(SharedThreadIntent.Start(basePayload().copy(canLoadMoreAfter = false)))
+
+        store.accept(SharedThreadIntent.RecoverRealtimeGap(serverSeq = 10))
+
+        assertEquals(emptyList(), api.syncSinceSeqs)
+        assertEquals(listOf("current body"), store.state.value.payload.messages.map { it.body })
+        scope.cancel()
+    }
+
+    @Test
     fun loadNewerMessagesMergesSystemRowsFromSyncRecovery() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val api =
