@@ -4,11 +4,13 @@ package ai.slock.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import com.tencent.kuikly.compose.coil3.AsyncImagePainter
 import com.tencent.kuikly.compose.extension.RefFunc
 import com.tencent.kuikly.compose.extension.keyboardHeightChange
 import com.tencent.kuikly.compose.extension.nativeRef
@@ -96,10 +98,19 @@ fun SlockCachedImage(
     source: String?,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    contentScale: ContentScale = ContentScale.Fit
+    contentScale: ContentScale = ContentScale.Fit,
+    onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
+    val painter = rememberAsyncImagePainter(source)
+    if (onImageStateChange != null) {
+        val imageState by painter.state.collectAsState()
+        val stateCallback by rememberUpdatedState(onImageStateChange)
+        LaunchedEffect(imageState) {
+            stateCallback.invoke(imageState)
+        }
+    }
     Image(
-        painter = rememberAsyncImagePainter(source),
+        painter = painter,
         contentDescription = contentDescription,
         modifier = modifier,
         contentScale = contentScale
@@ -114,8 +125,10 @@ internal fun SlockAspectFitImagePreviewSurface(
     placeholderLabel: String = "IMG",
     backgroundColor: Color = SlockColor.SurfaceCream,
     borderWidth: Dp = SlockStroke.Default,
-    zoomable: Boolean = false
+    zoomable: Boolean = false,
+    showLoadingIndicator: Boolean = false
 ) {
+    var imageState by remember(source) { mutableStateOf<AsyncImagePainter.State>(AsyncImagePainter.State.Empty) }
     Box(
         modifier = modifier
             .background(backgroundColor)
@@ -127,13 +140,22 @@ internal fun SlockAspectFitImagePreviewSurface(
                 SlockZoomableCachedImage(
                     source = source,
                     contentDescription = contentDescription,
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    onImageStateChange = { imageState = it }
                 )
             } else {
                 SlockCachedImage(
                     source = source,
                     contentDescription = contentDescription,
                     contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                    onImageStateChange = { imageState = it }
+                )
+            }
+            if (showLoadingIndicator && imageState !is AsyncImagePainter.State.Success) {
+                SlockImagePreviewLoadingOverlay(
+                    failed = imageState is AsyncImagePainter.State.Error,
+                    placeholderLabel = placeholderLabel,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -152,7 +174,8 @@ internal fun SlockAspectFitImagePreviewSurface(
 private fun SlockZoomableCachedImage(
     source: String,
     contentDescription: String?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onImageStateChange: ((AsyncImagePainter.State) -> Unit)? = null
 ) {
     var scale by remember(source) { mutableStateOf(1f) }
     var pan by remember(source) { mutableStateOf(Offset.Zero) }
@@ -187,11 +210,35 @@ private fun SlockZoomableCachedImage(
             source = source,
             contentDescription = contentDescription,
             contentScale = ContentScale.Fit,
+            onImageStateChange = onImageStateChange,
             modifier = Modifier
                 .fillMaxSize()
                 .offset { IntOffset(pan.x.roundToInt(), pan.y.roundToInt()) }
                 .scale(scale)
         )
+    }
+}
+
+@Composable
+private fun SlockImagePreviewLoadingOverlay(
+    failed: Boolean,
+    placeholderLabel: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        if (failed) {
+            Text(
+                text = placeholderLabel,
+                style = SlockType.Button.copy(fontSize = 11.sp, color = SlockColor.TextBlack),
+                color = SlockColor.TextBlack,
+                maxLines = 1
+            )
+        } else {
+            SlockHeaderRefreshIndicator()
+        }
     }
 }
 

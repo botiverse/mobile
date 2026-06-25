@@ -1648,7 +1648,8 @@ internal fun SlockFilePreviewImagePanel(
         modifier = modifier.fillMaxWidth(),
         backgroundColor = backgroundColor,
         borderWidth = borderWidth,
-        zoomable = true
+        zoomable = true,
+        showLoadingIndicator = true
     )
 }
 
