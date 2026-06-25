@@ -6,19 +6,20 @@ import ai.slock.android.core.data.auth.AndroidApiServerEnvironmentStore
 import ai.slock.android.core.data.diagnostics.SlockDiagnosticsLogger
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderBaseModule
 import com.tencent.kuikly.core.render.android.export.KuiklyRenderCallback
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.TimeUnit
 import okhttp3.Call
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okio.BufferedSink
 import org.json.JSONObject
 
 internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
@@ -50,7 +51,7 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
                     runCatching {
                                 val headers = command.optJSONObject("headers") ?: JSONObject()
                                 val method = command.optString("method", "GET").uppercase()
-                                val requestBody = command.requestBody(method, headers, activity)
+                                val requestBody = command.requestBody(method, headers, activity, active)
                                 val request =
                                         Request.Builder()
                                                 .url(rewriteEnvironmentUrl(command.optString("url")))
@@ -126,17 +127,27 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         return this
     }
 
-    private fun JSONObject.requestBody(method: String, headers: JSONObject, activity: android.app.Activity?): RequestBody? {
+    private fun JSONObject.requestBody(
+            method: String,
+            headers: JSONObject,
+            activity: android.app.Activity?,
+            active: ActiveNetworkRequest
+    ): RequestBody? {
         val mediaType = headers.optString("Content-Type").takeIf { it.isNotBlank() }?.toMediaTypeOrNull()
         if (has("bodyBase64")) {
             return Base64.decode(optString("bodyBase64"), Base64.DEFAULT).toRequestBody(mediaType)
         }
         optJSONArray("multipartFiles")?.let { files ->
-            return multipartRequestBody(files, optJSONObject("multipartFields"), activity)
+            return multipartRequestBody(files, optJSONObject("multipartFields"), activity, active)
         }
         if (has("bodyFileRef")) {
-            return readFileRefBytes(activity, optString("bodyFileRef"))
-                    ?.toRequestBody(mediaType)
+            return fileRefRequestBody(
+                    activity = activity,
+                    fileRef = optString("bodyFileRef"),
+                    mediaType = mediaType,
+                    sizeBytes = null,
+                    active = active
+            )
         }
         if (has("bodyText")) {
             return optString("bodyText").toRequestBody(mediaType)
@@ -151,7 +162,8 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
     private fun multipartRequestBody(
             files: org.json.JSONArray,
             fields: JSONObject?,
-            activity: android.app.Activity?
+            activity: android.app.Activity?,
+            active: ActiveNetworkRequest
     ): RequestBody {
         val builder = MultipartBody.Builder().setType(MultipartBody.FORM)
         var addedFiles = 0
@@ -166,17 +178,30 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
             val fieldName = file.optString("name", "files")
             val fileName = file.optString("fileName", "attachment")
             val mimeType = file.optString("mimeType", "application/octet-stream").toMediaTypeOrNull()
-            val bytes =
-                    when {
-                        file.has("bodyBase64") -> Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
-                        file.has("fileRef") ->
-                                readFileRefBytes(activity, file.optString("fileRef"))
-                        else -> null
-                    } ?: continue
-            if (bytes.isEmpty()) {
+            val body = (
+                    if (file.has("bodyBase64")) {
+                        val bytes = Base64.decode(file.optString("bodyBase64"), Base64.DEFAULT)
+                        if (bytes.isEmpty()) {
+                            null
+                        } else {
+                            bytes.toRequestBody(mimeType)
+                        }
+                    } else if (file.has("fileRef")) {
+                        fileRefRequestBody(
+                                activity = activity,
+                                fileRef = file.optString("fileRef"),
+                                mediaType = mimeType,
+                                sizeBytes = file.optLong("sizeBytes", -1L).takeIf { it > 0L },
+                                active = active
+                        )
+                    } else {
+                        null
+                    }
+                    ) ?: continue
+            if (body.contentLengthOrUnknown() == 0L) {
                 continue
             }
-            builder.addFormDataPart(fieldName, fileName, bytes.toRequestBody(mimeType))
+            builder.addFormDataPart(fieldName, fileName, body)
             addedFiles += 1
         }
         if (files.length() > 0 && addedFiles == 0) {
@@ -185,22 +210,70 @@ internal class SlockKuiklyNetworkModule : KuiklyRenderBaseModule() {
         return builder.build()
     }
 
-    private fun readFileRefBytes(activity: android.app.Activity?, fileRef: String): ByteArray? {
+    private fun fileRefRequestBody(
+            activity: android.app.Activity?,
+            fileRef: String,
+            mediaType: MediaType?,
+            sizeBytes: Long?,
+            active: ActiveNetworkRequest
+    ): RequestBody? {
         if (activity == null || fileRef.isBlank()) return null
-        val uri = Uri.parse(fileRef)
-        return if (uri.scheme.equals("file", ignoreCase = true)) {
-            val path = uri.path ?: return null
-            File(path).takeIf { it.isFile }?.readBytes()
-        } else {
-            activity
-                    .contentResolver
-                    .openInputStream(uri)
-                    ?.use { input ->
-                        ByteArrayOutputStream().use { output ->
-                            input.copyTo(output)
-                            output.toByteArray()
-                        }
+        return FileRefRequestBody(activity, fileRef, mediaType, sizeBytes, active)
+    }
+
+    private fun RequestBody.contentLengthOrUnknown(): Long =
+            try {
+                contentLength()
+            } catch (_: IOException) {
+                -1L
+            }
+
+    private class FileRefRequestBody(
+            private val activity: android.app.Activity,
+            private val fileRef: String,
+            private val mediaType: MediaType?,
+            private val sizeBytes: Long?,
+            private val active: ActiveNetworkRequest
+    ) : RequestBody() {
+        override fun contentType(): MediaType? = mediaType
+
+        override fun contentLength(): Long = sizeBytes ?: fileLengthOrUnknown()
+
+        override fun writeTo(sink: BufferedSink) {
+            if (active.cancelled.get()) {
+                throw RequestCancelledException()
+            }
+            val uri = Uri.parse(fileRef)
+            val input =
+                    if (uri.scheme.equals("file", ignoreCase = true)) {
+                        val path = uri.path ?: throw IOException("No file path")
+                        File(path).takeIf { it.isFile }?.inputStream()
+                    } else {
+                        activity.contentResolver.openInputStream(uri)
+                    } ?: throw IOException("Unable to read file")
+            input.use { stream ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    if (active.cancelled.get()) {
+                        throw RequestCancelledException()
                     }
+                    val read = stream.read(buffer)
+                    if (read == -1) break
+                    sink.write(buffer, 0, read)
+                }
+            }
+        }
+
+        private fun fileLengthOrUnknown(): Long {
+            val uri = Uri.parse(fileRef)
+            if (uri.scheme.equals("file", ignoreCase = true)) {
+                val path = uri.path ?: return -1L
+                return File(path).takeIf { it.isFile }?.length() ?: -1L
+            }
+            return activity.contentResolver.openAssetFileDescriptor(uri, "r")
+                    ?.use { descriptor -> descriptor.length }
+                    ?.takeIf { it >= 0L }
+                    ?: -1L
         }
     }
 
