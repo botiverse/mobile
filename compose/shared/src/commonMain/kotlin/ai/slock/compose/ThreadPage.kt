@@ -6609,7 +6609,7 @@ private fun ThreadMessagesList(
             latestItemIndex = latestItemIndex,
             messageCount = payload.messages.size
         )
-    val showInitialBottomAnchorLoading =
+    val initialBottomAnchorPending =
         !initialBottomAnchorReady && latestItemIndex >= 0 && !revealLatestLocalSendBeforeInitialAnchor
     LaunchedEffect(
         threadInstanceKey,
@@ -6619,9 +6619,9 @@ private fun ThreadMessagesList(
         initialBottomAnchorReady,
         latestItemIndex,
         revealLatestLocalSendBeforeInitialAnchor,
-        showInitialBottomAnchorLoading
+        initialBottomAnchorPending
     ) {
-        if (showInitialBottomAnchorLoading) {
+        if (initialBottomAnchorPending) {
             diagnosticsLogger(
                 "thread_messages_visible_state instance=$threadInstanceKey " +
                     "status=${payload.status} messages=${payload.messages.size} " +
@@ -6629,7 +6629,7 @@ private fun ThreadMessagesList(
                     "originStatus=${payload.originStatus} latestItemIndex=$latestItemIndex " +
                     "initialBottomAnchorReady=$initialBottomAnchorReady " +
                     "revealLatestLocalSendBeforeInitialAnchor=$revealLatestLocalSendBeforeInitialAnchor " +
-                    "branch=initial_bottom_anchor_loading"
+                    "branch=initial_bottom_anchor_pending"
             )
         }
     }
@@ -7142,9 +7142,6 @@ private fun ThreadMessagesList(
                     )
                 }
             }
-        }
-        if (showInitialBottomAnchorLoading) {
-            ThreadStateMessage("Loading...", null)
         }
         if (shouldShowThreadBackToBottomButton(
                 ThreadBackToBottomButtonState(
