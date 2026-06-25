@@ -52,6 +52,8 @@ class SharedHomeShellStore(
     private val resetActivity: () -> Unit = {},
     private val scope: CoroutineScope
 ) {
+    private var observedHomeServerId: String? = homeState.value.activeHomeServerId()
+
     private val _state =
         MutableStateFlow(
             SharedHomeShellState(
@@ -66,7 +68,13 @@ class SharedHomeShellStore(
         listOf(
             scope.launch {
                 homeState.collect { home ->
+                    val previousServerId = observedHomeServerId
+                    val nextServerId = home.activeHomeServerId()
+                    observedHomeServerId = nextServerId ?: previousServerId
                     _state.value = _state.value.copy(home = home)
+                    if (previousServerId != null && nextServerId != null && previousServerId != nextServerId) {
+                        refreshBadgeSummaries()
+                    }
                 }
             },
             scope.launch {
@@ -178,3 +186,11 @@ class SharedHomeShellStore(
         }
     }
 }
+
+private fun SharedHomeState.activeHomeServerId(): String? =
+    when (val current = content) {
+        is SharedHomeContentState.Content -> current.snapshot.server.id.value
+        is SharedHomeContentState.Loading -> current.session?.currentServerId
+        is SharedHomeContentState.Empty -> current.session.currentServerId
+        is SharedHomeContentState.Error -> null
+    }

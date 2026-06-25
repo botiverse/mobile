@@ -1,5 +1,10 @@
 package ai.slock.compose.data
 
+import ai.slock.compose.model.MemberId
+import ai.slock.compose.model.MemberKind
+import ai.slock.compose.model.MemberProfile
+import ai.slock.compose.model.ServerId
+import ai.slock.compose.model.ServerSummary
 import ai.slock.compose.model.SyncResumeResponse
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -125,6 +130,20 @@ class SharedHomeShellStoreTest {
     }
 
     @Test
+    fun homeServerChangeRefreshesHomeBadgeSummaries() {
+        val fixture = fixture(homeState = homeStateForServer("server-1"))
+
+        fixture.homeState.value = homeStateForServer("server-2")
+
+        assertEquals(listOf<SharedActivityIntent>(SharedActivityIntent.Refresh), fixture.activityIntents)
+        assertEquals(
+            listOf<SharedHomeSearchSavedIntent>(SharedHomeSearchSavedIntent.RefreshSaved),
+            fixture.searchSavedIntents
+        )
+        fixture.cancel()
+    }
+
+    @Test
     fun realtimeForwardsActivityOnlyWhenPrimaryOrActivityVisible() {
         val fixture = fixture()
         val store = fixture.store
@@ -169,26 +188,63 @@ class SharedHomeShellStoreTest {
         searchSavedState: SharedHomeSearchSavedState = SharedHomeSearchSavedState()
     ): ShellFixture {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val homeFlow = MutableStateFlow(homeState)
+        val activityFlow = MutableStateFlow(activityState)
+        val searchSavedFlow = MutableStateFlow(searchSavedState)
         val homeIntents = mutableListOf<SharedHomeIntent>()
         val activityIntents = mutableListOf<SharedActivityIntent>()
         val searchSavedIntents = mutableListOf<SharedHomeSearchSavedIntent>()
         val store =
             SharedHomeShellStore(
-                homeState = MutableStateFlow(homeState),
-                activityState = MutableStateFlow(activityState),
-                searchSavedState = MutableStateFlow(searchSavedState),
+                homeState = homeFlow,
+                activityState = activityFlow,
+                searchSavedState = searchSavedFlow,
                 dispatchHome = homeIntents::add,
                 dispatchActivity = activityIntents::add,
                 dispatchSearchSaved = searchSavedIntents::add,
                 resetActivity = {},
                 scope = scope
             )
-        return ShellFixture(store, scope, homeIntents, activityIntents, searchSavedIntents)
+        return ShellFixture(store, scope, homeFlow, homeIntents, activityIntents, searchSavedIntents)
+    }
+
+    private fun homeStateForServer(serverId: String): SharedHomeState {
+        val server = ServerSummary(ServerId(serverId), "$serverId server")
+        val member =
+            MemberProfile(
+                id = MemberId("user-1"),
+                displayName = "Artin",
+                handle = "artin",
+                kind = MemberKind.Human
+            )
+        val session =
+            StoredAuthSession(
+                user = StoredAuthUser(id = "user-1", email = "artin@raft.build"),
+                accessToken = "token",
+                refreshToken = "refresh",
+                selectedServerId = serverId,
+                servers = listOf(StoredAuthServer(id = serverId, name = server.name))
+            )
+        return SharedHomeState(
+            content =
+                SharedHomeContentState.Content(
+                    snapshot =
+                        HomeSnapshot(
+                            server = server,
+                            currentMember = member,
+                            channels = emptyList(),
+                            directMessages = emptyList(),
+                            unreadTotal = 0
+                        ),
+                    session = session
+                )
+        )
     }
 
     private data class ShellFixture(
         val store: SharedHomeShellStore,
         val scope: CoroutineScope,
+        val homeState: MutableStateFlow<SharedHomeState>,
         val homeIntents: MutableList<SharedHomeIntent>,
         val activityIntents: MutableList<SharedActivityIntent>,
         val searchSavedIntents: MutableList<SharedHomeSearchSavedIntent>
