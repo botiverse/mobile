@@ -371,6 +371,51 @@ class SqlDelightComposeLocalDataStoreTest {
     }
 
     @Test
+    fun genericThreadRefreshDoesNotDowngradeStoredJointChannelProjection() = runBlocking {
+        val database = createDatabase()
+        val store =
+            SqlDelightComposeLocalDataStore(
+                database = database,
+                fallback = InMemoryComposeLocalDataStore(),
+                currentServerId = { serverId },
+                clock = { 42L }
+            )
+        store.writeHome(
+            HomeSnapshot(
+                server = ServerSummary(serverId, name = "Slock"),
+                currentMember = member,
+                channels =
+                    listOf(
+                        ConversationSummary(
+                            threadId = ThreadId("joint-1"),
+                            channelId = ChannelId("joint-1"),
+                            kind = ConversationKind.Joint,
+                            name = "raft-mobile",
+                            subtitle = "Mobile bridge"
+                        )
+                    )
+            )
+        )
+        store.writeThread(
+            ThreadSnapshot(
+                conversation =
+                    ConversationSummary(
+                        threadId = ThreadId("joint-1"),
+                        channelId = ChannelId("joint-1"),
+                        kind = ConversationKind.Channel,
+                        name = "Channel"
+                    ),
+                messages = emptyList()
+            )
+        )
+
+        val projection = assertNotNull(SharedConversationDirectoryStore(database).resolveProjection(serverId, "joint-1"))
+        assertEquals("joint", projection.channelKind)
+        assertEquals("raft-mobile", projection.title)
+        assertEquals("Mobile bridge", projection.subtitle)
+    }
+
+    @Test
     fun writeThreadRewritesStaleParentChannelAliasForReplyThread() = runBlocking {
         val database = createDatabase()
         val store =
