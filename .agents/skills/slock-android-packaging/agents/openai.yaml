@@ -1,0 +1,4 @@
+interface:
+  display_name: "Slock Android Packaging"
+  short_description: "Build and publish signed Slock Android APK artifacts."
+  default_prompt: "Build, sign, validate, upload, and report a Slock Android release artifact from local main."
